@@ -2,6 +2,8 @@ import { motion } from "motion/react";
 import { Check, FileText, Folder, Mail, Search, Sparkles, X, ShieldCheck, Infinity as InfinityIcon, Zap, Landmark, Receipt, ArrowRight } from "lucide-react";
 import type { WikiVisual } from "@/content/wiki";
 import { LogoMark } from "@/components/Logo";
+import { fmtEUR } from "@/core/dates";
+import { berechneRvg } from "@/core/rvg";
 
 const spring = { type: "spring" as const, stiffness: 260, damping: 22 };
 const loop = { repeat: Infinity, repeatDelay: 1.6 };
@@ -212,8 +214,15 @@ function MotorScene() {
   );
 }
 
+// Beispiel aus dem Rechner: 10.000 €, 2300 + 3100 mit Anrechnung – Pauschale 7002 je Angelegenheit.
+const RVG_BEISPIEL = berechneRvg({ positionen: [{ nr: "2300" }, { nr: "3100" }], gegenstandswert: 10_000 });
+
 function RvgScene() {
-  const rows = [["2300 Geschäftsgebühr 1,3", "847,60 €"], ["3100 Verfahrensgebühr 1,3", "847,60 €"], ["Anrechnung 0,65", "−423,80 €"], ["7002 Pauschale", "20,00 €"]];
+  const satz = (n: number) => Math.abs(n).toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 2 });
+  const rows = RVG_BEISPIEL.angelegenheiten.flatMap((a) => [
+    ...a.zeilen.map((z) => [z.anrechnung ? `Anrechnung ${satz(z.satz)}` : `${z.nr} ${z.titel.replace(/ \(.*\)$/, "")} ${satz(z.satz)}`, fmtEUR(z.betrag)]),
+    [`7002 Pauschale ${a.key === "aussergerichtlich" ? "außergerichtl." : "gerichtl."}`, fmtEUR(a.auslagenpauschale)],
+  ]);
   return (
     <div className="flex h-full items-center justify-center">
       <div className="glass-strong w-[290px] rounded-[16px] p-3 text-[11.5px]">
@@ -226,7 +235,7 @@ function RvgScene() {
         ))}
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.4 }} className="mt-1.5 flex justify-between font-semibold">
           <span>Gesamt inkl. USt.</span>
-          <span className="num text-ink">1.539,44 €</span>
+          <span className="num text-ink">{fmtEUR(RVG_BEISPIEL.brutto)}</span>
         </motion.div>
       </div>
     </div>

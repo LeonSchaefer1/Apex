@@ -34,7 +34,7 @@ export function MotorAbschnitt() {
             <br /> <span className="text-fg-3">Sie bleiben beim Mandat.</span>
           </>
         }
-        text="Jede Automation misst, wie viel Zeit sie spart. Im Durchschnitt sind es 38 Stunden pro Woche und Kanzlei – fast eine volle Stelle, die wieder für Mandate frei wird."
+        text="Jede Automation misst, wie viel Zeit sie spart. Unser Ziel: Ø 38 Stunden Routinearbeit pro Woche und Kanzlei – fast eine volle Stelle, die wieder für Mandate frei wird."
       />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
         <Reveal className="sheet relative overflow-hidden rounded-[28px] p-6 sm:p-7">
@@ -42,12 +42,12 @@ export function MotorAbschnitt() {
             <h3 className="title-lg">Was der Motor übernimmt</h3>
             <span className="hidden text-[12px] text-fg-3 sm:inline">Zeit je Vorgang</span>
           </div>
-          <ul className="mt-5 grid gap-1">
+          <ul className="mt-5 grid grid-cols-1 gap-1">
             {autos.map((a, k) => (
-              <Reveal as="li" key={a.key} delay={k * 0.035} y={12} className="group flex items-center gap-3 rounded-[16px] px-2 py-2.5 transition-colors hover:bg-ink-softer">
+              <Reveal as="li" key={a.key} delay={k * 0.035} y={12} className="group flex min-w-0 items-center gap-3 rounded-[16px] px-2 py-2.5 transition-colors hover:bg-ink-softer">
                 <span className="grid size-9 shrink-0 place-items-center rounded-[11px] bg-ink-soft text-ink">{KATEGORIE_ICON[a.kategorie]}</span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[14px] font-semibold">{a.name}</span>
+                  <span className="line-clamp-2 hyphens-auto break-words text-[14px] font-semibold leading-snug sm:line-clamp-1">{a.name}</span>
                   <span className="block truncate text-[12px] text-fg-3">Auslöser: {a.ausloeser}</span>
                 </span>
                 <span className="num shrink-0 rounded-full bg-green-soft px-2.5 py-1 text-[12px] font-semibold text-green">{a.minutenProLauf} Min.</span>
@@ -88,7 +88,7 @@ function Rechner() {
           schritt={1}
           onChange={setStunden}
           anzeige={`${fmtNum(stunden)} Std.`}
-          hinweis="Richtwert Ø 38 Std. je Kanzlei – an Ihre Kanzleigröße anpassen."
+          hinweis="Zielwert Ø 38 Std. je Kanzlei – an Ihre Kanzleigröße anpassen."
         />
         <Regler
           id="roi-satz"
@@ -131,7 +131,7 @@ function Rechner() {
         </div>
       </div>
       <p className="relative mt-4 text-[11.5px] leading-relaxed text-fg-4">
-        Beispielrechnung: Stunden pro Woche × {WOCHEN_PRO_JAHR} Arbeitswochen × interner Stundensatz. Voreingestellt ist der Richtwert von Ø 38 Stunden automatisierter Routinearbeit pro Kanzlei und Woche – das entspricht rund 36.000 € im Jahr. Die tatsächliche Ersparnis hängt von Fallzahlen, Sachgebieten und Abläufen ab – der 38h-Motor misst sie in Ihrer Kanzlei laufend.
+        Beispielrechnung: Stunden pro Woche × {WOCHEN_PRO_JAHR} Arbeitswochen × interner Stundensatz. Voreingestellt ist unser Zielwert von Ø 38 Stunden automatisierter Routinearbeit pro Kanzlei und Woche – das entspricht rund 36.000 € im Jahr. Kein garantiertes Ergebnis: Die tatsächliche Ersparnis hängt von Fallzahlen, Sachgebieten und Abläufen ab – der 38h-Motor misst sie in Ihrer Kanzlei laufend.
       </p>
     </Reveal>
   );

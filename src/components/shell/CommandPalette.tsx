@@ -263,9 +263,10 @@ export function CommandPalette() {
                 )}
               </Command.List>
               <div className="flex items-center gap-4 border-t border-[var(--line)] px-5 py-2.5 text-[11.5px] text-fg-4">
-                <span className="flex items-center gap-1.5"><span className="kbd">↑</span><span className="kbd">↓</span> auswählen</span>
-                <span className="flex items-center gap-1.5"><span className="kbd"><CornerDownLeft className="size-3" /></span> öffnen</span>
-                <span className="ml-auto">Lokaler Index – Mandantendaten verlassen das Gerät nicht</span>
+                {/* Tastaturhinweise nur dort, wo es eine Tastatur gibt */}
+                <span className="hidden items-center gap-1.5 sm:flex"><span className="kbd">↑</span><span className="kbd">↓</span> auswählen</span>
+                <span className="hidden items-center gap-1.5 sm:flex"><span className="kbd"><CornerDownLeft className="size-3" /></span> öffnen</span>
+                <span className="min-w-0 sm:ml-auto">Lokaler Index – Mandantendaten verlassen das Gerät nicht</span>
               </div>
             </Command>
           </motion.div>

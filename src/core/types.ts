@@ -33,6 +33,9 @@ export interface Tenant {
   createdAt: ISODateTime;
   status?: "aktiv" | "test" | "pausiert";
   testBis?: ISODate;
+  /** Pflichtangabe auf Rechnungen (§ 14 Abs. 4 S. 1 Nr. 2 UStG): Steuernummer oder USt-IdNr. der Kanzlei. */
+  steuernummer?: string;
+  ustIdNr?: string;
 }
 
 export interface User {
@@ -110,6 +113,8 @@ export interface Akte {
   mandantenportal?: boolean;
   entscheidungen?: string[]; // an die Akte geheftete Entscheidungen (Fall-Datenbank)
   kiAnalyse?: { erstelltAm: string; prozent: number; quelle: string }; // letzte KI-Fallanalyse (Kurzinfo)
+  /** Vergütungsvereinbarung (§ 3a RVG, Textform) – Voraussetzung für die Abrechnung nach Zeitaufwand. */
+  verguetungsvereinbarung?: { datum: ISODate; stundensatz?: number; erfasstVon?: ID };
 }
 
 export interface Forderungsdaten {
@@ -242,6 +247,13 @@ export interface Rechnung {
   bezahltAm?: ISODate;
   format: "PDF" | "XRechnung" | "ZUGFeRD";
   createdAt: ISODateTime;
+  /** „vorschuss“: Vorschussrechnung nach § 9 RVG (Vergütung noch nicht fällig, § 8 Abs. 1 RVG). Fehlt = Rechnung. */
+  art?: "rechnung" | "vorschuss";
+  /** Mit dieser Rechnung abgerechnete Zeiteinträge – werden bei Löschen des Entwurfs bzw. Storno wieder freigegeben. */
+  zeitIds?: ID[];
+  /** Storno: eigene Belegnummer aus dem Rechnungsnummernkreis und Datum der Stornorechnung. */
+  stornoNummer?: string;
+  storniertAm?: ISODate;
 }
 
 export type BuchungsArt = "honorar" | "vorschuss" | "fremdgeld" | "auslage" | "zahlung" | "gerichtskosten" | "zinsen" | "kosten";
@@ -255,7 +267,7 @@ export interface Buchung {
   text: string;
   rechnungId?: ID;
   transaktionId?: ID;
-  fremdgeld?: boolean; // § 43a Abs. 5 BRAO
+  fremdgeld?: boolean; // § 43a Abs. 7 BRAO
 }
 
 export interface Transaktion {

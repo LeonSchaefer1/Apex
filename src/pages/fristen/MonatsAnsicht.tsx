@@ -182,7 +182,7 @@ export function MonatsAnsicht({
                       <span className={cn("absolute bottom-2.5 left-1.5 top-2.5 w-[3px] rounded-full", f.status === "erledigt" ? "bg-green" : streifenFarbe(f, heute))} />
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <TypChip typ={f.typ} />
+                          <TypChip typ={f.typ} regelKey={f.regelKey} />
                           {f.uhrzeit && <span className="num text-[12px] text-fg-3">{f.uhrzeit} Uhr</span>}
                         </div>
                         <div className={cn("mt-1 text-[13.5px] font-semibold leading-snug", f.status === "erledigt" && "text-fg-3 line-through")}>{f.titel}</div>

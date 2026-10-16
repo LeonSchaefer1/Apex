@@ -1,12 +1,12 @@
 import { motion } from "motion/react";
-import { Activity, BadgeCheck, CalendarClock, CalendarRange, FolderOpen, KeyRound, Mail, Pause, Play, RotateCcw, Trash2, Users } from "lucide-react";
+import { Activity, BadgeCheck, CalendarClock, CalendarRange, FolderOpen, KeyRound, Mail, Pause, Play, RotateCcw, Trash2, Undo2, Users } from "lucide-react";
 import { Avatar, Button, Chip } from "@/components/ui";
 import { bundeslandName } from "@/core/feiertage";
 import { fmtDate, fmtNum, relTime, today } from "@/core/dates";
 import type { ConsoleKunde } from "@/lib/backend";
 import type { Tenant, User } from "@/core/types";
 import { cn } from "@/lib/cn";
-import { DEMO_IDS, testStatus } from "./helfer";
+import { DEMO_IDS, DEMO_NUTZER_IDS, testStatus } from "./helfer";
 
 const STATUS: Record<NonNullable<Tenant["status"]>, { label: string; ton: "amber" | "green" | "seal" | "ink" }> = {
   test: { label: "Test", ton: "ink" },
@@ -21,6 +21,8 @@ export interface KartenAktionen {
   zuruecksetzen: (k: ConsoleKunde) => void;
   loeschen: (k: ConsoleKunde) => void;
   passwort: (k: ConsoleKunde, u: User) => void;
+  /** Eingebaute Beispiel-Zugänge: öffentliches Demo-Passwort wiederherstellen */
+  standardPasswort: (k: ConsoleKunde, u: User) => void;
 }
 
 function kuerzel(name: string) {
@@ -115,6 +117,18 @@ export function KundenKarte({ k, i, aktionen, beschaeftigt }: { k: ConsoleKunde;
                     <span className="mono truncate">{u.email}</span>
                   </span>
                 </span>
+                {DEMO_NUTZER_IDS.has(u.id) && (
+                  <button
+                    type="button"
+                    onClick={() => aktionen.standardPasswort(k, u)}
+                    className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium text-fg-3 transition-colors hover:bg-ink-soft hover:text-ink"
+                    title={`Standardpasswort der Beispielkanzleien für ${u.name} wiederherstellen`}
+                    aria-label={`Standardpasswort für ${u.name} wiederherstellen`}
+                  >
+                    <Undo2 className="size-3.5" />
+                    <span className="hidden sm:inline">Standard</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => aktionen.passwort(k, u)}

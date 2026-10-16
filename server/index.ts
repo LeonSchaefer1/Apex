@@ -14,6 +14,7 @@ import { DEMO_TENANTS, DEMO_PASSWORT, publicUser } from "../src/core/seed/tenant
 import { generateTenantData, SEED_VERSION, type SeedInput } from "../src/core/seed/generate";
 import { baueKunde, baueNutzer, profilFuer, zufallsPasswort } from "../src/core/seed/kunde";
 import { fmtDate, today } from "../src/core/dates";
+import { VERWALTUNGS_ROLLEN, pruefeNeuesPasswort } from "../src/lib/backend/types";
 
 // ───────────── Konfiguration ─────────────
 const PORT = Number(process.env.PORT ?? 8787);
@@ -45,6 +46,10 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS tenant_state (tenant_id TEXT PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE, seeded_for TEXT, seed_version INTEGER, dirty INTEGER NOT NULL DEFAULT 0);
   CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY AUTOINCREMENT, zeit TEXT NOT NULL, tenant_id TEXT, user_id TEXT, aktion TEXT NOT NULL, detail TEXT);
 `);
+// Spalte für Startpasswörter (Einladung/Neuvergabe): eigenes Passwort bei der nächsten Anmeldung festlegen
+if (!(db.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "pw_wechsel")) {
+  db.exec("ALTER TABLE users ADD COLUMN pw_wechsel INTEGER NOT NULL DEFAULT 0");
+}
 
 function hashPw(pw: string): string {
   const salt = randomBytes(16).toString("hex");
@@ -64,7 +69,7 @@ function audit(aktion: string, detail: string, tenantId?: string | null, userId?
 }
 
 type TenantRow = { id: string; json: string; profil: string; demo: number; leer: number };
-type UserRow = { id: string; tenant_id: string; email: string; pw_hash: string; json: string; last_login: string | null };
+type UserRow = { id: string; tenant_id: string; email: string; pw_hash: string; json: string; last_login: string | null; pw_wechsel: number };
 
 function tenantById(id: string): (TenantRow & { tenant: Tenant }) | undefined {
   const r = db.prepare("SELECT * FROM tenants WHERE id = ?").get(id) as TenantRow | undefined;
@@ -78,17 +83,28 @@ function speichereTenant(t: Tenant, profil: SeedInput["profil"], demo: boolean, 
   db.prepare("INSERT OR REPLACE INTO tenants (id, json, profil, demo, leer, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(t.id, JSON.stringify(t), JSON.stringify(profil), demo ? 1 : 0, leer ? 1 : 0, t.createdAt);
   db.prepare("INSERT OR IGNORE INTO tenant_state (tenant_id, dirty) VALUES (?, 0)").run(t.id);
 }
-function speichereUser(u: User, pw: string) {
-  db.prepare("INSERT INTO users (id, tenant_id, email, pw_hash, json) VALUES (?, ?, ?, ?, ?)").run(u.id, u.tenantId, u.email.toLowerCase(), hashPw(pw), JSON.stringify(u));
+function speichereUser(u: User, pw: string, wechsel = false) {
+  db.prepare("INSERT INTO users (id, tenant_id, email, pw_hash, json, pw_wechsel) VALUES (?, ?, ?, ?, ?, ?)").run(u.id, u.tenantId, u.email.toLowerCase(), hashPw(pw), JSON.stringify(u), wechsel ? 1 : 0);
 }
+const darfVerwalten = (u: User) => VERWALTUNGS_ROLLEN.includes(u.rolle);
 
 // Demo-Kanzleien beim ersten Start anlegen
 if (SEED_DEMO) {
   for (const dt of DEMO_TENANTS) {
-    if (!tenantById(dt.tenant.id)) {
+    const vorhanden = tenantById(dt.tenant.id);
+    if (!vorhanden) {
       speichereTenant(dt.tenant, dt.profil, true, false);
       for (const u of dt.users) speichereUser(publicUser(u), u.passwort);
       console.log(`Demo-Kanzlei angelegt: ${dt.tenant.name}`);
+    } else {
+      // Stand der eingebauten Präsentationskanzleien nachziehen: Ansprechpartner und Lizenzstatus
+      // (früher als Testzugang bis 31.12.2026 angelegt, jetzt mit erworbener Lifetime-Lizenz). Vom Kunden gepflegte Profilfelder bleiben.
+      const t = { ...vorhanden.tenant, ansprechpartner: dt.tenant.ansprechpartner };
+      if (t.status === "test" && t.testBis === "2026-12-31" && dt.tenant.status === "aktiv") {
+        t.status = "aktiv";
+        delete t.testBis;
+      }
+      db.prepare("UPDATE tenants SET json = ? WHERE id = ?").run(JSON.stringify(t), dt.tenant.id);
     }
   }
 }
@@ -155,6 +171,17 @@ function sessionInfo(s: Extract<Sess, { kind: "tenant" }>): SessionInfo | null {
 
 const fehler = (c: Context, status: 400 | 401 | 403 | 404 | 409 | 413 | 429 | 500 | 503, text: string) => c.json({ fehler: text }, status);
 
+/** Pausierte Kanzleien und abgelaufene Testzugänge werden abgewiesen (Präsentationskanzleien, demo = 1, laufen nicht ab). */
+function zugangsSperre(tenantId: string): string | null {
+  const t = tenantById(tenantId);
+  if (!t) return "Kanzlei nicht gefunden.";
+  const ap = t.tenant.ansprechpartner;
+  const kontakt = `Ihr fester Ansprechpartner: ${ap.name} (${ap.telefon}).`;
+  if (t.tenant.status === "pausiert") return `Der Zugang dieser Kanzlei ist pausiert. ${kontakt}`;
+  if (t.tenant.testBis && t.tenant.testBis < today() && t.tenant.status === "test" && !t.demo) return `Der Testzeitraum ist am ${fmtDate(t.tenant.testBis)} abgelaufen. ${kontakt} ${ap.name} verlängert den Zugang gern.`;
+  return null;
+}
+
 // einfache Begrenzung gegen Passwort-Raten und KI-Missbrauch
 const buckets = new Map<string, number[]>();
 function begrenzt(key: string, max: number, fensterMs: number): boolean {
@@ -208,17 +235,34 @@ app.post("/api/auth/login", async (c) => {
   }
   const u = db.prepare("SELECT * FROM users WHERE email = ?").get(email) as UserRow | undefined;
   if (!u || !pruefePw(pw, u.pw_hash)) return fehler(c, 401, "E-Mail-Adresse oder Passwort stimmen nicht.");
-  const t = tenantById(u.tenant_id);
-  if (!t) return fehler(c, 403, "Kanzlei nicht gefunden.");
-  const ap = t.tenant.ansprechpartner;
-  const kontakt = `Ihr fester Ansprechpartner: ${ap.name} (${ap.telefon}).`;
-  if (t.tenant.status === "pausiert") return fehler(c, 403, `Der Zugang dieser Kanzlei ist pausiert. ${kontakt}`);
-  // Präsentationskanzleien (demo = 1) sind fest eingebaut – ihr Testzeitraum läuft nicht ab.
-  if (t.tenant.testBis && t.tenant.testBis < today() && t.tenant.status === "test" && !t.demo) return fehler(c, 403, `Der Testzeitraum ist am ${fmtDate(t.tenant.testBis)} abgelaufen. ${kontakt} ${ap.name} verlängert den Zugang gern.`);
+  const sperre = zugangsSperre(u.tenant_id);
+  if (sperre) return fehler(c, 403, sperre);
+  // Startpasswort (Einladung/Neuvergabe): erst nach eigenem Passwort gibt es eine Sitzung.
+  if (u.pw_wechsel) return c.json({ fehler: "Bitte legen Sie zuerst ein eigenes Passwort fest.", passwortWechsel: true, email: u.email }, 403);
   db.prepare("UPDATE users SET last_login = ? WHERE id = ?").run(new Date().toISOString(), u.id);
   const s = { kind: "tenant" as const, userId: u.id, tenantId: u.tenant_id };
   neueSitzung(c, s);
   audit("login", email, u.tenant_id, u.id);
+  return c.json(sessionInfo(s));
+});
+
+app.post("/api/auth/passwort", async (c) => {
+  if (begrenzt(`login:${ip(c)}`, 12, 60_000)) return fehler(c, 429, "Zu viele Anmeldeversuche. Bitte warten Sie eine Minute.");
+  const body = (await c.req.json().catch(() => ({}))) as { email?: string; passwort?: string; neuesPasswort?: string };
+  const email = String(body.email ?? "").trim().toLowerCase();
+  const pw = String(body.passwort ?? "");
+  const neu = String(body.neuesPasswort ?? "");
+  const u = email ? (db.prepare("SELECT * FROM users WHERE email = ?").get(email) as UserRow | undefined) : undefined;
+  if (!u || !pruefePw(pw, u.pw_hash)) return fehler(c, 401, "Das Startpasswort stimmt nicht. Bitte melden Sie sich erneut an.");
+  const sperre = zugangsSperre(u.tenant_id);
+  if (sperre) return fehler(c, 403, sperre);
+  const regel = pruefeNeuesPasswort(neu, pw);
+  if (regel) return fehler(c, 400, regel);
+  db.prepare("UPDATE users SET pw_hash = ?, pw_wechsel = 0, last_login = ? WHERE id = ?").run(hashPw(neu), new Date().toISOString(), u.id);
+  db.prepare("DELETE FROM sessions WHERE user_id = ?").run(u.id);
+  const s = { kind: "tenant" as const, userId: u.id, tenantId: u.tenant_id };
+  neueSitzung(c, s);
+  audit("passwort.eigenes", u.email, u.tenant_id, u.id);
   return c.json(sessionInfo(s));
 });
 
@@ -285,8 +329,28 @@ app.delete("/api/data/:col/:id", (c) => {
 app.post("/api/data/reset", (c) => {
   const s = tenantSitzung(c);
   if (!s) return fehler(c, 401, "Nicht angemeldet");
+  const me = sessionInfo(s);
+  if (!me || !darfVerwalten(me.user)) return fehler(c, 403, "Nur Partner und Administration dürfen den Datenbestand zurücksetzen.");
   audit("data.reset", "", s.tenantId, s.userId);
   return c.json(ladeDaten(s.tenantId, true));
+});
+
+// ── Kanzleiprofil ──
+app.put("/api/kanzlei/profil", async (c) => {
+  const s = tenantSitzung(c);
+  if (!s) return fehler(c, 401, "Nicht angemeldet");
+  const me = sessionInfo(s);
+  if (!me || !darfVerwalten(me.user)) return fehler(c, 403, "Nur Partner und Administration dürfen das Kanzleiprofil ändern.");
+  const b = (await c.req.json().catch(() => ({}))) as { name?: unknown; kurzname?: unknown; adresse?: unknown; stadt?: unknown; schwerpunkte?: unknown };
+  const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+  const name = text(b.name, 160);
+  const adresse = text(b.adresse, 200);
+  if (!name || !adresse) return fehler(c, 400, "Bitte Name und Anschrift der Kanzlei angeben.");
+  const schwerpunkte = Array.isArray(b.schwerpunkte) ? b.schwerpunkte.map((x) => text(x, 60)).filter(Boolean).slice(0, 12) : me.tenant.schwerpunkte;
+  const tenant: Tenant = { ...me.tenant, name, kurzname: text(b.kurzname, 60) || name.slice(0, 60), adresse, stadt: text(b.stadt, 80), schwerpunkte };
+  db.prepare("UPDATE tenants SET json = ? WHERE id = ?").run(JSON.stringify(tenant), s.tenantId);
+  audit("kanzlei.profil", tenant.name, s.tenantId, s.userId);
+  return c.json(tenant);
 });
 
 // ── Team ──
@@ -294,7 +358,7 @@ app.post("/api/team", async (c) => {
   const s = tenantSitzung(c);
   if (!s) return fehler(c, 401, "Nicht angemeldet");
   const me = sessionInfo(s);
-  if (!me || !["partner", "admin"].includes(me.user.rolle)) return fehler(c, 403, "Nur Partner und Administratoren können Zugänge anlegen.");
+  if (!me || !darfVerwalten(me.user)) return fehler(c, 403, "Nur Partner und Administration können Zugänge anlegen.");
   const body = (await c.req.json().catch(() => ({}))) as { name?: string; email?: string; rolle?: User["rolle"]; titel?: string };
   if (!body.name || !body.email || !body.rolle) return fehler(c, 400, "Bitte Name, E-Mail und Rolle angeben.");
   if (db.prepare("SELECT 1 FROM users WHERE email = ?").get(body.email.trim().toLowerCase())) return fehler(c, 409, "Diese E-Mail-Adresse ist bereits vergeben.");
@@ -303,7 +367,7 @@ app.post("/api/team", async (c) => {
   if (anzahl >= lizenz) return fehler(c, 403, `Alle ${lizenz} Arbeitsplätze der Lizenz sind belegt.`);
   const user = baueNutzer(s.tenantId, { name: body.name, email: body.email, rolle: body.rolle, titel: body.titel ?? "" }, anzahl + 1 + Math.floor(Math.random() * 900));
   const passwort = zufallsPasswort();
-  speichereUser(user, passwort);
+  speichereUser(user, passwort, true);
   audit("team.add", user.email, s.tenantId, s.userId);
   return c.json({ user, passwort });
 });
@@ -312,10 +376,27 @@ app.delete("/api/team/:id", (c) => {
   const s = tenantSitzung(c);
   if (!s) return fehler(c, 401, "Nicht angemeldet");
   const me = sessionInfo(s);
-  if (!me || !["partner", "admin"].includes(me.user.rolle)) return fehler(c, 403, "Keine Berechtigung");
+  if (!me || !darfVerwalten(me.user)) return fehler(c, 403, "Nur Partner und Administration können Zugänge entfernen.");
   if (c.req.param("id") === s.userId) return fehler(c, 400, "Sie können sich nicht selbst entfernen.");
+  db.prepare("DELETE FROM sessions WHERE user_id = ? AND tenant_id = ?").run(c.req.param("id"), s.tenantId);
   db.prepare("DELETE FROM users WHERE id = ? AND tenant_id = ?").run(c.req.param("id"), s.tenantId);
+  audit("team.remove", c.req.param("id"), s.tenantId, s.userId);
   return c.body(null, 204);
+});
+
+app.post("/api/team/:id/passwort", (c) => {
+  const s = tenantSitzung(c);
+  if (!s) return fehler(c, 401, "Nicht angemeldet");
+  const me = sessionInfo(s);
+  if (!me || !darfVerwalten(me.user)) return fehler(c, 403, "Nur Partner und Administration können Passwörter neu vergeben.");
+  const id = c.req.param("id");
+  if (id === s.userId) return fehler(c, 400, "Ihr eigenes Passwort können Sie hier nicht neu vergeben.");
+  const pw = zufallsPasswort();
+  const r = db.prepare("UPDATE users SET pw_hash = ?, pw_wechsel = 1 WHERE id = ? AND tenant_id = ?").run(hashPw(pw), id, s.tenantId);
+  if (!r.changes) return fehler(c, 404, "Dieser Zugang gehört nicht zu Ihrer Kanzlei.");
+  db.prepare("DELETE FROM sessions WHERE user_id = ? AND tenant_id = ?").run(id, s.tenantId);
+  audit("team.passwort", id, s.tenantId, s.userId);
+  return c.json({ passwort: pw });
 });
 
 // ── Apex Console (Anbieter) ──
@@ -370,8 +451,26 @@ app.post("/api/console/kunden/:id/status", async (c) => {
   const { status } = (await c.req.json().catch(() => ({}))) as { status?: Tenant["status"] };
   const t = tenantById(c.req.param("id"));
   if (!t || !status) return fehler(c, 404, "Kanzlei nicht gefunden");
-  db.prepare("UPDATE tenants SET json = ? WHERE id = ?").run(JSON.stringify({ ...t.tenant, status }), t.id);
+  const neu: Tenant = { ...t.tenant, status };
+  // Testzugang → Kunde: Die Lifetime-Lizenz gilt ab heute, der Testzeitraum entfällt.
+  if (t.tenant.status === "test" && status === "aktiv") {
+    neu.lizenz = { ...t.tenant.lizenz, seit: today() };
+    delete neu.testBis;
+  }
+  db.prepare("UPDATE tenants SET json = ? WHERE id = ?").run(JSON.stringify(neu), t.id);
   if (status === "pausiert") db.prepare("DELETE FROM sessions WHERE tenant_id = ?").run(t.id);
+  return c.body(null, 204);
+});
+
+app.post("/api/console/nutzer/:id/standardpasswort", (c) => {
+  if (!consoleOk(c)) return fehler(c, 403, "Nur für das AnwaltApex-Team");
+  const id = c.req.param("id");
+  const demoNutzer = DEMO_TENANTS.some((t) => t.users.some((u) => u.id === id));
+  if (!demoNutzer) return fehler(c, 400, "Nur Zugänge der eingebauten Beispielkanzleien haben ein Standardpasswort.");
+  const r = db.prepare("UPDATE users SET pw_hash = ?, pw_wechsel = 0 WHERE id = ?").run(hashPw(DEMO_PASSWORT), id);
+  if (!r.changes) return fehler(c, 404, "Nutzer nicht gefunden");
+  db.prepare("DELETE FROM sessions WHERE user_id = ?").run(id);
+  audit("console.standardpasswort", id);
   return c.body(null, 204);
 });
 

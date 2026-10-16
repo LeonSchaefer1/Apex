@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { motion } from "motion/react";
 import { ChevronDown, ChevronLeft, CheckCircle2, CornerUpLeft, FileText, Landmark, Loader2, Paperclip, Reply, ShieldCheck, Sparkles, Undo2 } from "lucide-react";
@@ -25,15 +25,20 @@ function groesse(kb: number) {
   return kb >= 1024 ? `${(kb / 1024).toFixed(1).replace(".", ",")} MB` : `${kb} KB`;
 }
 
+/** Scrollt den Lesebereich zur KI-Karte. `nurLesebereich`: nur im Desktop-Lesebereich, nicht in der Vollbildansicht. */
+function springeZurKiKarte(nurLesebereich = false) {
+  const el = document.getElementById("ki-karte");
+  const pane = el?.closest("[data-lesescroll]") as HTMLElement | null;
+  const sc = pane ?? (nurLesebereich ? null : document.getElementById("haupt-scroll"));
+  if (!el || !sc) return;
+  const top = el.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop - (sc.id === "haupt-scroll" ? 88 : 16);
+  const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  sc.scrollTo({ top, behavior: reduce ? "auto" : "smooth" });
+}
+
 /** Schmale KI-Leiste im Kopf: das Wichtigste der Analyse auf einen Blick – Klick springt zur KI-Karte. */
 function KiLeiste({ ansicht, schritt, akteAz, eeb }: { ansicht: KiAnsicht | null; schritt?: number; akteAz?: string; eeb: boolean }) {
-  const springe = () => {
-    const el = document.getElementById("ki-karte");
-    const sc = (el?.closest("[data-lesescroll]") as HTMLElement | null) ?? document.getElementById("haupt-scroll");
-    if (!el || !sc) return;
-    const top = el.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop - (sc.id === "haupt-scroll" ? 88 : 16);
-    sc.scrollTo({ top, behavior: "smooth" });
-  };
+  const springe = () => springeZurKiKarte();
   const laeuft = schritt !== undefined;
   const notfrist = ansicht?.fristen.find((f) => f.typ === "notfrist") ?? ansicht?.fristen[0];
   return (
@@ -94,6 +99,24 @@ export function Lesebereich({
   const nachrichten = useCol("nachrichten");
   const [antworten, setAntworten] = useState(false);
   const akte = n.akteId ? akten.find((a) => a.id === n.akteId) : undefined;
+  // Startet die Analyse der geöffneten Nachricht, gleitet der Desktop-Lesebereich zur KI-Karte –
+  // die Analyse soll sichtbar ablaufen, nicht unterhalb des Nachrichtentexts.
+  // Ist sie fertig, rückt die Karte mit dem Ergebnis (Akte, Fristen) nach oben.
+  const gesprungen = useRef<string | null>(null);
+  const analysiert = schritt !== undefined;
+  useEffect(() => {
+    if (analysiert && gesprungen.current !== n.id) {
+      const t = setTimeout(() => {
+        gesprungen.current = n.id;
+        springeZurKiKarte(true);
+      }, 320);
+      return () => clearTimeout(t);
+    }
+    if (!analysiert && gesprungen.current === n.id && ansicht) {
+      const t = setTimeout(() => springeZurKiKarte(true), 600); // erst wenn das Ergebnis aufgeklappt ist
+      return () => clearTimeout(t);
+    }
+  }, [analysiert, n.id, !!ansicht]);
   const verlauf = useMemo(() => {
     const b = antwortBetreff(n.betreff);
     return nachrichten.filter((m) => m.richtung === "aus" && m.betreff === b && m.eingang >= n.eingang).sort((a, c) => a.eingang.localeCompare(c.eingang));

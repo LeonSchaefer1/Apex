@@ -4,7 +4,7 @@ import { Calculator, Infinity as InfinityIcon, Info, TrendingUp } from "lucide-r
 import { fmtEUR, fmtNum } from "@/core/dates";
 import { AnimatedNumber, Card, Chip, Field, Input, Switch } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { ARBEITSWOCHEN, ZIEL_STUNDEN } from "./shared";
+import { ARBEITSWOCHEN, WERT_PRO_STUNDE, ZIEL_STUNDEN } from "./shared";
 
 const JAHRE = 5;
 
@@ -15,36 +15,44 @@ function zahl(v: string, fallback: number, min = 0, max = 1e9): number {
   return Math.min(max, Math.max(min, n));
 }
 
-function ZahlFeld({ id, label, value, onChange, suffix, hint, step = 1, className }: { id: string; label: string; value: string; onChange: (v: string) => void; suffix?: string; hint?: React.ReactNode; step?: number; className?: string }) {
+function ZahlFeld({ id, label, value, onChange, suffix, hint, step = 1, className, placeholder }: { id: string; label: string; value: string; onChange: (v: string) => void; suffix?: string; hint?: React.ReactNode; step?: number; className?: string; placeholder?: string }) {
   return (
     <Field label={label} htmlFor={id} hint={hint} className={className}>
       <div className="relative">
-        <Input id={id} type="number" inputMode="decimal" min={0} step={step} value={value} onChange={(e) => onChange(e.target.value)} className={cn("num", suffix && "!pr-16")} />
+        <Input id={id} type="number" inputMode="decimal" min={0} step={step} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} className={cn("num", suffix && "!pr-16")} />
         {suffix && <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[12.5px] text-fg-4">{suffix}</span>}
       </div>
     </Field>
   );
 }
 
-/** ROI-Rechner: Wert der gesparten Zeit pro Jahr und Kostenvergleich Lifetime-Lizenz vs. Abo (Beispielrechnung). */
-export function RoiRechner({ startAnwaelte, startSatz, startArbeitsplaetze, gemessen }: { startAnwaelte: number; startSatz: number; startArbeitsplaetze: number; gemessen: number }) {
-  const [anwaelte, setAnwaelte] = useState(String(startAnwaelte));
-  const [satz, setSatz] = useState(String(startSatz));
+/** Vorgabe für den internen Kostensatz: derselbe Richtwert wie Seitenkopf, Cockpit und Landing (38 Std. × 48 Wochen ≈ 36.000 €). */
+const KOSTEN_START = Math.round(WERT_PRO_STUNDE * 100) / 100;
+
+/**
+ * ROI-Rechner (Beispielrechnung): Wert der gesparten Zeit pro Jahr – auf derselben Basis wie Seitenkopf, Cockpit und Landing
+ * (Stunden × Arbeitswochen × interner Kostensatz) – plus klar getrenntes Umsatzpotenzial und Kostenvergleich Lifetime-Lizenz vs. Abo.
+ */
+export function RoiRechner({ startSatz, startArbeitsplaetze, gemessen }: { startSatz: number; startArbeitsplaetze: number; gemessen: number }) {
   const [stunden, setStunden] = useState(String(ZIEL_STUNDEN));
+  const [kosten, setKosten] = useState(String(KOSTEN_START));
+  const [satz, setSatz] = useState(String(startSatz));
   const [plaetze, setPlaetze] = useState(String(startArbeitsplaetze));
   const [abo, setAbo] = useState("109");
   const [lifetime, setLifetime] = useState("2490");
   const [steigerung, setSteigerung] = useState(true);
 
-  const n = zahl(anwaelte, 1, 1, 500);
-  const s = zahl(satz, 250, 0, 2000);
   const h = zahl(stunden, ZIEL_STUNDEN, 0, 400);
+  const k = zahl(kosten, KOSTEN_START, 0, 500);
+  const s = zahl(satz, startSatz, 0, 2000);
   const ap = zahl(plaetze, 1, 1, 1000);
   const aboPreis = zahl(abo, 109, 0, 5000);
   const ltPreis = zahl(lifetime, 2490, 0, 100000);
 
-  const jahresWert = h * ARBEITSWOCHEN * s;
   const stundenJahr = h * ARBEITSWOCHEN;
+  const jahresWert = stundenJahr * k;
+  const potenzial = stundenJahr * s;
+  const kText = fmtEUR(k, { cents: !Number.isInteger(k) });
 
   const vergleich = useMemo(() => {
     const g = steigerung ? 0.05 : 0;
@@ -66,45 +74,56 @@ export function RoiRechner({ startAnwaelte, startSatz, startArbeitsplaetze, geme
       <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         {/* Ersparnis */}
         <div className="flex flex-col gap-5 p-5 md:p-6">
-          <div className="flex items-start gap-3">
+          <div className="flex flex-wrap items-start gap-3">
             <div className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">
               <Calculator className="size-[18px]" />
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="title-md">Ersparnis-Rechner</div>
               <div className="mt-0.5 text-[12.5px] text-fg-3">Was die gesparte Zeit Ihrer Kanzlei pro Jahr wert ist.</div>
             </div>
+            <Chip tone="amber" icon={<Info className="size-3" />}>
+              Rechenbeispiel
+            </Chip>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <ZahlFeld id="roi-anwaelte" label="Anwältinnen & Anwälte" value={anwaelte} onChange={setAnwaelte} />
-            <ZahlFeld id="roi-satz" label="Ø Stundensatz" value={satz} onChange={setSatz} suffix="€/Std." step={10} />
             <ZahlFeld
               id="roi-stunden"
               label="Gesparte Std./Woche"
               value={stunden}
               onChange={setStunden}
               suffix="Std."
+              placeholder={String(ZIEL_STUNDEN)}
               hint={
                 <button type="button" className="text-left text-ink hover:underline" onClick={() => setStunden(String(Math.round(gemessen * 10) / 10))}>
                   Gemessen: {fmtNum(gemessen, 1)} Std. übernehmen
                 </button>
               }
             />
+            <ZahlFeld id="roi-kosten" label="Interner Kostensatz" value={kosten} onChange={setKosten} suffix="€/Std." step={0.5} placeholder={fmtNum(KOSTEN_START, 2)} hint="Routine erledigen meist Fachangestellte – Richtwert rund 20 €." />
+            <ZahlFeld id="roi-satz" label="Ihr Stundensatz" value={satz} onChange={setSatz} suffix="€/Std." step={10} placeholder={String(startSatz)} hint="nur für das Umsatzpotenzial" />
           </div>
 
           <div className="rounded-[18px] bg-[radial-gradient(120%_140%_at_0%_0%,var(--ink-soft),transparent_65%)] p-4 ring-1 ring-[var(--line)]">
-            <div className="text-[12.5px] font-medium text-fg-3">Wert der gesparten Zeit pro Jahr</div>
+            <div className="text-[12.5px] font-medium text-fg-3">Wert der gesparten Zeit pro Jahr · zu internen Kosten</div>
             <div className="mt-1 text-[clamp(34px,5vw,46px)] font-semibold leading-none tracking-[-0.04em]">
-              <AnimatedNumber value={jahresWert} format={(x) => fmtEUR(Math.round(x / 100) * 100, { cents: false })} />
+              ≈ <AnimatedNumber value={jahresWert} format={(x) => fmtEUR(Math.round(x / 100) * 100, { cents: false })} />
+            </div>
+            <div className="num mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] text-fg-2">
+              <span className="rounded-full bg-[var(--surface)] px-2.5 py-1 shadow-[inset_0_0_0_1px_var(--line)]">{fmtNum(h, Number.isInteger(h) ? 0 : 1)} Std./Woche</span>
+              <span className="text-fg-4">×</span>
+              <span className="rounded-full bg-[var(--surface)] px-2.5 py-1 shadow-[inset_0_0_0_1px_var(--line)]">{ARBEITSWOCHEN} Arbeitswochen</span>
+              <span className="text-fg-4">×</span>
+              <span className="rounded-full bg-[var(--surface)] px-2.5 py-1 shadow-[inset_0_0_0_1px_var(--line)]">{kText}</span>
             </div>
             <div className="mt-3 grid grid-cols-2 gap-3 text-[12.5px]">
               <div>
                 <div className="num text-[15px] font-semibold text-fg">{fmtNum(stundenJahr)} Std.</div>
-                <div className="text-fg-3">frei für Mandatsarbeit ({ARBEITSWOCHEN} Arbeitswochen)</div>
+                <div className="text-fg-3">pro Jahr frei für Mandatsarbeit</div>
               </div>
               <div>
-                <div className="num text-[15px] font-semibold text-fg">{fmtNum(h / n, 1)} Std./Woche</div>
-                <div className="text-fg-3">mehr Zeit je Anwältin bzw. Anwalt</div>
+                <div className="num text-[15px] font-semibold text-fg">≈ {fmtEUR(Math.floor(potenzial / 1000) * 1000, { cents: false })}</div>
+                <div className="text-fg-3">Umsatzpotenzial, falls abrechenbar (× {fmtEUR(s, { cents: false })}/Std.)</div>
               </div>
             </div>
             {h >= 36 && (
@@ -113,7 +132,9 @@ export function RoiRechner({ startAnwaelte, startSatz, startArbeitsplaetze, geme
               </div>
             )}
           </div>
-          <p className="text-[11.5px] leading-snug text-fg-4">Rechnung: Stunden × {ARBEITSWOCHEN} Arbeitswochen × Stundensatz. Ob die Zeit abrechenbar ist, hängt von Ihrer Kanzlei ab.</p>
+          <p className="text-[11.5px] leading-snug text-fg-4">
+            Rechenbeispiel: Stunden × {ARBEITSWOCHEN} Arbeitswochen × interner Kostensatz – dieselbe Basis wie oben und im Cockpit. Vorbelegt ist der Zielwert von Ø {ZIEL_STUNDEN} Std. pro Woche, das entspricht rund 36.000 € im Jahr. Das Umsatzpotenzial gilt nur, soweit die frei gewordene Zeit abrechenbar ist.
+          </p>
         </div>
 
         {/* Lifetime vs. Abo */}

@@ -10,12 +10,12 @@ import { cn } from "@/lib/cn";
 import { FLOW_CSS } from "@/pages/motor/shared";
 import { Abschnitt, Zeile } from "./teile";
 
-const QUELLE_TEXT = { server: "Claude über Ihren Kanzlei-Server", artefakt: "Claude über die Vorschau-Laufzeit", demo: "Offline-Demo-KI" } as const;
+const QUELLE_TEXT = { server: "Claude (Anthropic-API) über Ihren Kanzlei-Server", artefakt: "Claude (Anthropic) über die Vorschau-Laufzeit", demo: "Offline-Demo-KI im Browser" } as const;
 
 const GRUNDSAETZE = [
   { icon: <Calculator className="size-4" />, t: "Die KI erkennt, der Fristenrechner berechnet", s: "Fristen berechnet ausschließlich der geprüfte Rechenkern nach §§ 187 ff. BGB, § 222 ZPO – mit Rechenweg." },
   { icon: <UserCheck className="size-4" />, t: "Vorschläge statt Entscheidungen", s: "Jede Übernahme bestätigen Sie. KI-erkannte Fristen gehen immer in die Vier-Augen-Kontrolle." },
-  { icon: <Quote className="size-4" />, t: "Quellen statt Behauptungen", s: "Zitiert werden nur Entscheidungen aus der Fall-Datenbank – keine erfundenen Aktenzeichen." },
+  { icon: <Quote className="size-4" />, t: "Quellen statt Behauptungen", s: "Präzedenzfälle übernimmt AnwaltApex nur aus der Fall-Datenbank – mit Gericht, Datum und Aktenzeichen zum Nachprüfen. KI-Texte bleiben Entwürfe zur anwaltlichen Prüfung." },
   { icon: <Eye className="size-4" />, t: "Klar gekennzeichnet", s: "Was die KI erstellt hat, trägt den KI-Schimmer – im Posteingang, in der Akte und in Entwürfen." },
 ];
 
@@ -64,7 +64,7 @@ export function KiTab() {
                 onChange={(v) => {
                   ai.setBevorzugeDemo(v);
                   useData.getState().log({ akteur: "nutzer", userId: user.id, text: v ? "Präsentationsmodus (Demo-KI) eingeschaltet" : "Live-KI (Claude) eingeschaltet" });
-                  toast(v ? "Demo-KI aktiv" : "Live-KI aktiv", { text: v ? "Antworten kommen von der Offline-KI." : "Antworten kommen von Claude über Ihren Kanzlei-Server.", ton: "ki" });
+                  toast(v ? "Demo-KI aktiv" : "Live-KI aktiv", { text: v ? "Antworten kommen von der Offline-KI." : `Antworten kommen von Claude ${ai.verfuegbar[0] === "artefakt" ? "über die Vorschau-Laufzeit" : "über Ihren Kanzlei-Server"}.`, ton: "ki" });
                 }}
                 label="Präsentationsmodus: Demo-KI verwenden"
               />
@@ -72,16 +72,23 @@ export function KiTab() {
           </div>
         </Abschnitt>
 
-        <Abschnitt titel="So fließen die Daten" text="Mandantendaten verlassen Ihre Infrastruktur nur über den Kanzlei-Server." icon={<Server className="size-[18px]" />}>
-          <Datenfluss live={live} />
+        <Abschnitt
+          titel="So fließen die Daten"
+          text={live ? "Im Live-Betrieb verlassen Akteninhalte Ihre Infrastruktur: Sie gehen aufgabenbezogen an den KI-Anbieter Anthropic (Claude)." : "Im Demo-Betrieb gehen keine Inhalte an einen KI-Anbieter."}
+          icon={<Server className="size-[18px]" />}
+        >
+          <Datenfluss live={live} quelle={ai.quelle} />
           <p className="mt-4 text-[12.5px] leading-relaxed text-fg-2">
-            {live
-              ? "Live-Betrieb: Ihr Arbeitsplatz spricht nur mit dem Kanzlei-Server. Er leitet Anfragen an Claude weiter, protokolliert sie ohne Inhalte und begrenzt die Nutzung je Kanzlei."
-              : "Demo-Betrieb: Die Offline-KI rechnet vollständig in Ihrem Browser – es werden keine Daten übertragen."}
+            {ai.quelle === "server"
+              ? "Live-Betrieb: Ihr Arbeitsplatz spricht nur mit dem Kanzlei-Server. Er prüft die Berechtigung, sendet die für die Aufgabe nötigen Inhalte (z. B. Sachverhalt und Dokumente einer Akte) an die Anthropic-API, protokolliert die Anfrage ohne Inhalte und begrenzt die Nutzung je Kanzlei."
+              : ai.quelle === "artefakt"
+                ? "Vorschau-Betrieb: Anfragen gehen über die Vorschau-Laufzeit an Claude (Anthropic) – ohne Kanzlei-Server. Arbeiten Sie hier nur mit Beispieldaten."
+                : "Demo-Betrieb: Die Offline-KI rechnet vollständig in Ihrem Browser – es werden keine Inhalte an einen KI-Anbieter übertragen."}
           </p>
           <div className="mt-3 rounded-[14px] bg-[var(--ink-softer)] px-3.5 py-3 text-[12.5px] leading-relaxed text-fg-2">
-            <span className="font-semibold text-fg">Konfigurationsgrundsatz:</span> Anfragen enthalten nur die Inhalte, die für die jeweilige Aufgabe nötig sind. Die Anbindung ist so eingerichtet, dass Inhalte nicht zu Trainingszwecken
-            gespeichert oder verwendet werden. Maßgeblich sind die Vereinbarungen mit dem Anbieter – prüfen Sie diese im Rahmen Ihrer Pflichten nach § 43e BRAO.
+            <span className="font-semibold text-fg">Vor dem Live-Betrieb:</span> Anthropic verarbeitet Mandatsinhalte als Dienstleister. Erforderlich sind ein Vertrag nach § 43e BRAO (Verschwiegenheit, Zugriff nur soweit nötig) und eine Auftragsverarbeitung nach
+            Art. 28 DSGVO; bei Verarbeitung außerhalb der EU zusätzlich § 43e Abs. 4 BRAO und Art. 44 ff. DSGVO. Die Anbindung sendet nur aufgabenbezogene Inhalte und ist so eingerichtet, dass sie nicht zu Trainingszwecken verwendet werden –
+            maßgeblich sind die Vereinbarungen mit dem Anbieter.
           </div>
         </Abschnitt>
       </div>
@@ -103,11 +110,13 @@ export function KiTab() {
   );
 }
 
-function Datenfluss({ live }: { live: boolean }) {
+function Datenfluss({ live, quelle }: { live: boolean; quelle: "server" | "artefakt" | "demo" }) {
   const knoten = [
     { icon: <Laptop className="size-5" />, t: "Ihr Arbeitsplatz", s: "Browser, ohne Admin-Rechte" },
-    { icon: <Server className="size-5" />, t: "Kanzlei-Server", s: "Zugriffsprüfung, Protokoll ohne Inhalte" },
-    { icon: <Cpu className="size-5" />, t: "Claude", s: "Verarbeitung der Anfrage" },
+    quelle === "artefakt"
+      ? { icon: <Server className="size-5" />, t: "Vorschau-Laufzeit", s: "ohne Kanzlei-Server" }
+      : { icon: <Server className="size-5" />, t: "Kanzlei-Server", s: "Zugriffsprüfung, Protokoll ohne Inhalte" },
+    { icon: <Cpu className="size-5" />, t: "Claude · Anthropic", s: "Verarbeitung der Anfrage beim KI-Anbieter" },
   ];
   return (
     <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">

@@ -1,7 +1,8 @@
 // KI-Fallanalyse: Sachverhalt → Rechtsfragen → Präzedenzfälle → Erfolgsaussicht → nächste Schritte → Entwurf.
-import { addDays, fmtDate, fmtEUR, today } from "@/core/dates";
+import { addDays, diffDays, fmtDate, fmtEUR, today } from "@/core/dates";
 import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
-import type { Akte, TenantData } from "@/core/types";
+import type { Akte, Frist, Kontakt, TenantData } from "@/core/types";
+import { forderungskonto, type ForderungsVorgang } from "@/core/zinsen";
 import { istConsole } from "@/lib/backend";
 import { useSession } from "@/store/session";
 import { akteAlsText, bewertePraezedenz, findePraezedenzfaelle, kontaktName, relevanzProzent, type Treffer } from "./kontext";
@@ -106,7 +107,7 @@ function kuratierteListe(akte: Akte, data: TenantData, treffer: Treffer[], warum
 function demoAnalyse(akte: Akte, data: TenantData, treffer: Treffer[], verfasser?: Verfasser): Omit<Fallanalyse, "quelle" | "dauerMs" | "erstelltAm"> {
   const mandant = kontaktName(data, akte.mandantId) ?? "Mandant";
   const gegner = kontaktName(data, akte.gegnerId) ?? "Gegenseite";
-  const frist = data.fristen.find((f) => f.akteId === akte.id && f.status === "offen" && (f.typ === "notfrist" || f.typ === "frist"));
+  const frist = offeneFristen(akte, data)[0];
   const fristText = frist ? `${frist.titel} bis ${fmtDate(frist.datum)}` : undefined;
   // Die ausformulierten Analysen gehören zu den Präsentationsakten – andere Akten mit ähnlichem Thema erhalten die allgemeine Analyse.
   const praesentation = akte.id.startsWith("hero-");
@@ -115,6 +116,12 @@ function demoAnalyse(akte: Akte, data: TenantData, treffer: Treffer[], verfasser
     const kd = kuendigungsDaten(akte, data);
     const kuendigungVom = kd.kuendigung ? ` vom ${kd.kuendigung}` : " vom [Datum des Kündigungsschreibens]";
     const zugegangen = kd.zugang ? `, dem Kläger zugegangen am ${kd.zugang},` : "";
+    // § 38 Abs. 1 S. 2 SGB III: Meldung binnen drei Tagen ab Kenntnis des Beendigungszeitpunkts (hier: Zugang der fristlosen Kündigung)
+    const zugangIso = data.fristen.find((f) => f.akteId === akte.id && f.regelKey === "kschg_klage")?.ereignisDatum ?? isoAusDe(kd.zugang);
+    const meldungVerspaetet = !!zugangIso && diffDays(zugangIso, today()) > 3;
+    const meldeSchritt = meldungVerspaetet
+      ? { titel: "Arbeitsuchendmeldung sofort nachholen", detail: "Die Dreitagesfrist ab Kenntnis der Beendigung (§ 38 Abs. 1 S. 2 SGB III) ist bereits verstrichen. Meldung bei der Agentur für Arbeit sofort nachholen; wegen der verspäteten Meldung droht eine Sperrzeit von einer Woche (§ 159 Abs. 1 S. 2 Nr. 7, Abs. 6 SGB III)." }
+      : { titel: "Mandanten auf § 38 SGB III hinweisen", detail: "Arbeitsuchendmeldung innerhalb von drei Tagen nach Kenntnis der Beendigung (§ 38 Abs. 1 S. 2 SGB III) – sonst droht eine Sperrzeit von einer Woche (§ 159 Abs. 1 S. 2 Nr. 7, Abs. 6 SGB III)." };
     return {
       zusammenfassung: `${mandant} (52) ist seit 14 Jahren ohne Abmahnung bei der ${gegner} beschäftigt und wurde fristlos, hilfsweise ordentlich gekündigt, weil er drei beschädigte, zur Entsorgung bestimmte Kaffeepackungen (8,97 €) mitgenommen haben soll. Eine Anhörung vor der Kündigung fand nicht statt; nach Angaben des Mandanten wurde die Mitnahme von Bruchware durch den Schichtleiter geduldet.`,
       rechtsfragen: [
@@ -150,16 +157,16 @@ function demoAnalyse(akte: Akte, data: TenantData, treffer: Treffer[], verfasser
         { titel: `Kündigungsschutzklage beim Arbeitsgericht einreichen`, detail: `${fristText ?? "Klagefrist nach § 4 KSchG beachten"} – Entwurf liegt unten bereit.` },
         { titel: "Betriebsratsanhörung anfordern", detail: "Im Gütetermin vollständige Unterlagen zur Anhörung nach § 102 BetrVG verlangen; Fehler führen zur Unwirksamkeit." },
         { titel: "Zeugen benennen", detail: "Kollege Pohl und Schichtleiter zur gelebten Praxis bei Bruchware befragen." },
-        { titel: "Mandanten auf § 38 SGB III hinweisen", detail: "Arbeitsuchendmeldung innerhalb von drei Tagen – sonst droht eine Sperrzeit." },
+        meldeSchritt,
         { titel: "Deckungszusage der Rechtsschutzversicherung abwarten", detail: "Anfrage an Nordlicht Rechtsschutz AG läuft automatisch, Wiedervorlage ist gesetzt." },
       ],
       risiken: [
-        "Kostenrisiko gering: In der 1. Instanz trägt jede Partei ihre Anwaltskosten selbst (§ 12a ArbGG); Rechtsschutz angefragt.",
+        "Kostenrisiko gering: In der 1. Instanz trägt jede Partei ihre Anwaltskosten selbst (§ 12a Abs. 1 S. 1 ArbGG); Rechtsschutz angefragt.",
         "Bei Vergleich: Abfindung realistisch 0,5–1,0 Bruttomonatsgehälter je Beschäftigungsjahr (rund 23.800–47.600 €).",
       ],
       entwurf: {
         titel: "Kündigungsschutzklage (Entwurf)",
-        text: `An das\nArbeitsgericht Berlin\n\nKlage\n\ndes Herrn Thomas Weber, Seestraße 41, 13353 Berlin\n– Kläger –\nProzessbevollmächtigte: Hartmann & Partner Rechtsanwälte\n\ngegen\n\ndie Kröger Logistik GmbH, Am Juliusturm 12, 13599 Berlin\n– Beklagte –\n\nwegen: Kündigungsschutz\nStreitwert: 10.200,00 €\n\nNamens und in Vollmacht des Klägers erheben wir Klage und werden beantragen:\n\n1. Es wird festgestellt, dass das Arbeitsverhältnis der Parteien durch die außerordentliche Kündigung der Beklagten${kuendigungVom}${zugegangen} nicht aufgelöst worden ist.\n2. Es wird festgestellt, dass das Arbeitsverhältnis auch nicht durch die hilfsweise erklärte ordentliche Kündigung${kuendigungVom} aufgelöst wird.\n3. Die Beklagte wird verurteilt, den Kläger bis zum rechtskräftigen Abschluss des Verfahrens zu unveränderten Arbeitsbedingungen als Lagerist weiterzubeschäftigen.\n\nBegründung:\n\nI. Der 52-jährige Kläger ist seit dem 01.04.2012 bei der Beklagten als Lagerist beschäftigt, zuletzt zu einem Bruttomonatsentgelt von 3.400,00 €. Er ist verheiratet und zwei Kindern zum Unterhalt verpflichtet. Das Arbeitsverhältnis verlief in 14 Jahren beanstandungsfrei; eine Abmahnung wurde nie ausgesprochen.\n\nII. Die Beklagte stützt die Kündigung darauf, der Kläger habe drei beschädigte, zur Entsorgung bestimmte Kaffeepackungen im Wert von 8,97 € mitgenommen. Die Mitnahme von Bruchware wurde im Betrieb seit Jahren praktiziert und vom Schichtleiter geduldet.\nBeweis: Zeugnis des Herrn Pohl, zu laden über die Beklagte.\n\nIII. Ein wichtiger Grund im Sinne des § 626 Abs. 1 BGB liegt nicht vor. Nach der Rechtsprechung des Bundesarbeitsgerichts ist bei der Interessenabwägung die durch langjährige, ungestörte Zusammenarbeit entstandene Vertrauensposition zu berücksichtigen (BAG, Urt. v. 10.06.2010 – 2 AZR 541/09). Angesichts des minimalen Werts, der Duldung durch Vorgesetzte und der 14-jährigen Betriebszugehörigkeit wäre eine Abmahnung als milderes Mittel ausreichend gewesen.\n\nIV. Die ordnungsgemäße Anhörung des Betriebsrats nach § 102 BetrVG wird mit Nichtwissen bestritten.\n\n${unterschrift(verfasser)}`,
+        text: `An das\nArbeitsgericht Berlin\n\nKlage\n\ndes Herrn Thomas Weber, Seestraße 41, 13353 Berlin\n– Kläger –\nProzessbevollmächtigte: Hartmann & Partner Rechtsanwälte\n\ngegen\n\ndie Kröger Logistik GmbH, Am Juliusturm 12, 13599 Berlin\n– Beklagte –\n\nwegen: Kündigungsschutz\nStreitwert (vorläufig): 13.600,00 € (Bestandsschutz: drei Bruttomonatsentgelte, § 42 Abs. 2 S. 1 GKG; Weiterbeschäftigung: ein Bruttomonatsentgelt)\n\nNamens und in Vollmacht des Klägers erheben wir Klage und werden beantragen:\n\n1. Es wird festgestellt, dass das Arbeitsverhältnis der Parteien durch die außerordentliche Kündigung der Beklagten${kuendigungVom}${zugegangen} nicht aufgelöst worden ist.\n2. Es wird festgestellt, dass das Arbeitsverhältnis auch nicht durch die hilfsweise erklärte ordentliche Kündigung${kuendigungVom} aufgelöst wird.\n3. Die Beklagte wird verurteilt, den Kläger bis zum rechtskräftigen Abschluss des Verfahrens zu unveränderten Arbeitsbedingungen als Lagerist weiterzubeschäftigen.\n\nBegründung:\n\nI. Der 52-jährige Kläger ist seit dem 01.04.2012 bei der Beklagten als Lagerist beschäftigt, zuletzt zu einem Bruttomonatsentgelt von 3.400,00 €. Er ist verheiratet und zwei Kindern zum Unterhalt verpflichtet. Das Arbeitsverhältnis verlief in 14 Jahren beanstandungsfrei; eine Abmahnung wurde nie ausgesprochen.\n\nII. Die Beklagte stützt die Kündigung darauf, der Kläger habe drei beschädigte, zur Entsorgung bestimmte Kaffeepackungen im Wert von 8,97 € mitgenommen. Die Mitnahme von Bruchware wurde im Betrieb seit Jahren praktiziert und vom Schichtleiter geduldet.\nBeweis: Zeugnis des Herrn Pohl, zu laden über die Beklagte.\n\nIII. Ein wichtiger Grund im Sinne des § 626 Abs. 1 BGB liegt nicht vor. Nach der Rechtsprechung des Bundesarbeitsgerichts ist bei der Interessenabwägung die durch langjährige, ungestörte Zusammenarbeit entstandene Vertrauensposition zu berücksichtigen (BAG, Urt. v. 10.06.2010 – 2 AZR 541/09). Angesichts des minimalen Werts, der Duldung durch Vorgesetzte und der 14-jährigen Betriebszugehörigkeit wäre eine Abmahnung als milderes Mittel ausreichend gewesen.\n\nIV. Die ordnungsgemäße Anhörung des Betriebsrats nach § 102 BetrVG wird mit Nichtwissen bestritten.\n\n${unterschrift(verfasser)}`,
       },
     };
   }
@@ -177,7 +184,10 @@ function demoAnalyse(akte: Akte, data: TenantData, treffer: Treffer[], verfasser
         { titel: "Vergleich ablehnen oder Gegenangebot", detail: "Empfehlung: Gegenvorschlag nicht unter 2.400 € (Klageforderung abzüglich Prozessrisiko Küche)." },
         { titel: "Mandantin auf Termin vorbereiten", detail: "Persönliches Erscheinen ist angeordnet – Fragen zur Küche vorab klären." },
       ],
-      risiken: ["Bei Teilunterliegen wegen der Küche anteilige Kostentragung.", "Streitwert unter 600 € für die Gegenforderung – keine Berufung möglich."],
+      risiken: [
+        "Bei Teilunterliegen wegen der Küche anteilige Kostentragung (§ 92 ZPO).",
+        "Unterliegt die Klägerin nur wegen der Hilfsaufrechnung (640 €), liegt ihre Beschwer unter der Berufungssumme von 1.000 € (§ 511 Abs. 2 Nr. 1 ZPO) – eine Berufung wäre dann nur bei Zulassung möglich (§ 511 Abs. 4 ZPO).",
+      ],
       entwurf: { titel: "Replik (Entwurf, Auszug)", text: `In dem Rechtsstreit Schneider ./. Lindenhof Hausverwaltung GmbH\n\nnehmen wir zur Klageerwiderung wie folgt Stellung:\n\n1. Die Behauptung, die Klägerin habe die Wohnung als „renoviert“ übernommen, ist unzutreffend. Das von beiden Parteien unterzeichnete Übergabeprotokoll vom 01.08.2019 vermerkt ausdrücklich: „Wohnung wird unrenoviert übergeben.“ (Anlage K3)\n\n2. Damit ist die formularmäßige Überwälzung der Schönheitsreparaturen nach § 307 BGB unwirksam (BGH, Urt. v. 18.03.2015 – VIII ZR 185/14). Ein angemessener Ausgleich wurde nicht gewährt.\n\n3. Die Hilfsaufrechnung wird bestritten …` },
     };
   }
@@ -191,7 +201,7 @@ function demoAnalyse(akte: Akte, data: TenantData, treffer: Treffer[], verfasser
       argumenteContra: ["Versicherung könnte die Gleichwertigkeit der freien Werkstatt behaupten – für Neuwagen aber irrelevant."],
       praezedenzfaelle: praezedenzListe(treffer),
       naechsteSchritte: [
-        { titel: "Fremdgeld weiterleiten", detail: "6.120 € an die Mandantin auszahlen (§ 43a Abs. 5 BRAO) – heute fällig." },
+        { titel: "Fremdgeld weiterleiten", detail: "6.120 € an die Mandantin auszahlen (§ 43a Abs. 7 BRAO) – heute fällig." },
         { titel: "Nachforderung 1.284,50 € stellen", detail: "Mit Verweis auf BGH VI ZR 53/09 und Scheckheft, Frist 14 Tage." },
         { titel: "Bei Ablehnung: Klage beim Amtsgericht", detail: "Kostenrisiko gering, Erfolgsaussicht hoch." },
       ],
@@ -200,31 +210,519 @@ function demoAnalyse(akte: Akte, data: TenantData, treffer: Treffer[], verfasser
     };
   }
 
-  // Generische Analyse je Sachgebiet
-  const p = Math.min(88, 52 + treffer.length * 5 + (akte.prioritaet === "hoch" ? 4 : 0));
+  // Neumann: Urteil liegt vor – Rechtsmittelprüfung und Mandanteninformation
+  if (praesentation && akte.phase === "Urteil" && akte.sachgebiet === "Vertragsrecht") {
+    const u = urteilsNachricht(akte, data);
+    if (u) return urteilNeumann(akte, data, treffer, verfasser, u);
+  }
+
+  // Berger: Vollstreckung aus dem Vollstreckungsbescheid – Maßnahmen statt Erfolgsaussicht
+  if (praesentation && akte.sachgebiet === "Forderungseinzug" && akte.phase === "Vollstreckung") {
+    return vollstreckungsAnalyse(akte, data, treffer, verfasser, true);
+  }
+
+  // Allgemeine Analyse – unterschieden nach Phase und Sachgebiet
+  switch (fallart(akte)) {
+    case "verteidigung":
+      return verteidigungsAnalyse(akte, data, treffer, verfasser);
+    case "owi":
+      return bussgeldAnalyse(akte, data, treffer, verfasser);
+    case "vollstreckung":
+      return vollstreckungsAnalyse(akte, data, treffer, verfasser, false);
+    case "urteil":
+      return urteilsAnalyse(akte, data, treffer, verfasser);
+    case "gestaltung":
+      return gestaltungsAnalyse(akte, data, treffer, verfasser);
+    default:
+      return anspruchsAnalyse(akte, data, treffer, verfasser);
+  }
+}
+
+// ───────────── Bausteine der allgemeinen Analyse ─────────────
+
+type Ergebnis = Omit<Fallanalyse, "quelle" | "dauerMs" | "erstelltAm">;
+type Fallart = "verteidigung" | "owi" | "vollstreckung" | "urteil" | "gestaltung" | "anspruch";
+
+function fallart(akte: Akte): Fallart {
+  const t = `${akte.titel} ${akte.beschreibung}`.toLowerCase();
+  if (akte.sachgebiet === "Strafrecht") return "verteidigung";
+  if (/bußgeld/.test(t)) return "owi";
+  if (akte.phase === "Vollstreckung") return "vollstreckung";
+  if (akte.phase === "Urteil") return "urteil";
+  if (!akte.gegnerId && /testament|vertragsprüfung|prüfung eines|vorsorgevollmacht|gestaltung/.test(t)) return "gestaltung";
+  return "anspruch";
+}
+
+/** „01.10.2026“ → „2026-10-01“ */
+function isoAusDe(d?: string): string | undefined {
+  const m = d?.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : undefined;
+}
+
+/** Offene Fristen der Akte (ohne Vorfristen und Termine), nach Datum. */
+function offeneFristen(akte: Akte, data: TenantData, typen: Frist["typ"][] = ["notfrist", "frist"]): Frist[] {
+  return data.fristen.filter((f) => f.akteId === akte.id && f.status === "offen" && typen.includes(f.typ)).sort((a, b) => a.datum.localeCompare(b.datum));
+}
+
+function hatVorfrist(f: Frist, data: TenantData): boolean {
+  return !!f.vorfrist || data.fristen.some((x) => x.typ === "vorfrist" && x.bezugId === f.id && x.status === "offen");
+}
+
+/** Nächster Schritt zur Frist – „Vorfrist gesetzt“ nur, wenn es sie wirklich gibt. */
+function fristSchritt(akte: Akte, data: TenantData, ersatz: { titel: string; detail: string }, typen?: Frist["typ"][]): { titel: string; detail: string } {
+  const f = offeneFristen(akte, data, typen)[0];
+  if (!f) return ersatz;
+  if (f.typ === "wiedervorlage" || f.typ === "termin") return { titel: `${f.titel} am ${fmtDate(f.datum)}${f.uhrzeit ? `, ${f.uhrzeit} Uhr` : ""}`, detail: "Im Fristenkalender eingetragen." };
+  return {
+    titel: `${f.typ === "notfrist" ? "Notfrist" : "Frist"} beachten: ${f.titel} bis ${fmtDate(f.datum)}`,
+    detail: hatVorfrist(f, data) ? "Die Vorfrist ist im Fristenkalender eingetragen." : "Die Frist steht im Fristenkalender – eine Vorfrist ist nicht notiert.",
+  };
+}
+
+/** Schritt, wenn die Fall-Datenbank (Demo-Auszug) nichts Passendes enthält: ehrlicher Hinweis mit Handlungsangebot. */
+function rechercheSchritt(treffer: Treffer[]): { titel: string; detail: string }[] {
+  return treffer.length
+    ? []
+    : [{ titel: "Rechtsprechung recherchieren", detail: "Im Demo-Auszug der Fall-Datenbank fand sich keine hinreichend ähnliche Entscheidung – in der Fall-Datenbank die KI-Recherche mit dem Sachverhalt starten." }];
+}
+
+function rechtsprechungsFrage(treffer: Treffer[]): string {
   const top = treffer[0]?.entscheidung;
+  return top ? `Lässt sich die Entscheidung „${top.titel.replace(/[„“]/g, "")}“ (${top.gericht} ${top.az}) auf den Fall übertragen?` : "Welche Rechtsprechung ist einschlägig? (Im Demo-Auszug der Fall-Datenbank noch keine passende Entscheidung.)";
+}
+
+function praezedenzArgument(treffer: Treffer[]): string[] {
+  const top = treffer[0]?.entscheidung;
+  return top ? [`Einschlägige Rechtsprechung: ${top.gericht} ${top.az} – ${top.bedeutung}`] : [];
+}
+
+function anrede(k?: Kontakt): string {
+  if (!k || k.typ === "organisation") return "Sehr geehrte Damen und Herren,";
+  const name = k.nachname ?? k.name.split(" ").pop();
+  return k.anrede === "Frau" ? `Sehr geehrte Frau ${name},` : k.anrede === "Herr" ? `Sehr geehrter Herr ${name},` : `Guten Tag ${k.name},`;
+}
+
+function anschrift(k: Kontakt | undefined, fallback: string): string {
+  if (!k) return `[${fallback}]\n[Anschrift]`;
+  const vor = k.typ === "person" && k.anrede === "Herr" ? "Herrn\n" : k.typ === "person" && k.anrede === "Frau" ? "Frau\n" : "";
+  return `${vor}${k.name}\n${k.strasse ?? "[Straße]"}\n${k.plz && k.ort ? `${k.plz} ${k.ort}` : "[PLZ Ort]"}`;
+}
+
+function kontakt(data: TenantData, id?: string): Kontakt | undefined {
+  return id ? data.kontakte.find((k) => k.id === id) : undefined;
+}
+
+/** Name im Fließtext: Gesellschaften mit Artikel („die Berger Haustechnik GmbH“), Personen ohne. */
+function imText(k: Kontakt | undefined, ersatz: string, gross = false): string {
+  if (!k) return ersatz;
+  if (k.typ === "organisation" && /\b(GmbH|AG|KG|eG|SE|GbR|UG|mbH|OHG|PartG|e\. ?V\.)(\b|$)|Versicherung|Verwaltung|Rechtsanwälte/.test(k.name)) return `${gross ? "Die" : "die"} ${k.name}`;
+  return k.name;
+}
+
+/** Beweislast passend zu Sachgebiet und Konstellation – statt pauschal „liegt beim Mandanten“. */
+function beweislast(akte: Akte): string {
+  const t = `${akte.titel} ${akte.beschreibung} ${akte.schlagworte.join(" ")}`.toLowerCase();
+  switch (akte.sachgebiet) {
+    case "Arbeitsrecht":
+      if (/überstunden/.test(t)) return "Für Überstunden trägt der Arbeitnehmer die Darlegungslast: geleistete Stunden sowie Anordnung, Billigung oder Duldung durch die Arbeitgeberin.";
+      if (/kündigung/.test(t)) return "Die Kündigungsgründe muss die Arbeitgeberin beweisen (§ 1 Abs. 2 S. 4 KSchG); Fehler der Sozialauswahl muss der Arbeitnehmer darlegen (§ 1 Abs. 3 S. 3 KSchG).";
+      return "Für die anspruchsbegründenden Tatsachen trägt die Mandantschaft die Darlegungs- und Beweislast.";
+    case "Mietrecht":
+      if (/eigenbedarf|härte/.test(t)) return "Härtegründe nach § 574 BGB muss die Mieterseite darlegen und beweisen – ärztliche Atteste und Nachweise zur Verwurzelung sichern.";
+      if (/schimmel|minderung/.test(t)) return "Bei Schimmel muss zunächst die Vermieterin beweisen, dass die Ursache nicht in der Bausubstanz liegt – das Gutachten ist entscheidend.";
+      if (/kaution|renovier/.test(t)) return "Gegenforderungen muss die Vermieterin beweisen; die unrenovierte Übergabe muss die Mieterseite beweisen (Übergabeprotokoll).";
+      break;
+    case "Verkehrsrecht":
+      return "Haftung und Schadenshöhe muss die Geschädigte beweisen – Gutachten, Fotos und Zeugen sichern.";
+    case "Erbrecht":
+      if (/pflichtteil/.test(t)) return "Für den Bestand und Wert des Nachlasses ist die Pflichtteilsberechtigte beweisbelastet – deshalb zuerst Auskunft und Wertermittlung (§ 2314 BGB).";
+      break;
+    case "Baurecht":
+      if (/werklohn/.test(t)) return "Ohne Abnahme muss die Unternehmerin die Abnahmereife bzw. Mangelfreiheit ihrer Leistung beweisen.";
+      return "Vor der Abnahme muss der Unternehmer die Mangelfreiheit beweisen, danach der Besteller den Mangel.";
+    case "Vertragsrecht":
+      if (/mangel|gewährleistung|nacherfüllung/.test(t)) return "Den Mangel bei Gefahrübergang muss die Käuferseite beweisen; beim Verbrauchsgüterkauf hilft die Vermutung des § 477 BGB im ersten Jahr.";
+      break;
+    case "Familienrecht":
+      if (/umgang|wechselmodell|sorge/.test(t)) return "Maßstab ist allein das Kindeswohl – Konfliktbelastung, Bindungen und Kindeswille konkret belegen (Berichte von Schule, Kita und Verfahrensbeistand).";
+      if (/unterhalt/.test(t)) return "Bedarf und Leistungsfähigkeit müssen belegt werden – ohne Auskunft (§ 1605 BGB) fehlen die Einkommensnachweise.";
+      return "Trennungszeitpunkt und Auskünfte zum Versorgungsausgleich müssen belegt werden.";
+  }
+  return "Für die anspruchsbegründenden Tatsachen trägt die Mandantschaft die Darlegungs- und Beweislast.";
+}
+
+/** Rechtsfragen je Sachgebiet (allgemeiner Fall mit Anspruch oder Verfahren). */
+function rechtsfragenAnspruch(akte: Akte, treffer: Treffer[]): string[] {
+  const t = `${akte.titel} ${akte.beschreibung}`.toLowerCase();
+  const fragen: string[] = [];
+  if (akte.sachgebiet === "Familienrecht") {
+    if (/wechselmodell|umgang/.test(t)) fragen.push("Entspricht das beantragte Betreuungsmodell dem Kindeswohl (§ 1697a BGB) – wie belastbar sind Kommunikation und Kooperation der Eltern?", "Welche Empfehlungen geben Jugendamt und Verfahrensbeistand?");
+    else if (/unterhalt/.test(t)) fragen.push("Wie hoch ist der Bedarf nach der Düsseldorfer Tabelle – und ist der Unterhaltspflichtige leistungsfähig?", "Wie wird der Auskunftsanspruch (§ 1605 BGB) durchgesetzt – ggf. im Stufenantrag?");
+    else if (/scheidung/.test(t)) fragen.push("Ist das Trennungsjahr abgelaufen (§ 1565 Abs. 1, § 1566 Abs. 1 BGB)?", "Liegen alle Auskünfte für den Versorgungsausgleich vor, und welche Folgesachen sind zu regeln?");
+  }
+  if (!fragen.length) fragen.push(akte.phase === "Gerichtlich" || akte.phase === "Beweisaufnahme"
+    ? "Welche Tatsachen sind streitig – und mit welchen Beweismitteln lassen sie sich belegen?"
+    : "Welche Ansprüche und Einwendungen bestehen – und lassen sie sich außergerichtlich durchsetzen?");
+  fragen.push(rechtsprechungsFrage(treffer));
+  if (fragen.length < 3) fragen.push("Welche Beweismittel stehen zur Verfügung?");
+  return fragen;
+}
+
+function anspruchsAnalyse(akte: Akte, data: TenantData, treffer: Treffer[], verfasser?: Verfasser): Ergebnis {
+  const mandant = kontakt(data, akte.mandantId);
+  const gegner = kontakt(data, akte.gegnerId);
+  const gegneranwalt = kontakt(data, akte.gegneranwaltId);
+  const gericht = kontakt(data, akte.gerichtId);
+  const p = Math.min(88, 52 + treffer.length * 5 + (akte.prioritaet === "hoch" ? 4 : 0));
+  const doks = data.dokumente.filter((d) => d.akteId === akte.id).length;
+  const gerichtlich = (akte.phase === "Gerichtlich" || akte.phase === "Beweisaufnahme") && !!gericht;
+  const top = treffer[0]?.entscheidung;
+  const zitatTop = top ? `\n\nWir verweisen auf die Entscheidung ${top.gericht}, ${top.art === "Urteil" ? "Urt." : "Beschl."} v. ${fmtDate(top.datum)} – ${top.az}.` : "";
+  const entwurf = gerichtlich
+    ? {
+        titel: "Schriftsatz an das Gericht (Gerüst)",
+        text: `An das\n${gericht!.name}\n\nAz.: ${akte.gerichtsAz ?? "[Gerichtsaktenzeichen]"}\n\nIn Sachen ${akte.titel}\n\nnehmen wir für ${mandant?.name ?? "die Mandantschaft"} wie folgt Stellung:\n\n1. [Streitige Tatsachen benennen und mit Beweisangebot versehen]\n2. [Rechtliche Würdigung]${zitatTop}\n\n${unterschrift(verfasser)}`,
+      }
+    : gegner
+      ? {
+          titel: "Schreiben an die Gegenseite (Entwurf)",
+          text: `${anschrift(gegneranwalt ?? gegner, "Gegenseite")}\n\nIn Sachen ${akte.titel}\nUnser Zeichen: ${akte.aktenzeichen}\n\n${gegneranwalt ? "Sehr geehrte Kolleginnen und Kollegen," : anrede(gegner)}\n\nwir zeigen an, dass wir ${mandant?.name ?? "[Mandantschaft]"} vertreten. ${akte.beschreibung}\n\n[Forderung bzw. Anliegen konkret benennen]${zitatTop}\n\nWir bitten um Ihre Stellungnahme bis zum ${fmtDate(addDays(today(), 14))}.\n\n${gegneranwalt ? "Mit freundlichen kollegialen Grüßen" : "Mit freundlichen Grüßen"}\n\n${unterschrift(verfasser)}`,
+        }
+      : {
+          titel: "Mandantenschreiben (Entwurf)",
+          text: `${anschrift(mandant, "Mandantschaft")}\n\nUnser Zeichen: ${akte.aktenzeichen} – ${akte.titel}\n\n${anrede(mandant)}\n\nwir haben Ihre Angelegenheit geprüft und fassen den Stand zusammen:\n\n${akte.beschreibung}\n\n[Empfehlung und nächste Schritte]\n\nMit freundlichen Grüßen\n\n${unterschrift(verfasser)}`,
+        };
+  return {
+    zusammenfassung: `${akte.titel}: ${akte.beschreibung}`,
+    rechtsfragen: rechtsfragenAnspruch(akte, treffer),
+    erfolgsaussicht: {
+      prozent: p,
+      stufe: stufe(p),
+      begruendung: `Vorläufige Einschätzung auf Basis des Sachverhalts${treffer.length === 0 ? " – im Demo-Auszug der Fall-Datenbank fand sich keine hinreichend ähnliche Entscheidung" : treffer.length === 1 ? " und einer passenden Entscheidung aus der Fall-Datenbank" : ` und ${treffer.length} passender Entscheidungen aus der Fall-Datenbank`}. Mit vollständiger Beweislage präzisierbar.`,
+    },
+    argumentePro: [...praezedenzArgument(treffer), doks >= 2 ? "Die wesentlichen Unterlagen liegen in der E-Akte vor." : "Der Sachverhalt ist in der Akte erfasst – weitere Unterlagen bei der Mandantschaft anfordern."],
+    argumenteContra: [gegner ? "Einwendungen der Gegenseite sind noch nicht vollständig bekannt." : "Wesentliche Angaben der Mandantschaft sind noch zu prüfen.", beweislast(akte)],
+    praezedenzfaelle: praezedenzListe(treffer),
+    naechsteSchritte: [
+      fristSchritt(akte, data, { titel: "Fristen prüfen", detail: "Für diese Akte ist keine offene Frist notiert – Fristen aus neuen Schreiben im Posteingang prüfen." }),
+      { titel: "Sachverhalt mit der Mandantschaft abstimmen", detail: "Offene Punkte im nächsten Mandanten-Update abfragen." },
+      ...rechercheSchritt(treffer),
+      { titel: gerichtlich ? "Schriftsatz vorbereiten" : "Schreiben vorbereiten", detail: "Entwurf unten als Ausgangspunkt nutzen." },
+    ],
+    risiken: [`Kostenrisiko abhängig vom Gegenstandswert ${akte.gegenstandswert ? fmtEUR(akte.gegenstandswert) : "–"}.`],
+    entwurf,
+  };
+}
+
+/** Straf- und Ermittlungsverfahren: Verteidigung statt „Ansprüche“, Beweislast bei den Strafverfolgungsbehörden. */
+function verteidigungsAnalyse(akte: Akte, data: TenantData, treffer: Treffer[], verfasser?: Verfasser): Ergebnis {
+  const mandant = kontakt(data, akte.mandantId);
+  const gericht = kontakt(data, akte.gerichtId);
+  const behoerde = kontakt(data, akte.gegnerId);
+  const t = `${akte.titel} ${akte.beschreibung}`.toLowerCase();
+  const strafbefehl = /strafbefehl/.test(t);
+  const fahrerlaubnis = /fahrerlaubnis/.test(t);
+  const p = strafbefehl ? 55 : 50;
+  const adressat = gericht?.name ?? behoerde?.name;
   return {
     zusammenfassung: `${akte.titel}: ${akte.beschreibung}`,
     rechtsfragen: [
-      `Welche Ansprüche bestehen im Bereich ${akte.sachgebiet} und sind sie durchsetzbar?`,
-      top ? `Lässt sich die Rechtsprechung „${top.titel}“ (${top.gericht} ${top.az}) übertragen?` : "Welche Rechtsprechung ist einschlägig?",
-      "Welche Beweismittel stehen zur Verfügung?",
+      "Ist der Tatvorwurf nach Aktenlage nachweisbar – welche Beweismittel nennt die Ermittlungsakte?",
+      ...(fahrerlaubnis ? ["Liegen die Voraussetzungen für die Entziehung der Fahrerlaubnis vor (§ 69 Abs. 2 Nr. 3 StGB: „bedeutender Schaden“) – oder genügt ein Fahrverbot?"] : []),
+      "Kommt eine Einstellung in Betracht (§§ 153, 153a StPO)?",
+      ...(strafbefehl ? ["Ist ein Einspruch insgesamt sinnvoll oder eine Beschränkung auf die Rechtsfolgen (§ 410 Abs. 2 StPO)?"] : ["Liegen Verfahrenshindernisse oder Beweisverwertungsverbote vor?"]),
     ],
     erfolgsaussicht: {
       prozent: p,
       stufe: stufe(p),
-      begruendung: `Vorläufige Einschätzung auf Basis des Sachverhalts${treffer.length === 0 ? " – in der Fall-Datenbank fand sich keine hinreichend ähnliche Entscheidung" : treffer.length === 1 ? " und einer passenden Entscheidung aus der Fall-Datenbank" : ` und ${treffer.length} passender Entscheidungen aus der Fall-Datenbank`}. Mit vollständiger Beweislage präzisierbar.`,
+      begruendung: "Vorläufige Einschätzung der Verteidigungsaussichten – belastbar erst nach Akteneinsicht. Den Tatnachweis müssen die Strafverfolgungsbehörden führen; Zweifel gehen zugunsten der Mandantschaft.",
     },
-    argumentePro: [top ? `Einschlägige Rechtsprechung: ${top.gericht} ${top.az} – ${top.bedeutung}` : "Sachverhalt ist gut dokumentiert.", "Vollständige Unterlagen in der E-Akte vorhanden."],
-    argumenteContra: ["Einwendungen der Gegenseite noch nicht vollständig bekannt.", "Beweislast für anspruchsbegründende Tatsachen liegt beim Mandanten."],
+    argumentePro: [
+      "Den Tatvorwurf müssen Staatsanwaltschaft und Gericht nachweisen – die Mandantschaft muss sich nicht entlasten.",
+      "Die Akteneinsicht (§ 147 StPO) kann Lücken in der Beweisführung zeigen.",
+      ...(fahrerlaubnis ? ["Die Schadenshöhe entscheidet über den „bedeutenden Schaden“ – Gutachten und Reparaturrechnung kritisch prüfen."] : []),
+      ...praezedenzArgument(treffer),
+    ],
+    argumenteContra: [
+      "Das Ermittlungsergebnis ist noch nicht bekannt – Einlassung erst nach Akteneinsicht.",
+      ...(strafbefehl ? ["Nach einem Einspruch ist das Gericht nicht an den Strafbefehl gebunden – eine Verschlechterung ist möglich (§ 411 Abs. 4 StPO)."] : []),
+    ],
     praezedenzfaelle: praezedenzListe(treffer),
     naechsteSchritte: [
-      { titel: fristText ? `Frist beachten: ${fristText}` : "Fristen prüfen", detail: "Im Fristenkalender ist die Vorfrist bereits gesetzt." },
-      { titel: "Sachverhalt mit Mandant abstimmen", detail: "Offene Punkte im nächsten Mandanten-Update abfragen." },
-      { titel: "Schriftsatz vorbereiten", detail: "Entwurf unten als Ausgangspunkt nutzen." },
+      fristSchritt(akte, data, strafbefehl ? { titel: "Einspruchsfrist prüfen", detail: "Zwei Wochen ab Zustellung des Strafbefehls (§ 410 Abs. 1 StPO) – im Fristenrechner eintragen." } : { titel: "Fristen prüfen", detail: "Für diese Akte ist keine offene Frist notiert." }),
+      { titel: "Akteneinsicht beantragen", detail: "Verteidigung anzeigen und Einsicht in die Ermittlungsakte beantragen (§ 147 StPO)." },
+      { titel: "Mandantschaft beraten", detail: "Bis zur Akteneinsicht keine Angaben zur Sache machen; Rechtsfolgen und Kosten erläutern." },
+      ...(fahrerlaubnis ? [{ titel: "Fahrerlaubnis absichern", detail: "Berufliche Folgen (Berufskraftfahrer) belegen und Alternativen zur Entziehung vortragen." }] : []),
     ],
-    risiken: ["Kostenrisiko abhängig vom Gegenstandswert " + (akte.gegenstandswert ? fmtEUR(akte.gegenstandswert) : "–") + "."],
-    entwurf: { titel: "Schreiben an die Gegenseite (Entwurf)", text: `In Sachen ${akte.titel}\nunser Zeichen: ${akte.aktenzeichen}\n\nSehr geehrte Damen und Herren,\n\nwir zeigen an, dass wir ${mandant} vertreten. ${akte.beschreibung}\n\n${top ? `Wir verweisen auf die Entscheidung ${top.gericht}, ${top.art} vom ${fmtDate(top.datum)} – ${top.az}.\n\n` : ""}Wir fordern Sie auf, bis zum ${fmtDate(addDays(today(), 14))} Stellung zu nehmen.\n\nMit freundlichen Grüßen\n\n${unterschrift(verfasser)}` },
+    risiken: [
+      strafbefehl ? "Verschlechterung nach Einspruch möglich (§ 411 Abs. 4 StPO) – Rücknahme des Einspruchs bleibt bis zur Urteilsverkündung im ersten Rechtszug möglich (§ 411 Abs. 3 StPO)." : "Eintragung im Bundeszentralregister bei einer Verurteilung.",
+    ],
+    entwurf: {
+      titel: strafbefehl ? "Einspruch und Akteneinsichtsgesuch (Entwurf)" : "Verteidigeranzeige und Akteneinsichtsgesuch (Entwurf)",
+      text: `An ${adressat ? `das\n${adressat}` : "[Gericht / Staatsanwaltschaft]"}\n\nAz.: ${akte.gerichtsAz ?? "[Aktenzeichen]"}\n\nIn der Strafsache gegen ${mandant?.name ?? "[Mandant]"}\n\nzeigen wir an, dass wir die Verteidigung übernommen haben; die Vollmacht ist beigefügt.\n\n${strafbefehl ? "Gegen den Strafbefehl legen wir namens und in Vollmacht des Angeklagten\n\nEinspruch\n\nein. Eine Begründung sowie eine etwaige Beschränkung des Einspruchs bleiben vorbehalten.\n\n" : ""}Wir beantragen Einsicht in die Verfahrensakte einschließlich aller Beiakten und Beweismittel (§ 147 StPO). Bis zur Akteneinsicht wird sich unser Mandant zur Sache nicht äußern.\n\n${unterschrift(verfasser)}`,
+    },
+  };
+}
+
+/** Bußgeldsachen: Messung, Akteneinsicht, Fahrverbot – die Behörde muss den Verstoß nachweisen. */
+function bussgeldAnalyse(akte: Akte, data: TenantData, treffer: Treffer[], verfasser?: Verfasser): Ergebnis {
+  const mandant = kontakt(data, akte.mandantId);
+  const behoerde = kontakt(data, akte.gegnerId);
+  const fahrverbot = /fahrverbot/i.test(akte.beschreibung);
+  const p = 45 + (treffer.length ? 5 : 0);
+  return {
+    zusammenfassung: `${akte.titel}: ${akte.beschreibung}`,
+    rechtsfragen: [
+      "Ist die Messung verwertbar – standardisiertes Messverfahren, Eichung, Bedienung durch geschultes Personal?",
+      "Lässt sich der Mandant auf dem Messfoto als Fahrer identifizieren?",
+      ...(fahrverbot ? ["Kann vom Fahrverbot gegen eine erhöhte Geldbuße abgesehen werden (§ 4 Abs. 4 BKatV) – liegt eine außergewöhnliche Härte vor?"] : []),
+    ],
+    erfolgsaussicht: {
+      prozent: p,
+      stufe: stufe(p),
+      begruendung: "Vorläufige Einschätzung der Verteidigungsaussichten. Die Bußgeldbehörde muss den Verstoß nachweisen; bei standardisierten Messverfahren genügt aber zunächst das Messergebnis – Einwände brauchen konkrete Anhaltspunkte, die sich oft erst aus den Messunterlagen ergeben.",
+    },
+    argumentePro: [
+      "Anspruch auf Zugang zu Rohmessdaten und Messunterlagen, auch wenn sie nicht in der Akte sind (BVerfG 2 BvR 1616/18).",
+      ...(fahrverbot ? ["Bei existenzgefährdender Härte (z. B. drohender Arbeitsplatzverlust) kann vom Fahrverbot abgesehen werden – Arbeitgeberbescheinigung einholen."] : []),
+      ...praezedenzArgument(treffer).filter((x) => !x.includes("2 BvR 1616/18")),
+    ],
+    argumenteContra: [
+      "Ohne konkrete Messfehler folgt das Gericht beim standardisierten Messverfahren regelmäßig der Messung.",
+      ...(fahrverbot ? ["Bloße berufliche Nachteile genügen für ein Absehen vom Fahrverbot meist nicht."] : []),
+    ],
+    praezedenzfaelle: praezedenzListe(treffer),
+    naechsteSchritte: [
+      fristSchritt(akte, data, { titel: "Einspruchsfrist prüfen", detail: "Zwei Wochen ab Zustellung des Bußgeldbescheids (§ 67 Abs. 1 OWiG) – im Fristenrechner eintragen." }, ["notfrist", "frist"]),
+      { titel: "Akteneinsicht und Messunterlagen anfordern", detail: "Akteneinsicht (§ 46 Abs. 1 OWiG i. V. m. § 147 StPO) sowie Rohmessdaten, Eichschein und Lebensakte des Messgeräts beantragen." },
+      ...(fahrverbot ? [{ titel: "Härtegründe belegen", detail: "Arbeitgeberbescheinigung und Nachweise zur beruflichen Angewiesenheit auf die Fahrerlaubnis zusammenstellen." }] : []),
+      ...(akte.rsv ? [{ titel: "Deckung der Rechtsschutzversicherung", detail: `${akte.rsv.versicherung}: Deckung ${akte.rsv.deckung === "erteilt" ? "erteilt" : "angefragt"}.` }] : []),
+    ],
+    risiken: ["Nach dem Einspruch ist das Gericht nicht an den Bescheid gebunden – eine höhere Geldbuße ist möglich; das Gericht muss darauf hinweisen.", "Punkte im Fahreignungsregister fallen unabhängig vom Fahrverbot an."],
+    entwurf: {
+      titel: "Einspruch und Akteneinsichtsgesuch (Entwurf)",
+      text: `An die\n${behoerde?.name ?? "[Bußgeldbehörde]"}\n\nBußgeldverfahren gegen ${mandant?.name ?? "[Betroffene/r]"}\nAz.: [Aktenzeichen des Bußgeldbescheids]\n\nWir zeigen an, dass wir den Betroffenen vertreten; die Vollmacht ist beigefügt.\n\nGegen den Bußgeldbescheid legen wir\n\nEinspruch\n\nein. Wir beantragen Akteneinsicht sowie die Überlassung der vollständigen Messunterlagen, insbesondere der Rohmessdaten der gesamten Messreihe, des Eichscheins und der Lebensakte des Messgeräts. Eine Begründung folgt nach Akteneinsicht.\n\n${unterschrift(verfasser)}`,
+    },
+  };
+}
+
+/** Gestaltungs- und Prüfungsmandate (Testament, Vertragsprüfung): Umsetzbarkeit statt Prozessaussicht. */
+function gestaltungsAnalyse(akte: Akte, data: TenantData, treffer: Treffer[], verfasser?: Verfasser): Ergebnis {
+  const mandant = kontakt(data, akte.mandantId);
+  const t = `${akte.titel} ${akte.beschreibung}`.toLowerCase();
+  const testament = /testament/.test(t);
+  const fragen = testament
+    ? ["Welche Bindungswirkung soll das gemeinschaftliche Testament haben (§ 2270 BGB) – mit Änderungsvorbehalt für den Längerlebenden?", "Wie lassen sich Pflichtteilsansprüche begrenzen (Pflichtteilsstrafklausel, Pflichtteilsverzicht)?", "Sind Vorsorgevollmacht und Patientenverfügung aufeinander abgestimmt?"]
+    : ["Sind Laufzeit und automatische Verlängerung wirksam vereinbart?", "Hält die Haftungsbegrenzung der AGB-Kontrolle stand (§ 307 BGB, Wertung des § 309 Nr. 7 BGB)?", "Genügt die Auftragsverarbeitung den Anforderungen des Art. 28 DSGVO – auch bei Unterauftragnehmern im Drittland?"];
+  return {
+    zusammenfassung: `${akte.titel}: ${akte.beschreibung}`,
+    rechtsfragen: [...fragen, ...(treffer.length ? [rechtsprechungsFrage(treffer)] : [])],
+    erfolgsaussicht: {
+      prozent: 85,
+      stufe: "hoch",
+      begruendung: "Gestaltungs- bzw. Prüfungsmandat ohne Gegenseite: Die Einschätzung bezieht sich darauf, die Ziele der Mandantschaft rechtssicher umzusetzen.",
+    },
+    argumentePro: [testament ? "Die Ziele der Eheleute sind bekannt; der Vermögensfragebogen liegt vor." : "Der Vertragsentwurf liegt vor; Änderungen lassen sich vor Unterzeichnung verhandeln.", ...praezedenzArgument(treffer)],
+    argumenteContra: [testament ? "Patchwork-Konstellation: Pflichtteilsrechte des Kindes aus erster Ehe lassen sich nicht vollständig ausschließen." : "Verhandlungsspielraum gegenüber großen Anbietern ist oft begrenzt."],
+    praezedenzfaelle: praezedenzListe(treffer),
+    naechsteSchritte: [
+      fristSchritt(akte, data, { titel: "Termin abstimmen", detail: "Besprechungstermin mit der Mandantschaft vereinbaren." }, ["frist", "termin"]),
+      { titel: testament ? "Entwurf erstellen" : "Prüfvermerk erstellen", detail: testament ? "Testamentsentwurf mit Erläuterung der Bindungswirkung vorbereiten." : "Kritische Klauseln mit Änderungsvorschlägen markieren." },
+      { titel: "Mandantschaft beraten", detail: "Ergebnis besprechen und offene Entscheidungen festhalten." },
+    ],
+    risiken: [testament ? "Formfehler (§ 2247, § 2267 BGB) machen das Testament unwirksam – eigenhändige Errichtung oder notarielle Beurkundung." : "Ungeprüft übernommene Klauseln (Gerichtsstand, Haftung) können im Streitfall teuer werden."],
+    entwurf: {
+      titel: "Mandantenschreiben (Entwurf)",
+      text: `${anschrift(mandant, "Mandantschaft")}\n\nUnser Zeichen: ${akte.aktenzeichen} – ${akte.titel}\n\n${anrede(mandant)}\n\nvielen Dank für Ihren Auftrag. Wir haben ${testament ? "Ihre Wünsche zur Nachlassgestaltung" : "den Vertragsentwurf"} geprüft und fassen die wichtigsten Punkte zusammen:\n\n1. [Punkt 1]\n2. [Punkt 2]\n3. [Punkt 3]\n\nGern besprechen wir das Ergebnis in einem Termin.\n\nMit freundlichen Grüßen\n\n${unterschrift(verfasser)}`,
+    },
+  };
+}
+
+/** Allgemeiner Fall „Urteil liegt vor“: Rechtsmittelprüfung und Mandanteninformation. */
+function urteilsAnalyse(akte: Akte, data: TenantData, treffer: Treffer[], verfasser?: Verfasser): Ergebnis {
+  const mandant = kontakt(data, akte.mandantId);
+  return {
+    zusammenfassung: `${akte.titel}: ${akte.beschreibung} Es liegt eine gerichtliche Entscheidung vor – jetzt sind Rechtsmittel, Kosten und Vollstreckung zu prüfen.`,
+    rechtsfragen: [
+      "Ist die Entscheidung für die Mandantschaft ganz oder teilweise nachteilig – wie hoch ist die Beschwer?",
+      "Ist die Berufung statthaft (Beschwer über 1.000 € oder Zulassung, § 511 Abs. 2 ZPO) und gibt es Berufungsgründe (§ 513 ZPO)?",
+      "Ist mit einem Rechtsmittel der Gegenseite zu rechnen?",
+    ],
+    erfolgsaussicht: { prozent: 50, stufe: "mittel", begruendung: "Vorläufige Einschätzung für ein mögliches Rechtsmittel – belastbar erst nach Auswertung der Entscheidungsgründe." },
+    argumentePro: ["Das Urteil liegt vor; die Gründe lassen sich gezielt auf Rechtsfehler prüfen.", ...praezedenzArgument(treffer)],
+    argumenteContra: ["Neue Tatsachen sind in der Berufung nur eingeschränkt zulässig (§ 531 Abs. 2 ZPO).", "Ein Rechtsmittel verursacht weitere Kosten."],
+    praezedenzfaelle: praezedenzListe(treffer),
+    naechsteSchritte: [
+      fristSchritt(akte, data, { titel: "Rechtsmittelfristen notieren", detail: "Berufungsfrist (§ 517 ZPO) und Begründungsfrist (§ 520 Abs. 2 ZPO) laufen ab Zustellung – mit dem Fristenrechner eintragen." }),
+      { titel: "Urteil auswerten und Mandantschaft informieren", detail: "Ergebnis, Kostenquote und Empfehlung erläutern; Entscheidung über ein Rechtsmittel einholen." },
+      { titel: "Kostenfestsetzung und Vollstreckung vorbereiten", detail: "Kostenfestsetzungsantrag (§ 104 ZPO) bzw. vollstreckbare Ausfertigung vorbereiten." },
+    ],
+    risiken: ["Versäumte Rechtsmittelfristen sind nur über die Wiedereinsetzung (§ 233 ZPO) heilbar."],
+    entwurf: {
+      titel: "Mandanteninformation zum Urteil (Entwurf)",
+      text: `${anschrift(mandant, "Mandantschaft")}\n\nUnser Zeichen: ${akte.aktenzeichen} – ${akte.titel}\n\n${anrede(mandant)}\n\nin Ihrer Sache liegt die Entscheidung des Gerichts vor. [Ergebnis in zwei Sätzen]\n\nGegen die Entscheidung ist [ein Rechtsmittel / kein Rechtsmittel] möglich. [Empfehlung]\n\nBitte teilen Sie uns bis zum [Datum] mit, wie Sie vorgehen möchten.\n\nMit freundlichen Grüßen\n\n${unterschrift(verfasser)}`,
+    },
+  };
+}
+
+// ── Präsentationsakte 118/.. Neumann: Urteil per beA ──
+
+interface UrteilsInfo {
+  datum?: string;
+  zugesprochen?: number;
+  abgewiesen?: number;
+  quote?: string;
+}
+
+/** Die Urteilszustellung zur Akte – im Posteingang (über das Gerichtsaktenzeichen) oder bereits in der E-Akte. */
+function urteilsNachricht(akte: Akte, data: TenantData): UrteilsInfo | undefined {
+  const az = akte.gerichtsAz;
+  const n = data.nachrichten.find((x) => /urteil/i.test(x.betreff) && (x.akteId === akte.id || (!!az && x.betreff.includes(az))));
+  const text = n?.text ?? data.dokumente.find((d) => d.akteId === akte.id && /urteil/i.test(d.name) && /verurteilt/i.test(d.inhalt))?.inhalt;
+  if (!text) return undefined;
+  const betrag = (s?: string) => (s ? Number(s.replace(/\./g, "").replace(",", ".")) : undefined);
+  return {
+    datum: text.match(/Urteil vom (\d{2}\.\d{2}\.\d{4})/)?.[1],
+    zugesprochen: betrag(text.match(/an den Kläger ([\d.]+,\d{2}) €/)?.[1]),
+    abgewiesen: betrag(text.match(/Nutzungsentschädigung ([\d.]+,\d{2}) €/)?.[1]),
+    quote: text.match(/tragen der Kläger zu (\d+) %, die Beklagte zu (\d+) %/)?.slice(1, 3).join(" / "),
+  };
+}
+
+function urteilNeumann(akte: Akte, data: TenantData, treffer: Treffer[], verfasser: Verfasser | undefined, u: UrteilsInfo): Ergebnis {
+  const mandant = kontakt(data, akte.mandantId);
+  const gegner = kontakt(data, akte.gegnerId);
+  const gericht = kontakt(data, akte.gerichtId);
+  const zu = u.zugesprochen ?? 14250;
+  const ab = u.abgewiesen ?? Math.max(0, akte.gegenstandswert - zu);
+  const [qKlaeger, qBeklagte] = (u.quote ?? "25 / 75").split(" / ");
+  const berufung = data.fristen.find((f) => f.akteId === akte.id && f.status === "offen" && f.regelKey === "berufung");
+  const begruendung = data.fristen.find((f) => f.akteId === akte.id && f.status === "offen" && f.regelKey === "berufungsbegruendung");
+  const fristText = berufung ? ` – sie endet am ${fmtDate(berufung.datum)}${begruendung ? `, die Begründungsfrist am ${fmtDate(begruendung.datum)}` : ""}` : "";
+  return {
+    zusammenfassung: `Das ${gericht?.name ?? "Landgericht"} hat der Klage von ${mandant?.name ?? "Herrn Neumann"} überwiegend stattgegeben: Die ${gegner?.name ?? "Beklagte"} muss ${fmtEUR(zu)} nebst Zinsen Zug um Zug gegen Rückgabe des Fahrzeugs zahlen. In Höhe von ${fmtEUR(ab)} wurde die Klage abgewiesen – das Gericht hat eine Nutzungsentschädigung für die gefahrenen Kilometer abgezogen. Die Kosten tragen der Kläger zu ${qKlaeger} %, die Beklagte zu ${qBeklagte} %.`,
+    rechtsfragen: [
+      `Ist der Abzug der Nutzungsentschädigung (${fmtEUR(ab)}) der Höhe nach richtig – vor allem die angenommene Gesamtlaufleistung des Fahrzeugs?`,
+      `Lohnt eine eigene Berufung? Die Beschwer von ${fmtEUR(ab)} übersteigt die Berufungssumme von 1.000 € (§ 511 Abs. 2 Nr. 1 ZPO).`,
+      `Legt die Beklagte Berufung ein (Beschwer ${fmtEUR(zu)}) – und sollte dann Anschlussberufung eingelegt werden (§ 524 ZPO)?`,
+      "Ist der Annahmeverzug der Beklagten festgestellt? Ohne ihn ist die Vollstreckung Zug um Zug aufwendiger (§§ 756, 765 ZPO).",
+    ],
+    erfolgsaussicht: {
+      prozent: 30,
+      stufe: "gering",
+      begruendung: `Bezogen auf eine eigene Berufung: Nutzungsersatz schuldet der Käufer nach dem Rücktritt dem Grunde nach (§ 346 Abs. 1, Abs. 2 S. 1 Nr. 1 BGB). Angreifbar ist allenfalls die Höhe, etwa eine zu niedrig angesetzte Gesamtlaufleistung. Das Urteil selbst ist für den Mandanten überwiegend günstig (${qBeklagte} % der Kosten trägt die Gegenseite).`,
+    },
+    argumentePro: [
+      `Berufung statthaft: Beschwer ${fmtEUR(ab)} > 1.000 € (§ 511 Abs. 2 Nr. 1 ZPO).`,
+      "Bei Gebrauchtwagen ist die erwartete Restlaufleistung maßgeblich – eine zu niedrig angenommene Gesamtlaufleistung erhöht den Abzug zu Unrecht.",
+      "Die Hauptsache ist gewonnen: Rücktritt und Rückzahlung Zug um Zug sind zugesprochen.",
+    ],
+    argumenteContra: [
+      "Nutzungsersatz ist dem Grunde nach geschuldet – ohne konkreten Rechenfehler kaum Aussicht.",
+      `Kostenrisiko der zweiten Instanz (Kammergericht) aus ${fmtEUR(ab)}.`,
+      "Eine eigene Berufung kann die Beklagte zur Anschlussberufung veranlassen – dann steht der gesamte Rücktritt erneut zur Prüfung.",
+    ],
+    praezedenzfaelle: kuratierteListe(akte, data, treffer, {
+      "bgh-vizr252-19": "Vergleichsmaßstab für die Höhe des Nutzungsersatzes: Der BGH bemisst gezogene Nutzungen linear (Kaufpreis × gefahrene Kilometer ÷ erwartete Restlaufleistung) – dort im Rahmen des Schadensersatzes nach § 826 BGB.",
+    }),
+    naechsteSchritte: [
+      berufung
+        ? { titel: `Notfrist beachten: Berufung bis ${fmtDate(berufung.datum)}`, detail: `${begruendung ? `Begründung bis ${fmtDate(begruendung.datum)} (§ 520 Abs. 2 ZPO). ` : ""}${hatVorfrist(berufung, data) ? "Vorfristen sind eingetragen." : "Vorfrist prüfen."}` }
+        : { titel: "Urteil gegen eEB entgegennehmen und Fristen notieren", detail: "Die Zustellung liegt im Posteingang. Berufungsfrist (1 Monat, § 517 ZPO) und Begründungsfrist (2 Monate, § 520 Abs. 2 ZPO) ab Zustellung berechnet der Fristenrechner." },
+      { titel: "Berechnung der Nutzungsentschädigung prüfen", detail: "Kilometerstand bei Übergabe und heute, Kaufpreis und angesetzte Gesamtlaufleistung mit den Urteilsgründen abgleichen." },
+      { titel: "Mandanten informieren", detail: `Ergebnis, Kostenquote ${qKlaeger} / ${qBeklagte} und Empfehlung erläutern – Entwurf unten.` },
+      { titel: "Rückgabe und Vollstreckung vorbereiten", detail: "Rückgabe des Fahrzeugs anbieten bzw. Annahmeverzug klären; vollstreckbare Ausfertigung beantragen." },
+      { titel: "Kostenausgleichung vorbereiten", detail: "Kosten nach der Quote ausgleichen lassen (§ 106 ZPO), sobald das Urteil rechtskräftig oder vorläufig vollstreckbar ist." },
+    ],
+    risiken: [
+      `Berufung der Beklagten möglich (Beschwer ${fmtEUR(zu)}) – deren Berufungsfrist läuft ab ihrer Zustellung; ggf. Anschlussberufung (§ 524 ZPO).`,
+      "Kostenrisiko einer eigenen Berufung bei geringer Erfolgsaussicht.",
+    ],
+    entwurf: {
+      titel: "Mandanteninformation zum Urteil (Entwurf)",
+      text: `${anschrift(mandant, "Mandant")}\n\nUnser Zeichen: ${akte.aktenzeichen} – ${akte.titel}\nUrteil vom ${u.datum ?? "[Datum]"} (${gericht?.name ?? "[Gericht]"}, Az. ${akte.gerichtsAz ?? "[Aktenzeichen]"})\n\n${anrede(mandant)}\n\ndas Gericht hat Ihrer Klage überwiegend stattgegeben. Die ${gegner?.name ?? "Beklagte"} muss Ihnen ${fmtEUR(zu)} nebst Zinsen zahlen – Zug um Zug gegen Rückgabe des Fahrzeugs. In Höhe von ${fmtEUR(ab)} hat das Gericht die Klage abgewiesen: Diesen Betrag hat es als Nutzungsentschädigung für die mit dem Fahrzeug gefahrenen Kilometer abgezogen. Die Kosten des Rechtsstreits tragen Sie zu ${qKlaeger} %, die Gegenseite zu ${qBeklagte} %.\n\nGegen das Urteil können beide Seiten Berufung zum Kammergericht einlegen. Die Frist beträgt einen Monat ab Zustellung${fristText}. Eine Nutzungsentschädigung schulden Sie nach dem Rücktritt grundsätzlich (§ 346 BGB). Eine Berufung lohnt sich daher nur, wenn die Berechnung – insbesondere die angenommene Gesamtlaufleistung – fehlerhaft ist. Wir prüfen die Urteilsgründe und melden uns mit einer Empfehlung.\n\nBitte teilen Sie uns bis zum [Datum] mit, ob Sie eine Berufung in Betracht ziehen. Sobald feststeht, ob die Gegenseite Berufung einlegt, besprechen wir die Rückgabe des Fahrzeugs und die Vollstreckung.\n\nMit freundlichen Grüßen\n\n${unterschrift(verfasser)}`,
+    },
+  };
+}
+
+// ── Vollstreckung (Präsentationsakte 126/.. Berger und allgemeine Forderungsakten mit Titel) ──
+
+/** Stand des Forderungskontos – gleiche Vorgänge wie im Reiter „Forderungskonto“ (Kosten, Teilzahlungen). */
+function forderungsStand(akte: Akte, data: TenantData) {
+  const f = akte.forderung;
+  if (!f) return undefined;
+  const stichtag = today();
+  const vorgaenge: ForderungsVorgang[] = [{ datum: f.faelligAb, art: "hauptforderung", betrag: f.hauptforderung, text: "Hauptforderung" }];
+  for (const b of data.buchungen) {
+    if (b.akteId !== akte.id || b.datum > stichtag) continue;
+    if (b.art === "kosten") vorgaenge.push({ datum: b.datum, art: "kosten", betrag: Math.abs(b.betrag), text: b.text });
+    else if (b.art === "zahlung" && b.fremdgeld) vorgaenge.push({ datum: b.datum, art: "zahlung", betrag: Math.abs(b.betrag), text: b.text });
+  }
+  if (!f.verbraucher) vorgaenge.push({ datum: f.faelligAb, art: "kosten", betrag: 40, text: "Verzugspauschale (§ 288 Abs. 5 BGB)" });
+  return forderungskonto({ vorgaenge, verzugAb: f.faelligAb, stichtag: stichtag < f.faelligAb ? f.faelligAb : stichtag, verbraucher: f.verbraucher });
+}
+
+/** Noch nicht weitergeleitetes Fremdgeld der Akte (gleiche Rechnung wie im Aktenkonto). */
+function fremdgeldOffen(akte: Akte, data: TenantData): number {
+  let ein = 0;
+  let aus = 0;
+  for (const b of data.buchungen) {
+    if (b.akteId !== akte.id || !(b.fremdgeld || b.art === "fremdgeld")) continue;
+    if (b.art === "fremdgeld" && b.betrag < 0) aus += -b.betrag;
+    else ein += Math.abs(b.betrag);
+  }
+  return Math.round((ein - aus) * 100) / 100;
+}
+
+function vollstreckungsAnalyse(akte: Akte, data: TenantData, treffer: Treffer[], verfasser: Verfasser | undefined, kuratiert: boolean): Ergebnis {
+  const mandant = kontakt(data, akte.mandantId);
+  const schuldner = kontakt(data, akte.forderung?.schuldnerId ?? akte.gegnerId);
+  const stand = forderungsStand(akte, data);
+  const raten = data.buchungen.filter((b) => b.akteId === akte.id && b.art === "zahlung" && b.fremdgeld);
+  const summeRaten = raten.reduce((s, b) => s + Math.abs(b.betrag), 0);
+  const az = akte.gerichtsAz;
+  const vermoegen = data.nachrichten.find((n) => /vermögensauskunft|vermögensverzeichnis/i.test(`${n.betreff} ${n.text}`) && (n.akteId === akte.id || (!!az && `${n.betreff} ${n.text}`.includes(az))));
+  const fremd = fremdgeldOffen(akte, data);
+  const titel = akte.forderung?.titel ?? "Vollstreckungstitel";
+  const standText = stand ? `Offen laut Forderungskonto: ${fmtEUR(stand.gesamt)} (Hauptforderung ${fmtEUR(stand.hauptforderung)}, Zinsen ${fmtEUR(stand.zinsen)}, Kosten ${fmtEUR(stand.kosten)}).` : "";
+  const p = Math.min(85, 55 + (raten.length ? 10 : 0) + (vermoegen ? 7 : 0));
+  return {
+    zusammenfassung: `${imText(mandant, "Die Mandantschaft", true)} vollstreckt aus dem ${titel}${schuldner ? ` gegen ${schuldner.name}` : ""}.${raten.length ? ` Der Schuldner zahlt unregelmäßig in Raten (bisher ${raten.length} × ${fmtEUR(summeRaten / raten.length)}).` : ""}${vermoegen ? " Laut Mitteilung des Gerichtsvollziehers hat er die Vermögensauskunft abgegeben; der Ausdruck des Vermögensverzeichnisses liegt vor." : ""} ${standText}`.trim(),
+    rechtsfragen: [
+      vermoegen ? "Welche Pfändungsmöglichkeiten zeigt das Vermögensverzeichnis (Arbeitseinkommen, Konten, Forderungen)?" : "Welche Vollstreckungsmaßnahme verspricht Erfolg – Vermögensauskunft, Konto- oder Lohnpfändung?",
+      "Ist eine Ratenzahlungsvereinbarung mit Verfallklausel sinnvoller als sofortige Pfändung?",
+      "Wie werden die Teilzahlungen verrechnet (§ 367 Abs. 1 BGB: Kosten, Zinsen, Hauptforderung)?",
+    ],
+    erfolgsaussicht: {
+      prozent: p,
+      stufe: stufe(p),
+      begruendung: `Realisierungsaussicht – der Anspruch selbst ist tituliert. ${raten.length ? "Der Schuldner zahlt, wenn auch unregelmäßig. " : ""}${vermoegen ? "Mit dem Vermögensverzeichnis lassen sich Pfändungen gezielt ansetzen. " : ""}Die Beitreibung hängt von Einkommen und Vermögen des Schuldners ab.`,
+    },
+    argumentePro: [
+      "Ein vollstreckbarer Titel liegt vor – Einwendungen gegen die Forderung sind weitgehend ausgeschlossen.",
+      ...(raten.length ? ["Zahlungsbereitschaft ist erkennbar – eine Ratenvereinbarung ist realistisch."] : []),
+      "Zinsen laufen taggenau weiter (§ 288 BGB) und werden mit jeder Zahlung zuerst verrechnet.",
+    ],
+    argumenteContra: [
+      ...(raten.length ? ["Ohne Vereinbarung gibt es keinen verlässlichen Zahlungsplan."] : []),
+      "Pfändungsschutz begrenzt den Zugriff: Freibeträge beim Arbeitseinkommen (§ 850c ZPO) und auf dem P-Konto (§ 850k ZPO).",
+    ],
+    praezedenzfaelle: praezedenzListe(treffer),
+    naechsteSchritte: [
+      ...(vermoegen ? [{ titel: "Vermögensverzeichnis auswerten", detail: "Arbeitgeber, Konten und Forderungen des Schuldners prüfen und daraus die Pfändung ableiten." }] : [{ titel: "Vermögensauskunft beantragen", detail: "Gerichtsvollzieher mit der Abnahme der Vermögensauskunft beauftragen (§ 802c ZPO)." }]),
+      { titel: "Pfändungs- und Überweisungsbeschluss beantragen", detail: "Bei Arbeitseinkommen oder Konto: Antrag mit amtlichem Formular beim Vollstreckungsgericht (§§ 829, 835 ZPO)." },
+      { titel: "Raten schriftlich vereinbaren", detail: "Monatliche Raten mit Verfallklausel anbieten – Entwurf unten." },
+      ...(fremd > 0 ? [{ titel: "Fremdgeld weiterleiten", detail: `Eingegangene Zahlungen des Schuldners (${fmtEUR(fremd)}) unverzüglich an die Mandantin weiterleiten oder mit abgerechneten Kosten verrechnen (§ 43a Abs. 7 BRAO, § 4 BORA).` }] : []),
+      fristSchritt(akte, data, { titel: "Wiedervorlage setzen", detail: "Zahlungseingang der nächsten Rate überwachen." }, ["frist", "wiedervorlage"]),
+    ],
+    risiken: [
+      "Fällt der Schuldner aus, trägt die Gläubigerin die Vollstreckungskosten zunächst selbst (Vorschuss).",
+      "Titulierte Ansprüche verjähren erst nach 30 Jahren (§ 197 Abs. 1 Nr. 3 BGB) – künftig fällig werdende Zinsen aber nach drei Jahren (§ 197 Abs. 2 BGB).",
+    ],
+    entwurf: {
+      titel: kuratiert ? "Ratenzahlungsvereinbarung – Angebot an den Schuldner (Entwurf)" : "Zahlungsaufforderung mit Ratenangebot (Entwurf)",
+      text: `${anschrift(schuldner, "Schuldner")}\n\nUnser Zeichen: ${akte.aktenzeichen} – ${akte.titel}\nZwangsvollstreckung aus dem ${titel}${az ? ` – Geschäftsnr. ${az}` : ""}\n\n${anrede(schuldner)}\n\nwir vertreten ${imText(mandant, "unsere Mandantschaft")}. ${summeRaten ? `Ihre bisherigen Teilzahlungen über insgesamt ${fmtEUR(summeRaten)} haben wir nach § 367 Abs. 1 BGB zunächst auf die Kosten, dann auf die Zinsen und zuletzt auf die Hauptforderung angerechnet. ` : ""}${stand ? `Zum ${fmtDate(today())} beträgt die Restforderung ${fmtEUR(stand.gesamt)} (Hauptforderung ${fmtEUR(stand.hauptforderung)}, Zinsen ${fmtEUR(stand.zinsen)}, Kosten ${fmtEUR(stand.kosten)}); weitere Zinsen laufen täglich auf.` : "[Restforderung laut Forderungskonto]"}\n\nUnsere Mandantschaft ist bereit, von weiteren Vollstreckungsmaßnahmen vorerst abzusehen, wenn Sie\n1. monatliche Raten von [Betrag] €, jeweils zum [Tag] eines Monats, beginnend am [Datum], zahlen und\n2. diese Vereinbarung bis zum [Datum] unterschrieben zurücksenden.\n\nGeraten Sie mit einer Rate länger als [zwei Wochen] in Rückstand, wird die gesamte Restforderung sofort fällig und die Vollstreckung fortgesetzt.\n\nMit freundlichen Grüßen\n\n${unterschrift(verfasser)}`,
+    },
   };
 }
 
@@ -275,7 +773,7 @@ export async function analysiereFall(
       const kandidaten = [...treffer, ...weitere].slice(0, 8);
       const res = await llmJson<LlmFall>({
         system:
-          "Du bist eine erfahrene deutsche Rechtsanwältin und erstellst für Kolleginnen und Kollegen eine präzise, ehrliche Fallanalyse. Zitiere ausschließlich Entscheidungen aus der mitgelieferten Liste (über ihre id) – erfinde keine Aktenzeichen, Gerichte oder Fundstellen. Nenne Normen korrekt. Berechne keine Fristen. Übernimm Daten (z. B. das Datum eines Kündigungsschreibens) exakt aus den Dokumenten; das Zugangsdatum ist nicht das Datum der Kündigung. Schreibe auf Deutsch, sachlich, ohne Floskeln.",
+          "Du bist eine erfahrene deutsche Rechtsanwältin und erstellst für Kolleginnen und Kollegen eine präzise, ehrliche Fallanalyse. Zitiere ausschließlich Entscheidungen aus der mitgelieferten Liste (über ihre id) – erfinde keine Aktenzeichen, Gerichte oder Fundstellen. Nenne Normen korrekt. Berechne keine Fristen. Übernimm Daten (z. B. das Datum eines Kündigungsschreibens) exakt aus den Dokumenten; das Zugangsdatum ist nicht das Datum der Kündigung. Richte die Analyse an Phase und Sachgebiet aus: Liegt ein Urteil vor, prüfe Rechtsmittel (Beschwer, Berufungssumme 1.000 € nach § 511 Abs. 2 Nr. 1 ZPO) und informiere die Mandantschaft; in der Vollstreckung geht es um Maßnahmen und Realisierung, nicht um Prozessaussichten; im Straf- und Bußgeldverfahren um die Verteidigung – den Tatnachweis führen die Behörden. Seit dem 01.01.2026 sind die Amtsgerichte bis 10.000 € zuständig (§ 23 Nr. 1 GVG). Schreibe auf Deutsch, sachlich, ohne Floskeln.",
         messages: [
           {
             role: "user",

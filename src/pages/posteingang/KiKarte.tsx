@@ -17,6 +17,7 @@ import {
   SCHRITTE, ablegbareAnhaenge, alsErledigt, anhaengeAblegen, anhaengeAbgelegt, eebAbgeben, fristenUebernehmen, istGerichtspost, istNotiert, terminEintragen, zuordnen, type KiAnsicht,
 } from "./analyse";
 import { TYP_META } from "@/pages/fristen/logik";
+import { fristArtZu } from "@/core/fristen";
 
 const spring = { type: "spring", stiffness: 460, damping: 36 } as const;
 
@@ -105,7 +106,9 @@ function Rechenweg({ schritte }: { schritte: string[] }) {
 function FristVorschlagKarte({ p, notiert, index }: { p: FristVorschlag; notiert: boolean; index: number }) {
   const [offen, setOffen] = useState(false);
   const meta = TYP_META[p.typ];
-  const notfrist = p.typ === "notfrist";
+  // Rechtsnatur aus der Fristregel: Notfrist (§ 224 ZPO) bzw. nicht verlängerbare Frist (z. B. § 4 KSchG, StPO, OWiG)
+  const art = fristArtZu(p);
+  const notfrist = !!art?.kritisch;
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -116,12 +119,15 @@ function FristVorschlagKarte({ p, notiert, index }: { p: FristVorschlag; notiert
       <div className="flex flex-wrap items-start gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <Chip tone={meta.tone} icon={notfrist ? <ShieldAlert className="size-3" /> : undefined} title={notfrist ? "Notfrist – nicht verlängerbar (§ 224 Abs. 1 S. 2 ZPO)" : undefined}>
-              {meta.label}
+            <Chip tone={notfrist ? "seal" : meta.tone} icon={notfrist ? <ShieldAlert className="size-3" /> : undefined} title={art?.kurz}>
+              {art?.label ?? meta.label}
             </Chip>
             <span className="text-[14px] font-semibold">{p.titel}</span>
           </div>
-          <div className="mt-1 text-[12px] text-fg-3">{p.grundlage}</div>
+          <div className="mt-1 text-[12px] text-fg-3">
+            {p.grundlage}
+            {art?.kritisch && p.typ !== "notfrist" ? " · nicht verlängerbar" : ""}
+          </div>
         </div>
         {notiert && (
           <motion.span initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 600, damping: 24 }}>
@@ -263,7 +269,7 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
   const eebKlick = async () => {
     const ok = await confirmDialog({
       titel: "Empfangsbekenntnis abgeben?",
-      text: `Sie bestätigen den Empfang mit Datum ${fmtDate(n.eingang.slice(0, 10))}. Ab diesem Zeitpunkt laufen die Fristen – sie sind bereits im Kalender notiert.`,
+      text: `Zustellungsdatum im eEB: ${fmtDate(n.eingang.slice(0, 10))} (Eingangstag). Maßgeblich ist der Tag, an dem Sie das Schriftstück empfangsbereit zur Kenntnis genommen haben – ab diesem Tag laufen die Fristen. Sie sind vorsorglich ab dem Eingangstag berechnet und bereits im Kalender notiert.`,
       bestaetigen: "eEB abgeben",
     });
     if (!ok) return;
@@ -538,8 +544,8 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
                           <div className={cn("text-[13.5px] font-semibold", !eebFrei && "text-amber")}>{eebFrei ? "Bereit zur Abgabe" : "Erst Frist notieren, dann eEB"}</div>
                           <div className="text-[12px] leading-relaxed text-fg-2">
                             {eebFrei
-                              ? "Alle Fristen stehen im Kalender. Mit dem eEB bestätigen Sie das Zustelldatum gegenüber dem Gericht."
-                              : "Mit dem eEB beginnt die Frist zu laufen. AnwaltApex gibt die Abgabe erst frei, wenn die Frist notiert ist – Schutz vor Haftungsfällen."}
+                              ? "Alle Fristen stehen im Kalender. Mit dem eEB weisen Sie dem Gericht das Zustellungsdatum nach – den Tag, an dem Sie das Schriftstück empfangsbereit zur Kenntnis genommen haben."
+                              : "Das eEB weist das Zustellungsdatum nach – ab diesem Tag läuft die Frist. AnwaltApex gibt die Abgabe erst frei, wenn die Frist notiert ist – Schutz vor Haftungsfällen."}
                           </div>
                         </div>
                         <Button

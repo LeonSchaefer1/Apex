@@ -3,6 +3,9 @@ import { cn } from "@/lib/cn";
 
 export type OrbZustand = "ruhe" | "hoert" | "denkt" | "spricht";
 
+/** Abgerundeter Zuschnitt mit vier Eckradien (gleiches Format für alle Schlüsselbilder, damit er sich animieren lässt). */
+const rund = (a: number, b: number, c: number, d: number) => `inset(0% round ${a}% ${b}% ${c}% ${d}%)`;
+
 /**
  * Der Apex-Avatar: eine lebendige Glaskugel. Ruhig atmend im Leerlauf, wellig beim Zuhören,
  * schnell kreisend beim Nachdenken, pulsierend beim Sprechen.
@@ -10,6 +13,7 @@ export type OrbZustand = "ruhe" | "hoert" | "denkt" | "spricht";
 export function ApexOrb({ zustand = "ruhe", size = 56, pegel = 0, className }: { zustand?: OrbZustand; size?: number; pegel?: number; className?: string }) {
   const speed = zustand === "denkt" ? 2.2 : zustand === "hoert" ? 5 : 9;
   const scale = zustand === "spricht" ? 1 + pegel * 0.09 : zustand === "hoert" ? 1.04 : 1;
+  const blob = zustand === "hoert" || zustand === "denkt";
   return (
     <div className={cn("relative shrink-0", className)} style={{ width: size, height: size }} aria-hidden>
       <motion.div
@@ -18,20 +22,23 @@ export function ApexOrb({ zustand = "ruhe", size = 56, pegel = 0, className }: {
         animate={{ rotate: 360, opacity: zustand === "ruhe" ? [0.22, 0.34, 0.22] : 0.55 }}
         transition={{ rotate: { duration: speed * 1.4, repeat: Infinity, ease: "linear" }, opacity: { duration: 4, repeat: Infinity } }}
       />
+      {/* Zuschnitt per clip-path: overflow + border-radius versagt in Chromium zeitweise, sobald das Element skaliert
+          und ein Kind rotiert – dann blitzten die Ecken des Farbverlaufs als Quadrat auf. */}
       <motion.div
         className="absolute inset-0 overflow-hidden rounded-full"
         animate={{
           scale: zustand === "ruhe" ? [1, 1.03, 1] : scale,
-          borderRadius: zustand === "hoert" || zustand === "denkt" ? ["50%", "46% 54% 52% 48%", "53% 47% 47% 53%", "50%"] : "50%",
+          clipPath: blob ? [rund(50, 50, 50, 50), rund(46, 54, 52, 48), rund(53, 47, 47, 53), rund(50, 50, 50, 50)] : rund(50, 50, 50, 50),
+          borderRadius: blob ? ["50%", "46% 54% 52% 48%", "53% 47% 47% 53%", "50%"] : "50%",
         }}
         transition={{
           scale: zustand === "ruhe" ? { duration: 4.5, repeat: Infinity, ease: "easeInOut" } : { type: "spring", stiffness: 380, damping: 14 },
-          borderRadius: { duration: 2.4, repeat: Infinity },
+          clipPath: { duration: 2.4, repeat: blob ? Infinity : 0 },
+          borderRadius: { duration: 2.4, repeat: blob ? Infinity : 0 },
         }}
         style={{
+          clipPath: rund(50, 50, 50, 50),
           boxShadow: "inset 0 1px 1px rgba(255,255,255,.6), inset 0 -6px 14px rgba(0,0,0,.25), 0 8px 24px -8px rgba(60,40,200,.6)",
-          WebkitMaskImage: "radial-gradient(white, black)",
-          maskImage: "radial-gradient(white, black)",
           isolation: "isolate",
         }}
       >

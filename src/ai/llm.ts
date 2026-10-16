@@ -1,5 +1,6 @@
 // Einheitlicher Zugang zu Claude – über den Kanzlei-Server (Anthropic API) oder die Artefakt-Laufzeit.
 import { getBackend } from "@/lib/backend";
+import { toast } from "@/store/ui";
 import { useAiStatus, fallbackAufDemo, type KiQuelle } from "./status";
 
 export interface LlmMessage {
@@ -37,6 +38,67 @@ function sampleErrorText(e: unknown): string {
   return (e as { message?: string })?.message ?? "Die KI ist gerade nicht erreichbar.";
 }
 
+/**
+ * Längste Stille der Artefakt-Laufzeit (claude.use("sample")), bevor AnwaltApex aufgibt. Jedes Lebenszeichen
+ * (gestreamter Text, Werkzeug-Aufruf) setzt die Uhr zurück – lange, aber laufende Antworten werden nicht abgeschnitten.
+ * Antwortet sample() gar nicht (z. B. offener Freigabedialog des Viewers), greift so der Offline-Rückfall der Aufrufer.
+ */
+const ARTEFAKT_STILLE_MS = 45_000;
+
+/**
+ * Die Artefakt-Laufzeit hat zu lange nicht geantwortet. Als Unterart von `DemoModus` nutzen alle Aufrufer
+ * (Assistent, Fallanalyse, Dokumentanalyse, Recherche, Schriftsatz) ihre Offline-Logik; der Hinweis kommt als Toast.
+ */
+export class KeineAntwort extends DemoModus {
+  constructor() {
+    super();
+    this.name = "KeineAntwort";
+    this.message = "Live-KI antwortet nicht – Ergebnis der Demo-KI.";
+  }
+}
+
+function abgebrochenFehler() {
+  return Object.assign(new Error("abgebrochen"), { code: "cancelled" });
+}
+
+/**
+ * Führt einen sample()-Aufruf mit Wächter aus: eigenes AbortSignal (verbunden mit dem des Aufrufers) und
+ * Stille-Zeitlimit. Wirkt auch, wenn die Laufzeit das Signal ignoriert (Promise.race).
+ */
+async function mitWaechter<T>(aussen: AbortSignal | undefined, lauf: (signal: AbortSignal, lebt: () => void) => Promise<T>): Promise<T> {
+  if (aussen?.aborted) throw abgebrochenFehler();
+  const ctl = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let fertig = false;
+  let aufgeben!: (e: unknown) => void;
+  const wache = new Promise<never>((_, reject) => (aufgeben = reject));
+  const lebt = () => {
+    if (fertig) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      aufgeben(new KeineAntwort());
+      ctl.abort();
+    }, ARTEFAKT_STILLE_MS);
+  };
+  const vonAussen = () => {
+    aufgeben(abgebrochenFehler());
+    ctl.abort(aussen?.reason);
+  };
+  aussen?.addEventListener("abort", vonAussen, { once: true });
+  lebt();
+  try {
+    return await Promise.race([lauf(ctl.signal, lebt), wache]);
+  } finally {
+    fertig = true;
+    clearTimeout(timer);
+    aussen?.removeEventListener("abort", vonAussen);
+  }
+}
+
+function keineAntwortMelden() {
+  toast("Live-KI antwortet nicht", { text: "Sie sehen das Ergebnis der Demo-KI.", ton: "warnung" });
+}
+
 /** Freitext von Claude. Im Demo-Modus wirft die Funktion `DemoModus` – Aufrufer nutzen dann die Offline-Logik. */
 export async function llmText(opts: {
   system: string;
@@ -53,14 +115,24 @@ export async function llmText(opts: {
     if (!sample) throw new DemoModus();
     const turns = [{ role: "user" as const, content: `${opts.system}\n\n---\n\n${opts.messages[0]?.content ?? ""}` }, ...opts.messages.slice(1)];
     try {
-      const r = await sample(turns, {
-        onText: opts.onText ? ({ text }: { text: string }) => opts.onText!(text) : undefined,
-        signal: opts.signal,
-        modelTier: opts.effort === "high" ? "complex" : opts.effort === "low" ? "quick" : "default",
-        cache: false,
-      });
+      const r = await mitWaechter(opts.signal, (signal, lebt) =>
+        sample(turns, {
+          // immer streamen lassen: jedes Textstück ist ein Lebenszeichen für den Wächter
+          onText: ({ text }: { text: string }) => {
+            lebt();
+            opts.onText?.(text);
+          },
+          signal,
+          modelTier: opts.effort === "high" ? "complex" : opts.effort === "low" ? "quick" : "default",
+          cache: false,
+        }),
+      );
       return r.text;
     } catch (e) {
+      if (e instanceof KeineAntwort) {
+        keineAntwortMelden();
+        throw e;
+      }
       throw new Error(sampleErrorText(e));
     }
   }
@@ -110,26 +182,47 @@ export async function llmAgent(opts: {
     const sample = useAiStatus.getState().sample;
     if (!sample) throw new DemoModus();
     const turns = [{ role: "user" as const, content: opts.system }, ...opts.messages];
-    const grenzen = await sample.limits?.().catch(() => null);
+    // limits() darf den Start nicht blockieren – antwortet die Laufzeit nicht, gelten die Standardgrenzen.
+    const grenzen = await Promise.race([
+      sample.limits?.().catch(() => null) ?? null,
+      new Promise<null>((r) => {
+        const t = setTimeout(() => r(null), 5000);
+        opts.signal?.addEventListener("abort", () => (clearTimeout(t), r(null)), { once: true });
+      }),
+    ]);
     if (grenzen && !grenzen.tools) return llmText({ system: opts.system, messages: opts.messages, onText: opts.onText, signal: opts.signal, effort: "low" });
     const tools = opts.tools.slice(0, grenzen?.tools?.maxCount ?? opts.tools.length);
     try {
-      const r = await sample(turns, {
-        onText: opts.onText ? ({ text }: { text: string }) => opts.onText!(text) : undefined,
-        signal: opts.signal,
-        modelTier: "quick",
-        tools: tools.map((t) => ({
-          name: t.name,
-          description: t.description,
-          inputSchema: t.inputSchema,
-          execute: async (input: Record<string, unknown>) => {
-            opts.onTool?.(t.name, input);
-            return await t.execute(input);
+      const r = await mitWaechter(opts.signal, (signal, lebt) =>
+        sample(turns, {
+          onText: ({ text }: { text: string }) => {
+            lebt();
+            opts.onText?.(text);
           },
-        })),
-      });
+          signal,
+          modelTier: "quick",
+          tools: tools.map((t) => ({
+            name: t.name,
+            description: t.description,
+            inputSchema: t.inputSchema,
+            execute: async (input: Record<string, unknown>) => {
+              lebt();
+              opts.onTool?.(t.name, input);
+              try {
+                return await t.execute(input);
+              } finally {
+                lebt();
+              }
+            },
+          })),
+        }),
+      );
       return r.text;
     } catch (e) {
+      if (e instanceof KeineAntwort) {
+        keineAntwortMelden();
+        throw e;
+      }
       const code = (e as { code?: string })?.code;
       if (code === "tools_unavailable") {
         return llmText({ system: opts.system, messages: opts.messages, onText: opts.onText, signal: opts.signal });

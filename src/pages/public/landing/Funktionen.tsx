@@ -13,6 +13,9 @@ const SUCHEN: { q: string; g: string; w: string[] }[] = [
   { q: "Versicherung verweist auf freie Werkstatt", g: "Verkehrsrecht", w: ["freie werkstatt", "reparaturkosten", "verweis", "markenwerkstatt", "stundenverrechnungssatz"] },
 ];
 
+/** Gerichte, die im kuratierten Auszug tatsächlich vorkommen – keine Instanzen versprechen, die der Prototyp nicht enthält. */
+const GERICHTE = ["BVerfG", "EuGH", "BGH", "BAG", "BVerwG", "BSG", "BFH", "OLG", "LG", "AG"].filter((g) => ENTSCHEIDUNGEN.some((e) => e.gericht === g));
+
 function treffer(g: string, w: string[]) {
   return ENTSCHEIDUNGEN.filter((e) => e.rechtsgebiet === g).map((e) => {
     const text = (e.schlagworte.join(" ") + " " + e.titel + " " + e.leitsatz).toLowerCase();
@@ -59,14 +62,14 @@ export function Funktionen() {
             <KachelKopf
               icon={<Library />}
               titel="Die Fall-Datenbank"
-              text="Vollständige Akten- und Präzedenzfall-Recherche in Echtzeit – von BGH bis Amtsgericht. Angebunden an die zentrale Datenbank aller Fälle in Deutschland: Fälle in einem Bruchteil der Zeit gewinnen."
+              text="Präzedenzfall-Recherche in Sekunden: passende Entscheidungen mit Gericht, Datum und Aktenzeichen zum Nachprüfen – so finden Sie die einschlägige Rechtsprechung in einem Bruchteil der Zeit. Vorbereitet für Open Legal Data und die amtlichen Veröffentlichungen der Bundesgerichte; im Prototyp ein kuratierter Auszug echter Leitentscheidungen."
             />
             <SucheDemo />
           </div>
         </Kachel>
 
         <Kachel className="lg:col-span-2" i={1}>
-          <KachelKopf icon={<Zap />} titel="Der 38h-Automatisierungs-Motor" text="Standard-Schriftsätze, Fristenkontrolle und Mandanten-Updates laufen autonom im Hintergrund." />
+          <KachelKopf icon={<Zap />} titel="Der 38h-Automatisierungs-Motor" text="Standard-Schriftsätze, Vorfristen und Mandanten-Updates laufen autonom im Hintergrund – mit dem Ziel von Ø 38 Stunden weniger Routinearbeit pro Woche. Fristen legt der Motor zur Vier-Augen-Kontrolle vor." />
           <MotorTicker />
         </Kachel>
 
@@ -95,7 +98,7 @@ export function Funktionen() {
         </Kachel>
 
         <Kachel className="lg:col-span-2" i={3}>
-          <KachelKopf icon={<ArrowRightLeft />} titel="One-Klick-Migration" text="Akten, Kontakte und Fristen ziehen vollständig mit um – mit Vorschau, Dublettenprüfung und nachgerechneten Fristen." />
+          <KachelKopf icon={<ArrowRightLeft />} titel="One-Klick-Migration" text="Akten, Kontakte und Fristen ziehen mit einem Klick um – mit Vorschau, Dublettenprüfung, Plausibilitätsprüfung der Fristen und Vier-Augen-Kontrolle." />
           <UmzugCheck />
         </Kachel>
 
@@ -113,7 +116,7 @@ export function Funktionen() {
             <div className="flex items-center gap-3 rounded-[16px] bg-[var(--ink-softer)] p-3">
               <Headphones className="size-5 shrink-0 text-green" />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-semibold">Ihr persönlicher Ansprechpartner</div>
+                <div className="truncate text-[13px] font-semibold">Ihr fester Ansprechpartner</div>
                 <div className="text-[11.5px] text-fg-3">Direkte Durchwahl · Mo–Fr 7:30–19 Uhr</div>
               </div>
             </div>
@@ -165,7 +168,7 @@ function SucheDemo() {
       <div className="mt-3 flex items-center justify-between px-1 text-[11.5px] text-fg-3">
         <span>{fertig ? `${ergebnisse[idx].length} passende Entscheidungen` : "Suche läuft …"}</span>
         <span className="hidden gap-1 sm:flex">
-          {["BVerfG", "BGH", "BAG", "OLG", "LG", "AG"].map((g) => (
+          {GERICHTE.map((g) => (
             <span key={g} className="rounded-[6px] bg-[var(--surface)] px-1.5 py-0.5 text-[10px] font-semibold text-fg-3 shadow-[inset_0_0_0_1px_var(--line)]">
               {g}
             </span>
@@ -250,7 +253,7 @@ function UmzugCheck() {
   const ref = useRef<HTMLDivElement>(null);
   const sichtbar = useInView(ref, { amount: 0.5 });
   const reduce = useReduzierteBewegung();
-  const punkte = ["Akten & E-Akte", "Kontakte & Beteiligte", "Fristen – nachgerechnet", "Dokumente & Aktenkonten"];
+  const punkte = ["Akten mit Rubrum & Sachgebiet", "Kontakte – Dubletten zusammengeführt", "Fristen – geprüft, zur Vier-Augen-Kontrolle", "Datenblatt mit Originalwerten je Akte"];
   const [n, setN] = useState(punkte.length);
   useEffect(() => {
     if (!sichtbar || reduce) return;
@@ -307,10 +310,10 @@ function AvatarDemo() {
       <div className="grid gap-2.5">
         <Blase rolle="sie">
           <Mic className="mr-1.5 inline size-3.5 -translate-y-px text-ink" />
-          „Welche Notfristen laufen diese Woche ab?“
+          „Welche kritischen Fristen laufen diese Woche ab?“
         </Blase>
         <Blase rolle="apex">
-          Zwei Notfristen: die <b>Kündigungsschutzklage</b> in Akte <span className="mono">142/26</span> und der <b>Einspruch gegen den Bußgeldbescheid</b> in <span className="mono">121/26</span> – beide mit Vorfrist und Vier-Augen-Kontrolle. Soll ich die Klageschrift vorbereiten?
+          Zwei nicht verlängerbare Fristen: die Klagefrist für die <b>Kündigungsschutzklage</b> (§ 4 KSchG) in Akte <span className="mono">142/26</span> und der <b>Einspruch gegen den Bußgeldbescheid</b> (§ 67 OWiG) in <span className="mono">121/26</span> – beide mit Vorfrist und Vier-Augen-Kontrolle. Soll ich die Klageschrift vorbereiten?
         </Blase>
         <Blase rolle="sie">„Ja, bitte – mit dem Emmely-Urteil.“</Blase>
       </div>

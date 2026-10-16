@@ -149,7 +149,11 @@ export function AssistantDock() {
         setInterim("");
         setZustand((z) => (z === "hoert" ? "ruhe" : z));
       },
-      onFehler: (msg) => setHinweis(msg),
+      onFehler: (msg, dauerhaft) => {
+        setHinweis(msg);
+        // Spracheingabe für diese Sitzung gesperrt: Mikrofon-Knopf verschwindet, weiter per Tastatur
+        if (dauerhaft) setTimeout(() => inputRef.current?.focus(), 0);
+      },
     });
   };
 
@@ -273,7 +277,7 @@ export function AssistantDock() {
                     <div className="flex flex-col items-center pt-4 text-center">
                       <ApexOrb size={96} zustand={zustand} pegel={pegel} />
                       <div className="mt-5 text-[19px] font-semibold tracking-[-0.02em]">Hallo {vorname}, wie kann ich helfen?</div>
-                      <p className="mt-1.5 max-w-[30ch] text-[13px] leading-snug text-fg-3">Fragen Sie per Sprache oder Text – zu Ihren Akten, Fristen oder zur Bedienung von AnwaltApex.</p>
+                      <p className="mt-1.5 max-w-[30ch] text-[13px] leading-snug text-fg-3">Fragen Sie {spracheingabeVerfuegbar() ? "per Sprache oder Text" : "per Text"} – zu Ihren Akten, Fristen oder zur Bedienung von AnwaltApex.</p>
                     </div>
                     <div className="mt-6 flex flex-wrap justify-center gap-2">
                       {chips.map((v, i) => (

@@ -7,10 +7,10 @@ import { useCol } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
 import { fmtDate, fmtEUR, round2, today } from "@/core/dates";
-import { berechneRvg, fassungFuerAuftrag, gebuehr, RVG_TABELLE, RVG_TABELLE_2021, VV_KATALOG, wertgebuehr, type VVPosition } from "@/core/rvg";
+import { berechneRvg, fassungFuerAuftrag, gebuehr, RVG_TABELLE, RVG_TABELLE_2021, rvgRechnungsPositionen, VV_KATALOG, wertgebuehr, type RvgZeile, type VVPosition } from "@/core/rvg";
 import { cn } from "@/lib/cn";
 import { erstelleRechnungen } from "./aktionen";
-import { FASSUNG_LABEL, fmtSatz, parseBetrag, pauschalePosition, zeileZuPosition, type TabKey } from "./lib";
+import { FASSUNG_LABEL, fmtSatz, parseBetrag, type TabKey } from "./lib";
 import { useAbrechnungUI } from "./store";
 
 const PHASEN: VVPosition["phase"][] = ["Beratung", "Außergerichtlich", "Mahnverfahren", "Gerichtlich", "Berufung", "Vollstreckung", "Allgemein"];
@@ -89,7 +89,7 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
 
   const alsRechnung = () => {
     if (!akte || !hatPositionen) return;
-    const positionen = [...erg.zeilen.map(zeileZuPosition), ...(erg.auslagenpauschale > 0 ? [pauschalePosition(erg.auslagenpauschale)] : [])];
+    const positionen = rvgRechnungsPositionen(erg.angelegenheiten);
     const [r] = erstelleRechnungen([{ akte, positionen, summen: { netto: erg.netto, ust: erg.ust, brutto: erg.brutto } }], "PDF", "entwurf", user.id);
     toast("Rechnungsentwurf erstellt", {
       text: `${r.nummer} · ${akte.aktenzeichen} · ${fmtEUR(r.brutto)}`,
@@ -229,7 +229,7 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
                         <span className="mono w-10 shrink-0 text-[12.5px] font-semibold text-fg-2">1008</span>
                         <div className="min-w-0 flex-1 basis-[160px]">
                           <div className="text-[13.5px] font-medium">Anzahl Auftraggeber</div>
-                          <div className="text-[11.5px] text-fg-3">Erhöhung um 0,3 je weiterem Auftraggeber, höchstens 2,0</div>
+                          <div className="text-[11.5px] text-fg-3">Erhöht die Geschäfts- bzw. Verfahrensgebühr jeder Angelegenheit um 0,3 je weiterem Auftraggeber, höchstens 2,0</div>
                         </div>
                         <div className="flex items-center gap-1 rounded-full bg-[var(--ink-softer)] p-0.5 shadow-[inset_0_0_0_1px_var(--line)]">
                           <button type="button" className="icon-btn !size-7" aria-label="Weniger Auftraggeber" disabled={auftraggeber <= 1} onClick={() => setAuftraggeber((n) => Math.max(1, n - 1))}>
@@ -350,33 +350,37 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
             <Chip tone={fassung === "2025" ? "ink" : "amber"}>RVG {fassung}</Chip>
           </div>
 
-          <ul className="mt-4 grid grid-cols-1 gap-0.5">
-            <AnimatePresence initial={false}>
-              {erg.zeilen.map((z) => (
-                <motion.li
-                  key={z.nr}
-                  layout
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 10 }}
-                  transition={{ type: "spring", stiffness: 480, damping: 36 }}
-                  className="flex items-baseline gap-2 py-1.5 text-[13px]"
-                >
-                  <span className={cn("mono w-[58px] shrink-0 text-[11.5px]", z.anrechnung ? "text-amber" : "text-fg-3")}>{z.anrechnung ? "Vorb. 3" : z.nr}</span>
-                  <span className="min-w-0 flex-1 truncate" title={z.titel}>
-                    {z.anrechnung ? "Anrechnung Geschäftsgebühr" : z.titel}
-                  </span>
-                  <span className="num shrink-0 text-[12px] text-fg-3">{fmtSatz(Math.abs(z.satz))}</span>
-                  <span className={cn("num w-[88px] shrink-0 text-right font-medium", z.betrag < 0 && "text-amber")}>{fmtEUR(z.betrag)}</span>
-                </motion.li>
-              ))}
-            </AnimatePresence>
-            {!erg.zeilen.length && <li className="py-4 text-center text-[13px] text-fg-3">Wählen Sie mindestens einen Gebührentatbestand.</li>}
-          </ul>
+          {/* Je Angelegenheit (§ 15 RVG): Gebühren, Anrechnung und eigene Auslagenpauschale */}
+          <div className="mt-4 grid grid-cols-1 gap-3">
+            {erg.angelegenheiten.map((a, i) => (
+              <section key={a.key} aria-label={a.titel} className={cn(i > 0 && "border-t border-dashed border-[var(--line)] pt-3")}>
+                {erg.angelegenheiten.length > 1 && <div className="eyebrow mb-1">{a.titel}</div>}
+                <ul className="grid grid-cols-1 gap-0.5">
+                  <AnimatePresence initial={false}>
+                    {a.zeilen.map((z) => (
+                      <ErgebnisZeile key={z.nr} z={z} kurz={erg.angelegenheiten.length > 1} />
+                    ))}
+                    {pauschale && (
+                      <ErgebnisZeile
+                        key="7002"
+                        z={{ nr: "7002", titel: "Auslagenpauschale", satz: 0, gegenstandswert: 0, betrag: a.auslagenpauschale, angelegenheit: a.key }}
+                        hinweis=""
+                      />
+                    )}
+                  </AnimatePresence>
+                </ul>
+              </section>
+            ))}
+            {!erg.zeilen.length && <p className="py-4 text-center text-[13px] text-fg-3">Wählen Sie mindestens einen Gebührentatbestand.</p>}
+          </div>
 
           <div className="mt-3 grid grid-cols-1 gap-1.5 border-t border-[var(--line)] pt-3 text-[13px]">
             <Zeile k="Summe Gebühren" v={erg.gebuehrenSumme} />
-            <Zeile k="Auslagenpauschale (Nr. 7002)" v={erg.auslagenpauschale} leise={!pauschale} />
+            <Zeile
+              k={erg.angelegenheiten.length > 1 && pauschale ? `Auslagenpauschalen (${erg.angelegenheiten.length} × Nr. 7002)` : "Auslagenpauschale (Nr. 7002)"}
+              v={erg.auslagenpauschale}
+              leise={!pauschale}
+            />
             <Zeile k="Netto" v={erg.netto} stark />
             <Zeile k="Umsatzsteuer 19 % (Nr. 7008)" v={erg.ust} leise={!ust} />
           </div>
@@ -416,10 +420,36 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
   );
 }
 
+function ErgebnisZeile({ z, hinweis, kurz }: { z: RvgZeile; hinweis?: string; kurz?: boolean }) {
+  // Unter einer Angelegenheits-Überschrift ist der Instanz-Zusatz („(1. Instanz)“) doppelt.
+  const titel = z.anrechnung ? "Anrechnung Geschäftsgebühr" : kurz ? z.titel.replace(/ \((1\. Instanz|Berufung)\)$/, "") : z.titel;
+  return (
+    <motion.li
+      layout
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 10 }}
+      transition={{ type: "spring", stiffness: 480, damping: 36 }}
+      className="flex items-baseline gap-2 py-1.5 text-[13px]"
+    >
+      <span className={cn("mono w-[58px] shrink-0 text-[11.5px]", z.anrechnung ? "text-amber" : "text-fg-3")}>
+        {z.anrechnung ? "Vorb. 3" : z.nr}
+        {z.erhoehung ? <span className="block text-[10.5px] leading-tight">+ 1008</span> : null}
+      </span>
+      <span className={cn("min-w-0 flex-1 truncate", z.nr === "7002" && "text-fg-2")} title={z.erhoehung ? `${z.titel}, erhöht nach Nr. 1008 VV RVG um ${fmtSatz(z.erhoehung)}` : z.titel}>
+        {titel}
+        {z.erhoehung ? <span className="block truncate text-[11.5px] text-fg-3">erhöht um {fmtSatz(z.erhoehung)}</span> : null}
+      </span>
+      <span className="num shrink-0 text-[12px] text-fg-3">{hinweis ?? fmtSatz(Math.abs(z.satz))}</span>
+      <span className={cn("num w-[88px] shrink-0 text-right font-medium", z.betrag < 0 && "text-amber")}>{fmtEUR(z.betrag)}</span>
+    </motion.li>
+  );
+}
+
 function Zeile({ k, v, stark, leise }: { k: string; v: number; stark?: boolean; leise?: boolean }) {
   return (
     <div className={cn("flex items-baseline justify-between gap-3", leise && "text-fg-4", stark && "font-semibold")}>
-      <span className={cn(!stark && !leise && "text-fg-2")}>{k}</span>
+      <span className={cn("min-w-0", !stark && !leise && "text-fg-2")}>{k}</span>
       <AnimatedNumber value={v} format={(n) => fmtEUR(n)} />
     </div>
   );

@@ -7,6 +7,8 @@ interface SessionState {
   sitzung: Sitzung | null;
   setSitzung: (s: Sitzung | null) => void;
   login: (email: string, passwort: string) => Promise<Sitzung>;
+  /** Erste Anmeldung mit Startpasswort: eigenes Passwort festlegen und anmelden. */
+  passwortErsetzen: (email: string, startPasswort: string, neuesPasswort: string) => Promise<Sitzung>;
   logout: () => Promise<void>;
 }
 
@@ -16,6 +18,11 @@ export const useSession = create<SessionState>((set) => ({
   setSitzung: (s) => set({ sitzung: s, status: s ? "angemeldet" : "abgemeldet" }),
   login: async (email, passwort) => {
     const s = await getBackend().login(email, passwort);
+    set({ sitzung: s, status: "angemeldet" });
+    return s;
+  },
+  passwortErsetzen: async (email, startPasswort, neuesPasswort) => {
+    const s = await getBackend().passwortErsetzen(email, startPasswort, neuesPasswort);
     set({ sitzung: s, status: "angemeldet" });
     return s;
   },

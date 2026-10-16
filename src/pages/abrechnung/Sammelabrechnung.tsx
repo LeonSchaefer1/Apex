@@ -17,12 +17,25 @@ export function useSammelKandidaten() {
   const akten = useCol("akten");
   const rechnungen = useCol("rechnungen");
   const zeiten = useCol("zeiten");
+  const fristen = useCol("fristen");
+  const dokumente = useCol("dokumente");
+  const kontakte = useCol("kontakte");
   const { team, user } = useKanzlei();
   return useMemo(() => {
-    const grenze = addDays(today(), -30);
+    const heute = today();
+    const grenze = addDays(heute, -30);
     const usersById = new Map(team.map((u) => [u.id, u]));
+    const kontaktById = new Map(kontakte.map((k) => [k.id, k]));
     const rProAkte = new Map<string, Rechnung[]>();
     for (const r of rechnungen) rProAkte.set(r.akteId, [...(rProAkte.get(r.akteId) ?? []), r]);
+    const gruppe = <T extends { akteId: string }>(xs: T[]) => {
+      const m = new Map<string, T[]>();
+      for (const x of xs) m.set(x.akteId, [...(m.get(x.akteId) ?? []), x]);
+      return m;
+    };
+    const fProAkte = gruppe(fristen);
+    const dProAkte = gruppe(dokumente);
+    const zProAkte = gruppe(zeiten);
     const vorschlaege: Vorschlag[] = [];
     const ausgeschlossen: Ausschluss[] = [];
     for (const a of akten) {
@@ -36,19 +49,18 @@ export function useSammelKandidaten() {
         ausgeschlossen.push({ akte: a, grund: "In den letzten 30 Tagen abgerechnet" });
         continue;
       }
-      const v = vorschlagFuerAkte(
-        a,
-        rs,
-        zeiten.filter((z) => z.akteId === a.id),
-        usersById,
-        user.stundensatz ?? STANDARD_STUNDENSATZ,
-      );
+      const v = vorschlagFuerAkte(a, rs, zProAkte.get(a.id) ?? [], usersById, user.stundensatz ?? STANDARD_STUNDENSATZ, {
+        gericht: a.gerichtId ? kontaktById.get(a.gerichtId) : undefined,
+        fristen: fProAkte.get(a.id) ?? [],
+        dokumente: dProAkte.get(a.id) ?? [],
+        heute,
+      });
       if (istVorschlag(v)) vorschlaege.push(v);
       else ausgeschlossen.push(v);
     }
     vorschlaege.sort((x, y) => y.summen.brutto - x.summen.brutto);
     return { vorschlaege, ausgeschlossen };
-  }, [akten, rechnungen, zeiten, team, user.stundensatz]);
+  }, [akten, rechnungen, zeiten, fristen, dokumente, kontakte, team, user.stundensatz]);
 }
 
 const FORMATE: Rechnung["format"][] = ["PDF", "XRechnung", "ZUGFeRD"];
@@ -87,17 +99,26 @@ export function Sammelabrechnung({ open, onClose, onAnsehen }: { open: boolean; 
     if (!gewaehlt.length) return;
     setLaeuft(true);
     setTimeout(() => {
+      // XRechnung ist reines XML – Privatpersonen erhalten sie nicht (B2C), sondern die PDF-Rechnung.
       const rs = erstelleRechnungen(
-        gewaehlt.map((v) => ({ akte: v.akte, positionen: v.positionen, summen: v.summen, zeitIds: v.zeitIds })),
+        gewaehlt.map((v) => ({
+          akte: v.akte,
+          positionen: v.positionen,
+          summen: v.summen,
+          zeitIds: v.zeitIds,
+          vorschuss: v.vorschuss,
+          format: format === "XRechnung" && kontakte.get(v.akte.mandantId)?.typ === "person" ? ("PDF" as const) : format,
+        })),
         format,
         "gestellt",
         user.id,
       );
       const gesamt = round2(rs.reduce((s, r) => s + r.brutto, 0));
+      const vorschuesse = rs.filter((r) => r.art === "vorschuss").length;
       useData.getState().log({
         akteur: "automation",
         userId: user.id,
-        text: `Sammelabrechnung: ${rs.length} ${rs.length === 1 ? "Rechnung" : "Rechnungen"} in einem Durchgang erstellt (${format}, gesamt ${fmtEUR(gesamt)})`,
+        text: `Sammelabrechnung: ${rs.length} ${rs.length === 1 ? "Rechnung" : "Rechnungen"} in einem Durchgang erstellt${vorschuesse ? `, davon ${vorschuesse} ${vorschuesse === 1 ? "Vorschussrechnung" : "Vorschussrechnungen"} (§ 9 RVG)` : ""} (${format}, gesamt ${fmtEUR(gesamt)})`,
         minutenGespart: rs.length * MINUTEN_JE_EINZELRECHNUNG,
       });
       setErstellt(rs);
@@ -161,6 +182,7 @@ export function Sammelabrechnung({ open, onClose, onAnsehen }: { open: boolean; 
               </div>
               <div className="mt-1 text-[13px] text-fg-3">
                 Gesamt <AnimatedNumber value={round2(erstellt.reduce((s, r) => s + r.brutto, 0))} format={(n) => fmtEUR(n)} className="font-semibold text-fg" /> brutto · Format {format}
+                {erstellt.some((r) => r.format !== format) && ` · ${erstellt.filter((r) => r.format !== format).length} an Privatpersonen als PDF`}
               </div>
               <Chip tone="green" icon={<Clock className="size-3.5" />} className="mt-3">
                 ≈ {gespart} Min. gegenüber Einzelabrechnung gespart
@@ -221,7 +243,9 @@ export function Sammelabrechnung({ open, onClose, onAnsehen }: { open: boolean; 
             <div className="mt-5 flex flex-wrap items-center gap-3">
               <span className="text-[12px] font-semibold text-fg-3">Format</span>
               <Segmented size="sm" options={FORMATE.map((f) => ({ value: f, label: f }))} value={format} onChange={setFormat} />
-              <span className="min-w-0 basis-full text-[12px] text-fg-3 sm:basis-auto sm:flex-1">{FORMAT_INFO[format].text}</span>
+              <span className="min-w-0 basis-full text-[12px] text-fg-3 sm:basis-auto sm:flex-1">{FORMAT_INFO[format].text}
+                {format === "XRechnung" && " Privatmandanten erhalten die Rechnung als PDF."}
+              </span>
             </div>
 
             {vorschlaege.length === 0 ? (
@@ -266,10 +290,15 @@ export function Sammelabrechnung({ open, onClose, onAnsehen }: { open: boolean; 
                           </div>
                           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                             <Chip tone="outline">{v.akte.phase}</Chip>
+                            {v.vorschuss && (
+                              <Chip tone="violet" title="Vergütung im laufenden Verfahren noch nicht fällig (§ 8 Abs. 1 RVG) – Vorschuss nach § 9 RVG">
+                                Vorschuss § 9
+                              </Chip>
+                            )}
                             {v.positionen
                               .filter((p) => p.vv !== "7002")
-                              .map((p) => (
-                                <Chip key={p.vv} tone={p.betrag < 0 ? "amber" : "ink"} title={p.bezeichnung}>
+                              .map((p, pi) => (
+                                <Chip key={`${p.vv}-${pi}`} tone={p.betrag < 0 ? "amber" : "ink"} title={p.bezeichnung}>
                                   <span className="mono">{p.vv === "Std" ? `${fmtSatz(p.menge ?? 0)} Std.` : p.vv}</span>
                                   {p.satz !== undefined && p.vv !== "Std" && <span className="opacity-70">{fmtSatz(Math.abs(p.satz))}</span>}
                                 </Chip>
@@ -291,7 +320,7 @@ export function Sammelabrechnung({ open, onClose, onAnsehen }: { open: boolean; 
               <div className="mt-4">
                 <button type="button" onClick={() => setZeigeAusgeschlossen((x) => !x)} className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-fg-3 hover:text-fg">
                   <ChevronDown className={cn("size-4 transition-transform duration-300", zeigeAusgeschlossen && "rotate-180")} />
-                  Nicht berücksichtigt ({ausgeschlossen.length}) – bereits berechnete Gebühren werden nicht doppelt angesetzt (§ 15 Abs. 2 RVG)
+                  Nicht berücksichtigt ({ausgeschlossen.length}) – nur entstandene, noch nicht berechnete Gebühren (§ 15 Abs. 2 RVG)
                 </button>
                 <AnimatePresence initial={false}>
                   {zeigeAusgeschlossen && (
@@ -303,10 +332,12 @@ export function Sammelabrechnung({ open, onClose, onAnsehen }: { open: boolean; 
                       className="overflow-hidden"
                     >
                       {ausgeschlossen.map((a) => (
-                        <li key={a.akte.id} className="flex min-w-0 items-baseline gap-2 py-1 text-[12.5px] first:pt-2">
+                        <li key={a.akte.id} className="flex min-w-0 flex-wrap items-baseline gap-x-2 py-1 text-[12.5px] first:pt-2">
                           <span className="mono shrink-0 text-fg-3">{a.akte.aktenzeichen}</span>
                           <span className="min-w-0 flex-1 truncate">{a.akte.titel}</span>
-                          <span className="hidden shrink-0 text-fg-4 sm:inline">{a.grund}</span>
+                          <span className="min-w-0 basis-full text-[12px] text-fg-4 sm:basis-auto sm:max-w-[62%] sm:truncate sm:text-right" title={a.grund}>
+                            {a.grund}
+                          </span>
                         </li>
                       ))}
                     </motion.ul>

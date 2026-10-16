@@ -81,8 +81,10 @@ export function TabVerlauf({ akte }: { akte: Akte }) {
           ]}
         />
         {gespart > 0 && (
-          <Chip tone="green" icon={<Zap className="size-3" />}>
-            {gespart} Min. Routinearbeit in dieser Akte automatisch erledigt
+          <Chip tone="green" icon={<Zap className="size-3 shrink-0" />} className="max-w-full" title={`${gespart} Min. Routinearbeit in dieser Akte automatisch erledigt`}>
+            <span className="truncate">
+              {gespart} Min.<span className="hidden sm:inline"> Routinearbeit in dieser Akte</span> automatisch erledigt
+            </span>
           </Chip>
         )}
       </div>

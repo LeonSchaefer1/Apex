@@ -32,7 +32,7 @@ export function Hero() {
           </motion.h1>
 
           <motion.p initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ ...spring, delay: 0.18 }} className="mt-6 max-w-[52ch] text-[17px] leading-relaxed text-fg-2 md:text-[18px]">
-            Die Kanzlei-Software, die mitdenkt: Akten, beA, Fristen, Abrechnung und eine KI, die Präzedenzfälle von BGH bis Amtsgericht in Sekunden findet. Einmal investieren, für immer nutzen – ohne Abo und ohne versteckte Monatsgebühren.
+            Die Kanzlei-Software, die mitdenkt: Akten, beA, Fristen, Abrechnung und eine KI, die passende Präzedenzfälle in Sekunden findet – mit Gericht, Datum und Aktenzeichen. Einmal investieren, dauerhaft nutzen – ohne Abo und ohne versteckte Monatsgebühren.
           </motion.p>
 
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ ...spring, delay: 0.26 }} className="mt-8 flex flex-wrap gap-3">
@@ -69,9 +69,9 @@ export function Hero() {
 /** Kennzahlenleiste unter dem Hero. */
 export function Kennzahlen() {
   const items = [
-    { icon: <Clock3 className="size-[18px]" />, wert: <><span className="font-semibold text-fg-3">Ø</span> <AnimatedNumber value={38} /> Std.</>, text: "Routinearbeit pro Woche automatisiert" },
-    { icon: <Euro className="size-[18px]" />, wert: <>≈ <AnimatedNumber value={36000} /> €</>, text: "Wert der gesparten Zeit pro Jahr" },
-    { icon: <InfinityIcon className="size-[18px]" />, wert: <><AnimatedNumber value={0} /> €</>, text: "Monatliche Abo-Gebühren – für immer" },
+    { icon: <Clock3 className="size-[18px]" />, wert: <><span className="font-semibold text-fg-3">Ø</span> <AnimatedNumber value={38} /> Std.</>, text: "Zielwert: Routinearbeit pro Woche und Kanzlei automatisiert¹" },
+    { icon: <Euro className="size-[18px]" />, wert: <>≈ <AnimatedNumber value={36000} /> €</>, text: "Wert der gesparten Zeit pro Jahr – im Rechenbeispiel²" },
+    { icon: <InfinityIcon className="size-[18px]" />, wert: <><AnimatedNumber value={0} /> €</>, text: "Monatliche Abo-Gebühren mit der Lifetime-Lizenz" },
     { icon: <Library className="size-[18px]" />, wert: <>Sekunden</>, text: "bis zum passenden Präzedenzfall" },
   ];
   return (
@@ -86,6 +86,9 @@ export function Kennzahlen() {
             </li>
           ))}
         </ul>
+        <p className="mt-3 px-2 text-[11.5px] leading-relaxed text-fg-4">
+          ¹ Zielwert, kein garantiertes Ergebnis – die tatsächliche Ersparnis hängt von Kanzleigröße, Fallzahlen und Abläufen; der 38h-Motor misst sie je Automation. ² 38 Std. × 48 Arbeitswochen × rund 20 € interner Kostensatz je Stunde.
+        </p>
       </Reveal>
     </section>
   );

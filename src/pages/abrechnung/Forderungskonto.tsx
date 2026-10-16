@@ -8,7 +8,8 @@ import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
 import { addDays, diffDays, fmtDate, fmtDateLong, fmtDateShort, fmtEUR, fmtNum, monatName, nowLocal, round2, today, uid } from "@/core/dates";
 import { BASISZINS, basiszinsAm, forderungskonto, type ForderungsStand, type ForderungsVorgang } from "@/core/zinsen";
-import type { Akte, Buchung, Kontakt, Tenant, User } from "@/core/types";
+import { berechneRvg, fassungFuerAuftrag } from "@/core/rvg";
+import type { Akte, Buchung, Dokument, Kontakt, Tenant, User } from "@/core/types";
 import { useIsMobile } from "@/lib/useMedia";
 import { cn } from "@/lib/cn";
 import { fmtEURkompakt, fmtProzent, parseBetrag } from "./lib";
@@ -30,6 +31,36 @@ function vorgaengeFuer(akte: Akte, buchungen: Buchung[], opts: { pauschale40: bo
 }
 
 const FARBE = { haupt: "var(--ink)", zinsen: "var(--amber)", kosten: "var(--violet)" };
+
+/** Überzahlung: Zahlungen, die nach Tilgung von Kosten, Zinsen und Hauptforderung übrig bleiben (an den Schuldner zu erstatten). */
+function ueberzahlungVon(stand: ForderungsStand): number {
+  const getilgt = stand.verlauf.reduce((s, v) => s + (v.aufKosten ?? 0) + (v.aufZinsen ?? 0) + (v.aufHaupt ?? 0), 0);
+  return Math.max(0, round2(stand.bezahlt - getilgt));
+}
+
+const MAHN_ANWALTSKOSTEN = /3305|3308|anwalt|verfahrensgebühr/i;
+
+/**
+ * Rechtsanwaltskosten des Mahnverfahrens (Nr. 3305, 3308 nach Antrag auf Vollstreckungsbescheid, 7002 VV RVG), die im
+ * Vollstreckungsbescheid als Kosten des Verfahrens tituliert sind. Umsatzsteuer nur, wenn der Gläubiger nicht zum
+ * Vorsteuerabzug berechtigt ist (§ 104 Abs. 2 S. 3 ZPO) – angenommen für Privatpersonen. `null`, wenn schon erfasst
+ * oder kein Vollstreckungsbescheid vorliegt.
+ */
+function fehlendeMahnkosten(akte: Akte, buchungen: Buchung[], dokumente: Dokument[], glaeubiger?: Kontakt): { betrag: number; datum: string; text: string; ust: boolean } | null {
+  const f = akte.forderung;
+  if (!f) return null;
+  const vbDok = dokumente.find((d) => d.akteId === akte.id && /vollstreckungsbescheid/i.test(d.name));
+  if (!/vollstreckungsbescheid/i.test(f.titel ?? "") && !vbDok) return null;
+  if (buchungen.some((b) => b.akteId === akte.id && b.art === "kosten" && MAHN_ANWALTSKOSTEN.test(b.text))) return null;
+  const erg = berechneRvg({ positionen: [{ nr: "3305" }, { nr: "3308" }], gegenstandswert: f.hauptforderung, fassung: fassungFuerAuftrag(akte.createdAt.slice(0, 10)) });
+  const ust = glaeubiger?.typ === "person";
+  return {
+    betrag: ust ? erg.brutto : erg.netto,
+    datum: vbDok ? vbDok.createdAt.slice(0, 10) : today(),
+    text: `Rechtsanwaltskosten Mahnverfahren (Nr. 3305, 3308, 7002 VV RVG${ust ? " zzgl. USt." : ""})`,
+    ust,
+  };
+}
 
 function Balken({ teile, hoehe = 14 }: { teile: { key: string; label: string; wert: number; farbe: string }[]; hoehe?: number }) {
   const summe = teile.reduce((s, t) => s + Math.max(0, t.wert), 0);
@@ -204,6 +235,7 @@ function SaldoChart({ stand, start, ende }: { stand: ForderungsStand; start: str
 export function ForderungskontoTab() {
   const akten = useCol("akten");
   const buchungen = useCol("buchungen");
+  const dokumente = useCol("dokumente");
   const { kontakte, users } = useLookups();
   const { tenant, user } = useKanzlei();
   const mobil = useIsMobile();
@@ -262,6 +294,14 @@ export function ForderungskontoTab() {
     haupt: 0,
   });
   const aktuellePeriode = [...BASISZINS].reverse().find((b) => b.ab <= stich)?.ab;
+  const ueberzahlung = ueberzahlungVon(stand);
+  const mahnkosten = fehlendeMahnkosten(akte, buchungen, dokumente, mandant);
+  const mahnkostenUebernehmen = () => {
+    if (!mahnkosten) return;
+    useData.getState().upsert("buchungen", { id: uid("b"), akteId: akte.id, datum: mahnkosten.datum, art: "kosten", betrag: mahnkosten.betrag, text: mahnkosten.text });
+    useData.getState().log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `${mahnkosten.text} ${fmtEUR(mahnkosten.betrag)} ins Forderungskonto übernommen – ${akte.aktenzeichen}` });
+    toast("Kosten des Mahnverfahrens übernommen", { text: `${fmtEUR(mahnkosten.betrag)} · Verrechnung nach § 367 BGB neu berechnet`, ton: "erfolg" });
+  };
 
   return (
     <>
@@ -298,12 +338,12 @@ export function ForderungskontoTab() {
               <Input id="fk-stichtag" type="date" value={stichtag} min={f.faelligAb} onChange={(e) => setStichtag(e.target.value)} className="!pl-10" />
             </div>
           </Field>
-          <Field label="Schuldner ist">
+          <Field label="Verbraucher beteiligt? (§ 288 BGB)">
             <Segmented
               full
               options={[
-                { value: "v", label: "Verbraucher · 5 PP" },
-                { value: "u", label: "Unternehmer · 9 PP" },
+                { value: "v", label: "Ja · 5 PP" },
+                { value: "u", label: "Nein · 9 PP" },
               ]}
               value={verbraucher ? "v" : "u"}
               onChange={(v) => setVerbraucherWahl(v === "v")}
@@ -318,8 +358,24 @@ export function ForderungskontoTab() {
             Verzug seit <span className="num font-medium text-fg-2">{fmtDate(f.faelligAb)}</span> ({fmtNum(Math.max(0, diffDays(f.faelligAb, stich) + 1))} Zinstage)
           </span>
           {f.titel && <span className="truncate">Titel: {f.titel}</span>}
-          {verbraucherWahl !== null && verbraucherWahl !== f.verbraucher && <Chip tone="amber">Vergleichsrechnung – in der Akte als {f.verbraucher ? "Verbraucher" : "Unternehmer"} geführt</Chip>}
+          {verbraucherWahl !== null && verbraucherWahl !== f.verbraucher && <Chip tone="amber">Vergleichsrechnung – laut Akte {f.verbraucher ? "mit" : "ohne"} Verbraucherbeteiligung</Chip>}
         </div>
+        <p className="mt-2 text-[11.5px] leading-snug text-fg-4">
+          9 Prozentpunkte nur für Entgeltforderungen aus Rechtsgeschäften, an denen kein Verbraucher beteiligt ist – weder als Gläubiger noch als Schuldner (§ 288 Abs. 2 BGB); sonst 5
+          Prozentpunkte (§ 288 Abs. 1 BGB).
+        </p>
+        {mahnkosten && (
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[14px] bg-violet-soft px-3.5 py-2.5 text-[12.5px]">
+            <span className="min-w-0 flex-1 basis-[260px] text-fg-2">
+              <span className="font-semibold text-fg">Kosten des Mahnverfahrens fehlen:</span> Die Rechtsanwaltskosten (Nr. 3305, 3308, 7002 VV RVG
+              {mahnkosten.ust ? " zzgl. USt." : ", ohne USt. – Gläubiger vorsteuerabzugsberechtigt"}) sind im Vollstreckungsbescheid tituliert –{" "}
+              <span className="num font-semibold text-fg">{fmtEUR(mahnkosten.betrag)}</span>.
+            </span>
+            <Button size="sm" variant="secondary" icon={<Plus className="size-4" />} onClick={mahnkostenUebernehmen}>
+              Als Kosten übernehmen
+            </Button>
+          </div>
+        )}
       </Card>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5 [&>*:last-child]:col-span-2 lg:[&>*:last-child]:col-span-1">
@@ -350,7 +406,7 @@ export function ForderungskontoTab() {
           icon={<PiggyBank className="size-4" />}
           tone="green"
           value={<AnimatedNumber value={stand.bezahlt} format={EUR} className="text-[19px] sm:text-[24px]" />}
-          sub={`${stand.verlauf.filter((v) => v.art === "zahlung").length} Zahlungen`}
+          sub={ueberzahlung > 0 ? `davon ${fmtEUR(ueberzahlung)} Überzahlung` : `${stand.verlauf.filter((v) => v.art === "zahlung").length} Zahlungen`}
         />
       </div>
 
@@ -382,6 +438,12 @@ export function ForderungskontoTab() {
               />
             ) : (
               <p className="text-[12.5px] text-fg-3">Noch keine Zahlungen eingegangen.</p>
+            )}
+            {ueberzahlung > 0 && (
+              <p className="mt-3 rounded-[12px] bg-amber-soft px-3 py-2 text-[12.5px] text-fg-2" role="status">
+                <span className="font-semibold text-amber">Überzahlung {fmtEUR(ueberzahlung)}:</span> Die Zahlungen übersteigen die Forderung. Der Mehrbetrag ist an den Schuldner
+                zu erstatten; die Forderung ist ausgeglichen.
+              </p>
             )}
           </div>
           <div className="mt-6 border-t border-[var(--line)] pt-4">
@@ -418,7 +480,11 @@ export function ForderungskontoTab() {
           <CardHeader
             icon={<Percent className="size-4" />}
             title="Zinssatz"
-            subtitle={verbraucher ? "§ 288 Abs. 1 BGB: 5 Prozentpunkte über dem Basiszinssatz." : "§ 288 Abs. 2 BGB: 9 Prozentpunkte über dem Basiszinssatz (kein Verbraucher beteiligt)."}
+            subtitle={
+              verbraucher
+                ? "§ 288 Abs. 1 BGB: 5 Prozentpunkte über dem Basiszinssatz."
+                : "§ 288 Abs. 2 BGB: 9 Prozentpunkte über dem Basiszinssatz – Entgeltforderung, kein Verbraucher beteiligt."
+            }
           />
           <div className="flex flex-wrap items-center gap-1.5 text-[13px]">
             <span className="rounded-[10px] bg-ink-softer px-2.5 py-1.5">
@@ -441,7 +507,7 @@ export function ForderungskontoTab() {
             </span>
           </div>
           <div className={cn("mt-3 rounded-[12px] px-3 py-2 text-[12px]", zinsDelta > 0 ? "bg-amber-soft text-amber" : "bg-ink-softer text-fg-2")}>
-            Zinsen bis zum Stichtag insgesamt <span className="num font-semibold">{fmtEUR(zinsGesamt)}</span> – als {verbraucher ? "Unternehmergeschäft" : "Verbrauchergeschäft"}{" "}
+            Zinsen bis zum Stichtag insgesamt <span className="num font-semibold">{fmtEUR(zinsGesamt)}</span> – {verbraucher ? "ohne" : "mit"} Verbraucherbeteiligung{" "}
             <span className="num font-semibold">{fmtEUR(zinsGesamtGegen)}</span> ({zinsDelta >= 0 ? "+" : "−"}
             {fmtEUR(Math.abs(zinsDelta))}).
           </div>
@@ -615,6 +681,8 @@ export function ForderungskontoTab() {
         schuldner={schuldner}
         bearbeiter={users.get(akte.bearbeiterId)}
         userId={user.id}
+        mahnkosten={mahnkosten?.betrag}
+        onMahnkosten={mahnkostenUebernehmen}
       />
     </>
   );
@@ -650,6 +718,8 @@ function TeilzahlungModal({
   const bis = datum > stichtag ? datum : stichtag;
   const vorschau = b > 0 ? rechne([{ datum, art: "zahlung", betrag: b, text: "Vorschau" }], bis) : null;
   const zeile = vorschau?.verlauf.find((v) => v.text === "Vorschau");
+  const verrechenbar = zeile ? round2((zeile.aufKosten ?? 0) + (zeile.aufZinsen ?? 0) + (zeile.aufHaupt ?? 0)) : 0;
+  const mehr = zeile ? round2(b - verrechenbar) : 0;
 
   const buchen = () => {
     if (b <= 0) {
@@ -658,9 +728,11 @@ function TeilzahlungModal({
     }
     useData.getState().upsert("buchungen", { id: uid("b"), akteId: akte.id, datum, art: "zahlung", betrag: -round2(b), text: text || "Teilzahlung Schuldner", fremdgeld: true });
     useData.getState().log({ akteur: "nutzer", userId, akteId: akte.id, text: `Teilzahlung ${fmtEUR(b)} im Forderungskonto erfasst – ${akte.aktenzeichen}` });
-    toast("Teilzahlung erfasst", {
-      text: zeile ? `Verrechnet: ${fmtEUR(zeile.aufKosten ?? 0)} Kosten · ${fmtEUR(zeile.aufZinsen ?? 0)} Zinsen · ${fmtEUR(zeile.aufHaupt ?? 0)} Hauptforderung` : `${fmtEUR(b)} gebucht`,
-      ton: "erfolg",
+    toast(mehr > 0.004 ? "Zahlung erfasst – Überzahlung" : "Teilzahlung erfasst", {
+      text: zeile
+        ? `Verrechnet: ${fmtEUR(zeile.aufKosten ?? 0)} Kosten · ${fmtEUR(zeile.aufZinsen ?? 0)} Zinsen · ${fmtEUR(zeile.aufHaupt ?? 0)} Hauptforderung${mehr > 0.004 ? ` · ${fmtEUR(mehr)} an den Schuldner zu erstatten` : ""}`
+        : `${fmtEUR(b)} gebucht`,
+      ton: mehr > 0.004 ? "warnung" : "erfolg",
     });
     onClose();
   };
@@ -679,7 +751,7 @@ function TeilzahlungModal({
             Abbrechen
           </Button>
           <Button variant="primary" onClick={buchen} disabled={b <= 0}>
-            Teilzahlung buchen
+            {mehr > 0.004 ? "Mit Überzahlung buchen" : "Teilzahlung buchen"}
           </Button>
         </>
       }
@@ -717,6 +789,17 @@ function TeilzahlungModal({
           ) : (
             <p className="mt-1 text-[12px] text-fg-3">Betrag eingeben, um die Verrechnung zu sehen.</p>
           )}
+          {mehr > 0.004 && (
+            <div className="mt-2.5 rounded-[12px] bg-amber-soft px-3 py-2 text-[12px] text-fg-2" role="alert">
+              <span className="font-semibold text-amber">Überzahlung {fmtEUR(mehr)}:</span> Der Betrag übersteigt die Restforderung am {fmtDate(datum)} ({fmtEUR(verrechenbar)}). Der
+              Mehrbetrag wäre an den Schuldner zu erstatten.
+              <div className="mt-2">
+                <Button size="sm" variant="secondary" onClick={() => setBetrag(fmtNum(verrechenbar, 2))}>
+                  Auf Restforderung kürzen
+                </Button>
+              </div>
+            </div>
+          )}
           <p className="mt-2 text-[11.5px] text-fg-4">Zahlungen des Schuldners sind Fremdgeld und werden im Aktenkonto entsprechend gekennzeichnet.</p>
         </div>
       </div>
@@ -748,6 +831,8 @@ function Forderungsaufstellung({
   schuldner,
   bearbeiter,
   userId,
+  mahnkosten,
+  onMahnkosten,
 }: {
   open: boolean;
   onClose: () => void;
@@ -760,6 +845,9 @@ function Forderungsaufstellung({
   schuldner?: Kontakt;
   bearbeiter?: User;
   userId: string;
+  /** Noch nicht erfasste Rechtsanwaltskosten des Mahnverfahrens (Betrag), falls tituliert. */
+  mahnkosten?: number;
+  onMahnkosten?: () => void;
 }) {
   const f = akte.forderung!;
   const kosten = stand.verlauf.filter((v) => v.art === "kosten");
@@ -769,6 +857,8 @@ function Forderungsaufstellung({
   const zwischen = round2(f.hauptforderung + zinsSumme + kostenSumme);
   const aufschlag = verbraucher ? 5 : 9;
   const ort = tenant.stadt;
+  const ueberzahlung = ueberzahlungVon(stand);
+  const weitereZinsen = stand.hauptforderung > 0;
 
   const textFassung = () =>
     [
@@ -779,9 +869,12 @@ function Forderungsaufstellung({
       ...stand.zinsAbschnitte.map((z) => `Zinsen ${fmtProzent(z.zinssatz)} aus ${fmtEUR(z.kapital)} vom ${fmtDate(z.von)} bis ${fmtDate(z.bis)} (${z.tage} Tage): ${fmtEUR(z.zinsen)}`),
       ...kosten.map((k) => `${k.text} (${fmtDate(k.datum)}): ${fmtEUR(k.betrag)}`),
       `Zwischensumme: ${fmtEUR(zwischen)}`,
-      ...zahlungen.map((z) => `abzüglich ${z.text} vom ${fmtDate(z.datum)}: ${fmtEUR(z.betrag)}`),
+      ...zahlungen.map((z) => `abzüglich ${z.text} vom ${fmtDate(z.datum)}: ${fmtEUR(Math.abs(z.betrag))}`),
       `Restforderung: ${fmtEUR(stand.gesamt)} (Hauptforderung ${fmtEUR(stand.hauptforderung)}, Zinsen ${fmtEUR(stand.zinsen)}, Kosten ${fmtEUR(stand.kosten)})`,
-      `Weitere Zinsen in Höhe von ${aufschlag} Prozentpunkten über dem jeweiligen Basiszinssatz aus ${fmtEUR(stand.hauptforderung)} seit ${fmtDate(addDays(stichtag, 1))}.`,
+      ueberzahlung > 0 ? `Überzahlung: ${fmtEUR(ueberzahlung)} – an den Schuldner zu erstatten.` : "",
+      weitereZinsen
+        ? `Weitere Zinsen in Höhe von ${aufschlag} Prozentpunkten über dem jeweiligen Basiszinssatz aus ${fmtEUR(stand.hauptforderung)} seit ${fmtDate(addDays(stichtag, 1))}.`
+        : "Die Forderung ist vollständig ausgeglichen.",
     ]
       .filter(Boolean)
       .join("\n");
@@ -834,6 +927,16 @@ function Forderungsaufstellung({
         </>
       }
     >
+      {mahnkosten !== undefined && onMahnkosten && (
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[16px] bg-violet-soft px-4 py-3 text-[12.5px] text-fg-2">
+          <span className="min-w-0 flex-1 basis-[240px]">
+            <span className="font-semibold text-fg">Rechtsanwaltskosten des Mahnverfahrens fehlen</span> ({fmtEUR(mahnkosten)}, Nr. 3305, 3308, 7002 VV RVG) – im Vollstreckungsbescheid tituliert.
+          </span>
+          <Button size="sm" variant="secondary" icon={<Plus className="size-4" />} onClick={onMahnkosten}>
+            Übernehmen
+          </Button>
+        </div>
+      )}
       <div className="paper px-5 py-6 sm:px-10 sm:py-9">
         <Briefkopf tenant={tenant} absenderZeile={false} />
         <div className="mt-6 text-[19px] font-semibold tracking-[-0.02em]">Forderungsaufstellung</div>
@@ -916,13 +1019,23 @@ function Forderungsaufstellung({
             <span>Gesamtforderung</span>
             <span className="num">{fmtEUR(stand.gesamt)}</span>
           </div>
+          {ueberzahlung > 0 && (
+            <div className="flex justify-between py-1 font-semibold">
+              <span>Überzahlung (an den Schuldner zu erstatten)</span>
+              <span className="num">{fmtEUR(ueberzahlung)}</span>
+            </div>
+          )}
         </div>
 
         <div className="mt-6 space-y-2 text-[12px] leading-relaxed">
-          <p>
-            Zuzüglich weiterer Zinsen in Höhe von {aufschlag} Prozentpunkten über dem jeweiligen Basiszinssatz (§ 288 Abs. {verbraucher ? "1" : "2"} BGB) aus{" "}
-            <strong className="num">{fmtEUR(stand.hauptforderung)}</strong> seit dem {fmtDate(addDays(stichtag, 1))} sowie der Kosten der Zwangsvollstreckung.
-          </p>
+          {weitereZinsen ? (
+            <p>
+              Zuzüglich weiterer Zinsen in Höhe von {aufschlag} Prozentpunkten über dem jeweiligen Basiszinssatz (§ 288 Abs. {verbraucher ? "1" : "2"} BGB) aus{" "}
+              <strong className="num">{fmtEUR(stand.hauptforderung)}</strong> seit dem {fmtDate(addDays(stichtag, 1))} sowie der Kosten der Zwangsvollstreckung.
+            </p>
+          ) : (
+            <p>Die Forderung ist zum Stichtag vollständig ausgeglichen{ueberzahlung > 0 ? "; der überzahlte Betrag wird an den Schuldner erstattet" : ""}.</p>
+          )}
           <p className="text-[11px] opacity-60">
             Zahlungen wurden gemäß § 367 Abs. 1 BGB zunächst auf die Kosten, dann auf die Zinsen und zuletzt auf die Hauptforderung angerechnet. Zinsberechnung taggenau (act/365).
           </p>

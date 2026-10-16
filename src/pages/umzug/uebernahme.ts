@@ -4,7 +4,7 @@ import type { Akte, Aktivitaet, Bundesland, CollectionKey, Dokument, Frist, Kont
 import { addDays, fmtDate, nowLocal, today, uid } from "@/core/dates";
 import { istWerktag } from "@/core/feiertage";
 import { useData } from "@/store/data";
-import { normName, type DublettenAktion, type MigZeile } from "./zuordnung";
+import { ORG, grundlageAus, normName, type DublettenAktion, type MigZeile } from "./zuordnung";
 
 export type Entitaet = "kontakte" | "akten" | "fristen" | "dokumente";
 
@@ -27,11 +27,11 @@ export interface Ergebnis {
   uebersprungen: number;
   fehlerhaft: number;
   fristen: number;
+  /** davon Notfristen und Fristen – sie gehen in die Vier-Augen-Kontrolle (Wiedervorlagen und Termine nicht) */
+  fristenKontrolle: number;
   dokumente: number;
   undo: UndoInfo;
 }
-
-const ORG = /\b(GmbH|AG|KG|UG|eG|e\.\s?V\.|GbR|mbH|OHG|SE|PartG|Stadt|Landkreis|Gemeinde|Versicherung|Erbengemeinschaft|Bußgeldstelle|Stadtwerke)\b/i;
 
 function neuerKontakt(name: string, rolle: "mandant" | "gegner", system: string): Kontakt {
   const org = ORG.test(name);
@@ -48,10 +48,14 @@ function neuerKontakt(name: string, rolle: "mandant" | "gegner", system: string)
   };
 }
 
-function vorWerktag(datum: string, land: Bundesland): string {
-  let d = addDays(datum, -1);
+/** Kanzleistandard für übernommene Fristen ohne Rechenweg: Vorfrist eine Woche vor Fristende, auf den Werktag davor gelegt – nie vor heute. */
+const VORFRIST_TAGE = 7;
+
+function vorfristFuer(datum: string, land: Bundesland, heute: string): string | undefined {
+  if (datum <= heute) return undefined;
+  let d = addDays(datum, -VORFRIST_TAGE);
   for (let i = 0; i < 7 && !istWerktag(d, land); i++) d = addDays(d, -1);
-  return d;
+  return d < heute ? heute : d;
 }
 
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -68,7 +72,7 @@ export async function fuehreUmzugAus(opts: {
   const { zeilen, aktionFuer, system, user, team, bundesland, onFortschritt } = opts;
   const st = () => useData.getState();
   const undo: UndoInfo = { erstellt: [], vorher: [] };
-  const e: Ergebnis = { kontakteNeu: 0, kontakteZusammengefuehrt: 0, aktenNeu: 0, aktenAktualisiert: 0, aktenUmbenannt: 0, uebersprungen: 0, fehlerhaft: 0, fristen: 0, dokumente: 0, undo };
+  const e: Ergebnis = { kontakteNeu: 0, kontakteZusammengefuehrt: 0, aktenNeu: 0, aktenAktualisiert: 0, aktenUmbenannt: 0, uebersprungen: 0, fehlerhaft: 0, fristen: 0, fristenKontrolle: 0, dokumente: 0, undo };
 
   const anwalt = user.rolle === "partner" || user.rolle === "anwalt" ? user : team.find((u) => u.rolle === "partner" || u.rolle === "anwalt") ?? user;
   const refa = team.find((u) => u.rolle === "refa");
@@ -221,22 +225,29 @@ export async function fuehreUmzugAus(opts: {
     const titel = z.fristTitel || "Frist aus Altsystem";
     const schonDa = st().data.fristen.some((f) => f.akteId === akte.id && f.datum === z.fristDatum && f.titel === titel);
     if (!schonDa) {
+      const echteFrist = z.fristTyp === "notfrist" || z.fristTyp === "frist";
+      const grundlage = grundlageAus(z.fristTitel);
       const frist: Frist = {
         id: uid("f"),
         akteId: akte.id,
         titel,
-        typ: "frist",
+        typ: z.fristTyp,
         datum: z.fristDatum!,
-        vorfrist: vorWerktag(z.fristDatum!, bundesland),
+        vorfrist: echteFrist ? vorfristFuer(z.fristDatum!, bundesland, heute) : undefined,
+        ...(grundlage ? { grundlage } : {}),
         status: "offen",
         verantwortlichId: akte.bearbeiterId,
         quelle: "migration",
-        notiz: `Aus ${system} übernommen – bitte im Vier-Augen-Prinzip prüfen und ggf. mit dem Fristenrechner nachrechnen.`,
+        notiz: [
+          echteFrist ? `Aus ${system} übernommen – Datum laut Altsystem, nicht nachgerechnet. Bitte im Vier-Augen-Prinzip prüfen und mit dem Fristenrechner nachrechnen.` : `Aus ${system} übernommen (${z.fristTyp === "termin" ? "Termin" : "Wiedervorlage"}).`,
+          z.fristWarnung,
+        ].filter(Boolean).join(" "),
         createdAt: nowLocal(),
       };
       st().upsert("fristen", frist);
       undo.erstellt.push({ col: "fristen", id: frist.id });
       e.fristen++;
+      if (echteFrist) e.fristenKontrolle++;
     }
     onFortschritt("fristen", { done: i + 1, total: mitFrist.length });
     await pause(fPause);
@@ -285,7 +296,7 @@ export async function fuehreUmzugAus(opts: {
   st().log({
     akteur: "system",
     userId: user.id,
-    text: `Umzug aus ${system}: ${e.aktenNeu} Akten neu, ${e.aktenAktualisiert} aktualisiert, ${e.kontakteNeu} Kontakte, ${e.fristen} Fristen zur Kontrolle vorgelegt`,
+    text: `Umzug aus ${system}: ${e.aktenNeu} Akten neu, ${e.aktenAktualisiert} aktualisiert, ${e.kontakteNeu} Kontakte, ${e.fristenKontrolle} Fristen zur Kontrolle vorgelegt${e.fristen > e.fristenKontrolle ? `, ${e.fristen - e.fristenKontrolle} Wiedervorlagen/Termine` : ""}`,
   });
   return e;
 }

@@ -44,7 +44,11 @@ function entwurfDokId(akteId: string, r: Fallanalyse) {
 }
 
 /** KI-Fallanalyse einer Akte: animierte Analyse-Pipeline, Erfolgsaussicht, Präzedenzfälle, nächste Schritte, Entwurf. */
-export function FallanalysePanel({ akteId, kompakt }: { akteId: string; kompakt?: boolean }) {
+/**
+ * `autoStart`: startet die Analyse einmal von selbst (Deep-Link), sofern noch kein Ergebnis im Cache liegt;
+ * `onAutoStart` meldet, dass der Auftrag erledigt ist (z. B. um ?start=1 aus der Adresse zu entfernen).
+ */
+export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { akteId: string; kompakt?: boolean; autoStart?: boolean; onAutoStart?: () => void }) {
   const data = useData((s) => s.data);
   const epoch = useData((s) => s.epoch);
   const { user, tenant } = useKanzlei();
@@ -57,6 +61,7 @@ export function FallanalysePanel({ akteId, kompakt }: { akteId: string; kompakt?
   const [fehler, setFehler] = useState<string | null>(null);
   const [stream, setStream] = useState("");
   const ctl = useRef<AbortController | null>(null);
+  const startRef = useRef<(() => Promise<void>) | null>(null);
   const nav = useNavigate();
 
   useEffect(() => {
@@ -66,6 +71,13 @@ export function FallanalysePanel({ akteId, kompakt }: { akteId: string; kompakt?
     setLaeuft(false);
     return () => ctl.current?.abort();
   }, [schluessel]);
+
+  useEffect(() => {
+    if (!autoStart) return;
+    // Liegt bereits ein Ergebnis vor, wird es nur angezeigt.
+    if (!cache.get(schluessel)) void startRef.current?.();
+    onAutoStart?.();
+  }, [autoStart, schluessel]);
 
   if (!akte) return null;
 
@@ -107,6 +119,8 @@ export function FallanalysePanel({ akteId, kompakt }: { akteId: string; kompakt?
       if (ctl.current === c) setLaeuft(false);
     }
   };
+
+  startRef.current = start;
 
   const oeffneEntwurf = () => {
     if (entwurfId) nav(`/akten/${akteId}?tab=dokumente&dok=${encodeURIComponent(entwurfId)}`);
@@ -225,7 +239,7 @@ export function FallanalysePanel({ akteId, kompakt }: { akteId: string; kompakt?
       {/* Kopf: Erfolgsaussicht */}
       <motion.div {...stagger(0)}>
         <Card className="ai-ring overflow-hidden">
-          <div className="grid gap-6 lg:grid-cols-[auto_1fr_auto] lg:items-center">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[auto_1fr_auto] lg:items-center">
             <Gauge prozent={r.erfolgsaussicht.prozent} farbe={farbe} />
             <div className="min-w-0">
               <div className="mb-1.5 flex flex-wrap items-center gap-2">
@@ -248,96 +262,101 @@ export function FallanalysePanel({ akteId, kompakt }: { akteId: string; kompakt?
         </Card>
       </motion.div>
 
-      <div className={cn("grid gap-4 [&>*]:min-w-0", !kompakt && "xl:grid-cols-2")}>
-        <motion.div {...stagger(1)}>
-          <Card className="h-full">
-            <SectionTitle icon={<Scale className="size-4" />} title="Rechtsfragen" />
-            <ol className="grid gap-2">
-              {r.rechtsfragen.map((q, i) => (
-                <li key={i} className="flex gap-3 text-[13.5px] leading-snug text-fg-2">
-                  <span className="num mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-ink-soft text-[11px] font-semibold text-ink">{i + 1}</span>
-                  {q}
-                </li>
-              ))}
-            </ol>
-          </Card>
-        </motion.div>
-
-        <motion.div {...stagger(2)}>
-          <Card className="h-full">
-            <SectionTitle icon={<Library className="size-4" />} title="Präzedenzfälle aus der Fall-Datenbank" />
-            <div className="grid gap-2.5">
-              {r.praezedenzfaelle.map((p) => (
-                <button key={p.id} type="button" onClick={() => nav(`/fall-datenbank?id=${p.id}`)} className="group min-w-0 rounded-[14px] p-3 text-left ring-1 ring-[var(--line)] transition-all hover:bg-ink-softer hover:ring-[var(--ink-soft)]">
-                  <div className="flex items-center gap-2">
-                    <span className="mono text-[12px] font-semibold text-ink">
-                      {p.gericht} {p.az}
-                    </span>
-                    <span className="truncate text-[12.5px] font-medium">{p.titel}</span>
-                    <ChevronRight className="ml-auto size-4 shrink-0 text-fg-4 transition-transform group-hover:translate-x-0.5" />
-                  </div>
-                  <div className="mt-1.5 flex items-center gap-2">
-                    <div className="bar h-1 flex-1">
-                      <motion.span initial={{ width: 0 }} animate={{ width: `${p.relevanz}%` }} transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }} />
-                    </div>
-                    <span className="num text-[11px] text-fg-3">{p.relevanz} %</span>
-                  </div>
-                  <p className="mt-1.5 text-[12.5px] leading-snug text-fg-3">{p.warum}</p>
-                </button>
-              ))}
-              {!r.praezedenzfaelle.length && <p className="text-[13px] text-fg-3">Keine passende Entscheidung im Demo-Bestand gefunden.</p>}
-            </div>
-          </Card>
-        </motion.div>
-
-        <motion.div {...stagger(3)}>
-          <Card className="h-full">
-            <SectionTitle icon={<CheckCircle2 className="size-4" />} title="Was für uns spricht" tone="green" />
-            <ul className="grid gap-2">
-              {r.argumentePro.map((a, i) => (
-                <li key={i} className="flex gap-2.5 text-[13.5px] leading-snug text-fg-2">
-                  <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-green" />
-                  {a}
-                </li>
-              ))}
-            </ul>
-            <div className="my-4 h-px bg-[var(--line)]" />
-            <SectionTitle icon={<XCircle className="size-4" />} title="Was dagegen spricht" tone="seal" />
-            <ul className="grid gap-2">
-              {r.argumenteContra.map((a, i) => (
-                <li key={i} className="flex gap-2.5 text-[13.5px] leading-snug text-fg-2">
-                  <XCircle className="mt-0.5 size-4 shrink-0 text-seal" />
-                  {a}
-                </li>
-              ))}
-            </ul>
-          </Card>
-        </motion.div>
-
-        <motion.div {...stagger(4)}>
-          <Card className="h-full">
-            <SectionTitle icon={<ListChecks className="size-4" />} title="Nächste Schritte" />
-            <ol className="relative grid gap-3 border-l border-[var(--line)] pl-5">
-              {r.naechsteSchritte.map((s, i) => (
-                <li key={i} className="relative">
-                  <span className="absolute -left-[27px] top-0.5 grid size-[14px] place-items-center rounded-full bg-[var(--surface)] ring-2 ring-[var(--ink)]" />
-                  <div className="text-[13.5px] font-semibold">{s.titel}</div>
-                  <div className="text-[12.5px] leading-snug text-fg-3">{s.detail}</div>
-                </li>
-              ))}
-            </ol>
-            {r.risiken.length > 0 && (
-              <div className="mt-4 rounded-[14px] bg-amber-soft p-3">
-                {r.risiken.map((x, i) => (
-                  <div key={i} className="flex gap-2 text-[12.5px] leading-snug text-fg-2">
-                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber" />
-                    {x}
-                  </div>
+      {/* Zwei unabhängige Spalten ab xl: Karten unterschiedlicher Höhe strecken sich nicht gegenseitig (keine halbleeren
+          Karten). Darunter lösen sich die Spalten auf (contents), die Reihenfolge bleibt 1–4. */}
+      <div className={cn("grid gap-4 [&>*]:min-w-0", !kompakt && "xl:grid-cols-2 xl:items-start")}>
+        <div className={cn("contents", !kompakt && "xl:grid xl:gap-4")}>
+          <motion.div {...stagger(1)} className="order-1 min-w-0">
+            <Card className="h-full">
+              <SectionTitle icon={<Scale className="size-4" />} title="Rechtsfragen" />
+              <ol className="grid gap-2">
+                {r.rechtsfragen.map((q, i) => (
+                  <li key={i} className="flex gap-3 text-[13.5px] leading-snug text-fg-2">
+                    <span className="num mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-ink-soft text-[11px] font-semibold text-ink">{i + 1}</span>
+                    {q}
+                  </li>
                 ))}
+              </ol>
+            </Card>
+          </motion.div>
+
+          <motion.div {...stagger(3)} className="order-3 min-w-0">
+            <Card className="h-full">
+              <SectionTitle icon={<CheckCircle2 className="size-4" />} title="Was für uns spricht" tone="green" />
+              <ul className="grid gap-2">
+                {r.argumentePro.map((a, i) => (
+                  <li key={i} className="flex gap-2.5 text-[13.5px] leading-snug text-fg-2">
+                    <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-green" />
+                    {a}
+                  </li>
+                ))}
+              </ul>
+              <div className="my-4 h-px bg-[var(--line)]" />
+              <SectionTitle icon={<XCircle className="size-4" />} title="Was dagegen spricht" tone="seal" />
+              <ul className="grid gap-2">
+                {r.argumenteContra.map((a, i) => (
+                  <li key={i} className="flex gap-2.5 text-[13.5px] leading-snug text-fg-2">
+                    <XCircle className="mt-0.5 size-4 shrink-0 text-seal" />
+                    {a}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          </motion.div>
+        </div>
+        <div className={cn("contents", !kompakt && "xl:grid xl:gap-4")}>
+          <motion.div {...stagger(2)} className="order-2 min-w-0">
+            <Card className="h-full">
+              <SectionTitle icon={<Library className="size-4" />} title="Präzedenzfälle aus der Fall-Datenbank" />
+              <div className="grid gap-2.5">
+                {r.praezedenzfaelle.map((p) => (
+                  <button key={p.id} type="button" onClick={() => nav(`/fall-datenbank?id=${p.id}`)} className="group min-w-0 rounded-[14px] p-3 text-left ring-1 ring-[var(--line)] transition-all hover:bg-ink-softer hover:ring-[var(--ink-soft)]">
+                    <div className="flex items-center gap-2">
+                      <span className="mono text-[12px] font-semibold text-ink">
+                        {p.gericht} {p.az}
+                      </span>
+                      <span className="truncate text-[12.5px] font-medium">{p.titel}</span>
+                      <ChevronRight className="ml-auto size-4 shrink-0 text-fg-4 transition-transform group-hover:translate-x-0.5" />
+                    </div>
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <div className="bar h-1 flex-1">
+                        <motion.span initial={{ width: 0 }} animate={{ width: `${p.relevanz}%` }} transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }} />
+                      </div>
+                      <span className="num text-[11px] text-fg-3">{p.relevanz} %</span>
+                    </div>
+                    <p className="mt-1.5 text-[12.5px] leading-snug text-fg-3">{p.warum}</p>
+                  </button>
+                ))}
+                {!r.praezedenzfaelle.length && <p className="text-[13px] text-fg-3">Keine passende Entscheidung im Demo-Bestand gefunden.</p>}
               </div>
-            )}
-          </Card>
-        </motion.div>
+            </Card>
+          </motion.div>
+
+          <motion.div {...stagger(4)} className="order-4 min-w-0">
+            <Card className="h-full">
+              <SectionTitle icon={<ListChecks className="size-4" />} title="Nächste Schritte" />
+              <ol className="relative grid gap-3 border-l border-[var(--line)] pl-5">
+                {r.naechsteSchritte.map((s, i) => (
+                  <li key={i} className="relative">
+                    <span className="absolute -left-[27px] top-0.5 grid size-[14px] place-items-center rounded-full bg-[var(--surface)] ring-2 ring-[var(--ink)]" />
+                    <div className="text-[13.5px] font-semibold">{s.titel}</div>
+                    <div className="text-[12.5px] leading-snug text-fg-3">{s.detail}</div>
+                  </li>
+                ))}
+              </ol>
+              {r.risiken.length > 0 && (
+                <div className="mt-4 rounded-[14px] bg-amber-soft p-3">
+                  {r.risiken.map((x, i) => (
+                    <div key={i} className="flex gap-2 text-[12.5px] leading-snug text-fg-2">
+                      <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber" />
+                      {x}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </motion.div>
+        </div>
       </div>
 
       <motion.div {...stagger(5)}>

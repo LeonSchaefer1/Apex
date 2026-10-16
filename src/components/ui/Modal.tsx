@@ -6,6 +6,17 @@ import { create } from "zustand";
 import { cn } from "@/lib/cn";
 import { Button } from "./Button";
 
+/** Zählt offene Dialoge (Modal, Drawer) – z. B. damit die schwebende Tab-Leiste dahinter verschwindet. */
+const useDialoge = create<{ offen: number }>(() => ({ offen: 0 }));
+function useDialogZaehlung(open: boolean) {
+  useEffect(() => {
+    if (!open) return;
+    useDialoge.setState((s) => ({ offen: s.offen + 1 }));
+    return () => useDialoge.setState((s) => ({ offen: Math.max(0, s.offen - 1) }));
+  }, [open]);
+}
+export const useDialogOffen = () => useDialoge((s) => s.offen > 0);
+
 function useEsc(open: boolean, onClose: () => void) {
   useEffect(() => {
     if (!open) return;
@@ -17,6 +28,7 @@ function useEsc(open: boolean, onClose: () => void) {
 
 export function Modal({ open, onClose, title, subtitle, children, footer, size = "md", icon }: { open: boolean; onClose: () => void; title: ReactNode; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode; size?: "sm" | "md" | "lg" | "xl"; icon?: ReactNode }) {
   useEsc(open, onClose);
+  useDialogZaehlung(open);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (open) setTimeout(() => ref.current?.querySelector<HTMLElement>("input,textarea,select,button[data-autofocus]")?.focus(), 60);
@@ -65,6 +77,7 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
 
 export function Drawer({ open, onClose, title, subtitle, children, footer, width = 560, icon }: { open: boolean; onClose: () => void; title: ReactNode; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode; width?: number; icon?: ReactNode }) {
   useEsc(open, onClose);
+  useDialogZaehlung(open);
   return createPortal(
     <AnimatePresence>
       {open && (

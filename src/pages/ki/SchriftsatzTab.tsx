@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import {
-  AlertTriangle, BookCheck, Check, CircleAlert, Copy, FastForward, FileSignature, FolderOpen, MessageSquareText, PenLine, Receipt, RotateCcw, Save, Scale, Send,
+  AlertTriangle, BookCheck, Check, CircleAlert, Copy, FastForward, FileSignature, FolderOpen, MessageSquareReply, MessageSquareText, PenLine, Receipt, RotateCcw, Save, Scale, Send,
   ShieldCheck, Sparkles, Square, Wand2,
 } from "lucide-react";
 import { DemoModus, llmText } from "@/ai/llm";
@@ -17,7 +17,7 @@ import { cn } from "@/lib/cn";
 import { kopiereText } from "@/pages/falldb/zwischenablage";
 import { pruefeZitate } from "@/pages/falldb/recherche";
 import { KiSchritte, type KiSchritt } from "./KiSchritte";
-import { SCHRIFTSATZ_ARTEN, artInfo, dokumentName, entwurfOffline, entwurfPrompt, type SchriftsatzArt, type Ton } from "./schriftsatz";
+import { artInfo, artenFuer, dokumentName, entwurfOffline, entwurfPrompt, mandantRolle, type SchriftsatzArt, type Ton } from "./schriftsatz";
 import { standardAkte } from "./FallanalyseTab";
 
 const ICONS: Record<SchriftsatzArt, ReactNode> = {
@@ -25,6 +25,7 @@ const ICONS: Record<SchriftsatzArt, ReactNode> = {
   deckung: <ShieldCheck className="size-4" />,
   aufforderung: <Send className="size-4" />,
   klageerwiderung: <Scale className="size-4" />,
+  replik: <MessageSquareReply className="size-4" />,
   kosten: <Receipt className="size-4" />,
 };
 
@@ -54,7 +55,11 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
   const akteId = (akteParam && data.akten.some((a) => a.id === akteParam) ? akteParam : standardAkte(data.akten)?.id) ?? "";
   const akte = data.akten.find((a) => a.id === akteId);
 
-  const [art, setArt] = useState<SchriftsatzArt>("sachstand");
+  const [artWahl, setArt] = useState<SchriftsatzArt>("sachstand");
+  // Klagt die Mandantschaft, steht statt der Klageerwiderung die Replik zur Wahl – die Auswahl folgt der Akte.
+  const arten = useMemo(() => artenFuer(akte, data), [akte, data]);
+  const rolle = useMemo(() => (akte ? mandantRolle(akte, data) : undefined), [akte, data]);
+  const art: SchriftsatzArt = arten.some((a) => a.key === artWahl) ? artWahl : artWahl === "klageerwiderung" ? "replik" : artWahl === "replik" ? "klageerwiderung" : "sachstand";
   const [ton, setTon] = useState<Ton>("sachlich");
   const [hinweise, setHinweise] = useState("");
   const [status, setStatus] = useState<Status>("leer");
@@ -261,11 +266,13 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
   const hinweisAkte =
     akte && art === "deckung" && !akte.rsv
       ? "Für diese Akte ist keine Rechtsschutzversicherung hinterlegt – der Entwurf enthält Platzhalter."
-      : akte && art === "klageerwiderung" && !akte.gerichtsAz
-        ? "Für diese Akte ist kein Gerichtsverfahren hinterlegt. Das Gerüst geht davon aus, dass Ihre Mandantschaft verklagt wurde – Parteirollen und Aktenzeichen bitte prüfen."
-        : akte && art === "kosten" && !akte.gegenstandswert
-          ? "Ohne Gegenstandswert kann keine Gebühr berechnet werden."
-          : null;
+      : akte && (art === "klageerwiderung" || art === "replik") && !akte.gerichtsAz
+        ? `Für diese Akte ist kein Gerichtsverfahren hinterlegt. Das Gerüst geht davon aus, dass Ihre Mandantschaft ${art === "replik" ? "klagt" : "verklagt wurde"} – Parteirollen und Aktenzeichen bitte prüfen.`
+        : akte && art === "klageerwiderung" && !rolle
+          ? "Ob Ihre Mandantschaft klagt oder verklagt wurde, geht aus der Akte nicht eindeutig hervor. Das Gerüst geht von einer Klageerwiderung aus – Parteirollen bitte prüfen."
+          : akte && art === "kosten" && !akte.gegenstandswert
+            ? "Ohne Gegenstandswert kann keine Gebühr berechnet werden."
+            : null;
 
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(300px,380px)_minmax(0,1fr)] lg:items-start">
@@ -294,7 +301,7 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
         <div className="mt-4">
           <div className="label">Dokumentart</div>
           <div role="radiogroup" aria-label="Dokumentart" className="grid grid-cols-[minmax(0,1fr)] gap-1.5">
-            {SCHRIFTSATZ_ARTEN.map((a) => {
+            {arten.map((a) => {
               const aktiv = a.key === art;
               return (
                 <button

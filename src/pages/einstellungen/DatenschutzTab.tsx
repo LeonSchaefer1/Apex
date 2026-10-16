@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { Building, Cloud, DatabaseBackup, FileClock, KeyRound, Lock, MonitorCheck, RotateCcw, Scale, Server, ShieldAlert, ShieldCheck, Users } from "lucide-react";
-import { getInfo } from "@/lib/backend";
+import { darfVerwalten, getBackend, getInfo } from "@/lib/backend";
 import { relTime } from "@/core/dates";
 import { useCol, useData } from "@/store/data";
-import { useKanzlei } from "@/store/session";
+import { useKanzlei, useSession } from "@/store/session";
 import { toast } from "@/store/ui";
 import { Avatar, Button, Chip, confirmDialog } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -27,7 +27,8 @@ const RECHT = [
 
 export function DatenschutzTab() {
   const info = getInfo();
-  const { tenant, team } = useKanzlei();
+  const { tenant, team, user } = useKanzlei();
+  const darf = darfVerwalten(user.rolle);
   const akt = useCol("aktivitaeten");
   const [laedt, setLaedt] = useState(false);
   const demo = info?.modus !== "server";
@@ -37,7 +38,7 @@ export function DatenschutzTab() {
   const zuruecksetzen = async () => {
     const ok = await confirmDialog({
       titel: "Demo-Daten zurücksetzen?",
-      text: "Alle Akten, Fristen, Nachrichten, Rechnungen und Aktivitäten dieser Kanzlei werden auf die Beispieldaten zurückgesetzt. Ihre Änderungen gehen dabei verloren.",
+      text: `Alle Akten, Fristen, Nachrichten, Rechnungen und Aktivitäten dieser Kanzlei werden auf die Beispieldaten zurückgesetzt. Ihre Änderungen gehen dabei verloren.${demo ? " Entfernte Beispiel-Zugänge werden wiederhergestellt." : ""}`,
       bestaetigen: "Zurücksetzen",
       gefahr: true,
     });
@@ -45,6 +46,11 @@ export function DatenschutzTab() {
     setLaedt(true);
     try {
       await useData.getState().reset();
+      if (demo) {
+        // entfernte Beispiel-Zugänge sind wieder da – Team der Sitzung neu laden
+        const s = await getBackend().me();
+        if (s) useSession.getState().setSitzung(s);
+      }
       toast("Demo-Daten zurückgesetzt", { text: "Die Beispielkanzlei ist wieder im Ausgangszustand.", ton: "erfolg" });
     } catch (e) {
       toast("Zurücksetzen fehlgeschlagen", { text: e instanceof Error ? e.message : "Bitte erneut versuchen.", ton: "fehler" });
@@ -132,9 +138,11 @@ export function DatenschutzTab() {
         <div className="mt-4 flex flex-wrap items-center gap-3 rounded-[16px] bg-[var(--surface)] p-4 ring-1 ring-[var(--line)]">
           <div className="min-w-0 flex-1 basis-[220px]">
             <div className="text-[14px] font-semibold">Demo-Daten zurücksetzen</div>
-            <div className="text-[12.5px] text-fg-3">Setzt alle Daten von {tenant.kurzname} auf die Beispieldaten zurück – z. B. vor einer Präsentation.</div>
+            <div className="text-[12.5px] text-fg-3">
+              {darf ? `Setzt alle Daten von ${tenant.kurzname} auf die Beispieldaten zurück – z. B. vor einer Präsentation.` : "Den Datenbestand zurücksetzen dürfen Partner und Administration Ihrer Kanzlei."}
+            </div>
           </div>
-          <Button variant="danger" icon={<RotateCcw className="size-4" />} loading={laedt} onClick={() => void zuruecksetzen()}>
+          <Button variant="danger" icon={<RotateCcw className="size-4" />} loading={laedt} disabled={!darf} onClick={() => void zuruecksetzen()}>
             Zurücksetzen
           </Button>
         </div>

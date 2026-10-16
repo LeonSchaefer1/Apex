@@ -10,6 +10,7 @@ import { NAV } from "@/app/nav";
 import { useData } from "@/store/data";
 import type { Akte, Frist, SessionInfo, FristTyp, TenantData } from "@/core/types";
 import { DemoModus, llmAgent, type AgentTool, type LlmMessage } from "./llm";
+import { bewertePraezedenz, findePraezedenzfaelle } from "./kontext";
 
 export interface AssistentLink {
   label: string;
@@ -30,6 +31,7 @@ export const WERKZEUG_LABEL: Record<string, string> = {
   frist_anlegen: "Frist eingetragen",
   rvg_berechnen: "RVG berechnet",
   rechtsprechung_suchen: "Fall-Datenbank durchsucht",
+  entscheidung_erlaeutern: "Entscheidung erläutert",
   navigiere: "Bereich geöffnet",
   hilfe_artikel: "Wiki durchsucht",
   ansprechpartner: "Ansprechpartner abgerufen",
@@ -123,7 +125,7 @@ function nurBereich(text: string): Bereich | undefined {
 }
 
 /** Werkzeuge = echte Funktionen der App, die die KI aufrufen darf. */
-const PRIORITAET = ["hilfe_artikel", "fristen_liste", "suche_akten", "akte_details", "frist_berechnen", "frist_anlegen", "navigiere", "ansprechpartner", "rueckruf_anfordern", "rechtsprechung_suchen", "rvg_berechnen", "posteingang_status"];
+const PRIORITAET = ["hilfe_artikel", "fristen_liste", "suche_akten", "akte_details", "frist_berechnen", "frist_anlegen", "navigiere", "ansprechpartner", "rueckruf_anfordern", "entscheidung_erlaeutern", "rechtsprechung_suchen", "rvg_berechnen", "posteingang_status"];
 
 export function werkzeuge(ctx: Kontext): AgentTool[] {
   return alleWerkzeuge(ctx).sort((a, b) => PRIORITAET.indexOf(a.name) - PRIORITAET.indexOf(b.name));
@@ -199,6 +201,121 @@ export function fristenrechnerLink(regelKey: string, ereignis: string, akteId?: 
   const p = new URLSearchParams({ rechner: "1", regel: regelKey, ereignis });
   if (akteId) p.set("akte", akteId);
   return `/fristen?${p.toString()}`;
+}
+
+// ───────────── Argumentationshilfe zu einer Entscheidung der Fall-Datenbank ─────────────
+
+/**
+ * Argumentationsbausteine zu den Leitentscheidungen des Demo-Auszugs (kuratiert). Für andere Entscheidungen
+ * entstehen die Bausteine aus Leitsatz, Bedeutung und Normen.
+ */
+const ARGUMENTATION: Record<string, string[]> = {
+  "bag-2azr541-09": [
+    "Kein Freibrief, aber Abwägung: Auch ein Bagatelldelikt kann an sich ein wichtiger Grund sein – entscheidend ist die Interessenabwägung im Einzelfall (§ 626 Abs. 1 BGB).",
+    "Vertrauenskapital betonen: Eine lange, beanstandungsfreie Beschäftigung ist als erworbenes Vertrauen zu gewichten; ein einmaliger Vorfall mit geringem Schaden zehrt es nicht ohne Weiteres auf.",
+    "Abmahnung als milderes Mittel: Ist eine Verhaltensänderung zu erwarten, genügt regelmäßig eine Abmahnung (Ultima-Ratio-Prinzip).",
+    "Konkret vortragen: Dauer der Beschäftigung, fehlende Abmahnungen, Höhe des Schadens und Umstände der Tat (z. B. Duldung durch Vorgesetzte).",
+  ],
+  "bag-2azr133-18": [
+    "Für die Arbeitgeberseite günstig: Aufnahmen einer rechtmäßigen offenen Videoüberwachung dürfen auch nach längerer Zeit verwertet werden.",
+    "Verteidigung: Rechtmäßigkeit der Überwachung bestreiten – Hinweisschilder, Zweckbindung, Beteiligung des Betriebsrats (§ 87 Abs. 1 Nr. 6 BetrVG).",
+    "Der Verwertung im Prozess ausdrücklich widersprechen, wenn die Überwachung rechtswidrig war.",
+  ],
+  "bag-2azr681-16": [
+    "Beruht der Vorwurf auf verdeckter Überwachung ohne konkreten Verdacht, besteht ein Beweisverwertungsverbot.",
+    "Der Verwertung frühzeitig widersprechen und die Anlasslosigkeit der Überwachung darlegen.",
+  ],
+  "bag-1abr22-21": [
+    "Die Pflicht zur Arbeitszeiterfassung stützt Auskunfts- und Vorlageansprüche zu den Arbeitszeiten.",
+    "Achtung: An der Darlegungslast im Überstundenprozess ändert sie nach der Rechtsprechung des BAG nichts – Stunden nach Tagen und Uhrzeiten aufstellen und Anordnung oder Duldung vortragen.",
+  ],
+  "bag-9azr423-16": [
+    "Urlaub verfällt nur, wenn die Arbeitgeberin konkret zur Urlaubnahme aufgefordert und auf den Verfall hingewiesen hat – das muss sie beweisen.",
+    "Bei Beendigung des Arbeitsverhältnisses Abgeltung des Resturlaubs (§ 7 Abs. 4 BUrlG) mitverlangen – auch im Abfindungsvergleich regeln.",
+  ],
+  "bgh-viiizr185-14": [
+    "Unrenovierte Übergabe darlegen und beweisen (Übergabeprotokoll, Fotos, Zeugen) – die Beweislast trägt die Mieterseite.",
+    "Fehlenden angemessenen Ausgleich vortragen (kein Mietnachlass, keine Renovierung durch die Vermieterin).",
+    "Folge: Die Renovierungsklausel ist unwirksam – Schadensersatz wegen unterlassener Schönheitsreparaturen und eine Aufrechnung gegen die Kaution entfallen.",
+  ],
+  "bgh-viiizr242-13": [
+    "Verlangt die Vermieterin anteilige Renovierungskosten aufgrund einer Quotenabgeltungsklausel, ist die Klausel unwirksam (§ 307 BGB).",
+    "Gemeinsam mit VIII ZR 185/14 vortragen, wenn Renovierungs- und Quotenklausel kombiniert sind.",
+  ],
+  "bgh-viiizr180-18": [
+    "Härtegründe substantiiert vortragen und mit ärztlichen Attesten belegen.",
+    "Ein Sachverständigengutachten beantragen – das Gericht muss gesundheitliche Härten besonders sorgfältig aufklären.",
+  ],
+  "bgh-vizr53-09": [
+    "Die Gleichwertigkeit der freien Werkstatt muss der Schädiger darlegen und beweisen.",
+    "Unzumutbar ist der Verweis regelmäßig bei Fahrzeugen bis drei Jahre oder durchgehender Wartung in der Markenwerkstatt – Alter und Scheckheft belegen.",
+  ],
+  "bgh-vizr233-17": [
+    "Dashcam-Aufnahmen sind trotz datenschutzrechtlicher Bedenken im Unfallprozess verwertbar – maßgeblich ist die Interessenabwägung.",
+    "Aufnahme sichern (Originaldatei, Metadaten) und den Unfallhergang anhand der Standbilder konkret darstellen.",
+  ],
+  "bgh-vizr398-02": [
+    "Bei fiktiver Abrechnung dürfen die Stundenverrechnungssätze einer markengebundenen Fachwerkstatt laut Gutachten zugrunde gelegt werden.",
+    "Grenzen beachten: Ein Verweis auf eine gleichwertige freie Werkstatt ist möglich (vgl. VI ZR 53/09).",
+  ],
+  "bgh-iiizr183-17": [
+    "Der Nutzungsvertrag geht im Wege der Gesamtrechtsnachfolge auf die Erben über (§ 1922 Abs. 1 BGB) – einschließlich der Kommunikationsinhalte.",
+    "Weder das postmortale Persönlichkeitsrecht noch das Fernmeldegeheimnis oder der Datenschutz stehen dem Zugang entgegen.",
+    "Erbschein vorlegen und dem Betreiber eine Frist zur Freischaltung setzen.",
+  ],
+  "bverfg-2bvr1616-18": [
+    "Frühzeitig Zugang zu Rohmessdaten, Eichschein und Lebensakte des Messgeräts bei der Bußgeldbehörde beantragen.",
+    "Bei Ablehnung gerichtliche Entscheidung beantragen (§ 62 OWiG) – der Anspruch folgt aus dem Recht auf ein faires Verfahren.",
+  ],
+  "bgh-xiizb601-15": [
+    "Maßstab ist allein das Kindeswohl (§ 1697a BGB) – nicht der Wunsch nach Gleichverteilung zwischen den Eltern.",
+    "Ein Wechselmodell setzt eine tragfähige Kommunikation und Kooperation der Eltern voraus; hohe Konfliktbelastung spricht dagegen.",
+  ],
+  "eugh-c65-09": [
+    "Im Rahmen der Nacherfüllung muss der Verkäufer auch Ausbau der mangelhaften und Einbau der Ersatzsache leisten oder die Kosten tragen – heute § 439 Abs. 3 BGB.",
+    "Voraussetzung: Die Käuferin hat die Sache gemäß ihrer Art und ihrem Verwendungszweck eingebaut.",
+  ],
+  "bgh-viizr46-17": [
+    "Im Werkvertragsrecht kann der Besteller den Schaden nicht nach fiktiven Mängelbeseitigungskosten bemessen.",
+    "Für die Unternehmerseite: Eine Aufrechnung mit fiktiven Mängelbeseitigungskosten zurückweisen. Für die Bestellerseite: Vorschuss (§ 637 Abs. 3 BGB), Minderwert oder tatsächliche Kosten verlangen.",
+  ],
+  "eugh-c311-18": [
+    "Bei Datenübermittlungen in die USA oder andere Drittländer die Rechtsgrundlage prüfen: Angemessenheitsbeschluss (z. B. Zertifizierung des Anbieters nach dem EU-US Data Privacy Framework) oder Standardvertragsklauseln mit ergänzenden Maßnahmen.",
+    "In der AVV Unterauftragsverarbeiter, Speicherorte und Zugriffsmöglichkeiten offenlegen lassen.",
+  ],
+};
+
+/** Entscheidung über ihr Aktenzeichen im Text („2 AZR 541/09“, „VIII ZR 185/14“, „C-55/18“). */
+export function findeEntscheidung(text: string): (typeof ENTSCHEIDUNGEN)[number] | undefined {
+  const n = ` ${normalize(text).replace(/\s+/g, " ")} `;
+  const passt = (az: string) => new RegExp(`[^a-z0-9]${normalize(az).replace(/\s+/g, " ").replace(/[.*+?^${}()|[\]\\/-]/g, "\\$&")}[^0-9]`).test(n);
+  return ENTSCHEIDUNGEN.find((e) => e.az.split(/\s+und\s+/).some(passt));
+}
+
+/** Argumentationshilfe: Kernaussage, Bausteine, Normen und die Akten der Kanzlei, zu denen die Entscheidung passt. */
+export function argumentationshilfe(e: (typeof ENTSCHEIDUNGEN)[number], d: TenantData, fuerAkte?: Akte) {
+  const geheftet = d.akten.filter((a) => a.entscheidungen?.includes(e.id));
+  const passend = d.akten
+    .filter((a) => a.status === "offen" && !geheftet.includes(a))
+    .map((a) => ({ a, t: findePraezedenzfaelle(a, d, 5).find((x) => x.entscheidung.id === e.id) }))
+    .filter((x): x is { a: Akte; t: NonNullable<typeof x.t> } => !!x.t)
+    .sort((x, y) => y.t.score - x.t.score);
+  const akten = [
+    ...(fuerAkte && !geheftet.includes(fuerAkte) && !passend.some((p) => p.a.id === fuerAkte.id) ? [{ akte: fuerAkte, geheftet: false, gemeinsam: bewertePraezedenz(fuerAkte, d, e).gemeinsam }] : []),
+    ...geheftet.map((a) => ({ akte: a, geheftet: true, gemeinsam: bewertePraezedenz(a, d, e).gemeinsam })),
+    ...passend.map((p) => ({ akte: p.a, geheftet: false, gemeinsam: p.t.gemeinsam })),
+  ];
+  if (fuerAkte) akten.sort((x, y) => Number(y.akte.id === fuerAkte.id) - Number(x.akte.id === fuerAkte.id));
+  const bausteine = ARGUMENTATION[e.id] ?? [`Kernaussage für den Schriftsatz nutzen: ${e.leitsatz}`, `Praxis: ${e.bedeutung}`];
+  return {
+    zitat: `${e.gericht}, ${e.art === "Urteil" ? "Urt." : "Beschl."} v. ${fmtDate(e.datum)} – ${e.az}`,
+    titel: e.titel,
+    leitsatz: e.leitsatz,
+    bedeutung: e.bedeutung,
+    normen: e.normen,
+    bausteine,
+    akten: akten.slice(0, 3).map((x) => ({ aktenzeichen: x.akte.aktenzeichen, titel: x.akte.titel, id: x.akte.id, geheftet: x.geheftet, gemeinsam: x.gemeinsam.slice(0, 3) })),
+  };
 }
 
 /** Füllwörter, die im lockeren Rückfall der Rechtsprechungssuche nicht zählen. */
@@ -319,7 +436,12 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
         const pos = (Array.isArray(i.positionen) ? i.positionen : ["2300"]).map((nr) => ({ nr: String(nr) }));
         const r = berechneRvg({ positionen: pos, gegenstandswert: Number(i.gegenstandswert) || 0 });
         ctx.links.push({ label: "RVG-Rechner öffnen", to: "/abrechnung?tab=rvg" });
-        return { zeilen: r.zeilen.map((z) => `${z.nr} ${z.titel} ${String(z.satz).replace(".", ",")}: ${fmtEUR(z.betrag)}`), auslagenpauschale: fmtEUR(r.auslagenpauschale), netto: fmtEUR(r.netto), ust: fmtEUR(r.ust), brutto: fmtEUR(r.brutto) };
+        // Auslagenpauschale Nr. 7002 je Angelegenheit (z. B. außergerichtlich und gerichtlich getrennt)
+        const zeilen = r.angelegenheiten.flatMap((a) => [
+          ...a.zeilen.map((z) => `${z.nr} ${z.titel} ${String(Math.abs(z.satz)).replace(".", ",")}: ${fmtEUR(z.betrag)}`),
+          ...(a.auslagenpauschale > 0 ? [`7002 Auslagenpauschale${r.angelegenheiten.length > 1 ? ` (${a.titel})` : ""}: ${fmtEUR(a.auslagenpauschale)}`] : []),
+        ]);
+        return { zeilen, auslagenpauschale: fmtEUR(r.auslagenpauschale), netto: fmtEUR(r.netto), ust: fmtEUR(r.ust), brutto: fmtEUR(r.brutto) };
       },
     },
     {
@@ -329,7 +451,11 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
       execute: (i) => {
         t("rechtsprechung_suchen");
         const q = String(i.suchbegriffe ?? "");
-        let hits = search(ENTSCHEIDUNGEN, q, [{ get: (e) => e.az, weight: 4 }, { get: (e) => e.titel, weight: 3 }, { get: (e) => e.schlagworte.join(" "), weight: 2 }, { get: (e) => e.leitsatz, weight: 1 }], 4);
+        // Ein genanntes Aktenzeichen ist eindeutig – dann nur diese Entscheidung, keine fachfremden Beifänge
+        const exakt = findeEntscheidung(q);
+        let hits = exakt ? [{ item: exakt, score: 100 }] : search(ENTSCHEIDUNGEN, q, [{ get: (e) => e.az, weight: 4 }, { get: (e) => e.titel, weight: 3 }, { get: (e) => e.schlagworte.join(" "), weight: 2 }, { get: (e) => e.leitsatz, weight: 1 }], 4);
+        // Mindestrelevanz: deutlich schwächere Treffer als der beste nicht zeigen
+        if (!exakt && hits.length) hits = hits.filter((h) => h.score >= hits[0].score * 0.5);
         if (!hits.length) {
           // lockerer Rückfall: Anteil der Suchwörter, die vorkommen – schwächere Treffer als der beste werden nicht gezeigt
           const toks = tokenize(q).filter((x) => x.length >= 4 && !RECHTSPRECHUNG_STOP.has(x));
@@ -339,7 +465,27 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
           hits = bewertet.filter((h) => h.score >= Math.max(1, top * 0.6)).slice(0, 4);
         }
         hits.slice(0, 2).forEach((h) => ctx.links.push({ label: `${h.item.gericht} ${h.item.az}`, to: `/fall-datenbank?id=${h.item.id}` }));
-        return hits.map(({ item: e }) => ({ zitat: `${e.gericht}, ${e.art === "Urteil" ? "Urt." : "Beschl."} v. ${fmtDate(e.datum)} – ${e.az}`, titel: e.titel, leitsatz: e.leitsatz, bedeutung: e.bedeutung }));
+        return hits.map(({ item: e }) => ({ zitat: `${e.gericht}, ${e.art === "Urteil" ? "Urt." : "Beschl."} v. ${fmtDate(e.datum)} – ${e.az}`, titel: e.titel, rechtsgebiet: e.rechtsgebiet, leitsatz: e.leitsatz, bedeutung: e.bedeutung, normen: e.normen }));
+      },
+    },
+    {
+      name: "entscheidung_erlaeutern",
+      description: "Erläutert eine Entscheidung der Fall-Datenbank für die eigene Argumentation: Kernaussage, Normen, Argumentationsbausteine und die Akten der Kanzlei, zu denen sie passt. Für Fragen wie „Wie nutze ich 2 AZR 541/09 in meiner Argumentation?“.",
+      inputSchema: {
+        type: "object",
+        properties: { aktenzeichen: { type: "string", description: "Aktenzeichen der Entscheidung, z. B. '2 AZR 541/09'" }, akte: { type: "string", description: "Optional: Aktenzeichen der eigenen Akte, z. B. '142/26'" } },
+        required: ["aktenzeichen"],
+      },
+      execute: (i) => {
+        const e = findeEntscheidung(String(i.aktenzeichen ?? ""));
+        if (!e) throw new Error(`Die Entscheidung „${String(i.aktenzeichen ?? "")}“ ist nicht im Demo-Bestand der Fall-Datenbank.`);
+        t("entscheidung_erlaeutern");
+        const fuer = i.akte ? findeAkteNachAz(String(i.akte)) : undefined;
+        const h = argumentationshilfe(e, daten(), fuer);
+        ctx.links.push({ label: `${e.gericht} ${e.az}`, to: `/fall-datenbank?id=${e.id}` });
+        const erste = h.akten[0];
+        if (erste) ctx.links.push({ label: `Akte ${erste.aktenzeichen}`, to: `/akten/${erste.id}` }, { label: `KI-Fallanalyse ${erste.aktenzeichen}`, to: `/ki?akte=${erste.id}` });
+        return h;
       },
     },
     {
@@ -441,7 +587,7 @@ Regeln:
 - Antworte auf Deutsch, knapp und freundlich, in 1–4 Sätzen oder einer kurzen Liste.${voice ? " Die Antwort wird vorgelesen: keine Tabellen, keine Markdown-Formatierung, Zahlen gut sprechbar." : " Leichtes Markdown (Fett, Listen) ist erlaubt."}
 - Daten der Kanzlei immer über Werkzeuge abfragen – nie erfinden. Fristen ausschließlich mit frist_berechnen berechnen.
 - Nenne bei Fristen immer die Gesamtzahl aus fristen_liste (Feld „anzahl“); die Liste „eintraege“ kann gekürzt sein. Überfällige Fristen und Vorfristen nennst du gesondert.
-- Zitiere Rechtsprechung nur aus rechtsprechung_suchen.
+- Zitiere Rechtsprechung nur aus rechtsprechung_suchen oder entscheidung_erlaeutern. Fragt der Nutzer, wie er eine bestimmte Entscheidung nutzen kann, rufe entscheidung_erlaeutern auf und gib eine Argumentationshilfe (Kernaussage, Bausteine, passende Akte) – keine bloße Trefferliste.
 - Ändere Daten (frist_anlegen) nur, wenn der Nutzer das ausdrücklich wünscht; bestätige danach, was du eingetragen hast.
 - Kurze Antworten wie „Ja“, „Gerne“ oder „Nein“ beziehen sich auf deine letzte Rückfrage – führe dann genau das Angebotene aus.
 - Wenn du nicht weiterkommst oder der Nutzer einen Menschen möchte: biete den persönlichen Ansprechpartner an und nutze rueckruf_anfordern. Formuliere ohne Pronomen für die Ansprechperson: „Ihr fester Ansprechpartner: ${s.tenant.ansprechpartner.name}“ und wiederhole bei Bedarf den Namen.
@@ -711,6 +857,18 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
     return `Ich habe „${r.geoeffnet}“ für Sie geöffnet.`;
   }
 
+  // ── Argumentationshilfe zu einer bestimmten Entscheidung (z. B. aus der Fall-Datenbank „Mit dem Assistenten besprechen“) ──
+  const entscheidung = findeEntscheidung(frage);
+  if (entscheidung && !/(lege|leg |trag|erstelle|setz).*(frist|wiedervorlage|termin)/.test(q)) {
+    const fuer = /\bakte\b/.test(q) && azAus(q.replace(entscheidung.az.toLowerCase(), " ")) ? findeAkteNachAz(azAus(q.replace(entscheidung.az.toLowerCase(), " "))!) : undefined;
+    const h = (await run("entscheidung_erlaeutern", { aktenzeichen: entscheidung.az, akte: fuer?.aktenzeichen })) as ReturnType<typeof argumentationshilfe>;
+    const akteZeile = h.akten.length
+      ? `\nPasst zu Akte ${h.akten[0].aktenzeichen} ${h.akten[0].titel}${h.akten[0].geheftet ? " (angeheftet)" : ""}${h.akten[0].gemeinsam.length ? ` – gemeinsame Merkmale: ${h.akten[0].gemeinsam.join(", ")}` : ""}.${h.akten.length > 1 ? ` Außerdem: ${h.akten.slice(1).map((a) => a.aktenzeichen).join(", ")}.` : ""}`
+      : "";
+    const titel = h.titel.includes("„") ? h.titel : `„${h.titel}“`;
+    return `**So nutzen Sie ${h.zitat} (${titel}):**\nKernaussage: ${h.leitsatz}\n${liste(h.bausteine)}\nNormen: ${h.normen.join(", ")}.${akteZeile}\nVor Verwendung im Schriftsatz bitte im Original prüfen.`;
+  }
+
   // ── Frist berechnen ──
   const regel = regelAus(q);
   if (regel && /(berechne|wann|bis wann|frist|endet|ablauf)/.test(q) && !/(lege|leg |trag|erstelle)/.test(q)) {
@@ -765,7 +923,7 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
     const wert = Number((q.match(/(\d{1,3}(?:[.\s]\d{3})+|\d+)(?:,\d+)?\s*(€|euro|eur)?/)?.[1] ?? "0").replace(/[.\s]/g, ""));
     const pos = /au(ß|ss)ergerichtlich/.test(q) ? ["2300"] : /gericht|klage|prozess|verfahren/.test(q) ? ["3100", "3104"] : ["2300"];
     const r = (await run("rvg_berechnen", { gegenstandswert: wert, positionen: pos })) as { zeilen: string[]; brutto: string; netto: string };
-    return `Bei einem Gegenstandswert von ${fmtEUR(wert, { cents: false })}:\n${liste(r.zeilen)}\nGesamt ${r.netto} netto, ${r.brutto} brutto inkl. Auslagenpauschale und 19 % USt.`;
+    return `Bei einem Gegenstandswert von ${fmtEUR(wert, { cents: false })}:\n${liste(r.zeilen)}\nGesamt ${r.netto} netto, ${r.brutto} brutto inkl. 19 % USt.`;
   }
 
   // ── Rechtsprechung ──

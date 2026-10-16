@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { ChevronDown, Clock, MapPin, RotateCcw, ShieldAlert, Sparkles, UserCheck, Users } from "lucide-react";
 import { fmtDate, fmtDateShort, fmtDateWd } from "@/core/dates";
+import { fristArtZu } from "@/core/fristen";
 import type { Akte, Frist, FristTyp, User } from "@/core/types";
 import { toast } from "@/store/ui";
 import { Avatar, Chip } from "@/components/ui";
@@ -11,8 +12,10 @@ import { QUELLE_LABEL, TYP_META, bestaetigeKontrolle, brauchtKontrolle, darfKont
 
 const spring = { type: "spring", stiffness: 460, damping: 36 } as const;
 
-export function TypChip({ typ }: { typ: FristTyp }) {
+export function TypChip({ typ, regelKey }: { typ: FristTyp; regelKey?: string }) {
   const m = TYP_META[typ];
+  // Rechtsnatur aus der Fristregel: „Notfrist“ nur, wo das Gesetz die Frist so nennt; nicht verlängerbare Fristen ebenfalls rot
+  const art = typ === "notfrist" || typ === "frist" ? fristArtZu({ typ, regelKey }) : undefined;
   if (typ === "vorfrist")
     return (
       <span className="chip !bg-transparent text-fg-2 outline-dashed outline-1 -outline-offset-1 outline-[var(--line-strong)]" title="Vorfrist – Erinnerung vor dem Fristende">
@@ -20,8 +23,8 @@ export function TypChip({ typ }: { typ: FristTyp }) {
       </span>
     );
   return (
-    <Chip tone={m.tone} icon={typ === "notfrist" ? <ShieldAlert className="size-3" /> : undefined} title={typ === "notfrist" ? "Notfrist – nicht verlängerbar (§ 224 Abs. 1 S. 2 ZPO)" : undefined}>
-      {m.label}
+    <Chip tone={art?.kritisch ? "seal" : m.tone} icon={art?.kritisch ? <ShieldAlert className="size-3" /> : undefined} title={art?.kurz}>
+      {art?.label ?? m.label}
     </Chip>
   );
 }
@@ -136,6 +139,7 @@ export function FristZeile({ f, akte, team, user, index = 0, zeigeDatum }: { f: 
   const { erledigt, umschalten, kontrollieren } = useFristAktionen(f, user);
   const verantwortlich = team.find((u) => u.id === f.verantwortlichId);
   const hatDetails = !!(f.rechenweg?.length || f.notiz || f.ereignisDatum);
+  const art = f.typ === "notfrist" || f.typ === "frist" ? fristArtZu(f) : undefined;
 
   return (
     <motion.div
@@ -150,7 +154,7 @@ export function FristZeile({ f, akte, team, user, index = 0, zeigeDatum }: { f: 
       <div className="flex flex-wrap items-start gap-x-4 gap-y-3 py-3.5 pl-5 pr-4">
         <div className="min-w-[220px] flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <TypChip typ={f.typ} />
+            <TypChip typ={f.typ} regelKey={f.regelKey} />
             <span className={cn("text-[14px] font-semibold tracking-[-0.01em] transition-colors", erledigt && "text-fg-3 line-through decoration-[var(--line-strong)]")}>{f.titel}</span>
             {zeigeDatum && <span className="num text-[12.5px] text-fg-3">· {fmtDateWd(f.datum)}</span>}
             {f.uhrzeit && (
@@ -215,7 +219,7 @@ export function FristZeile({ f, akte, team, user, index = 0, zeigeDatum }: { f: 
                 )}
                 <div>
                   <div className="eyebrow !text-[10px]">Fristende</div>
-                  <div className={cn("num mt-0.5 font-semibold", f.typ === "notfrist" && "text-seal")}>{fmtDateWd(f.datum)}</div>
+                  <div className={cn("num mt-0.5 font-semibold", art?.kritisch && "text-seal")}>{fmtDateWd(f.datum)}</div>
                 </div>
                 {f.vorfrist && (
                   <div>
@@ -231,6 +235,15 @@ export function FristZeile({ f, akte, team, user, index = 0, zeigeDatum }: { f: 
                 )}
               </div>
               {f.rechenweg?.length ? <RechenwegListe schritte={f.rechenweg} /> : null}
+              {art?.versaeumnis && f.status === "offen" && (
+                <p className={cn("mt-3 flex gap-2 text-[12.5px] leading-relaxed", art.kritisch ? "text-seal" : "text-fg-2")}>
+                  <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
+                  <span>
+                    {art.art && <strong className="font-semibold">{art.art} </strong>}
+                    {art.versaeumnis}
+                  </span>
+                </p>
+              )}
               {f.notiz && <p className="mt-3 text-[12.5px] leading-relaxed text-fg-3">{f.notiz}</p>}
               {brauchtKontrolle(f) && f.verantwortlichId === user.id && (
                 <p className="mt-3 flex gap-2 text-[12.5px] leading-relaxed text-amber">

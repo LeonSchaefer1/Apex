@@ -6,18 +6,25 @@ import { Button, Drawer, Field, Input, confirmDialog } from "@/components/ui";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
-import { fmtDate, fmtEUR, fmtNum, today } from "@/core/dates";
+import { fmtDate, fmtEUR, fmtNum, round2, today } from "@/core/dates";
 import { fassungFuerAuftrag } from "@/core/rvg";
 import type { Akte, Kontakt, Rechnung, RechnungsPosition, Tenant, User } from "@/core/types";
 import { cn } from "@/lib/cn";
-import { erfasseZahlung, sendeZahlungserinnerungen, stelleRechnung, storniereRechnung } from "./aktionen";
-import { FASSUNG_LABEL, fmtSatz, istOffen, leistungszeitraum, offenerBetrag, parseBetrag } from "./lib";
+import { belegArt, erfasseZahlung, loescheEntwurf, sendeZahlungserinnerungen, stelleRechnung, storniereRechnung } from "./aktionen";
+import { FASSUNG_LABEL, fmtSatz, istEntwurfsKennung, istOffen, leistungszeitraum, offenerBetrag, parseBetrag } from "./lib";
 import { Anschrift, Betrag, Briefkopf, FormatChip, InfoZeile, StatusChip, useLookups } from "./ui";
 
 function vvAnzeige(vv: string) {
   if (vv === "Std") return "Zeit";
   if (vv.startsWith("Vorb.")) return "Vorb. 3 IV";
   return vv;
+}
+
+/** Steuernummer bzw. USt-IdNr. der Kanzlei (§ 14 Abs. 4 S. 1 Nr. 2 UStG) – bis zur Pflege im Kanzleiprofil als Platzhalter. */
+function steuerAngabe(t: Tenant): { label: string; wert: string; platzhalter: boolean } {
+  if (t.ustIdNr) return { label: "USt-IdNr.", wert: t.ustIdNr, platzhalter: false };
+  if (t.steuernummer) return { label: "Steuernummer", wert: t.steuernummer, platzhalter: false };
+  return { label: "USt-IdNr.", wert: "DE000000000", platzhalter: true };
 }
 
 function PositionZeile({ p }: { p: RechnungsPosition }) {
@@ -35,12 +42,20 @@ function PositionZeile({ p }: { p: RechnungsPosition }) {
   );
 }
 
-/** Die Rechnung auf Papier – Aufbau nach DIN 5008 mit Pflichtangaben nach § 10 RVG und § 14 UStG. */
+/**
+ * Die Rechnung auf Papier – Aufbau nach DIN 5008 mit den Angaben nach § 10 Abs. 2 RVG (Gebührentatbestände, Nr. VV,
+ * Gegenstandswert, Beträge) und § 14 Abs. 4 UStG (Steuernummer/USt-IdNr., fortlaufende Nummer, Leistungszeitraum).
+ * Seit dem 17.07.2024 genügt für die Berechnung die Textform (§ 10 Abs. 1 RVG) – eine Unterschrift ist nicht mehr nötig;
+ * die Berechnung nennt den verantwortlichen Rechtsanwalt.
+ */
 export function RechnungPapier({ r, akte, empfaenger, tenant, bearbeiter }: { r: Rechnung; akte?: Akte; empfaenger?: Kontakt; tenant: Tenant; bearbeiter?: User }) {
   const [von, bis] = leistungszeitraum(akte, r);
   const rvg = r.positionen.some((p) => /^\d{4}$/.test(p.vv) && p.vv !== "7002");
   const fassung = akte ? fassungFuerAuftrag(akte.createdAt.slice(0, 10)) : "2025";
   const wert = r.positionen.find((p) => p.gegenstandswert)?.gegenstandswert ?? akte?.gegenstandswert;
+  const entwurf = r.status === "entwurf" || istEntwurfsKennung(r.nummer);
+  const vorschuss = r.art === "vorschuss";
+  const steuer = steuerAngabe(tenant);
   return (
     <div className="paper relative overflow-hidden px-5 py-6 sm:px-10 sm:py-9">
       {r.status === "entwurf" && (
@@ -53,8 +68,8 @@ export function RechnungPapier({ r, akte, empfaenger, tenant, bearbeiter }: { r:
       <div className="mt-2 grid gap-6 sm:grid-cols-[1fr_260px]">
         <Anschrift k={empfaenger} />
         <div className="sm:pt-1">
-          <InfoZeile k="Rechnungsnummer" v={r.nummer} mono />
-          <InfoZeile k="Rechnungsdatum" v={fmtDate(r.datum)} />
+          <InfoZeile k="Rechnungsnummer" v={entwurf ? <span className="font-normal opacity-60">folgt beim Stellen</span> : r.nummer} mono={!entwurf} />
+          <InfoZeile k="Rechnungsdatum" v={entwurf ? <span className="font-normal opacity-60">Datum der Stellung</span> : fmtDate(r.datum)} />
           <InfoZeile k="Leistungszeitraum" v={`${fmtDate(von)} – ${fmtDate(bis)}`} />
           {akte && <InfoZeile k="Unser Zeichen" v={akte.aktenzeichen} mono />}
           {bearbeiter && <InfoZeile k="Bearbeitung" v={bearbeiter.name} />}
@@ -74,9 +89,10 @@ export function RechnungPapier({ r, akte, empfaenger, tenant, bearbeiter }: { r:
           >
             <div className="text-[18px] leading-none">{r.status === "storniert" ? "Storniert" : "Bezahlt"}</div>
             {r.status === "bezahlt" && r.bezahltAm && <div className="mt-1 text-[9px] font-bold tracking-[0.1em]">am {fmtDate(r.bezahltAm)}</div>}
+            {r.status === "storniert" && r.storniertAm && <div className="mt-1 text-[9px] font-bold tracking-[0.1em]">am {fmtDate(r.storniertAm)}</div>}
           </motion.div>
         )}
-        <div className="text-[19px] font-semibold tracking-[-0.02em]">Rechnung</div>
+        <div className="text-[19px] font-semibold tracking-[-0.02em]">{belegArt(r)}</div>
         {akte && (
           <div className={cn("mt-1 text-[12.5px] opacity-75", (r.status === "storniert" || r.status === "bezahlt") && "pr-32")}>
             In Sachen {akte.titel}
@@ -130,15 +146,44 @@ export function RechnungPapier({ r, akte, empfaenger, tenant, bearbeiter }: { r:
       </div>
 
       <div className="mt-7 space-y-2 text-[12px] leading-relaxed">
-        <p>
-          Bitte überweisen Sie den Gesamtbetrag bis zum <strong>{fmtDate(r.faellig)}</strong> ohne Abzug und geben Sie als Verwendungszweck die Rechnungsnummer{" "}
-          <span className="mono font-medium">{r.nummer}</span> an.
-        </p>
+        {r.status === "storniert" && r.stornoNummer && (
+          <p className="rounded-[6px] border border-black/15 px-3 py-2 text-[11.5px]">
+            Diese {belegArt(r)} wurde{r.storniertAm ? ` am ${fmtDate(r.storniertAm)}` : ""} durch die Stornorechnung <span className="mono font-medium">{r.stornoNummer}</span> in voller Höhe
+            storniert.{r.bezahlt > 0 && <> Bereits gezahlte {fmtEUR(r.bezahlt)} werden erstattet oder verrechnet.</>}
+          </p>
+        )}
+        {vorschuss && (
+          <p>
+            Wir bitten um einen Vorschuss nach § 9 RVG auf die bereits entstandenen Gebühren und Auslagen. Die Vergütung wird erst mit dem Ende des Rechtszugs bzw. der
+            Kostenentscheidung fällig (§ 8 Abs. 1 RVG); dann erhalten Sie die Schlussrechnung, in der dieser Vorschuss angerechnet wird.
+          </p>
+        )}
+        {r.status !== "storniert" && (
+          <p>
+            Bitte überweisen Sie den {vorschuss ? "Vorschuss" : "Gesamtbetrag"} bis zum <strong>{fmtDate(r.faellig)}</strong> ohne Abzug und geben Sie als Verwendungszweck{" "}
+            {entwurf ? (
+              "die Rechnungsnummer an (wird beim Stellen vergeben)."
+            ) : (
+              <>
+                die Rechnungsnummer <span className="mono font-medium">{r.nummer}</span> an.
+              </>
+            )}
+          </p>
+        )}
         <div className="rounded-[6px] bg-black/[0.035] px-3 py-2 text-[11.5px]">
           <span className="font-medium">Bankverbindung</span> · Geschäftskonto {tenant.kurzname} · IBAN <span className="mono">DE00 0000 0000 0000 0000 00</span> · BIC{" "}
           <span className="mono">XXXXDEXXXXX</span> <span className="opacity-55">(Platzhalter)</span>
+          <br />
+          <span className="font-medium">{steuer.label}</span> <span className="mono">{steuer.wert}</span>
+          {steuer.platzhalter && <span className="opacity-55"> (Platzhalter – im Kanzleiprofil hinterlegen)</span>}
         </div>
         {rvg && <p className="text-[11px] opacity-60">Abrechnung nach dem Rechtsanwaltsvergütungsgesetz, Gebührentabelle {FASSUNG_LABEL[fassung]} (§ 13 RVG, Übergangsrecht § 60 RVG).</p>}
+      </div>
+
+      <div className="mt-6 text-[12px] leading-snug">
+        <div className="opacity-65">Mit freundlichen Grüßen</div>
+        <div className="mt-2 font-medium">{bearbeiter?.name ?? tenant.name}</div>
+        <div className="text-[11px] opacity-60">{bearbeiter ? `${bearbeiter.titel.split(" · ")[0]} · ${tenant.name}` : "Rechtsanwälte"}</div>
       </div>
 
       <div className="mt-6 flex items-center gap-2 border-t border-black/10 pt-3 text-[10.5px] opacity-65">
@@ -175,45 +220,77 @@ export function RechnungVorschau({ id, onClose }: { id: string | null; onClose: 
 
   const stornieren = async () => {
     if (!r) return;
+    const art = belegArt(r);
+    const gezahlt = r.bezahlt > 0;
     const ok = await confirmDialog({
-      titel: `Rechnung ${r.nummer} stornieren?`,
-      text: "Die Rechnung wird storniert und im Aktenkonto durch eine Gegenbuchung ausgeglichen. Die Rechnungsnummer bleibt lückenlos erhalten.",
-      bestaetigen: "Stornieren",
+      titel: `${art} ${r.nummer} stornieren?`,
+      text: [
+        `Es wird eine Stornorechnung mit eigener, fortlaufender Nummer erzeugt und im Aktenkonto gegengebucht; die ${art} bleibt mit ihrer Nummer erhalten.`,
+        gezahlt
+          ? `Achtung: Auf diese ${art} sind bereits ${fmtEUR(r.bezahlt)} eingegangen. Der Betrag steht nach dem Storno als Guthaben der Mandantschaft im Aktenkonto und muss erstattet oder mit einer neuen Rechnung verrechnet werden.`
+          : "",
+        r.zeitIds?.length ? "Die abgerechneten Zeiten werden wieder abrechenbar." : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+      bestaetigen: gezahlt ? "Trotzdem stornieren" : "Stornieren",
       gefahr: true,
     });
     if (!ok) return;
-    storniereRechnung(r);
-    useData.getState().log({ akteur: "nutzer", userId: user.id, akteId: r.akteId, text: `Rechnung ${r.nummer} storniert – ${akte?.aktenzeichen ?? ""}`.trim() });
-    toast("Rechnung storniert", { text: `${r.nummer} · Gegenbuchung über ${fmtEUR(r.brutto)} im Aktenkonto`, ton: "erfolg" });
+    const erg = storniereRechnung(r, user.id);
+    useData.getState().log({
+      akteur: "nutzer",
+      userId: user.id,
+      akteId: r.akteId,
+      text: `${art} ${r.nummer} storniert (Stornorechnung ${erg.stornoNummer ?? "–"})${erg.guthaben > 0 ? `, Guthaben ${fmtEUR(erg.guthaben)} – Erstattung oder Verrechnung offen` : ""} – ${akte?.aktenzeichen ?? ""}`.trim(),
+    });
+    toast(erg.guthaben > 0 ? "Storniert – Guthaben offen" : "Rechnung storniert", {
+      text: `Stornorechnung ${erg.stornoNummer ?? ""} · Gegenbuchung über ${fmtEUR(r.brutto)}${erg.guthaben > 0 ? ` · ${fmtEUR(erg.guthaben)} Guthaben der Mandantschaft erstatten oder verrechnen` : ""}${erg.zeitenFrei ? ` · ${erg.zeitenFrei} ${erg.zeitenFrei === 1 ? "Zeit" : "Zeiten"} wieder abrechenbar` : ""}`,
+      ton: erg.guthaben > 0 ? "warnung" : "erfolg",
+    });
   };
 
   const entwurfLoeschen = async () => {
     if (!r) return;
-    const ok = await confirmDialog({ titel: "Entwurf löschen?", text: `Der Rechnungsentwurf ${r.nummer} wird endgültig entfernt.`, bestaetigen: "Löschen", gefahr: true });
+    const zeiten = r.zeitIds?.length ?? 0;
+    const ok = await confirmDialog({
+      titel: "Entwurf löschen?",
+      text: `Der Rechnungsentwurf wird endgültig entfernt. Eine Rechnungsnummer ist noch nicht vergeben.${zeiten ? " Die abgerechneten Zeiten werden wieder abrechenbar." : ""}`,
+      bestaetigen: "Löschen",
+      gefahr: true,
+    });
     if (!ok) return;
-    useData.getState().remove("rechnungen", r.id);
+    const frei = loescheEntwurf(r);
     onClose();
-    toast("Entwurf gelöscht", { ton: "info" });
+    toast("Entwurf gelöscht", { text: frei ? `${frei} ${frei === 1 ? "Zeit ist" : "Zeiten sind"} wieder abrechenbar` : undefined, ton: "info" });
   };
 
   const stellen = () => {
     if (!r) return;
-    stelleRechnung(r, user.id);
-    useData.getState().log({ akteur: "nutzer", userId: user.id, akteId: r.akteId, text: `Rechnung ${r.nummer} gestellt – ${akte?.aktenzeichen ?? ""}`.trim() });
-    toast("Rechnung gestellt", { text: `${r.nummer} · fällig in 14 Tagen · im Aktenkonto gebucht`, ton: "erfolg" });
+    const g = stelleRechnung(r, user.id);
+    const art = belegArt(g);
+    useData.getState().log({ akteur: "nutzer", userId: user.id, akteId: r.akteId, text: `${art} ${g.nummer} gestellt – ${akte?.aktenzeichen ?? ""}`.trim() });
+    toast(`${art} gestellt`, { text: `${g.nummer} · zahlbar in 14 Tagen · im Aktenkonto gebucht`, ton: "erfolg" });
   };
 
-  const buchen = () => {
+  const buchen = (modus?: "guthaben" | "nurOffen") => {
     if (!r) return;
     const b = parseBetrag(betrag);
     if (b <= 0) {
       toast("Bitte einen Betrag eingeben", { text: "Zum Beispiel 250,00", ton: "warnung" });
       return;
     }
-    const status = erfasseZahlung(r, b, datum || today());
+    const erg = erfasseZahlung(r, b, datum || today(), { ueberzahlung: modus ?? "guthaben" });
     setZahlung(false);
-    toast(status === "bezahlt" ? "Rechnung vollständig bezahlt" : "Teilzahlung erfasst", { text: `${fmtEUR(b)} auf ${r.nummer} gebucht`, ton: "erfolg" });
+    toast(erg.status === "bezahlt" ? "Rechnung vollständig bezahlt" : "Teilzahlung erfasst", {
+      text: `${fmtEUR(erg.verrechnet)} auf ${r.nummer} verrechnet${erg.guthaben > 0 ? ` · ${fmtEUR(erg.guthaben)} als Guthaben der Mandantschaft im Aktenkonto (erstatten oder verrechnen)` : ""}`,
+      ton: erg.guthaben > 0 ? "warnung" : "erfolg",
+    });
   };
+  const eingabe = parseBetrag(betrag);
+  const offenJetzt = r ? offenerBetrag(r) : 0;
+  const mehrbetrag = round2(eingabe - offenJetzt);
+  const ueberzahlt = !!r && istOffen(r) && mehrbetrag > 0.004;
 
   const erinnern = () => {
     if (!r) return;
@@ -300,11 +377,26 @@ export function RechnungVorschau({ id, onClose }: { id: string | null; onClose: 
                     <Field label="Zahlungsdatum" htmlFor="zahlung-datum">
                       <Input id="zahlung-datum" type="date" value={datum} onChange={(e) => setDatum(e.target.value)} />
                     </Field>
-                    <Button variant="primary" onClick={buchen}>
+                    <Button variant="primary" onClick={() => buchen()} disabled={ueberzahlt}>
                       Zahlung buchen
                     </Button>
                   </div>
-                  <p className="mt-2 text-[12px] text-fg-3">Ein geringerer Betrag wird als Teilzahlung gebucht; die Rechnung bleibt dann offen.</p>
+                  {ueberzahlt ? (
+                    <div className="mt-3 rounded-[14px] bg-amber-soft px-3.5 py-3 text-[12.5px] text-fg-2" role="alert">
+                      <div className="font-semibold text-amber">Überzahlung: {fmtEUR(mehrbetrag)} mehr als offen</div>
+                      <p className="mt-0.5">Offen sind nur {fmtEUR(offenJetzt)}. Wie soll der Betrag gebucht werden?</p>
+                      <div className="mt-2.5 flex flex-wrap gap-2">
+                        <Button size="sm" variant="secondary" onClick={() => buchen("nurOffen")}>
+                          Nur {fmtEUR(offenJetzt)} buchen
+                        </Button>
+                        <Button size="sm" variant="primary" onClick={() => buchen("guthaben")}>
+                          {fmtEUR(eingabe)} buchen – {fmtEUR(mehrbetrag)} als Guthaben
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-[12px] text-fg-3">Ein geringerer Betrag wird als Teilzahlung gebucht; die Rechnung bleibt dann offen.</p>
+                  )}
                 </div>
               </motion.div>
             )}

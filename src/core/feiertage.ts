@@ -1,11 +1,12 @@
-// Gesetzliche Feiertage in Deutschland je Bundesland (Grundlage für § 222 Abs. 2 ZPO / § 193 BGB).
+// Gesetzliche Feiertage in Deutschland je Bundesland (Grundlage für § 222 Abs. 2 ZPO, § 43 Abs. 2 StPO, § 193 BGB).
 import { addDays, toISO } from "./dates";
 import type { Bundesland, ISODate } from "./types";
 
 export interface Feiertag {
   datum: ISODate;
   name: string;
-  /** true = nur in Teilen des Landes (z. B. Mariä Himmelfahrt in Bayern). Wird bei Fristen NICHT verlängert. */
+  /** true = nur in Teilen des Landes (z. B. Mariä Himmelfahrt in Bayern). AnwaltApex verlängert hier vorsorglich NICHT
+   *  (rechtlich verlängert der Feiertag die Frist, wenn er am Ort des Gerichts gilt – der frühere Termin ist die sichere Seite). */
   teilweise?: boolean;
 }
 
@@ -112,6 +113,78 @@ export function feiertage(year: number, land: Bundesland): Feiertag[] {
 export function feiertagAm(datum: ISODate, land: Bundesland): Feiertag | undefined {
   const year = Number(datum.slice(0, 4));
   return feiertage(year, land).find((f) => f.datum === datum);
+}
+
+// ───────────── Gerichtsort → Bundesland ─────────────
+// Maßgeblich für die Verschiebung nach § 222 Abs. 2 ZPO / § 43 Abs. 2 StPO sind die Feiertage am Ort, an dem die
+// Handlung vorzunehmen ist – in der Regel am Sitz des Gerichts bzw. der Behörde, nicht am Kanzleisitz.
+
+/** Gerichts- und Behördensitze (Auswahl). Unbekannte Orte → kein Treffer; dann gilt das Bundesland der Kanzlei. */
+const ORTE: Record<string, Bundesland> = {};
+const orte = (land: Bundesland, liste: string) => liste.split(",").forEach((o) => (ORTE[o.trim().toLowerCase()] = land));
+orte("BW", "Stuttgart, Karlsruhe, Mannheim, Freiburg, Heidelberg, Heilbronn, Ulm, Pforzheim, Reutlingen, Tübingen, Konstanz, Ravensburg, Rottweil, Baden-Baden, Ellwangen, Hechingen, Mosbach, Offenburg, Waldshut-Tiengen, Ludwigsburg, Esslingen, Böblingen, Göppingen, Aalen");
+orte("BY", "München, Nürnberg, Augsburg, Regensburg, Würzburg, Bamberg, Bayreuth, Coburg, Ingolstadt, Landshut, Passau, Kempten, Memmingen, Erlangen, Fürth, Ansbach, Aschaffenburg, Schweinfurt, Hof, Amberg, Weiden, Deggendorf, Traunstein, Rosenheim, Straubing, Viechtach");
+orte("BE", "Berlin, Charlottenburg, Mitte, Wedding, Tiergarten, Schöneberg, Spandau, Köpenick, Lichtenberg, Pankow, Neukölln, Tempelhof-Kreuzberg, Kreuzberg, Tempelhof, Hohenschönhausen");
+orte("BB", "Potsdam, Cottbus, Neuruppin, Eberswalde, Oranienburg, Luckenwalde, Brandenburg");
+orte("HB", "Bremen, Bremerhaven");
+orte("HH", "Hamburg");
+orte("HE", "Frankfurt, Wiesbaden, Darmstadt, Kassel, Gießen, Marburg, Fulda, Hanau, Offenbach, Limburg");
+orte("MV", "Schwerin, Rostock, Stralsund, Neubrandenburg, Greifswald");
+orte("NI", "Hannover, Braunschweig, Oldenburg, Osnabrück, Göttingen, Hildesheim, Lüneburg, Stade, Verden, Aurich, Bückeburg, Celle, Wolfsburg, Salzgitter");
+orte("NW", "Köln, Düsseldorf, Dortmund, Essen, Duisburg, Bochum, Wuppertal, Bielefeld, Bonn, Münster, Aachen, Hagen, Arnsberg, Detmold, Paderborn, Siegen, Krefeld, Mönchengladbach, Kleve, Gelsenkirchen, Oberhausen, Hamm, Recklinghausen, Gütersloh, Leverkusen, Solingen");
+orte("RP", "Mainz, Koblenz, Trier, Kaiserslautern, Ludwigshafen, Landau, Frankenthal, Bad Kreuznach, Zweibrücken");
+orte("SL", "Saarbrücken, Saarlouis, Neunkirchen, Homburg");
+orte("SN", "Dresden, Leipzig, Chemnitz, Zwickau, Görlitz, Bautzen, Plauen");
+orte("ST", "Magdeburg, Halle, Dessau-Roßlau, Dessau, Stendal, Naumburg");
+orte("SH", "Kiel, Lübeck, Flensburg, Itzehoe, Schleswig, Neumünster");
+orte("TH", "Erfurt, Jena, Gera, Weimar, Meiningen, Mühlhausen, Suhl, Nordhausen, Gotha, Eisenach");
+
+/** Gerichte und Behörden ohne Ortsnamen bzw. mit Landesbezeichnung. */
+const NAMEN: [RegExp, Bundesland][] = [
+  [/\bKammergerichts?\b/g, "BE"],
+  [/\bBundesgerichtshofs?\b|\bBundesverfassungsgerichts?\b/g, "BW"],
+  [/\bBundesarbeitsgerichts?\b/g, "TH"],
+  [/\bBundesverwaltungsgerichts?\b/g, "SN"],
+  [/\bBundessozialgerichts?\b/g, "HE"],
+  [/\bBundesfinanzhofs?\b|\bBayerische[snmr]? (?:Polizeiverwaltungsamt|Obersten? Landesgericht|Verwaltungsgerichtshof|Landessozialgericht)/g, "BY"],
+  [/\bHessische[snmr]? (?:Verwaltungsgerichtshof|Landessozialgericht|Finanzgericht)/g, "HE"],
+  [/\bHanseatische[snmr]? (?:Oberlandesgericht|OLG) (?:in )?Bremen|\bFreie Hansestadt Bremen/g, "HB"],
+  [/\bHanseatische[snmr]? (?:Oberlandesgericht|OLG)|\bFreie und Hansestadt Hamburg/g, "HH"],
+  [/\bSchleswig-Holsteinische[snmr]? (?:Oberlandesgericht|OLG|Landessozialgericht|Finanzgericht)/g, "SH"],
+  [/\bBrandenburgische[snmr]? (?:Oberlandesgericht|OLG)/g, "BB"],
+  [/\bThüringer (?:Oberlandesgericht|OLG|Landessozialgericht|Oberverwaltungsgericht|Finanzgericht)/g, "TH"],
+  [/\bSaarländische[snmr]? (?:Oberlandesgericht|OLG)/g, "SL"],
+  [/\bPfälzische[snmr]? (?:Oberlandesgericht|OLG)/g, "RP"],
+  [/\bSächsische[snmr]? (?:Oberverwaltungsgericht|Landesarbeitsgericht|Landessozialgericht|Finanzgericht)/g, "SN"],
+];
+
+const GERICHT_RE =
+  /\b(?:(?:Amts|Land|Oberlandes|Arbeits|Landesarbeits|Verwaltungs|Oberverwaltungs|Sozial|Landessozial|Finanz|Familien|Mahn)gerichts?|(?:General)?[Ss]taatsanwaltschaft|Polizei(?:präsidium)?|Bußgeldstelle|LG|OLG|ArbG|LAG|VG|OVG|LSG)\s+((?:Bad\s)?[A-ZÄÖÜ][a-zäöüß]+(?:-[A-ZÄÖÜ][a-zäöüß]+)?)(?:\s+I{1,3}\b)?(\s*(?:\(Oder\)|\/Oder|an der Oder|a(?:n der|\.\s?d\.)\s?Havel))?/g;
+
+/** Bundesland zu einem Ortsnamen (z. B. „Hamburg-Altona“ → HH), sonst undefined. */
+export function bundeslandAusOrt(ort: string): Bundesland | undefined {
+  const o = ort.trim().toLowerCase();
+  if (/^frankfurt\s*(\(oder\)|\/\s*oder|an der oder)/.test(o)) return "BB";
+  return ORTE[o] ?? ORTE[o.split(/[-\s]/)[0]];
+}
+
+/**
+ * Erkennt das Gericht bzw. die Behörde in einem Text und liefert dessen Bundesland – Grundlage für die Feiertage
+ * am Ort der Handlung (§ 222 Abs. 2 ZPO). Registerangaben („Amtsgericht München HRB …“) zählen nicht.
+ */
+export function bundeslandAusGericht(text: string): { land: Bundesland; gericht: string } | undefined {
+  const treffer: { land: Bundesland; gericht: string; index: number }[] = [];
+  for (const m of text.matchAll(GERICHT_RE)) {
+    const i = m.index ?? 0;
+    const nach = text.slice(i + m[0].length, i + m[0].length + 14);
+    const vor = text.slice(Math.max(0, i - 30), i);
+    if (/^\s*,?\s*(HRB|HRA|VR|GnR|PR)\b/.test(nach) || /register/i.test(vor)) continue;
+    const land = m[2] && /oder/i.test(m[2]) ? "BB" : bundeslandAusOrt(m[1]);
+    if (land) treffer.push({ land, gericht: m[0].trim(), index: i });
+  }
+  for (const [re, land] of NAMEN) for (const m of text.matchAll(re)) treffer.push({ land, gericht: m[0].trim(), index: m.index ?? 0 });
+  const erster = treffer.sort((a, b) => a.index - b.index)[0];
+  return erster && { land: erster.land, gericht: erster.gericht };
 }
 
 /** Ist der Tag ein Werktag im Sinne des § 222 Abs. 2 ZPO (kein Samstag, Sonntag, allgemeiner Feiertag)? */

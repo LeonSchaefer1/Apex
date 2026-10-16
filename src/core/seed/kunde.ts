@@ -39,7 +39,7 @@ export function baueKunde(input: {
     bundesland: input.bundesland,
     schwerpunkte: input.schwerpunkte.length ? input.schwerpunkte : ["Vertragsrecht"],
     lizenz: { typ: "lifetime", seit: now.toISOString().slice(0, 10), arbeitsplaetze: input.arbeitsplaetze, lizenzNr: `AAX-LT-${jahr}-${String(Math.floor(Math.random() * 9000) + 1000)}` },
-    ansprechpartner: { name: "Lena Vogt", rolle: "Ihre persönliche Ansprechpartnerin", telefon: "+49 30 555 018 42", email: "lena.vogt@anwaltapex.de", initialen: "LV", verfuegbar: "Mo–Fr 7:30–19:00 Uhr" },
+    ansprechpartner: { name: "Lena Vogt", rolle: "Ihr fester Ansprechpartner", telefon: "+49 30 555 018 42", email: "lena.vogt@anwaltapex.de", initialen: "LV", verfuegbar: "Mo–Fr 7:30–19:00 Uhr" },
     farbe,
     createdAt: now.toISOString(),
     status: "test",

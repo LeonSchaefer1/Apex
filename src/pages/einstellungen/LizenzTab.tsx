@@ -13,13 +13,16 @@ export function LizenzTab() {
   const nav = useNavigate();
   const l = tenant.lizenz;
   const heute = today();
-  const test = tenant.status === "test" && tenant.testBis;
-  const testGesamt = test ? Math.max(1, diffDays(tenant.createdAt.slice(0, 10), tenant.testBis!)) : 1;
-  const testRest = test ? Math.max(0, diffDays(heute, tenant.testBis!)) : 0;
+  // Testzugang (in der Apex Console angelegt): noch keine Lizenz erworben – erst danach gilt die Lifetime-Lizenz.
+  const test = tenant.status === "test";
+  const testBis = test ? tenant.testBis : undefined;
+  const testGesamt = testBis ? Math.max(1, diffDays(tenant.createdAt.slice(0, 10), testBis)) : 1;
+  const testRest = testBis ? Math.max(0, diffDays(heute, testBis)) : 0;
+  const ap = tenant.ansprechpartner;
 
   const inklusive = [
     { icon: <RefreshCw className="size-4" />, t: "Alle Updates", s: "vorab in Staging geprüft, Zeitpunkt bestimmen Sie" },
-    { icon: <Headset className="size-4" />, t: "Persönlicher Ansprechpartner", s: `${tenant.ansprechpartner.name} · ${tenant.ansprechpartner.verfuegbar}` },
+    { icon: <Headset className="size-4" />, t: "Fester Ansprechpartner", s: `${ap.name} · ${ap.verfuegbar}` },
     { icon: <BookOpen className="size-4" />, t: "Animiertes Wiki & Schnellhilfe", s: "in jeder Ansicht, plus Apex Assistent" },
     { icon: <Truck className="size-4" />, t: "Umzug mit Begleitung", s: "One-Klick-Migration aus Ihrem Altsystem" },
     { icon: <Server className="size-4" />, t: "Betrieb nach Wahl", s: "On-Premise oder Private Cloud in Deutschland" },
@@ -37,60 +40,89 @@ export function LizenzTab() {
         >
           <div aria-hidden className="pointer-events-none absolute -right-16 -top-20 size-64 rounded-full bg-[radial-gradient(circle,var(--ink-soft),transparent_65%)]" />
           <div className="relative flex items-start gap-4">
-            <div className="grid size-14 shrink-0 place-items-center rounded-[18px] bg-ink text-[var(--on-ink)] shadow-[0_10px_24px_-10px_var(--ink)]">
-              <InfinityIcon className="size-7" />
+            <div className={cn("grid size-14 shrink-0 place-items-center rounded-[18px]", test ? "bg-amber-soft text-amber" : "bg-ink text-[var(--on-ink)] shadow-[0_10px_24px_-10px_var(--ink)]")}>
+              {test ? <CalendarClock className="size-7" /> : <InfinityIcon className="size-7" />}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="eyebrow">Ihre Lizenz</div>
-              <h2 className="title-lg mt-1">Lifetime-Lizenz</h2>
-              <p className="mt-1 text-[13.5px] text-fg-2">Einmal investiert, dauerhaft genutzt – keine Monatsgebühren, keine Preiserhöhungen.</p>
+              <div className="eyebrow">{test ? "Ihr Zugang" : "Ihre Lizenz"}</div>
+              <h2 className="title-lg mt-1">{test ? (testBis ? `Testzugang bis ${fmtDate(testBis)}` : "Testzugang") : "Lifetime-Lizenz"}</h2>
+              <p className="mt-1 text-[13.5px] text-fg-2">
+                {test
+                  ? `In der Testphase sind alle Funktionen freigeschaltet. ${testBis ? "Danach" : "Wenn Sie überzeugt sind,"} erwerben Sie die Lifetime-Lizenz – einmal investiert, dauerhaft genutzt.`
+                  : "Einmal investiert, dauerhaft genutzt – keine Monatsgebühren, keine Preiserhöhungen."}
+              </p>
             </div>
           </div>
-          <dl className="relative mt-6 grid grid-cols-2 gap-3">
-            <Kachel label="Lizenznummer" className="col-span-2 sm:col-span-1">
-              <span className="flex items-center gap-1">
-                <span className="mono min-w-0 truncate select-all">{l.lizenzNr}</span>
-                <CopyButton text={l.lizenzNr} label="Lizenznummer kopieren" className="-my-1" />
-              </span>
-            </Kachel>
-            <Kachel label="Gültig seit">{fmtDateLong(l.seit)}</Kachel>
-            <Kachel label="Arbeitsplätze">
-              <span className="num">
-                {l.arbeitsplaetze} <span className="text-[12.5px] font-normal text-fg-3">· {team.length} belegt</span>
-              </span>
-            </Kachel>
-            <Kachel label="Laufzeit">unbegrenzt</Kachel>
-          </dl>
+          {test ? (
+            <dl className="relative mt-6 grid grid-cols-2 gap-3">
+              <Kachel label="Testzugang seit">{fmtDateLong(tenant.createdAt.slice(0, 10))}</Kachel>
+              <Kachel label="Testzeitraum">{testBis ? <span className="num">noch {testRest} {testRest === 1 ? "Tag" : "Tage"}</span> : "unbefristet"}</Kachel>
+              <Kachel label="Arbeitsplätze">
+                <span className="num">
+                  {l.arbeitsplaetze} <span className="text-[12.5px] font-normal text-fg-3">· {team.length} belegt</span>
+                </span>
+              </Kachel>
+              <Kachel label="Danach">Lifetime-Lizenz</Kachel>
+            </dl>
+          ) : (
+            <dl className="relative mt-6 grid grid-cols-2 gap-3">
+              <Kachel label="Lizenznummer" className="col-span-2 sm:col-span-1">
+                <span className="flex items-center gap-1">
+                  <span className="mono min-w-0 truncate select-all">{l.lizenzNr}</span>
+                  <CopyButton text={l.lizenzNr} label="Lizenznummer kopieren" className="-my-1" />
+                </span>
+              </Kachel>
+              <Kachel label="Gültig seit">{fmtDateLong(l.seit)}</Kachel>
+              <Kachel label="Arbeitsplätze">
+                <span className="num">
+                  {l.arbeitsplaetze} <span className="text-[12.5px] font-normal text-fg-3">· {team.length} belegt</span>
+                </span>
+              </Kachel>
+              <Kachel label="Laufzeit">unbegrenzt</Kachel>
+            </dl>
+          )}
+          {test && testBis && (
+            <div className="relative mt-4">
+              <div className="bar">
+                <span style={{ width: `${Math.min(100, Math.max(2, ((testGesamt - testRest) / testGesamt) * 100))}%` }} />
+              </div>
+            </div>
+          )}
           <div className="relative mt-5 flex flex-wrap gap-1.5">
-            <Chip tone="green" icon={<Check className="size-3" strokeWidth={3} />}>
-              Keine Monatsgebühren
-            </Chip>
-            <Chip tone="green" icon={<Check className="size-3" strokeWidth={3} />}>
-              Keine Abo-Falle
-            </Chip>
-            <Chip tone="green" icon={<Check className="size-3" strokeWidth={3} />}>
-              Ihre Daten gehören Ihnen
-            </Chip>
+            {test ? (
+              <>
+                <Chip tone="green" icon={<Check className="size-3" strokeWidth={3} />}>
+                  Alle Funktionen freigeschaltet
+                </Chip>
+                <Chip tone="green" icon={<Check className="size-3" strokeWidth={3} />}>
+                  Danach ohne Abo
+                </Chip>
+                <Chip tone="green" icon={<Check className="size-3" strokeWidth={3} />}>
+                  Ihre Daten bleiben erhalten
+                </Chip>
+              </>
+            ) : (
+              <>
+                <Chip tone="green" icon={<Check className="size-3" strokeWidth={3} />}>
+                  Keine Monatsgebühren
+                </Chip>
+                <Chip tone="green" icon={<Check className="size-3" strokeWidth={3} />}>
+                  Keine Abo-Falle
+                </Chip>
+                <Chip tone="green" icon={<Check className="size-3" strokeWidth={3} />}>
+                  Ihre Daten gehören Ihnen
+                </Chip>
+              </>
+            )}
           </div>
         </motion.section>
 
         {test && (
           <section className="sheet rounded-[22px] p-5">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-amber-soft text-amber">
-                <CalendarClock className="size-[18px]" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="title-md">Testzugang bis {fmtDate(tenant.testBis)}</div>
-                <div className="text-[12.5px] text-fg-3">
-                  Noch <span className="num font-semibold text-fg">{testRest}</span> Tage · in der Testphase sind alle Funktionen freigeschaltet.
-                </div>
-              </div>
-            </div>
-            <div className="bar mt-4">
-              <span style={{ width: `${Math.min(100, Math.max(2, ((testGesamt - testRest) / testGesamt) * 100))}%` }} />
-            </div>
-            <p className="mt-2 text-[12px] text-fg-3">Ihre Daten bleiben beim Wechsel in die Lifetime-Lizenz vollständig erhalten.</p>
+            <div className="title-md">Lifetime-Lizenz erwerben</div>
+            <p className="mt-1 text-[12.5px] leading-relaxed text-fg-3">
+              Ihr fester Ansprechpartner {ap.name} erstellt Ihnen ein Angebot nach Kanzleigröße: <span className="num whitespace-nowrap font-medium text-fg-2">{ap.telefon}</span> · <span className="break-all">{ap.email}</span>. Beim Wechsel bleiben alle Daten der Testphase vollständig erhalten.
+            </p>
           </section>
         )}
       </div>

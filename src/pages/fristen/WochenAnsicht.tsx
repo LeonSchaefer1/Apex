@@ -7,7 +7,7 @@ import type { Akte, Bundesland, Frist } from "@/core/types";
 import { Button, Card, IconButton } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { FristPille } from "./FristDetail";
-import { TYP_REIHENFOLGE, kalenderwoche, wochenStart } from "./logik";
+import { TYP_REIHENFOLGE, kalenderwoche, wochenAnsichtStart } from "./logik";
 
 const SCHRAFFUR = "bg-[repeating-linear-gradient(135deg,var(--ink-softer)_0_6px,transparent_6px_12px)]";
 
@@ -44,7 +44,10 @@ export function WochenAnsicht({
     return m;
   }, [fristen, tage]);
   const summe = tage.reduce((s, t) => s + (proTag.get(t)?.length ?? 0), 0);
-  const aktuelleWoche = wochenStart(heute) === start;
+  const standardStart = wochenAnsichtStart(heute);
+  const aktuelleWoche = standardStart === start;
+  const kwVon = kalenderwoche(start);
+  const kwBis = kalenderwoche(addDays(start, 6));
   const markiertHier = !!markiert && tage.includes(markiert);
   /** Hervorhebungsring: der angesprungene Tag, sonst heute */
   const ring = (t: string) => (markiertHier ? t === markiert : t === heute);
@@ -74,15 +77,15 @@ export function WochenAnsicht({
         </div>
         <div className="min-w-0">
           <div className="title-md">
-            KW {kalenderwoche(start)} <span className="font-normal text-fg-3">· {zeitraum(start)}</span>
+            KW {kwVon === kwBis ? kwVon : `${kwVon}/${kwBis}`} <span className="font-normal text-fg-3">· {zeitraum(start)}</span>
           </div>
         </div>
         <span className="num text-[12.5px] text-fg-3">
           {summe} {summe === 1 ? "Eintrag" : "Einträge"}
         </span>
         {!aktuelleWoche && (
-          <Button size="sm" variant="secondary" className="ml-auto" onClick={() => setStart(wochenStart(heute))}>
-            Diese Woche
+          <Button size="sm" variant="secondary" className="ml-auto" onClick={() => setStart(standardStart)}>
+            {standardStart === heute ? "Ab heute" : "Diese Woche"}
           </Button>
         )}
       </div>

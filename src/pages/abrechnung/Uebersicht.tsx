@@ -258,11 +258,15 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
           onClick={() => onTab("rechnungen", { filter: "ueberfaellig" })}
         />
         <Stat
-          label="Fremdgeld zur Weiterleitung"
+          label={
+            <>
+              Fremdgeld<span className="hidden sm:inline"> zur Weiterleitung</span>
+            </>
+          }
           tone={fremdSumme > 0 ? "amber" : "green"}
           icon={<HandCoins className="size-4" />}
           value={<KpiWert n={fremdSumme} />}
-          sub={fremdgeld.length ? `${fremdgeld.length} ${fremdgeld.length === 1 ? "Akte" : "Akten"} · § 43a Abs. 5 BRAO` : "alles weitergeleitet"}
+          sub={fremdgeld.length ? `${fremdgeld.length} ${fremdgeld.length === 1 ? "Akte" : "Akten"} · § 43a Abs. 7 BRAO` : "alles weitergeleitet"}
         />
       </div>
 
@@ -309,7 +313,7 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
         </div>
         <div className="grid grid-cols-1 content-start gap-4">
           <Card className="flex flex-col">
-            <CardHeader icon={<ShieldCheck className="size-4" />} title="Fremdgeld-Wächter" subtitle="Fremdgeld ist unverzüglich an die Berechtigten weiterzuleiten (§ 43a Abs. 5 BRAO)." />
+            <CardHeader icon={<ShieldCheck className="size-4" />} title="Fremdgeld-Wächter" subtitle="Fremdgeld ist unverzüglich an die Berechtigten weiterzuleiten (§ 43a Abs. 7 BRAO)." />
             <ul className="-mx-2 flex-1">
               <AnimatePresence initial={false}>
                 {fremdgeld.map((f, i) => {

@@ -24,7 +24,7 @@ export function UmzugBand() {
               Umzug in einem Klick.
             </h2>
             <p className="mt-3 max-w-[48ch] text-[15px] leading-relaxed text-fg-2">
-              Akten, Kontakte, Fristen und Dokumente ziehen vollständig mit um. Sie sehen vorab eine Vorschau, Dubletten werden erkannt, Fristen nachgerechnet und zur Vier-Augen-Kontrolle vorgelegt. Bei Bedarf laufen beide Systeme parallel.
+              Akten, Kontakte und Fristen ziehen mit einem Klick um; Dokumente und Aktenkonten übernehmen Sie gemeinsam mit Ihrem Ansprechpartner. Sie sehen vorab eine Vorschau, Dubletten werden erkannt, Fristen auf Plausibilität geprüft und zur Vier-Augen-Kontrolle vorgelegt. Bei Bedarf laufen beide Systeme parallel.
             </p>
           </div>
           <div className="flex min-w-0 items-center gap-2 sm:gap-5">
@@ -66,8 +66,8 @@ export function UmzugBand() {
 
 const PRINZIPIEN = [
   { i: <Calculator className="size-5" />, t: "KI erkennt – Rechenkern berechnet", s: "Fristen rät keine KI. Sie erkennt das auslösende Ereignis, der geprüfte Fristenrechner rechnet nach §§ 187 ff. BGB und § 222 ZPO – mit Rechenweg und Feiertagen je Bundesland." },
-  { i: <BookCheck className="size-5" />, t: "Nur geprüfte Quellen", s: "Analysen stützen sich auf Entscheidungen mit Gericht, Datum und Aktenzeichen. Jede Aussage ist nachprüfbar – nichts wird erfunden." },
-  { i: <ServerCog className="size-5" />, t: "Daten in Deutschland oder On-Premise", s: "Betrieb in deutschen Rechenzentren oder auf Ihrem eigenen Server. Keine externen Schriften, kein Tracking." },
+  { i: <BookCheck className="size-5" />, t: "Nachprüfbare Quellen", s: "Präzedenzfälle übernimmt die KI nur aus der Fall-Datenbank – jeweils mit Gericht, Datum und Aktenzeichen zum Nachprüfen. KI-Texte sind als Entwurf gekennzeichnet und werden vor Verwendung anwaltlich geprüft." },
+  { i: <ServerCog className="size-5" />, t: "Daten in Deutschland oder On-Premise", s: "Betrieb in deutschen Rechenzentren oder auf Ihrem eigenen Server. Live-KI nur aufgabenbezogen über Ihren Server beim KI-Anbieter – oder komplett offline. Keine externen Schriften, kein Tracking." },
   { i: <Lock className="size-5" />, t: "Verschwiegenheit nach § 203 StGB", s: "Strikte Mandantentrennung auf Datenbankebene, verschlüsselte Übertragung, Rollen und Rechte. Sie behalten die Kontrolle über jede Freigabe." },
 ];
 
@@ -133,7 +133,7 @@ export function Vertrauen() {
       <Reveal className="mt-4 flex items-center gap-3 rounded-[20px] bg-green-soft px-5 py-4 text-[14px] text-fg-2">
         <ShieldCheck className="size-5 shrink-0 text-green" />
         <span>
-          <span className="font-semibold text-fg">Sie behalten die Hoheit:</span> In den Einstellungen legen Sie fest, welche KI-Funktionen Ihre Kanzlei nutzt.
+          <span className="font-semibold text-fg">Sie behalten die Hoheit:</span> In den Einstellungen legen Sie fest, ob die Live-KI (Claude) oder die Offline-KI arbeitet – und sehen jederzeit, wohin Daten fließen.
         </span>
       </Reveal>
     </Abschnitt>

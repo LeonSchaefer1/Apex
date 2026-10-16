@@ -10,9 +10,9 @@ export const AUTOMATION_DEFS: Omit<Automation, "id" | "laeufe" | "letzterLauf" |
   },
   {
     key: "mandatsaufnahme", name: "Mandatsaufnahme-Paket", kategorie: "Mandanten",
-    beschreibung: "Erstellt beim Anlegen einer Akte Vollmacht, Mandatsbestätigung, Datenschutzhinweise und den Hinweis zur Abrechnung nach Gegenstandswert (§ 49b Abs. 5 BRAO).",
+    beschreibung: "Erstellt beim Anlegen einer Akte Vollmacht, Mandatsbestätigung und Datenschutzhinweise und dokumentiert die vor Übernahme erteilten Hinweise zur Abrechnung nach Gegenstandswert (§ 49b Abs. 5 BRAO) – in Arbeitssachen auch zum Ausschluss der Kostenerstattung (§ 12a Abs. 1 S. 2 ArbGG).",
     ausloeser: "Neue Akte angelegt", minutenProLauf: 25,
-    schritte: ["Mandantendaten übernehmen", "Vollmacht erzeugen", "Mandatsbestätigung & Datenschutzhinweise", "Hinweis § 49b Abs. 5 BRAO", "Zur digitalen Unterschrift senden"],
+    schritte: ["Mandantendaten übernehmen", "Vollmacht erzeugen", "Mandatsbestätigung & Datenschutzhinweise", "Hinweise § 49b BRAO / § 12a ArbGG zur Bestätigung", "Zur digitalen Unterschrift senden"],
   },
   {
     key: "deckungsanfrage", name: "Deckungsanfrage an Rechtsschutzversicherung", kategorie: "Mandanten",

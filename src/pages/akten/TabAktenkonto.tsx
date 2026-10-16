@@ -1,4 +1,4 @@
-// Reiter „Aktenkonto“: Buchungen mit laufendem Saldo, Fremdgeld-Wächter (§ 43a Abs. 5 BRAO) und Forderungskonto (§§ 288, 367 BGB).
+// Reiter „Aktenkonto“: Buchungen mit laufendem Saldo, Fremdgeld-Wächter (§ 43a Abs. 7 BRAO) und Forderungskonto (§§ 288, 367 BGB).
 import { useMemo, useState, type ReactNode } from "react";
 import { motion } from "motion/react";
 import { AlertTriangle, ArrowRightLeft, Calculator, Copy, Info, Landmark, Plus, ReceiptEuro, Scale, Wallet } from "lucide-react";
@@ -130,7 +130,7 @@ export function TabAktenkonto({ akte }: { akte: Akte }) {
           <div className="min-w-0 flex-1 basis-[260px]">
             <div className="text-[14px] font-semibold text-seal">Fremdgeld unverzüglich weiterleiten</div>
             <p className="text-[12.5px] leading-snug text-fg-2">
-              Auf dem Anderkonto liegen <span className="num font-semibold">{eur(summen.fremdOffen)}</span>, die {mandant?.name ?? "dem Mandanten"} zustehen. Fremdgeld ist nach § 43a Abs. 5 BRAO unverzüglich an den Berechtigten weiterzuleiten.
+              Auf dem Anderkonto liegen <span className="num font-semibold">{eur(summen.fremdOffen)}</span>, die {mandant?.name ?? "dem Mandanten"} zustehen. Fremdgeld ist nach § 43a Abs. 7 BRAO unverzüglich an den Berechtigten weiterzuleiten.
             </p>
           </div>
           <Button variant="danger" icon={<ArrowRightLeft className="size-4" />} onClick={fremdgeldWeiterleiten}>
@@ -594,7 +594,7 @@ function BuchungErfassen({ akte, open, onClose }: { akte: Akte; open: boolean; o
           <div className="flex items-center gap-3">
             <div className="min-w-0 flex-1">
               <div className="text-[13px] font-medium">Fremdgeld</div>
-              <div className="text-[12px] text-fg-3">Gehört dem Mandanten (§ 43a Abs. 5 BRAO) – wird getrennt geführt.</div>
+              <div className="text-[12px] text-fg-3">Gehört dem Mandanten (§ 43a Abs. 7 BRAO) – wird getrennt geführt.</div>
             </div>
             <Switch id="bu-fremd" checked={fremd} onChange={setFremd} label="Fremdgeld" />
           </div>

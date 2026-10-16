@@ -103,7 +103,7 @@ export function RechnungenTab() {
       {
         id: "akte",
         header: "Akte",
-        size: 230,
+        size: 202,
         accessorFn: (r) => akten.get(r.akteId)?.aktenzeichen ?? "",
         sortingFn: (a, b) => (a.getValue<string>("akte") ?? "").localeCompare(b.getValue<string>("akte") ?? "", "de", { numeric: true }),
         cell: ({ row }) => <AkteLabel akte={akten.get(row.original.akteId)} />,
@@ -129,7 +129,7 @@ export function RechnungenTab() {
         ),
       },
       { id: "status", header: "Status", size: 126, accessorFn: (r) => r.status, cell: ({ row }) => <StatusChip r={row.original} /> },
-      { id: "format", header: "Format", size: 116, accessorKey: "format", cell: ({ row }) => <FormatChip format={row.original.format} /> },
+      { id: "format", header: "Format", size: 138, accessorKey: "format", cell: ({ row }) => <FormatChip format={row.original.format} /> },
     ],
     [akten, kontakte, heute],
   );

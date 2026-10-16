@@ -68,6 +68,15 @@ export function wochenStart(iso: ISODate): ISODate {
   return addDays(iso, wd === 0 ? -6 : 1 - wd);
 }
 
+/**
+ * Erster Tag der Wochenansicht: Montag bis Donnerstag die laufende Kalenderwoche; ab Freitag ein 7-Tage-Fenster
+ * ab heute – sonst stünden am Freitag vier leere Vortage im Bild und die Fristen der nächsten Woche fehlten.
+ */
+export function wochenAnsichtStart(heute: ISODate): ISODate {
+  const wd = weekday(heute); // 0 = So
+  return wd === 5 || wd === 6 || wd === 0 ? heute : wochenStart(heute);
+}
+
 /** ISO-Kalenderwoche. */
 export function kalenderwoche(iso: ISODate): number {
   const d = fromISO(iso);

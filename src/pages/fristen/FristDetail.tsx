@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router";
 import { CalendarClock, Clock, FolderOpen, MapPin, ShieldAlert } from "lucide-react";
 import { fmtDateShort, fmtDateWd, relDays, wochentagName, fmtDateLong } from "@/core/dates";
+import { fristArtZu } from "@/core/fristen";
 import type { Akte, Frist, User } from "@/core/types";
 import { Avatar, Button, Drawer } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -20,7 +21,7 @@ export function FristPille({ f, akte, onClick, ohneAz }: { f: Frist; akte?: Akte
         f.status === "erledigt" && "opacity-50",
       )}
     >
-      {f.typ === "notfrist" && <ShieldAlert className="mt-px size-3 shrink-0" />}
+      {(f.typ === "notfrist" || (f.typ === "frist" && fristArtZu(f)?.kritisch)) && <ShieldAlert className="mt-px size-3 shrink-0" aria-label={f.typ === "notfrist" ? "Notfrist" : "nicht verlängerbar"} />}
       <span className="min-w-0 flex-1">
         <span className={cn("block truncate font-semibold", f.status === "erledigt" && "line-through")}>
           {f.uhrzeit ? <span className="num font-medium opacity-80">{f.uhrzeit} </span> : null}
@@ -36,16 +37,18 @@ function DetailInhalt({ f, akte, team, user, onClose }: { f: Frist; akte?: Akte;
   const nav = useNavigate();
   const { erledigt, umschalten, kontrollieren } = useFristAktionen(f, user);
   const v = team.find((u) => u.id === f.verantwortlichId);
+  const art = f.typ === "notfrist" || f.typ === "frist" ? fristArtZu(f) : undefined;
+  const kritisch = !!art?.kritisch;
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-1.5">
-        <TypChip typ={f.typ} />
+        <TypChip typ={f.typ} regelKey={f.regelKey} />
         <QuelleChip quelle={f.quelle} />
         <KontrollStatus f={f} team={team} />
       </div>
-      <div className={cn("rounded-[20px] p-4", f.typ === "notfrist" ? "bg-seal-soft" : "bg-[var(--ink-softer)] ring-1 ring-inset ring-[var(--line)]")}>
-        <div className={cn("eyebrow", f.typ === "notfrist" && "!text-seal")}>{f.typ === "termin" ? "Termin" : f.typ === "vorfrist" ? "Vorfrist" : "Fristende"}</div>
-        <div className={cn("mt-1 text-[24px] font-semibold leading-tight tracking-[-0.03em]", f.typ === "notfrist" && "text-seal")}>
+      <div className={cn("rounded-[20px] p-4", kritisch ? "bg-seal-soft" : "bg-[var(--ink-softer)] ring-1 ring-inset ring-[var(--line)]")}>
+        <div className={cn("eyebrow", kritisch && "!text-seal")}>{f.typ === "termin" ? "Termin" : f.typ === "vorfrist" ? "Vorfrist" : "Fristende"}</div>
+        <div className={cn("mt-1 text-[24px] font-semibold leading-tight tracking-[-0.03em]", kritisch && "text-seal")}>
           {wochentagName(f.datum)}, {fmtDateLong(f.datum)}
         </div>
         <div className="num mt-1 flex flex-wrap items-center gap-x-3 text-[12.5px] text-fg-2">
@@ -115,6 +118,15 @@ function DetailInhalt({ f, akte, team, user, onClose }: { f: Frist; akte?: Akte;
           <RechenwegListe schritte={f.rechenweg} />
         </div>
       ) : null}
+      {art?.versaeumnis && f.status === "offen" && (
+        <p className={cn("flex gap-2 rounded-[14px] p-3 text-[12.5px] leading-relaxed", kritisch ? "bg-seal-soft text-seal" : "bg-[var(--ink-softer)] text-fg-2")}>
+          <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
+          <span>
+            {art.art && <strong className="font-semibold">{art.art} </strong>}
+            {art.versaeumnis}
+          </span>
+        </p>
+      )}
       {f.notiz && <p className="rounded-[14px] bg-[var(--ink-softer)] p-3 text-[12.5px] leading-relaxed text-fg-2">{f.notiz}</p>}
       <div className="flex flex-wrap items-center gap-2 border-t border-[var(--line)] pt-4">
         {f.status === "offen" && <KontrolleAktion f={f} user={user} kontrollieren={kontrollieren} verantwortlich={v} />}

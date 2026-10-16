@@ -33,6 +33,8 @@ export function FallanalyseTab({ akteId, onAkte, autoStart, onAutoStart }: { akt
 
   // Akte, deren Analyse per Deep-Link gestartet wurde: Panel bekommt Bildschirmhöhe, damit es oben stehen kann.
   const [fokusId, setFokusId] = useState<string | null>(null);
+  // Akte, deren Panel die Analyse selbst starten soll (nach dem Hingleiten)
+  const [startFuer, setStartFuer] = useState<string | null>(null);
 
   useEffect(() => {
     if (!autoStart || !gewaehltId) return;
@@ -44,12 +46,8 @@ export function FallanalyseTab({ akteId, onAkte, autoStart, onAutoStart }: { akt
       const el = panelRef.current;
       if (!el) return;
       el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
-      t2 = setTimeout(() => {
-        // Liegt bereits ein Ergebnis vor, wird es nur angezeigt; sonst den Start-Knopf des Panels auslösen.
-        const knopf = Array.from(el.querySelectorAll<HTMLButtonElement>("button")).find((b) => b.textContent?.trim() === "Fallanalyse starten");
-        knopf?.click();
-        onAutoStart?.(); // ?start=1 aus der Adresse entfernen – Neuladen startet nicht erneut
-      }, reduce ? 0 : 520);
+      // Das Panel startet selbst (liegt bereits ein Ergebnis vor, zeigt es nur dieses an).
+      t2 = setTimeout(() => setStartFuer(gewaehltId), reduce ? 0 : 520);
     }, 380);
     return () => {
       clearTimeout(t1);
@@ -157,7 +155,15 @@ export function FallanalyseTab({ akteId, onAkte, autoStart, onAutoStart }: { akt
 
       {gewaehlt && (
         <motion.div ref={panelRef} key={gewaehlt.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", stiffness: 380, damping: 34 }} className={cn("min-w-0 scroll-mt-24", fokusId === gewaehlt.id && "min-h-[calc(100dvh-8rem)]")}>
-          <FallanalysePanel key={gewaehlt.id} akteId={gewaehlt.id} />
+          <FallanalysePanel
+            key={gewaehlt.id}
+            akteId={gewaehlt.id}
+            autoStart={startFuer === gewaehlt.id}
+            onAutoStart={() => {
+              setStartFuer(null);
+              onAutoStart?.(); // ?start=1 aus der Adresse entfernen – Neuladen startet nicht erneut
+            }}
+          />
         </motion.div>
       )}
     </div>

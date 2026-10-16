@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router";
 import { motion } from "motion/react";
 import { PanelLeftClose, PanelLeftOpen, Infinity as InfinityIcon } from "lucide-react";
@@ -6,9 +7,36 @@ import { useUI } from "@/store/ui";
 import { useKanzlei } from "@/store/session";
 import { cn } from "@/lib/cn";
 import { AppIcon, Wordmark } from "@/components/Logo";
+import { useMedia } from "@/lib/useMedia";
 import { useBadges } from "./useBadges";
 
 const GRUPPEN = ["Arbeiten", "Intelligenz", "Kanzlei", "Service"] as const;
+
+/** Verlauf am Rand der Navigation, solange dort weitere Einträge verborgen sind (niedrige Fensterhöhe). */
+function useScrollVerlauf() {
+  const ref = useRef<HTMLElement>(null);
+  const [rand, setRand] = useState({ oben: false, unten: false });
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const pruefe = () => {
+      const oben = el.scrollTop > 2;
+      const unten = el.scrollTop + el.clientHeight < el.scrollHeight - 2;
+      setRand((r) => (r.oben === oben && r.unten === unten ? r : { oben, unten }));
+    };
+    pruefe();
+    el.addEventListener("scroll", pruefe, { passive: true });
+    const ro = new ResizeObserver(pruefe);
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => {
+      el.removeEventListener("scroll", pruefe);
+      ro.disconnect();
+    };
+  }, []);
+  const maske = rand.oben || rand.unten ? `linear-gradient(to bottom, ${rand.oben ? "transparent, #000 28px" : "#000"}, ${rand.unten ? "#000 calc(100% - 36px), transparent" : "#000"})` : undefined;
+  return { ref, maske, unten: rand.unten };
+}
 
 export function Sidebar() {
   const { sidebarKompakt, toggleSidebar } = useUI();
@@ -16,7 +44,10 @@ export function Sidebar() {
   const loc = useLocation();
   const active = navFor(loc.pathname)?.to;
   const badges = useBadges();
-  const kompakt = sidebarKompakt;
+  // Tablet hochkant (768–1023 px): immer die kompakte Icon-Leiste – die volle Leiste ließe dem Inhalt nur ~500 px.
+  const tablet = useMedia("(min-width: 768px) and (max-width: 1023px)");
+  const kompakt = sidebarKompakt || tablet;
+  const verlauf = useScrollVerlauf();
 
   return (
     <motion.aside
@@ -37,11 +68,19 @@ export function Sidebar() {
         )}
       </div>
 
-      <nav className="no-scrollbar mt-2 flex-1 overflow-y-auto px-2.5 pb-2" aria-label="Hauptnavigation">
+      {/* Niedrige Fenster (Beamer 1280×720, Laptop 1366×768): dichtere Einträge, Lizenz-Kachel entfällt,
+          verbleibender Überlauf wird am Rand mit einem Verlauf angezeigt. */}
+      <nav
+        ref={verlauf.ref}
+        className="no-scrollbar mt-2 min-h-0 flex-1 overflow-y-auto px-2.5 pb-2 [@media(max-height:760px)]:mt-0"
+        style={{ maskImage: verlauf.maske, WebkitMaskImage: verlauf.maske }}
+        aria-label="Hauptnavigation"
+      >
+        <div>
         {GRUPPEN.map((g) => (
-          <div key={g} className="mb-2">
-            {!kompakt && g !== "Arbeiten" && <div className="eyebrow px-3 pb-1 pt-3 !text-[10px]">{g === "Service" ? "" : g}</div>}
-            {kompakt && g !== "Arbeiten" && <div className="mx-auto my-2 h-px w-8 bg-[var(--line)]" />}
+          <div key={g} className="mb-2 [@media(max-height:760px)]:mb-1">
+            {!kompakt && g !== "Arbeiten" && <div className="eyebrow px-3 pb-1 pt-3 !text-[10px] [@media(max-height:760px)]:pt-2">{g === "Service" ? "" : g}</div>}
+            {kompakt && g !== "Arbeiten" && <div className="mx-auto my-2 h-px w-8 bg-[var(--line)] [@media(max-height:760px)]:my-1.5" />}
             {NAV.filter((n) => n.gruppe === g).map((n) => {
               const isActive = active === n.to;
               const badge = badges[n.to];
@@ -51,7 +90,7 @@ export function Sidebar() {
                   to={n.to}
                   title={kompakt ? `${n.label} – ${n.beschreibung}` : n.beschreibung}
                   className={cn(
-                    "group relative flex h-10 items-center gap-3 rounded-[14px] px-3 text-[13.5px] font-medium transition-colors",
+                    "group relative flex h-10 items-center gap-3 rounded-[14px] px-3 text-[13.5px] font-medium transition-colors [@media(max-height:700px)]:h-9",
                     kompakt && "justify-center px-0",
                     isActive ? "text-fg" : "text-fg-2 hover:text-fg",
                   )}
@@ -80,11 +119,12 @@ export function Sidebar() {
             })}
           </div>
         ))}
+        </div>
       </nav>
 
       <div className={cn("px-3 pb-3", kompakt && "px-2")}>
         {!kompakt && (
-          <div className="mb-2 rounded-[16px] bg-ink-softer p-3 text-[12px] leading-snug">
+          <div className="mb-2 rounded-[16px] bg-ink-softer p-3 text-[12px] leading-snug [@media(max-height:820px)]:hidden">
             <div className="flex items-center gap-1.5 font-semibold text-fg">
               <InfinityIcon className="size-4 text-ink" /> Lifetime-Lizenz
             </div>
@@ -93,6 +133,7 @@ export function Sidebar() {
             </div>
           </div>
         )}
+        {!tablet && (
         <button
           type="button"
           onClick={toggleSidebar}
@@ -107,6 +148,7 @@ export function Sidebar() {
           {kompakt ? <PanelLeftOpen className="size-[18px]" /> : <PanelLeftClose className="size-[18px]" />}
           {!kompakt && "Einklappen"}
         </button>
+        )}
       </div>
     </motion.aside>
   );

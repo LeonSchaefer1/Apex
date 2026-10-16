@@ -39,8 +39,8 @@ export const VORLAGEN: FallVorlage[] = [
   {
     key: "ar-kuendigung", sachgebiet: "Arbeitsrecht",
     titel: (p) => `${p.M} ./. ${p.G}`,
-    beschreibung: (p) => `Ordentliche, betriebsbedingte Kündigung nach ${p.J} Jahren Betriebszugehörigkeit. Sozialauswahl nicht nachvollziehbar, Betriebsratsanhörung unklar. Ziel: Weiterbeschäftigung, hilfsweise Abfindung.`,
-    schlagworte: ["kündigung", "kündigungsschutz", "sozialauswahl", "abfindung", "betriebsbedingt"],
+    beschreibung: (p) => `Ordentliche, betriebsbedingte Kündigung nach ${p.J} Jahren Betriebszugehörigkeit. Sozialauswahl nicht nachvollziehbar, Betriebsratsanhörung unklar. Ziel: Weiterbeschäftigung, hilfsweise Abfindung. Offen sind zwölf Tage Resturlaub aus dem Vorjahr – auf den Verfall hat die Arbeitgeberin nie hingewiesen.`,
+    schlagworte: ["kündigung", "kündigungsschutz", "sozialauswahl", "abfindung", "betriebsbedingt", "urlaub", "urlaubsabgeltung"],
     gegner: "firma", gericht: "arbg", wert: [9000, 19000], rsv: true,
     fristen: [{ regel: "kschg_klage", offset: [6, 18] }],
     dokumente: [
@@ -192,8 +192,9 @@ export const VORLAGEN: FallVorlage[] = [
   {
     key: "vt-gewaehr", sachgebiet: "Vertragsrecht",
     titel: (p) => `${p.M} ./. ${p.G} (Gewährleistung)`,
-    beschreibung: (p) => `Mangelhafte Lieferung einer Küchenanlage (${p.BETRAG}). Nacherfüllung zweimal fehlgeschlagen; Rücktritt und Erstattung der Aus- und Einbaukosten nach § 439 Abs. 3 BGB.`,
+    beschreibung: (p) => `Mangelhafte Lieferung einer Küchenanlage (${p.BETRAG}). Nacherfüllung zweimal fehlgeschlagen; Rücktritt (§§ 437 Nr. 2, 323 BGB) und daneben Ersatz der Ausbau- und Folgekosten (§§ 437 Nr. 3, 280, 281, 325 BGB).`,
     schlagworte: ["kaufrecht", "mangel", "nacherfüllung", "rücktritt", "einbau", "ausbau"],
+    // Gericht folgt dem Wert (§ 23 Nr. 1 GVG): bis 10.000 € Amtsgericht – siehe generischeAkte
     gegner: "firma", gericht: "lg", wert: [8000, 28000],
     fristen: [{ titel: "Klageerwiderung Gegenseite abwarten", typ: "wiedervorlage", offset: [6, 24] }],
     dokumente: [{ name: "Rücktrittserklärung", art: "schriftsatz", ordner: "Korrespondenz", text: (p) => brief(p, "Rücktritt vom Kaufvertrag", `namens unserer Mandantschaft erklären wir den Rücktritt vom Kaufvertrag, nachdem zwei Nachbesserungsversuche fehlgeschlagen sind.`) }],
@@ -202,8 +203,8 @@ export const VORLAGEN: FallVorlage[] = [
   {
     key: "vt-pruefung", sachgebiet: "Vertragsrecht",
     titel: (p) => `Vertragsprüfung ${p.M}`,
-    beschreibung: () => `Prüfung eines SaaS-Rahmenvertrags (Laufzeit 36 Monate) inkl. AVV nach Art. 28 DSGVO, Haftungsbegrenzung und Kündigungsrechten.`,
-    schlagworte: ["vertrag", "agb", "prüfung", "haftung", "dsgvo", "avv"],
+    beschreibung: () => `Prüfung eines SaaS-Rahmenvertrags (Laufzeit 36 Monate) inkl. AVV nach Art. 28 DSGVO, Haftungsbegrenzung und Kündigungsrechten. Der Anbieter setzt für Cloud-Hosting einen Unterauftragsverarbeiter in den USA ein (Drittlandübermittlung).`,
+    schlagworte: ["vertrag", "agb", "prüfung", "haftung", "dsgvo", "avv", "datenschutz", "cloud", "drittland"],
     gegner: "keiner", wert: [20000, 60000],
     fristen: [{ titel: "Abgabe Prüfvermerk an Mandantin", typ: "frist", offset: [1, 8] }],
     dokumente: [{ name: "Rahmenvertrag (Entwurf Anbieter)", art: "vertrag", ordner: "Mandant", text: () => `SaaS-Rahmenvertrag: automatische Verlängerung um 12 Monate, Haftung auf Auftragswert begrenzt, Gerichtsstand Dublin.` }],
@@ -226,8 +227,8 @@ export const VORLAGEN: FallVorlage[] = [
   {
     key: "br-werklohn", sachgebiet: "Baurecht",
     titel: (p) => `${p.M} ./. ${p.G} (Werklohn)`,
-    beschreibung: (p) => `Bauunternehmen klagt Restwerklohn aus Schlussrechnung ein (${p.BETRAG}). Auftraggeber verweigert Abnahme und rügt Mängel am Estrich.`,
-    schlagworte: ["werklohn", "abnahme", "schlussrechnung", "vob", "estrich"],
+    beschreibung: (p) => `Bauunternehmen klagt Restwerklohn aus Schlussrechnung ein (${p.BETRAG}). Auftraggeber verweigert Abnahme, rügt Mängel am Estrich und kündigt die Aufrechnung mit fiktiven Mängelbeseitigungskosten an.`,
+    schlagworte: ["werklohn", "werkvertrag", "abnahme", "schlussrechnung", "vob", "estrich", "mangel", "fiktive kosten"],
     gegner: "firma", gericht: "lg", wert: [18000, 85000],
     fristen: [{ regel: "klageerwiderung", offset: [7, 22] }],
     dokumente: [{ name: "Schlussrechnung und Aufmaß", art: "rechnung", ordner: "Mandant", text: (p) => `Schlussrechnung nach VOB/B über ${p.BETRAG}, Aufmaß vom Estrichleger, Abnahmeprotokoll nicht unterzeichnet.` }],

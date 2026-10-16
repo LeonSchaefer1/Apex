@@ -1,6 +1,7 @@
 // Präsentationsfälle („Hero-Akten") – in sich stimmige Geschichten für die Live-Demo.
 import { AUTOMATION_DEFS } from "../automationen";
-import { addDays, fmtDate, fmtDateLong } from "../dates";
+import { addDays, fmtDate, fmtDateLong, round2 } from "../dates";
+import { berechneRvg, fassungFuerAuftrag } from "../rvg";
 import type { Akte, Aktivitaet } from "../types";
 import { addDok, addFrist, addMsg, addRechnung, addRegelFrist, nextAz, type Ctx } from "./generate";
 import { STAEDTE } from "./pools";
@@ -68,7 +69,11 @@ export function heroesBerlin(ctx: Ctx) {
   });
   addDok(ctx, {
     akteId: a1.id, name: "Gesprächsnotiz Erstberatung", art: "notiz", ordner: "Mandant", quelle: "generiert", format: "docx", autorId: julia.id, createdAt: dt(-2, 11, 5),
-    inhalt: `Erstberatung mit Herrn Weber am ${fmtDate(d(-2))} (Dauer 45 Min.).\n• 52 Jahre, verheiratet, zwei Kinder (14 und 17), seit 01.04.2012 bei Kröger Logistik, keine Abmahnungen, sehr gute Beurteilungen.\n• Die drei Packungen waren eingerissen und lagen im Container „Bruch – Entsorgung“. Laut Mandant nehmen Kollegen regelmäßig Bruchware mit; Schichtleiter Pohl habe das mehrfach gesehen und geduldet.\n• Eine Anhörung des Mandanten vor der Kündigung fand nicht statt.\n• Ob und wann der Betriebsrat angehört wurde, ist unklar.\n• Rechtsschutzversicherung: Nordlicht Rechtsschutz AG, Vertrag seit 2016.\n• Ziel: Weiterbeschäftigung. Abfindung nur als zweite Option.\n• Erste Einschätzung: Konstellation wie im „Emmely“-Fall (Kündigung wegen zweier Pfandbons über 1,30 €, BAG 2 AZR 541/09) – nach 14 Jahren ohne Abmahnung ist die fristlose Kündigung voraussichtlich unverhältnismäßig.`,
+    inhalt: `Erstberatung mit Herrn Weber am ${fmtDate(d(-2))} (Dauer 45 Min.).\n• 52 Jahre, verheiratet, zwei Kinder (14 und 17), seit 01.04.2012 bei Kröger Logistik, keine Abmahnungen, sehr gute Beurteilungen.\n• Die drei Packungen waren eingerissen und lagen im Container „Bruch – Entsorgung“. Laut Mandant nehmen Kollegen regelmäßig Bruchware mit; Schichtleiter Pohl habe das mehrfach gesehen und geduldet.\n• Eine Anhörung des Mandanten vor der Kündigung fand nicht statt.\n• Ob und wann der Betriebsrat angehört wurde, ist unklar.\n• Rechtsschutzversicherung: Nordlicht Rechtsschutz AG, Vertrag seit 2016.\n• Ziel: Weiterbeschäftigung. Abfindung nur als zweite Option.\n• Vor Übernahme des Mandats darauf hingewiesen, dass sich die Gebühren nach dem Gegenstandswert richten (§ 49b Abs. 5 BRAO) und im ersten Rechtszug vor dem Arbeitsgericht keine Kostenerstattung stattfindet (§ 12a Abs. 1 S. 2 ArbGG) – Hinweisblatt gegengezeichnet.\n• Erste Einschätzung: Konstellation wie im „Emmely“-Fall (Kündigung wegen zweier Pfandbons über 1,30 €, BAG 2 AZR 541/09) – nach 14 Jahren ohne Abmahnung ist die fristlose Kündigung voraussichtlich unverhältnismäßig.`,
+  });
+  addDok(ctx, {
+    akteId: a1.id, name: "Kostenhinweise vor Mandatsübernahme (§ 49b Abs. 5 BRAO, § 12a ArbGG)", art: "brief", ordner: "Mandant", quelle: "generiert", seiten: 1, createdAt: dt(-2, 10, 58),
+    inhalt: `Hinweise vor Übernahme des Mandats\n\nUnser Zeichen: 142/${ctx.yy} – Weber ./. Kröger Logistik GmbH\n\n1. Abrechnung nach dem Gegenstandswert (§ 49b Abs. 5 BRAO)\nDie für unsere Tätigkeit zu erhebenden Gebühren richten sich nach dem Gegenstandswert (§ 2 Abs. 1 RVG). Für die Kündigungsschutzklage beträgt er voraussichtlich drei Bruttomonatsentgelte (§ 42 Abs. 2 S. 1 GKG), für einen Weiterbeschäftigungsantrag kommt ein Bruttomonatsentgelt hinzu.\n\n2. Keine Kostenerstattung im ersten Rechtszug (§ 12a Abs. 1 S. 2 ArbGG)\nIm Urteilsverfahren des ersten Rechtszugs vor dem Arbeitsgericht trägt jede Partei ihre Anwaltskosten selbst – auch wenn sie den Prozess gewinnt. Ein Anspruch auf Erstattung der Kosten für die Hinzuziehung eines Prozessbevollmächtigten besteht nicht.\n\nBeide Hinweise wurden im Erstgespräch am ${fmtDate(d(-2))} vor Übernahme des Mandats erteilt.\n\nZur Kenntnis genommen:\nBerlin, den ${fmtDate(d(-2))}\n\nThomas Weber (digital gegengezeichnet)`,
   });
   addDok(ctx, { akteId: a1.id, name: "Vollmacht (digital unterzeichnet)", art: "vollmacht", ordner: "Mandant", quelle: "generiert", createdAt: dt(-2, 11, 30), inhalt: "Prozessvollmacht Thomas Weber für Hartmann & Partner Rechtsanwälte, digital unterzeichnet." });
   addDok(ctx, {
@@ -115,28 +120,30 @@ export function heroesBerlin(ctx: Ctx) {
   addDok(ctx, { akteId: a3.id, name: "Gutachten Kfz-Sachverständiger", art: "gutachten", ordner: "Anlagen", quelle: "email", seiten: 18, createdAt: dt(-20), inhalt: "Reparaturkosten netto 5.874,50 € (Stundenverrechnungssätze Markenwerkstatt), merkantiler Minderwert 650 €, Nutzungsausfall 12 Tage à 59 € = 708 €, Gutachterkosten 1.130 €." });
   addDok(ctx, { akteId: a3.id, name: "Abrechnung Elbtal Versicherung", art: "brief", ordner: "Korrespondenz", quelle: "email", createdAt: dt(-1), inhalt: "Schadennummer EV-2026-448812: Wir haben 6.120 € auf Ihr Anderkonto überwiesen. Eine weitere Zahlung lehnen wir ab, da die Reparatur in der gleichwertigen freien Fachwerkstatt Autoservice Ring GmbH um 1.284,50 € günstiger möglich ist." });
   ctx.data.buchungen.push({ id: ctx.id("b"), akteId: a3.id, datum: d(-4), art: "fremdgeld", betrag: 6120, text: "Zahlung Elbtal Versicherung (Fremdgeld) – an Mandantin weiterzuleiten", fremdgeld: true });
-  addFrist(ctx, { akteId: a3.id, titel: "Fremdgeld an Mandantin weiterleiten (§ 43a Abs. 5 BRAO)", typ: "frist", datum: ctx.today, verantwortlichId: mia?.id ?? jonas.id, quelle: "automatisch" });
+  addFrist(ctx, { akteId: a3.id, titel: "Fremdgeld an Mandantin weiterleiten (§ 43a Abs. 7 BRAO)", typ: "frist", datum: ctx.today, verantwortlichId: mia?.id ?? jonas.id, quelle: "automatisch" });
   addFrist(ctx, { akteId: a3.id, titel: "Wiedervorlage: Nachforderung Reparaturkosten", typ: "wiedervorlage", datum: ctx.werktag(14), verantwortlichId: jonas.id, quelle: "ki" });
 
   // 4) Kaufrecht Neumann – Urteil kommt heute per beA
   const neumann = ctx.person(["mandant"], { vorname: "Michael", nachname: "Neumann", weiblich: false });
   const arslan = ctx.firma("Arslan Autohaus GmbH", ["gegner"]);
   const lg = ctx.gericht(G.lg);
+  // Registerjahr des Gerichtsaktenzeichens = Jahr der Klageerhebung (Klageschrift vor 230 Tagen)
+  const neumannAz = `28 O 211/${addDays(ctx.today, -230).slice(2, 4)}`;
   const a4 = akte(ctx, {
     aktenzeichen: nextAz(ctx, 118), titel: "Neumann ./. Arslan Autohaus GmbH", sachgebiet: "Vertragsrecht", phase: "Urteil", status: "offen",
-    mandantId: neumann.id, gegnerId: arslan.id, gerichtId: lg.id, gerichtsAz: `28 O 211/25`, gegenstandswert: 18900, bearbeiterId: julia.id, sachbearbeiterId: mia?.id,
+    mandantId: neumann.id, gegnerId: arslan.id, gerichtId: lg.id, gerichtsAz: neumannAz, gegenstandswert: 18900, bearbeiterId: julia.id, sachbearbeiterId: mia?.id,
     beschreibung: "Rücktritt vom Kauf eines Gebrauchtwagens (18.900 €) wegen verschwiegenem Unfallschaden. Klage auf Rückzahlung Zug um Zug gegen Rückgabe; Verkündungstermin war vor einer Woche.",
-    schlagworte: ["kaufrecht", "gebrauchtwagen", "rücktritt", "unfallschaden", "arglist"],
+    schlagworte: ["kaufrecht", "kaufvertrag", "gebrauchtwagen", "rücktritt", "unfallschaden", "arglist", "nutzungsentschädigung"],
     prioritaet: "hoch", createdAt: dt(-260, 11, 0), updatedAt: dt(-7, 12, 0),
   });
   addDok(ctx, { akteId: a4.id, name: "Klageschrift", art: "schriftsatz", ordner: "Gericht", quelle: "generiert", format: "docx", autorId: julia.id, createdAt: dt(-230), inhalt: "Klage auf Rückzahlung des Kaufpreises von 18.900 € Zug um Zug gegen Rückgabe des Fahrzeugs; arglistiges Verschweigen eines Vorschadens." });
   addDok(ctx, { akteId: a4.id, name: "Protokoll mündliche Verhandlung", art: "beschluss", ordner: "Gericht", quelle: "bea", createdAt: dt(-40), inhalt: "Termin zur Verkündung einer Entscheidung wird bestimmt." });
   addRechnung(ctx, a4, { positionen: ["2300", "3100", "3104"], datumOffset: -38, status: "gestellt" });
   addMsg(ctx, {
-    kanal: "bea", von: G.lg, vonAdresse: "DE.Justiz.LG-Berlin-II", betreff: `28 O 211/25 – Neumann ./. Arslan Autohaus GmbH – Zustellung Urteil gegen eEB`,
-    text: `In dem Rechtsstreit\nMichael Neumann ./. Arslan Autohaus GmbH\nAz.: 28 O 211/25\n\nwird Ihnen anliegend das Urteil vom ${fmtDate(d(-7))} zugestellt.\n\nDie Beklagte wird verurteilt, an den Kläger 14.250,00 € nebst Zinsen Zug um Zug gegen Rückgabe des Fahrzeugs zu zahlen. Im Übrigen wird die Klage abgewiesen (Nutzungsentschädigung 4.650,00 €). Die Kosten des Rechtsstreits tragen der Kläger zu 25 %, die Beklagte zu 75 %.\n\nSie werden gebeten, das elektronische Empfangsbekenntnis abzugeben.\n\nRechtsbehelfsbelehrung: Gegen dieses Urteil ist die Berufung zulässig. Sie ist binnen einer Notfrist von einem Monat ab Zustellung beim Kammergericht einzulegen und binnen zwei Monaten ab Zustellung zu begründen.`,
+    kanal: "bea", von: G.lg, vonAdresse: "DE.Justiz.LG-Berlin-II", betreff: `${neumannAz} – Neumann ./. Arslan Autohaus GmbH – Zustellung Urteil gegen eEB`,
+    text: `In dem Rechtsstreit\nMichael Neumann ./. Arslan Autohaus GmbH\nAz.: ${neumannAz}\n\nwird Ihnen anliegend das Urteil vom ${fmtDate(d(-7))} zugestellt.\n\nDie Beklagte wird verurteilt, an den Kläger 14.250,00 € nebst Zinsen Zug um Zug gegen Rückgabe des Fahrzeugs zu zahlen. Im Übrigen wird die Klage abgewiesen (Nutzungsentschädigung 4.650,00 €). Die Kosten des Rechtsstreits tragen der Kläger zu 25 %, die Beklagte zu 75 %.\n\nSie werden gebeten, das elektronische Empfangsbekenntnis abzugeben.\n\nRechtsbehelfsbelehrung: Gegen dieses Urteil ist die Berufung zulässig. Sie ist binnen einer Notfrist von einem Monat ab Zustellung beim Kammergericht einzulegen und binnen zwei Monaten ab Zustellung zu begründen.`,
     eingang: dt(0, 8, 12), akteId: undefined, status: "neu", zugeordnet: false, eebErforderlich: true, kiStatus: "ausstehend",
-    anhaenge: [{ name: "Urteil_28O211-25.pdf", groesseKb: 412 }, { name: "Zustellungsnachricht.xml", groesseKb: 6 }],
+    anhaenge: [{ name: `Urteil_${neumannAz.replace(/\s/g, "").replace("/", "-")}.pdf`, groesseKb: 412 }, { name: "Zustellungsnachricht.xml", groesseKb: 6 }],
   });
 
   // 5) Forderungseinzug Berger ./. Lenz – Forderungskonto
@@ -149,19 +156,28 @@ export function heroesBerlin(ctx: Ctx) {
     beschreibung: "Werklohn aus Heizungsreparatur (Rechnung 4.860 €). Vollstreckungsbescheid erwirkt, Schuldner zahlt unregelmäßig in Raten. Verbraucher – Verzugszinsen 5 Prozentpunkte über Basiszinssatz.",
     schlagworte: ["forderung", "vollstreckungsbescheid", "teilzahlung", "forderungskonto", "verzug", "zwangsvollstreckung"],
     prioritaet: "normal", createdAt: dt(-170, 9, 0), updatedAt: dt(-15, 9, 0),
-    forderung: { hauptforderung: 4860, faelligAb: d(-182), verbraucher: true, schuldnerId: lenz.id, titel: `Vollstreckungsbescheid AG Wedding vom ${fmtDate(d(-62))}` },
+    forderung: { hauptforderung: 4860, faelligAb: d(-182), verbraucher: true, schuldnerId: lenz.id, titel: `Vollstreckungsbescheid des Amtsgerichts Wedding vom ${fmtDate(d(-62))}` },
   });
+  // Kosten des Mahnverfahrens (im Vollstreckungsbescheid tituliert):
+  // Gericht: 0,5-Gebühr Nr. 1100 KV GKG aus 4.860 € – GKG-Tabelle ab 01.06.2025: 1,0 = 170,50 € → 85,25 € (Mindestgebühr 38 €).
+  // Anwalt: 1,0 Nr. 3305 + 0,5 Nr. 3308 VV RVG zzgl. Pauschale Nr. 7002 – netto, die Gläubigerin ist vorsteuerabzugsberechtigt.
+  const mahnRvg = berechneRvg({ positionen: [{ nr: "3305" }, { nr: "3308" }], gegenstandswert: 4860, fassung: fassungFuerAuftrag(a5.createdAt.slice(0, 10)) });
+  const rvgBetrag = (nr: string) => mahnRvg.angelegenheiten.flatMap((x) => x.zeilen).find((z) => z.nr === nr)?.betrag ?? 0;
   ctx.data.buchungen.push(
-    { id: ctx.id("b"), akteId: a5.id, datum: d(-120), art: "kosten", betrag: 32, text: "Gerichtskosten Mahnverfahren (verauslagt)" },
+    { id: ctx.id("b"), akteId: a5.id, datum: d(-120), art: "kosten", betrag: 85.25, text: "Gerichtskosten Mahnverfahren (Nr. 1100 KV GKG)" },
+    { id: ctx.id("b"), akteId: a5.id, datum: d(-120), art: "kosten", betrag: round2(rvgBetrag("3305") + mahnRvg.auslagenpauschale), text: "RA-Kosten Mahnbescheid (Nr. 3305, 7002 VV RVG)" },
+    { id: ctx.id("b"), akteId: a5.id, datum: d(-62), art: "kosten", betrag: rvgBetrag("3308"), text: "RA-Kosten Vollstreckungsbescheid (Nr. 3308)" },
     { id: ctx.id("b"), akteId: a5.id, datum: d(-45), art: "zahlung", betrag: -500, text: "Teilzahlung Schuldner Lenz", fremdgeld: true },
     { id: ctx.id("b"), akteId: a5.id, datum: d(-15), art: "zahlung", betrag: -500, text: "Teilzahlung Schuldner Lenz", fremdgeld: true },
   );
   addDok(ctx, { akteId: a5.id, name: "Vollstreckungsbescheid", art: "beschluss", ordner: "Gericht", quelle: "bea", createdAt: dt(-62), inhalt: `Vollstreckungsbescheid des Amtsgerichts Wedding über 4.860,00 € nebst Zinsen in Höhe von 5 Prozentpunkten über dem Basiszinssatz seit ${fmtDate(d(-182))}, Kosten des Verfahrens.` });
   addFrist(ctx, { akteId: a5.id, titel: "Wiedervorlage: Ratenzahlung prüfen", typ: "wiedervorlage", datum: ctx.werktag(1), verantwortlichId: mia?.id ?? jonas.id, quelle: "automatisch" });
+  // Den Ausdruck des Vermögensverzeichnisses leitet der Gerichtsvollzieher dem Gläubiger selbst zu (§ 802f Abs. 6 ZPO).
+  const drII = `DR II 2214/${ctx.yy}`;
   addMsg(ctx, {
-    kanal: "bea", von: G.mahn, betreff: `Mitteilung über Zustellung – Geschäftsnr. ${ctx.yy}-4471820-0-3`,
-    text: `Mahnsache Berger Haustechnik GmbH ./. Rainer Lenz\n\nDer Gerichtsvollzieher teilt mit, dass der Schuldner eine Vermögensauskunft (§ 802c ZPO) abgegeben hat. Das Vermögensverzeichnis kann beim zentralen Vollstreckungsgericht abgerufen werden.`,
-    eingang: dt(-1, 16, 20), status: "neu", zugeordnet: false, kiStatus: "ausstehend", anhaenge: [{ name: "Mitteilung_GV.pdf", groesseKb: 88 }],
+    kanal: "bea", von: "Gerichtsvollzieherin Petra Lindemann (Amtsgericht Charlottenburg)", betreff: `Vermögensauskunft Rainer Lenz – ${drII} – Geschäftsnr. ${ctx.yy}-4471820-0-3`,
+    text: `Zwangsvollstreckungssache Berger Haustechnik GmbH ./. Rainer Lenz\nTitel: Amtsgericht Wedding, Geschäftsnr. ${ctx.yy}-4471820-0-3\nDienstregister: ${drII}\n\nDer Schuldner hat am ${fmtDate(d(-3))} die Vermögensauskunft nach § 802c ZPO abgegeben. Den Ausdruck des Vermögensverzeichnisses übersende ich Ihnen anliegend (§ 802f Abs. 6 ZPO). Das Verzeichnis ist beim zentralen Vollstreckungsgericht hinterlegt.\n\nLindemann\nGerichtsvollzieherin`,
+    eingang: dt(-1, 16, 20), status: "neu", zugeordnet: false, kiStatus: "ausstehend", anhaenge: [{ name: `Vermoegensverzeichnis_DRII-2214-${ctx.yy}.pdf`, groesseKb: 212 }],
   });
 
   // 6) Digitaler Nachlass
@@ -306,9 +322,9 @@ export function heroesMuenchen(ctx: Ctx) {
   const a3 = akte(ctx, {
     aktenzeichen: nextAz(ctx, 121), titel: "Seidel ./. Alpenküchen Vertrieb GmbH", sachgebiet: "Vertragsrecht", phase: "Außergerichtlich", status: "offen",
     mandantId: mandantin.id, gegnerId: kueche.id, gegenstandswert: 23800, bearbeiterId: aylin.id, sachbearbeiterId: thomas?.id,
-    beschreibung: "Einbauküche (23.800 €) mit mangelhaften Arbeitsplatten; zwei Nachbesserungen gescheitert. Rücktritt und Ersatz der Aus- und Einbaukosten (§ 439 Abs. 3 BGB).",
+    beschreibung: "Einbauküche (23.800 €) mit mangelhaften Arbeitsplatten; zwei Nachbesserungen gescheitert. Rücktritt (§§ 437 Nr. 2, 323 BGB) und daneben Ersatz der Ausbau- und Folgekosten (§§ 437 Nr. 3, 280, 281, 325 BGB).",
     schlagworte: ["kaufrecht", "mangel", "nacherfüllung", "rücktritt", "einbau", "ausbau", "küche"],
-    prioritaet: "normal", createdAt: dt(-31), updatedAt: dt(-2),
+    prioritaet: "normal", createdAt: dt(-31), updatedAt: dt(0, 7, 56),
   });
   addMsg(ctx, {
     kanal: "email", von: "Claudia Seidel", vonAdresse: mandantin.email, betreff: "Küche – neue Fotos der Arbeitsplatte",

@@ -10,7 +10,7 @@ import { addDays, fmtDate, fmtDateShort, fmtDateWd, fmtEUR, relDays, round2, tod
 import type { Zeiteintrag } from "@/core/types";
 import { cn } from "@/lib/cn";
 import { erstelleRechnungen } from "./aktionen";
-import { fmtDauer, fmtStunden, isoWoche, STANDARD_STUNDENSATZ, stundenPositionen, summen, type TabKey } from "./lib";
+import { fmtDauer, fmtStunden, hatVerguetungsvereinbarung, isoWoche, STANDARD_STUNDENSATZ, stundenPositionen, summen, type TabKey } from "./lib";
 import { useAbrechnungUI } from "./store";
 import { TabKopf, useLookups } from "./ui";
 
@@ -40,6 +40,7 @@ function Uhr({ start }: { start: number }) {
 export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
   const zeiten = useCol("zeiten");
   const aktenArr = useCol("akten");
+  const dokumente = useCol("dokumente");
   const { akten, users } = useLookups();
   const { user } = useKanzlei();
   const { timerStart, timerAkteId, starteTimer, stoppeTimer, oeffneRechnung } = useAbrechnungUI();
@@ -62,14 +63,14 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
 
   const kpi = useMemo(() => {
     const woche = sichtbar.filter((z) => z.datum >= wocheJetzt && z.datum <= addDays(wocheJetzt, 6));
-    const offen = zeiten.filter((z) => z.abrechenbar && !z.abgerechnet);
+    const offen = sichtbar.filter((z) => z.abrechenbar && !z.abgerechnet);
     return {
       woche: woche.reduce((s, z) => s + z.minuten, 0),
       wocheAbr: woche.filter((z) => z.abrechenbar).reduce((s, z) => s + z.minuten, 0),
       offenWert: round2(offen.reduce((s, z) => s + wert(z), 0)),
       offenMin: offen.reduce((s, z) => s + z.minuten, 0),
     };
-  }, [sichtbar, zeiten, wocheJetzt]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sichtbar, wocheJetzt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const wochen = useMemo(() => {
     const m = new Map<string, { kw: number; montag: string; tage: Map<string, Zeiteintrag[]> }>();
@@ -92,8 +93,20 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
   }, [zeiten, akten]);
   const abrAkteObj = akten.get(abrAkte || abrechenbareAkten[0]?.akte?.id || "");
   const abrEintraege = abrAkteObj ? zeiten.filter((z) => z.akteId === abrAkteObj.id && z.abrechenbar && !z.abgerechnet) : [];
-  const abrPositionen = stundenPositionen(abrEintraege, users, user.stundensatz ?? STANDARD_STUNDENSATZ);
+  const abrPositionen = stundenPositionen(abrEintraege, users, user.stundensatz ?? STANDARD_STUNDENSATZ, abrAkteObj?.verguetungsvereinbarung?.stundensatz);
   const abrSummen = summen(abrPositionen);
+  // Abrechnung nach Zeit nur mit Vergütungsvereinbarung in Textform (§ 3a Abs. 1 RVG) – sonst gelten die gesetzlichen Gebühren.
+  const abrVereinbarung = abrAkteObj ? hatVerguetungsvereinbarung(abrAkteObj, dokumente) : false;
+  const vereinbarungUmschalten = (an: boolean) => {
+    if (!abrAkteObj) return;
+    useData.getState().patch("akten", abrAkteObj.id, { verguetungsvereinbarung: an ? { datum: heute, erfasstVon: user.id } : undefined });
+    useData.getState().log({
+      akteur: "nutzer",
+      userId: user.id,
+      akteId: abrAkteObj.id,
+      text: `Vergütungsvereinbarung (§ 3a RVG) ${an ? "als vorliegend vermerkt" : "entfernt"} – ${abrAkteObj.aktenzeichen}`,
+    });
+  };
 
   const erfassen = () => {
     const min = Math.round(Number(minuten.replace(",", ".")));
@@ -109,7 +122,8 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
   const timerUmschalten = () => {
     if (timerStart) {
       const min = stoppeTimer();
-      if (timerAkteId) setAkteId(timerAkteId);
+      // Nur eine Akte dieser Kanzlei übernehmen (Mandantentrennung).
+      if (timerAkteId && akten.has(timerAkteId)) setAkteId(timerAkteId);
       setMinuten(String(min));
       setDatum(heute);
       toast("Stoppuhr angehalten", { text: `${min} Min. übernommen – Tätigkeit ergänzen und erfassen`, ton: "info" });
@@ -120,13 +134,13 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
   };
 
   const abrechnen = () => {
-    if (!abrAkteObj || !abrEintraege.length) return;
+    if (!abrAkteObj || !abrEintraege.length || !abrVereinbarung) return;
     const [r] = erstelleRechnungen([{ akte: abrAkteObj, positionen: abrPositionen, summen: abrSummen, zeitIds: abrEintraege.map((z) => z.id) }], "PDF", "entwurf", user.id);
     useData.getState().log({
       akteur: "nutzer",
       userId: user.id,
       akteId: abrAkteObj.id,
-      text: `Rechnungsentwurf ${r.nummer} aus ${fmtStunden(abrEintraege.reduce((s, z) => s + z.minuten, 0))} Std. erstellt – ${abrAkteObj.aktenzeichen}`,
+      text: `Rechnungsentwurf aus ${fmtStunden(abrEintraege.reduce((s, z) => s + z.minuten, 0))} Std. erstellt (${r.nummer}) – ${abrAkteObj.aktenzeichen}`,
     });
     setAbrAkte("");
     toast("Rechnungsentwurf aus Zeiten erstellt", {
@@ -392,10 +406,21 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                   <span className="text-[12.5px] text-fg-3">{abrEintraege.length} Einträge · brutto inkl. 19 % USt.</span>
                   <span className="num text-[17px] font-semibold">{fmtEUR(abrSummen.brutto)}</span>
                 </div>
-                <Button variant="secondary" className="mt-3 w-full" icon={<FilePlus2 className="size-4" />} onClick={abrechnen}>
+                <div className="mt-3 flex items-center gap-3">
+                  <label htmlFor="ze-vv" className="min-w-0 flex-1 text-[12.5px] leading-snug">
+                    Vergütungsvereinbarung liegt vor <span className="text-fg-3">· § 3a RVG, Textform</span>
+                  </label>
+                  <Switch id="ze-vv" checked={abrVereinbarung} onChange={vereinbarungUmschalten} label="Vergütungsvereinbarung liegt vor" />
+                </div>
+                {!abrVereinbarung && (
+                  <p className="mt-2 rounded-[12px] bg-amber-soft px-3 py-2 text-[12px] leading-snug text-fg-2">
+                    Nach Zeit abrechnen setzt eine Vergütungsvereinbarung in Textform voraus. Ohne Vereinbarung gelten die gesetzlichen Gebühren – dann über den RVG-Rechner.
+                  </p>
+                )}
+                <Button variant="secondary" className="mt-3 w-full" icon={<FilePlus2 className="size-4" />} onClick={abrechnen} disabled={!abrVereinbarung}>
                   Aus Zeiten abrechnen
                 </Button>
-                <p className="mt-2 text-center text-[11.5px] text-fg-4">Erstellt einen Rechnungsentwurf; die Zeiten werden als abgerechnet markiert.</p>
+                <p className="mt-2 text-center text-[11.5px] text-fg-4">Erstellt einen Rechnungsentwurf; die Zeiten werden als abgerechnet markiert und beim Löschen des Entwurfs wieder frei.</p>
               </>
             )}
           </Card>

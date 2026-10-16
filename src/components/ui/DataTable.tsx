@@ -7,15 +7,19 @@ import { ArrowDown, ArrowUp, Columns3, Rows3, Rows4, Check } from "lucide-react"
 import { motion } from "motion/react";
 import { cn } from "@/lib/cn";
 import { useIsMobile } from "@/lib/useMedia";
+import { useUI } from "@/store/ui";
 import { Menu } from "./Menu";
 
 export type { ColumnDef };
+
+type Dichte = "comfortable" | "compact";
 
 interface Gespeichert {
   sorting?: SortingState;
   visibility?: VisibilityState;
   sizing?: ColumnSizingState;
-  dichte?: "comfortable" | "compact";
+  /** Eigene Dichte dieser Tabelle – gilt, solange die globale Dichte (Einstellungen → Darstellung) seitdem nicht geändert wurde. */
+  eigeneDichte?: { wert: Dichte; basis: Dichte };
 }
 
 function lade(id: string): Gespeichert {
@@ -57,11 +61,15 @@ export function DataTable<T>({
   const [sorting, setSorting] = useState<SortingState>(saved.sorting ?? initialSort ?? []);
   const [visibility, setVisibility] = useState<VisibilityState>(saved.visibility ?? {});
   const [sizing, setSizing] = useState<ColumnSizingState>(saved.sizing ?? {});
-  const [dichte, setDichte] = useState<"comfortable" | "compact">(saved.dichte ?? "comfortable");
+  // Standard ist die globale Dichte; der Schalter in der Tabelle überschreibt sie nur für diese Ansicht.
+  const globaleDichte = useUI((st) => st.dichte);
+  const [eigeneDichte, setEigeneDichte] = useState<Gespeichert["eigeneDichte"]>(saved.eigeneDichte);
+  const dichte: Dichte = eigeneDichte && eigeneDichte.basis === globaleDichte ? eigeneDichte.wert : globaleDichte;
+  const setDichte = (d: Dichte) => setEigeneDichte(d === globaleDichte ? undefined : { wert: d, basis: globaleDichte });
   const [selection, setSelection] = useState<RowSelectionState>({});
   const mobile = useIsMobile();
 
-  useEffect(() => speichere(id, { sorting, visibility, sizing, dichte }), [id, sorting, visibility, sizing, dichte]);
+  useEffect(() => speichere(id, { sorting, visibility, sizing, eigeneDichte }), [id, sorting, visibility, sizing, eigeneDichte]);
 
   const allColumns = useMemo<ColumnDef<T, unknown>[]>(() => {
     if (!selectable) return columns;
@@ -148,7 +156,7 @@ export function DataTable<T>({
         <ul className="divide-y divide-[var(--line)]">
           {rows.map((r) => (
             <li key={r.id}>
-              <button type="button" onClick={() => onRowClick?.(r.original)} className="block w-full px-4 py-3 text-left active:bg-ink-softer">
+              <button type="button" onClick={() => onRowClick?.(r.original)} className={cn("block w-full px-4 text-left active:bg-ink-softer", dichte === "compact" ? "py-2" : "py-3")}>
                 {mobileRow(r.original)}
               </button>
             </li>

@@ -1,17 +1,26 @@
 import { useMemo } from "react";
 import { motion } from "motion/react";
 import { BookCheck, Calculator, Clock, Cpu, ShieldCheck, Sparkles, UserCheck, Zap } from "lucide-react";
-import { useAiStatus } from "@/ai/status";
+import { useAiStatus, type KiQuelle } from "@/ai/status";
 import { useData } from "@/store/data";
 import { addDays, fmtNum, today } from "@/core/dates";
 import { AnimatedNumber, Chip, Switch } from "@/components/ui";
 import { cn } from "@/lib/cn";
 
-const GRUNDSAETZE = [
-  { icon: <Calculator className="size-4" />, text: "Die KI erkennt – der Fristenrechner berechnet" },
-  { icon: <BookCheck className="size-4" />, text: "Nur geprüfte Quellen zitieren" },
-  { icon: <ShieldCheck className="size-4" />, text: "Mandantendaten bleiben in Ihrer Infrastruktur" },
-];
+/** Datenfluss je KI-Quelle – nur im Offline-/Demo-Betrieb bleiben die Inhalte ohne KI-Anbieter. */
+const DATENFLUSS: Record<KiQuelle, string> = {
+  demo: "Demo-KI: keine Daten an einen KI-Anbieter",
+  server: "Verarbeitung über die Anthropic-API – nur aufgabenbezogen",
+  artefakt: "Verarbeitung durch Claude (Anthropic) in der Vorschau",
+};
+
+function grundsaetze(quelle: KiQuelle) {
+  return [
+    { icon: <Calculator className="size-4" />, text: "Die KI erkennt – der Fristenrechner berechnet" },
+    { icon: <BookCheck className="size-4" />, text: "Präzedenzfälle nur aus der Fall-Datenbank" },
+    { icon: <ShieldCheck className="size-4" />, text: DATENFLUSS[quelle] },
+  ];
+}
 
 /** Status der KI: woher die Antworten kommen (Claude live oder Demo-KI), Modell, Grundsätze und Wirkung. */
 export function KiStatusKarte() {
@@ -31,6 +40,10 @@ export function KiStatusKarte() {
   }, [aktivitaeten, fristen]);
 
   const quelleText = quelle === "server" ? "über Ihren Kanzlei-Server" : quelle === "artefakt" ? "über die gesicherte Vorschau-Laufzeit" : "";
+  const datenText =
+    quelle === "server"
+      ? "Dafür sendet der Kanzlei-Server die für die Aufgabe nötigen Akteninhalte an die Anthropic-API – das setzt einen Vertrag nach § 43e BRAO und eine Auftragsverarbeitung nach Art. 28 DSGVO voraus."
+      : "Dafür gehen die für die Aufgabe nötigen Inhalte an Claude (Anthropic) – in der Vorschau nur mit Beispieldaten arbeiten.";
 
   return (
     <motion.section
@@ -73,14 +86,14 @@ export function KiStatusKarte() {
               </div>
               <p className="mt-1 hidden max-w-[72ch] text-[13px] leading-snug text-fg-3 sm:block">
                 {live
-                  ? `Claude liest und formuliert ${quelleText}. Fristen berechnet weiterhin der Fristenrechner, Zitate stammen ausschließlich aus der Fall-Datenbank.`
+                  ? `Claude liest und formuliert ${quelleText}. ${datenText} Fristen berechnet weiterhin der Fristenrechner, Präzedenzfälle stammen ausschließlich aus der Fall-Datenbank.`
                   : "Die Demo-KI arbeitet regelbasiert und vollständig in Ihrem Browser – ideal zum Ausprobieren. Mit Claude-Anbindung formuliert die KI frei; geprüft und berechnet wird weiterhin deterministisch."}
               </p>
             </div>
           </div>
 
           <ul className="-mx-5 mt-4 flex gap-2 overflow-x-auto px-5 no-scrollbar [mask-image:linear-gradient(90deg,transparent,#000_20px,#000_calc(100%-28px),transparent)] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:[mask-image:none]">
-            {GRUNDSAETZE.map((g, i) => (
+            {grundsaetze(quelle).map((g, i) => (
               <motion.li
                 key={g.text}
                 initial={{ opacity: 0, y: 6 }}

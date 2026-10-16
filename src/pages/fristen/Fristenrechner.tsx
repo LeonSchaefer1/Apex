@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { AlertTriangle, ArrowRightLeft, Calculator, CalendarPlus, Check, Info, ShieldAlert } from "lucide-react";
-import { berechneNachRegel, FRIST_REGELN, type FristRegel } from "@/core/fristen";
+import { berechneNachRegel, FRIST_REGELN, fristArt, gerichtsortDerAkte, type FristRegel } from "@/core/fristen";
 import { BUNDESLAENDER, bundeslandName } from "@/core/feiertage";
 import { fmtDateLong, relDays, today, wochentagName, fmtDateWd } from "@/core/dates";
 import { normalize } from "@/core/search";
@@ -39,18 +39,22 @@ const istIsoDatum = (d?: string): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.te
 export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEreignis }: { open: boolean; onClose: () => void; startAkteId?: string; startRegel?: string; startEreignis?: string }) {
   const { tenant, user } = useKanzlei();
   const akten = useCol("akten");
+  const kontakte = useCol("kontakte");
   const nav = useNavigate();
   const [suche, setSuche] = useState("");
   const [key, setKey] = useState(startRegel && FRIST_REGELN.some((r) => r.key === startRegel) ? startRegel : "berufung");
   const [ereignis, setEreignis] = useState(() => (istIsoDatum(startEreignis) ? startEreignis : today()));
   const [dauer, setDauer] = useState("");
   const [land, setLand] = useState<Bundesland>(tenant.bundesland);
+  // Bundesland von Hand gewählt? Sonst folgt es dem Gericht der gewählten Akte (Feiertage am Gerichtsort).
+  const [landManuell, setLandManuell] = useState(false);
   const [akteId, setAkteId] = useState(startAkteId ?? "");
   const [eingetragen, setEingetragen] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setEingetragen(null);
+    setLandManuell(false);
     if (startAkteId) setAkteId(startAkteId);
     if (startRegel && FRIST_REGELN.some((r) => r.key === startRegel)) {
       setKey(startRegel);
@@ -80,10 +84,25 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
   }, [open, startRegel]);
 
   const regel = FRIST_REGELN.find((r) => r.key === key) ?? FRIST_REGELN[0];
+  const art = fristArt(regel);
   const dauerNum = dauer.trim() ? Math.max(1, Math.min(999, parseInt(dauer, 10) || regel.dauer)) : undefined;
   const gueltig = /^\d{4}-\d{2}-\d{2}$/.test(ereignis);
+  const akte = akten.find((a) => a.id === akteId);
+  const gerichtsort = useMemo(() => gerichtsortDerAkte(akte, kontakte), [akte, kontakte]);
+  useEffect(() => {
+    if (!landManuell) setLand(gerichtsort?.land ?? tenant.bundesland);
+  }, [gerichtsort, landManuell, tenant.bundesland]);
+  // Feste Stelle der Handlung (z. B. Revision beim BGH in Karlsruhe) geht vor
+  const effLand = regel.handlungsort?.land ?? land;
   const erg = useMemo(() => (gueltig ? berechneNachRegel(key, ereignis, land, dauerNum) : null), [gueltig, key, ereignis, land, dauerNum]);
   const roh = gueltig ? rohesEnde(ereignis, dauerNum ?? regel.dauer, regel.einheit) : null;
+  const landHinweis = regel.handlungsort
+    ? `Diese Frist wird beim ${regel.handlungsort.ort} gewahrt – es gelten dessen Feiertage.`
+    : gerichtsort && land === gerichtsort.land
+      ? `Gerichtsort laut Akte: ${gerichtsort.gericht}.`
+      : land !== tenant.bundesland
+        ? `Abweichend vom Kanzleisitz (${bundeslandName(tenant.bundesland)}).`
+        : "Maßgeblich sind die Feiertage am Ort des Gerichts bzw. der Behörde.";
 
   const gefiltert = useMemo(() => {
     const q = normalize(suche.trim());
@@ -92,8 +111,8 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
   }, [suche]);
 
   const offeneAkten = useMemo(() => akten.filter((a) => a.status !== "abgeschlossen").sort((a, b) => b.aktenzeichen.localeCompare(a.aktenzeichen, "de", { numeric: true })), [akten]);
-  const akte = akten.find((a) => a.id === akteId);
-  const notfrist = regel.typ === "notfrist";
+  // rot hervorheben: Notfrist oder gesetzlich nicht verlängerbare Frist (§ 4 KSchG, StPO, OWiG, VwGO)
+  const kritisch = art.kritisch;
 
   const eintragen = () => {
     if (!erg || !akte) return;
@@ -111,7 +130,7 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
       quelle: "manuell",
       verantwortlichId: akte.bearbeiterId,
       vorfristVerantwortlichId: akte.sachbearbeiterId ?? akte.bearbeiterId,
-      notiz: land !== tenant.bundesland ? `Berechnet für ${bundeslandName(land)} (Gerichtsort).` : undefined,
+      notiz: effLand !== tenant.bundesland ? `Berechnet mit den Feiertagen in ${bundeslandName(effLand)} (${regel.handlungsort?.ort ?? gerichtsort?.gericht ?? "Gerichtsort"}).` : undefined,
     });
     useData.getState().log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `${titel} mit Fristenrechner eingetragen: ${fmtDateWd(erg.ende)} (Vorfrist ${fmtDateWd(erg.vorfrist)})` });
     setEingetragen(frist.id);
@@ -128,14 +147,14 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
       onClose={onClose}
       size="xl"
       title="Fristenrechner"
-      subtitle="Nach §§ 187, 188 BGB und § 222 ZPO – mit Feiertagen je Bundesland und vollständigem Rechenweg."
+      subtitle="Nach § 222 ZPO, §§ 187 ff. BGB bzw. §§ 42, 43 StPO – mit Feiertagen am Gerichtsort und vollständigem Rechenweg."
       icon={<Calculator className="size-[18px]" />}
       footer={
         <div className="flex w-full flex-wrap items-center gap-2">
           {erg && (
             <div className="num flex w-full items-baseline gap-2 text-[12.5px] lg:hidden">
               <span className="text-fg-3">Fristende</span>
-              <span className={cn("font-semibold", notfrist ? "text-seal" : "text-fg")}>{fmtDateWd(erg.ende)}</span>
+              <span className={cn("font-semibold", kritisch ? "text-seal" : "text-fg")}>{fmtDateWd(erg.ende)}</span>
               <span className="text-fg-3">· Vorfrist {fmtDateWd(erg.vorfrist)}</span>
             </div>
           )}
@@ -196,7 +215,7 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
                               {r.grundlage} · {dauerText(r)}
                             </div>
                           </div>
-                          {r.typ === "notfrist" && <ShieldAlert className="size-3.5 shrink-0 text-seal" aria-label="Notfrist" />}
+                          {fristArt(r).kritisch && <ShieldAlert className="size-3.5 shrink-0 text-seal" aria-label={r.typ === "notfrist" ? "Notfrist" : "nicht verlängerbar"} />}
                         </button>
                       );
                     })}
@@ -217,8 +236,8 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
               </div>
             </Field>
           </div>
-          <Field label="Bundesland (Gerichtsort)" htmlFor="rechner-land" hint={land !== tenant.bundesland ? `Abweichend vom Kanzleisitz (${bundeslandName(tenant.bundesland)}).` : "Maßgeblich sind die Feiertage am Gerichtsort."}>
-            <Select id="rechner-land" value={land} onChange={(e) => { setLand(e.target.value as Bundesland); setEingetragen(null); }}>
+          <Field label="Bundesland (Gerichtsort)" htmlFor="rechner-land" hint={landHinweis}>
+            <Select id="rechner-land" value={effLand} disabled={!!regel.handlungsort} onChange={(e) => { setLand(e.target.value as Bundesland); setLandManuell(true); setEingetragen(null); }}>
               {BUNDESLAENDER.map((b) => (
                 <option key={b.code} value={b.code}>
                   {b.name}
@@ -243,21 +262,21 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
                 initial={{ opacity: 0, y: 10, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ type: "spring", stiffness: 420, damping: 32 }}
-                className={cn("relative overflow-hidden rounded-[22px] p-5", notfrist ? "bg-seal-soft" : "bg-ink-soft")}
+                className={cn("relative overflow-hidden rounded-[22px] p-5", kritisch ? "bg-seal-soft" : "bg-ink-soft")}
               >
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className={cn("eyebrow", notfrist ? "!text-seal" : "!text-ink")}>Fristende</span>
-                  <Chip tone={notfrist ? "seal" : "ink"} icon={notfrist ? <ShieldAlert className="size-3" /> : undefined}>
-                    {notfrist ? "Notfrist" : "Frist"}
+                  <span className={cn("eyebrow", kritisch ? "!text-seal" : "!text-ink")}>Fristende</span>
+                  <Chip tone={kritisch ? "seal" : "ink"} icon={kritisch ? <ShieldAlert className="size-3" /> : undefined} title={art.kurz}>
+                    {regel.typ === "notfrist" ? "Notfrist" : kritisch ? "Frist · nicht verlängerbar" : "Frist"}
                   </Chip>
                   {erg.verschoben && (
-                    <Chip tone="amber" icon={<ArrowRightLeft className="size-3" />} title="Ende fiel auf Wochenende/Feiertag – verschoben auf den nächsten Werktag">
-                      verschoben · § 222 Abs. 2 ZPO
+                    <Chip tone="amber" icon={<ArrowRightLeft className="size-3" />} title={`Ende fiel auf Wochenende/Feiertag – verschoben auf den nächsten Werktag (${erg.verschiebungsNorm})`}>
+                      verschoben · {erg.verschiebungsNorm.replace(/^.* i\. V\. m\. /, "").split(",")[0]}
                     </Chip>
                   )}
                 </div>
-                <div className={cn("mt-2 text-[15px] font-medium", notfrist ? "text-seal" : "text-ink")}>{wochentagName(erg.ende)}</div>
-                <div className={cn("text-[clamp(26px,3.6vw,36px)] font-bold leading-[1.05] tracking-[-0.035em]", notfrist ? "text-seal" : "text-fg")}>{fmtDateLong(erg.ende)}</div>
+                <div className={cn("mt-2 text-[15px] font-medium", kritisch ? "text-seal" : "text-ink")}>{wochentagName(erg.ende)}</div>
+                <div className={cn("text-[clamp(26px,3.6vw,36px)] font-bold leading-[1.05] tracking-[-0.035em]", kritisch ? "text-seal" : "text-fg")}>{fmtDateLong(erg.ende)}</div>
                 <div className="num mt-1.5 text-[13px] text-fg-2">24:00 Uhr · {relDays(erg.ende)}</div>
                 <div className="mt-4 grid grid-cols-2 gap-3 border-t border-[color-mix(in_oklab,var(--fg)_10%,transparent)] pt-3.5 text-[12.5px]">
                   <div>
@@ -271,10 +290,13 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
                 </div>
               </motion.div>
 
-              {notfrist && (
-                <div className="flex gap-2 rounded-[14px] bg-seal-soft px-3.5 py-2.5 text-[12.5px] leading-relaxed text-seal">
-                  <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
-                  <span>Notfrist: nicht verlängerbar (§ 224 Abs. 1 S. 2 ZPO). Bei Versäumnis hilft nur die Wiedereinsetzung (§ 233 ZPO).</span>
+              {(art.art || art.versaeumnis) && (
+                <div className={cn("flex gap-2 rounded-[14px] px-3.5 py-2.5 text-[12.5px] leading-relaxed", kritisch ? "bg-seal-soft text-seal" : "bg-ink-softer text-fg-2 ring-1 ring-inset ring-[var(--line)]")}>
+                  {kritisch ? <ShieldAlert className="mt-0.5 size-3.5 shrink-0" /> : <Info className="mt-0.5 size-3.5 shrink-0 text-ink" />}
+                  <span>
+                    {art.art && <strong className="font-semibold">{art.art} </strong>}
+                    {art.versaeumnis}
+                  </span>
                 </div>
               )}
               {erg.warnungen.map((w) => (
@@ -286,7 +308,7 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
 
               <div className="rounded-[18px] p-4 ring-1 ring-inset ring-[var(--line)]">
                 <div className="eyebrow mb-3">Kalender</div>
-                <MiniKalender marken={{ ereignis, roh, ende: erg.ende, vorfrist: erg.vorfrist, notfrist }} land={land} />
+                <MiniKalender marken={{ ereignis, roh, ende: erg.ende, vorfrist: erg.vorfrist, notfrist: kritisch }} land={effLand} />
               </div>
 
               <div className="rounded-[18px] p-4 ring-1 ring-inset ring-[var(--line)]">

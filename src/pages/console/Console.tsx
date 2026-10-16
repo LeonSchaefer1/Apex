@@ -12,6 +12,7 @@ import { toast, useUI, type ThemeWahl } from "@/store/ui";
 import { getBackend, getInfo, istConsole, type ConsoleKunde } from "@/lib/backend";
 import { today } from "@/core/dates";
 import type { Tenant, User } from "@/core/types";
+import { DEMO_PASSWORT } from "@/core/seed/tenants";
 import { KundenKarte, type KartenAktionen } from "./KundenKarte";
 import { NeuerZugang } from "./NeuerZugang";
 import { kopieren } from "./helfer";
@@ -70,13 +71,16 @@ export default function ConsolePage() {
       .sort((a, b) => (b.tenant.createdAt ?? "").localeCompare(a.tenant.createdAt ?? ""));
   }, [kunden, suche, filter]);
 
-  const mitSperre = async (id: string, fn: () => Promise<void>) => {
+  /** Führt eine Aktion aus und lädt die Liste neu – `false`, wenn sie fehlschlug (Fehler wird angezeigt). */
+  const mitSperre = async (id: string, fn: () => Promise<void>): Promise<boolean> => {
     setBeschaeftigt(id);
     try {
       await fn();
       await laden();
+      return true;
     } catch (e) {
       toast("Das hat nicht geklappt", { text: e instanceof Error ? e.message : String(e), ton: "fehler" });
+      return false;
     } finally {
       setBeschaeftigt(null);
     }
@@ -94,7 +98,7 @@ export default function ConsolePage() {
           });
           if (!ok) return;
         }
-        await mitSperre(k.tenant.id, () => getBackend().console.setStatus(k.tenant.id, s));
+        if (!(await mitSperre(k.tenant.id, () => getBackend().console.setStatus(k.tenant.id, s)))) return;
         toast(s === "pausiert" ? "Zugang pausiert" : s === "aktiv" ? "Als Kunde freigeschaltet" : "Zugang reaktiviert", { text: k.tenant.name, ton: s === "pausiert" ? "warnung" : "erfolg" });
       })(),
     zuruecksetzen: (k) =>
@@ -106,7 +110,7 @@ export default function ConsolePage() {
           gefahr: true,
         });
         if (!ok) return;
-        await mitSperre(k.tenant.id, () => getBackend().console.reset(k.tenant.id));
+        if (!(await mitSperre(k.tenant.id, () => getBackend().console.reset(k.tenant.id)))) return;
         toast("Daten zurückgesetzt", { text: `${k.tenant.name} startet beim nächsten Login frisch.`, ton: "erfolg" });
       })(),
     loeschen: (k) =>
@@ -118,7 +122,7 @@ export default function ConsolePage() {
           gefahr: true,
         });
         if (!ok) return;
-        await mitSperre(k.tenant.id, () => getBackend().console.remove(k.tenant.id));
+        if (!(await mitSperre(k.tenant.id, () => getBackend().console.remove(k.tenant.id)))) return;
         toast("Kanzlei gelöscht", { text: k.tenant.name, ton: "info" });
       })(),
     passwort: (k, u) =>
@@ -138,6 +142,17 @@ export default function ConsolePage() {
         } finally {
           setBeschaeftigt(null);
         }
+      })(),
+    standardPasswort: (k, u) =>
+      void (async () => {
+        const ok = await confirmDialog({
+          titel: `Standardpasswort für ${u.name} wiederherstellen?`,
+          text: `Ein zuvor vergebenes Passwort wird ungültig. Danach gilt wieder das öffentliche Demo-Passwort ${DEMO_PASSWORT} – auch für die Schnellanmeldung.`,
+          bestaetigen: "Standardpasswort wiederherstellen",
+        });
+        if (!ok) return;
+        if (!(await mitSperre(k.tenant.id, () => getBackend().console.standardPasswort(u.id)))) return;
+        toast("Standardpasswort wiederhergestellt", { text: `${u.name} meldet sich wieder mit ${DEMO_PASSWORT} an.`, ton: "erfolg" });
       })(),
   };
 

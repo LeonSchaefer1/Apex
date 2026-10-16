@@ -105,7 +105,7 @@ export function FinanzenKarte({ d, i, className }: { d: CockpitDaten; i: number;
   const zeilen = [
     { icon: <ReceiptEuro className="size-4" />, ton: "ink", label: "Offene Forderungen", wert: f.offen, sub: `${f.offenAnzahl} ${f.offenAnzahl === 1 ? "Rechnung" : "Rechnungen"} gestellt` },
     { icon: <AlarmClock className="size-4" />, ton: "seal", label: "Davon überfällig", wert: f.ueberfaellig, sub: `${f.ueberfaelligAnzahl} über dem Zahlungsziel` },
-    { icon: <Wallet className="size-4" />, ton: "amber", label: "Fremdgeld zur Weiterleitung", wert: f.fremdgeld, sub: f.fremdgeldAkten ? `${f.fremdgeldAkten} ${f.fremdgeldAkten === 1 ? "Akte" : "Akten"} · § 43a Abs. 5 BRAO` : "Nichts offen · § 43a Abs. 5 BRAO" },
+    { icon: <Wallet className="size-4" />, ton: "amber", label: "Fremdgeld zur Weiterleitung", wert: f.fremdgeld, sub: f.fremdgeldAkten ? `${f.fremdgeldAkten} ${f.fremdgeldAkten === 1 ? "Akte" : "Akten"} · § 43a Abs. 7 BRAO` : "Nichts offen · § 43a Abs. 7 BRAO" },
   ] as const;
   const kachel = { ink: "bg-ink-soft text-ink", seal: "bg-seal-soft text-seal", amber: "bg-amber-soft text-amber" } as const;
   const wertTon = { ink: "text-fg", seal: "text-seal", amber: "text-amber" } as const;
@@ -295,7 +295,7 @@ export function Schnellaktionen() {
     { key: "suche", label: "Suche", hint: "Akten, Fristen, Urteile", icon: <Search className="size-[18px]" />, onClick: () => useUI.getState().setPalette(true), kbd: isMac ? "⌘K" : "Strg K" },
   ];
   return (
-    <nav aria-label="Schnellaktionen" className="no-scrollbar -mx-4 flex snap-x gap-2.5 overflow-x-auto px-4 pb-1 @2xl:mx-0 @2xl:grid @2xl:grid-cols-4 @2xl:overflow-visible @2xl:px-0 @2xl:pb-0">
+    <nav aria-label="Schnellaktionen" className="no-scrollbar -mx-4 flex snap-x gap-2.5 overflow-x-auto px-4 pb-1 @2xl:mx-0 @2xl:grid @2xl:grid-cols-2 @2xl:overflow-visible @2xl:px-0 @2xl:pb-0 @4xl:grid-cols-4">
       {aktionen.map((a, k) => (
         <motion.button
           key={a.key}
@@ -312,7 +312,7 @@ export function Schnellaktionen() {
             <span className="block truncate text-[13.5px] font-semibold">{a.label}</span>
             <span className="block truncate text-[11.5px] text-fg-3">{a.hint}</span>
           </span>
-          {a.kbd && <span className="kbd relative z-[1] hidden !text-[10.5px] sm:inline-grid">{a.kbd}</span>}
+          {a.kbd && <span className="kbd relative z-[1] hidden !text-[10.5px] @5xl:inline-grid">{a.kbd}</span>}
         </motion.button>
       ))}
     </nav>

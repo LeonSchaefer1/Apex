@@ -336,6 +336,8 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
     };
     st.upsert("akten", akte);
 
+    // Arbeitssachen: Hinweis auf den Ausschluss der Kostenerstattung vor Abschluss der Vertretungsvereinbarung (§ 12a Abs. 1 S. 2 ArbGG)
+    const arbeitssache = akte.sachgebiet === "Arbeitsrecht";
     const anrede = m.typ === "person" ? (m.anrede === "Frau" ? `Sehr geehrte Frau ${m.nachname ?? m.name}` : m.anrede === "Herr" ? `Sehr geehrter Herr ${m.nachname ?? m.name}` : `Guten Tag ${m.name}`) : "Sehr geehrte Damen und Herren";
     const gruss = `Mit freundlichen Grüßen\n\n${ra.name}\n${ra.titel}\n${tenant.name}`;
     const dok = (d: Pick<Dokument, "name" | "art" | "ordner" | "inhalt"> & Partial<Dokument>): Dokument => ({
@@ -349,7 +351,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
       }),
       dok({
         name: "Mandatsbestätigung", art: "brief", ordner: "Mandant", format: "docx",
-        inhalt: `${m.name}\n${[m.strasse, [m.plz, m.ort].filter(Boolean).join(" ")].filter(Boolean).join("\n")}\n\n${ort}, ${fmtDate(heute)}\nUnser Zeichen: ${aktenzeichen}\n\nMandatsbestätigung – ${akte.titel}\n\n${anrede},\n\nvielen Dank für Ihr Vertrauen. Hiermit bestätigen wir die Übernahme des Mandats in der oben genannten Angelegenheit. Zuständig ist ${ra.name}${refa ? `; im Sekretariat erreichen Sie ${refa.name}` : ""}.\n\nIhre nächsten Schritte:\n• Bitte unterzeichnen Sie die beigefügte Vollmacht digital.\n• Senden Sie uns alle Unterlagen zur Sache (Schreiben, Verträge, Fotos, Fristsetzungen) – gern über das Mandantenportal oder per E-Mail.${akte.rsv ? `\n• Wir haben Ihre Rechtsschutzversicherung (${akte.rsv.versicherung}) um Deckungszusage gebeten und informieren Sie über die Antwort.` : ""}${portal ? "\n• Über das Mandantenportal können Sie den Stand Ihrer Sache jederzeit einsehen." : ""}\n\nBitte beachten Sie die beigefügten Datenschutzhinweise und den Hinweis zur Abrechnung nach dem Gegenstandswert.\n\n${gruss}`,
+        inhalt: `${m.name}\n${[m.strasse, [m.plz, m.ort].filter(Boolean).join(" ")].filter(Boolean).join("\n")}\n\n${ort}, ${fmtDate(heute)}\nUnser Zeichen: ${aktenzeichen}\n\nMandatsbestätigung – ${akte.titel}\n\n${anrede},\n\nvielen Dank für Ihr Vertrauen. Hiermit bestätigen wir die Übernahme des Mandats in der oben genannten Angelegenheit. Zuständig ist ${ra.name}${refa ? `; im Sekretariat erreichen Sie ${refa.name}` : ""}.\n\nIhre nächsten Schritte:\n• Bitte unterzeichnen Sie die beigefügte Vollmacht digital.\n• Senden Sie uns alle Unterlagen zur Sache (Schreiben, Verträge, Fotos, Fristsetzungen) – gern über das Mandantenportal oder per E-Mail.${akte.rsv ? `\n• Wir haben Ihre Rechtsschutzversicherung (${akte.rsv.versicherung}) um Deckungszusage gebeten und informieren Sie über die Antwort.` : ""}${portal ? "\n• Über das Mandantenportal können Sie den Stand Ihrer Sache jederzeit einsehen." : ""}\n\nBitte beachten Sie die beigefügten Datenschutzhinweise. Die vor Übernahme des Mandats erteilten Hinweise ${arbeitssache ? "zur Abrechnung nach dem Gegenstandswert und zur Kostentragung im arbeitsgerichtlichen Verfahren" : "zur Abrechnung nach dem Gegenstandswert"} erhalten Sie zur Bestätigung.\n\n${gruss}`,
       }),
       dok({
         name: "Datenschutzhinweise (Art. 13 DSGVO)", art: "brief", ordner: "Mandant",
@@ -357,8 +359,16 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
       }),
       dok({
         name: "Hinweis Abrechnung nach Gegenstandswert (§ 49b Abs. 5 BRAO)", art: "brief", ordner: "Mandant",
-        inhalt: `Hinweis nach § 49b Abs. 5 BRAO\n\nUnser Zeichen: ${aktenzeichen} – ${akte.titel}\n\n${anrede},\n\ndie für unsere Tätigkeit zu erhebenden Gebühren richten sich nach dem Gegenstandswert (§ 2 Abs. 1 RVG). Den Gegenstandswert schätzen wir derzeit vorläufig auf ${fmtEUR(akte.gegenstandswert)}. Er kann sich im Verlauf des Mandats ändern.\n\nZu diesem Hinweis sind wir vor Übernahme des Auftrags gesetzlich verpflichtet.\n\nZur Kenntnis genommen:\n\n${ort}, den ${fmtDate(heute)}\n\n______________________________\n${m.name}`,
+        inhalt: `Hinweis nach § 49b Abs. 5 BRAO – Bestätigung\n\nUnser Zeichen: ${aktenzeichen} – ${akte.titel}\n\n${anrede},\n\nwie vor Übernahme des Auftrags mit Ihnen besprochen, richten sich die für unsere Tätigkeit zu erhebenden Gebühren nach dem Gegenstandswert (§ 2 Abs. 1 RVG). Den Gegenstandswert schätzen wir derzeit vorläufig auf ${fmtEUR(akte.gegenstandswert)}. Er kann sich im Verlauf des Mandats ändern.\n\nMit Ihrer Unterschrift bestätigen Sie, dass wir Sie vor Übernahme des Auftrags auf die Abrechnung nach dem Gegenstandswert hingewiesen haben.\n\n${ort}, den ${fmtDate(heute)}\n\n______________________________\n${m.name}`,
       }),
+      ...(arbeitssache
+        ? [
+            dok({
+              name: "Hinweis Kostentragung Arbeitsgericht (§ 12a Abs. 1 S. 2 ArbGG)", art: "brief", ordner: "Mandant",
+              inhalt: `Hinweis nach § 12a Abs. 1 S. 2 ArbGG – Bestätigung\n\nUnser Zeichen: ${aktenzeichen} – ${akte.titel}\n\n${anrede},\n\nwie vor Abschluss der Vereinbarung über die Vertretung mit Ihnen besprochen, besteht im Urteilsverfahren des ersten Rechtszugs vor dem Arbeitsgericht kein Anspruch auf Erstattung der Kosten für die Zuziehung eines Prozessbevollmächtigten (§ 12a Abs. 1 S. 1 ArbGG). Jede Partei trägt ihre Anwaltskosten selbst – auch wenn sie den Rechtsstreit gewinnt.${akte.rsv ? " Ob und in welchem Umfang Ihre Rechtsschutzversicherung die Kosten übernimmt, klären wir mit der Deckungsanfrage." : ""}\n\nMit Ihrer Unterschrift bestätigen Sie, dass wir Sie vor Übernahme des Mandats auf den Ausschluss der Kostenerstattung hingewiesen haben.\n\n${ort}, den ${fmtDate(heute)}\n\n______________________________\n${m.name}`,
+            }),
+          ]
+        : []),
     ];
     let wiedervorlage: string | undefined;
     if (akte.rsv) {
@@ -380,7 +390,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
     st.log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Akte angelegt – ${aktenzeichen} ${akte.titel}` });
     st.log({
       akteur: "automation", automationKey: "mandatsaufnahme", akteId: akte.id, minutenGespart: 25,
-      text: `Mandatsaufnahme-Paket (Vollmacht, Mandatsbestätigung, Datenschutzhinweise, Hinweis § 49b Abs. 5 BRAO) erstellt – ${aktenzeichen}`,
+      text: `Mandatsaufnahme-Paket (Vollmacht, Mandatsbestätigung, Datenschutzhinweise, Hinweis § 49b Abs. 5 BRAO${arbeitssache ? ", Hinweis § 12a ArbGG" : ""}) erstellt – ${aktenzeichen}`,
     });
     if (akte.rsv && wiedervorlage) {
       st.log({
@@ -411,7 +421,8 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
         { text: "Vollmacht erzeugt", sub: "Zur digitalen Unterschrift an den Mandanten" },
         { text: "Mandatsbestätigung erstellt", sub: `Ordner „Mandant“ · ${ra.name}` },
         { text: "Datenschutzhinweise nach Art. 13 DSGVO", sub: "Automatisch beigefügt" },
-        { text: "Hinweis Abrechnung nach Gegenstandswert", sub: "§ 49b Abs. 5 BRAO" },
+        { text: "Hinweis Abrechnung nach Gegenstandswert", sub: "§ 49b Abs. 5 BRAO – zur Bestätigung" },
+        ...(arbeitssache ? [{ text: "Hinweis Kostentragung Arbeitsgericht", sub: "§ 12a Abs. 1 S. 2 ArbGG – zur Bestätigung" }] : []),
         ...(akte.rsv && wiedervorlage
           ? [
               { text: `Deckungsanfrage an ${akte.rsv.versicherung}`, sub: "Ordner „Korrespondenz“ – mit Sachverhalt und Gegenstandswert" },
@@ -678,7 +689,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                         <Zap className="size-4 text-ink" /> Das erledigt AnwaltApex automatisch
                       </div>
                       <ul className="grid grid-cols-1 gap-1.5 text-[13px] text-fg-2">
-                        {["Vollmacht zur digitalen Unterschrift", "Mandatsbestätigung", "Datenschutzhinweise (Art. 13 DSGVO)", "Hinweis Abrechnung nach Gegenstandswert (§ 49b Abs. 5 BRAO)", ...(rsv.aktiv ? [`Deckungsanfrage an ${rsv.versicherung || "die Versicherung"}`, "Wiedervorlage in 7 Tagen (Deckungszusage)"] : [])].map((t) => (
+                        {["Vollmacht zur digitalen Unterschrift", "Mandatsbestätigung", "Datenschutzhinweise (Art. 13 DSGVO)", "Bestätigung Hinweis Abrechnung nach Gegenstandswert (§ 49b Abs. 5 BRAO)", ...(sache.sachgebiet === "Arbeitsrecht" ? ["Bestätigung Hinweis Kostentragung Arbeitsgericht (§ 12a Abs. 1 S. 2 ArbGG)"] : []), ...(rsv.aktiv ? [`Deckungsanfrage an ${rsv.versicherung || "die Versicherung"}`, "Wiedervorlage in 7 Tagen (Deckungszusage)"] : [])].map((t) => (
                           <li key={t} className="flex items-start gap-2">
                             <FilePlus2 className="mt-0.5 size-3.5 shrink-0 text-fg-3" />
                             {t}
@@ -686,6 +697,13 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                         ))}
                       </ul>
                     </div>
+                    <p className="flex items-start gap-2 px-1 text-[12.5px] leading-snug text-fg-3">
+                      <Info className="mt-0.5 size-3.5 shrink-0" />
+                      <span>
+                        Vor Übernahme des Mandats: Hinweis auf die Abrechnung nach dem Gegenstandswert (§ 49b Abs. 5 BRAO)
+                        {sache.sachgebiet === "Arbeitsrecht" ? " und auf den Ausschluss der Kostenerstattung im ersten Rechtszug (§ 12a Abs. 1 S. 2 ArbGG)" : ""} erteilen – das Paket dokumentiert ihn zur Gegenzeichnung.
+                      </span>
+                    </p>
                   </div>
                 )}
               </motion.div>

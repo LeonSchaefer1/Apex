@@ -9,6 +9,9 @@ export const SACHGEBIETE: Sachgebiet[] = ["Arbeitsrecht", "Mietrecht", "Verkehrs
 /** Fest eingebaute Präsentationskanzleien – können zurückgesetzt, aber nicht gelöscht werden. */
 export const DEMO_IDS = new Set(DEMO_TENANTS.map((t) => t.tenant.id));
 
+/** Zugänge der eingebauten Beispielkanzleien – ihr Passwort lässt sich auf das öffentliche Demo-Passwort zurücksetzen. */
+export const DEMO_NUTZER_IDS = new Set(DEMO_TENANTS.flatMap((t) => t.users.map((u) => u.id)));
+
 const STADT_LAND: Record<string, Bundesland> = {
   berlin: "BE", potsdam: "BB", hamburg: "HH", bremen: "HB", bremerhaven: "HB", münchen: "BY", muenchen: "BY", nürnberg: "BY", nuernberg: "BY", augsburg: "BY", regensburg: "BY", würzburg: "BY",
   stuttgart: "BW", karlsruhe: "BW", mannheim: "BW", freiburg: "BW", heidelberg: "BW", ulm: "BW", köln: "NW", koeln: "NW", düsseldorf: "NW", duesseldorf: "NW", dortmund: "NW", essen: "NW",
@@ -70,7 +73,7 @@ export function einladungsText(p: { tenant: Tenant; admin: User; passwort: strin
     tenant.testBis ? `Ihr Testzugang ist bis zum ${fmtDate(tenant.testBis)} freigeschaltet.` : "Ihr Testzugang ist ab sofort freigeschaltet.",
     "Die Daten Ihrer Kanzlei sind strikt von allen anderen Kanzleien getrennt – nur Ihr Team hat Zugriff.",
     "",
-    `Bei Fragen erreichen Sie ${ap.rolle.replace(/^Ihr persönlicher /, "Ihren persönlichen ")} ${ap.name} direkt unter ${ap.telefon} oder ${ap.email} (${ap.verfuegbar}).`,
+    `Bei Fragen erreichen Sie ${ap.rolle.replace(/^Ihr fester /, "Ihren festen ").replace(/^Ihr persönlicher /, "Ihren persönlichen ")} ${ap.name} direkt unter ${ap.telefon} oder ${ap.email} (${ap.verfuegbar}).`,
     "",
     "Mit freundlichen Grüßen",
     "Ihr AnwaltApex-Team",

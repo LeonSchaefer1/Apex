@@ -37,7 +37,7 @@ export function CardHeader({ title, subtitle, action, icon, className }: { title
     <div className={cn("mb-4 flex items-start gap-3", className)}>
       {icon && <div className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-[10px] bg-ink-soft text-ink">{icon}</div>}
       <div className="min-w-0 flex-1">
-        <div className="title-md truncate">{title}</div>
+        <div className="title-md line-clamp-2">{title}</div>
         {subtitle && <div className="mt-0.5 text-[12.5px] text-fg-3">{subtitle}</div>}
       </div>
       {action && <div className="shrink-0">{action}</div>}

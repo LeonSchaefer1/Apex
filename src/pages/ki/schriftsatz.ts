@@ -2,13 +2,13 @@
 // Grundsatz: keine erfundenen Tatsachen – was in der Akte fehlt, wird als [Platzhalter] markiert.
 import { addDays, fmtDate, fmtDateLong, fmtEUR, today } from "@/core/dates";
 import { istWerktag } from "@/core/feiertage";
-import { berechneRvg } from "@/core/rvg";
+import { berechneRvg, fassungFuerAuftrag } from "@/core/rvg";
 import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
 import type { Akte, Bundesland, Kontakt, Tenant, TenantData, User } from "@/core/types";
 import { akteAlsText, findePraezedenzfaelle } from "@/ai/kontext";
 import { zitat } from "@/pages/falldb/recherche";
 
-export type SchriftsatzArt = "sachstand" | "deckung" | "aufforderung" | "klageerwiderung" | "kosten";
+export type SchriftsatzArt = "sachstand" | "deckung" | "aufforderung" | "klageerwiderung" | "replik" | "kosten";
 export type Ton = "sachlich" | "verbindlich";
 
 export const SCHRIFTSATZ_ARTEN: { key: SchriftsatzArt; titel: string; label: string; kurz: string; ordner: "Korrespondenz" | "Schriftsätze" }[] = [
@@ -16,11 +16,50 @@ export const SCHRIFTSATZ_ARTEN: { key: SchriftsatzArt; titel: string; label: str
   { key: "deckung", titel: "Deckungsanfrage Rechtsschutz", label: "Deckungsanfrage", kurz: "Anfrage an die Rechtsschutzversicherung mit Sachverhalt", ordner: "Korrespondenz" },
   { key: "aufforderung", titel: "Aufforderungsschreiben an Gegner", label: "Aufforderung", kurz: "Außergerichtliche Aufforderung mit Fristsetzung", ordner: "Korrespondenz" },
   { key: "klageerwiderung", titel: "Klageerwiderung (Gerüst)", label: "Klageerwiderung", kurz: "Anträge, Gliederung und Beweisangebote als Gerüst", ordner: "Schriftsätze" },
+  { key: "replik", titel: "Replik (Gerüst)", label: "Replik", kurz: "Stellungnahme der Klagepartei zur Klageerwiderung", ordner: "Schriftsätze" },
   { key: "kosten", titel: "Kostenvoranschlag / Honorarhinweis", label: "Kostenhinweis", kurz: "Gebührenschätzung nach RVG und Hinweis nach § 49b Abs. 5 BRAO", ordner: "Korrespondenz" },
 ];
 
 export function artInfo(art: SchriftsatzArt) {
   return SCHRIFTSATZ_ARTEN.find((a) => a.key === art)!;
+}
+
+export type Parteirolle = "klaeger" | "beklagter";
+
+/**
+ * Parteirolle der Mandantschaft im Zivilprozess – aus den Dokumenten der E-Akte (wer hat die Klage bzw. die
+ * Klageerwiderung geschrieben?), aus Fristen („Replik auf Klageerwiderung“) und aus dem Sachverhalt.
+ * `undefined`, wenn die Akte es nicht hergibt.
+ */
+export function mandantRolle(akte: Akte, data: TenantData): Parteirolle | undefined {
+  if (akte.sachgebiet === "Strafrecht" || akte.sachgebiet === "Familienrecht") return undefined;
+  const doks = data.dokumente.filter((d) => d.akteId === akte.id);
+  const eigen = (d: (typeof doks)[number]) => d.quelle === "generiert" || !!d.autorId;
+  if (doks.some((d) => /klageerwiderung/i.test(d.name) && !eigen(d))) return "klaeger";
+  if (doks.some((d) => /klageschrift/i.test(d.name) && eigen(d))) return "klaeger";
+  if (doks.some((d) => /klageschrift/i.test(d.name) && !eigen(d))) return "beklagter";
+  if (doks.some((d) => /klageerwiderung/i.test(d.name) && eigen(d))) return "beklagter";
+  if (data.fristen.some((f) => f.akteId === akte.id && /(replik|stellungnahme) (auf|zur) (die )?klageerwiderung/i.test(f.titel))) return "klaeger";
+  const t = `${akte.titel} ${akte.beschreibung}`.toLowerCase();
+  if (/verklagt|räumungsklage gegen|klage gegen (unsere|den|die) mandant/.test(t)) return "beklagter";
+  if (/\bklage auf\b|\bklagt\b|restwerklohnklage|kündigungsschutzklage|rückzahlung der mietkaution/.test(t)) return "klaeger";
+  // Typische Konstellationen: Gläubigerin im Forderungseinzug, Arbeitnehmer gegen Arbeitgeberin
+  if (akte.sachgebiet === "Forderungseinzug") return "klaeger";
+  const m = kontakt(data, akte.mandantId);
+  const g = kontakt(data, akte.gegnerId);
+  if (akte.sachgebiet === "Arbeitsrecht" && m?.typ === "person" && g?.typ === "organisation") return "klaeger";
+  return undefined;
+}
+
+/** Die passenden Dokumentarten für eine Akte: Klagt die Mandantschaft, ersetzt die Replik die Klageerwiderung. */
+export function artenFuer(akte: Akte | undefined, data: TenantData) {
+  const klaeger = !!akte && mandantRolle(akte, data) === "klaeger";
+  return SCHRIFTSATZ_ARTEN.filter((a) => (klaeger ? a.key !== "klageerwiderung" : a.key !== "replik"));
+}
+
+/** Titel einer Entscheidung in Klammern – ohne doppelte Anführungszeichen („„Emmely“ – …“). */
+export function titelInKlammern(titel: string): string {
+  return titel.includes("„") ? `(${titel})` : `(„${titel}“)`;
 }
 
 interface Kontext {
@@ -46,6 +85,15 @@ function anschrift(k: Kontakt | undefined, fallback: string): string {
   if (!k) return `[${fallback}]\n[Anschrift]`;
   const zeilen = [k.name, k.strasse ?? "[Straße]", k.plz && k.ort ? `${k.plz} ${k.ort}` : "[PLZ Ort]"];
   return zeilen.join("\n");
+}
+
+/** Versicherungsnehmer im Akkusativ – mit bekannter Anrede statt „Versicherungsnehmerin bzw. Versicherungsnehmer“. */
+function versicherungsnehmer(k?: Kontakt): string {
+  if (!k) return "Ihre Versicherungsnehmerin bzw. Ihren Versicherungsnehmer, [Name],";
+  if (k.typ === "organisation") return `Ihre Versicherungsnehmerin, die ${k.name},`;
+  if (k.anrede === "Herr") return `Ihren Versicherungsnehmer, Herrn ${k.name},`;
+  if (k.anrede === "Frau") return `Ihre Versicherungsnehmerin, Frau ${k.name},`;
+  return `Ihre Versicherungsnehmerin bzw. Ihren Versicherungsnehmer, ${k.name},`;
 }
 
 /** Die Mandantschaft im Fließtext: „Herrn Thomas Weber“ / „Frau …“ / Firmenname. */
@@ -158,8 +206,9 @@ export function entwurfOffline(art: SchriftsatzArt, ton: Ton, hinweise: string, 
 
     case "deckung": {
       const rsv = akte.rsv;
+      const kuendigung = /kündigung/i.test(`${akte.titel} ${akte.beschreibung}`);
       const massnahme =
-        akte.sachgebiet === "Arbeitsrecht"
+        akte.sachgebiet === "Arbeitsrecht" && kuendigung
           ? `Erhebung einer Kündigungsschutzklage${gericht ? ` vor dem ${gericht.name}` : ""} und außergerichtliche Interessenwahrnehmung`
           : akte.phase === "Gerichtlich" || akte.phase === "Beweisaufnahme"
             ? `Vertretung im gerichtlichen Verfahren${gericht ? ` vor dem ${gericht.name}` : ""}${akte.gerichtsAz ? ` (Az. ${akte.gerichtsAz})` : ""}`
@@ -171,7 +220,7 @@ export function entwurfOffline(art: SchriftsatzArt, ton: Ton, hinweise: string, 
         kopf,
         zeichen,
         "",
-        `Versicherungsnehmer: ${mandant?.name ?? "[Name]"}`,
+        `${mandant?.typ === "organisation" || mandant?.anrede === "Frau" ? "Versicherungsnehmerin" : "Versicherungsnehmer"}: ${mandant?.name ?? "[Name]"}`,
         `Versicherungsnummer: ${rsv?.versicherungsnummer ?? "[Versicherungsnummer]"}`,
         `Schadennummer: ${rsv?.schadennummer ?? "[falls bereits vergeben]"}`,
         "",
@@ -179,7 +228,7 @@ export function entwurfOffline(art: SchriftsatzArt, ton: Ton, hinweise: string, 
         "",
         "Sehr geehrte Damen und Herren,",
         "",
-        `wir zeigen an, dass wir Ihre Versicherungsnehmerin bzw. Ihren Versicherungsnehmer, ${mandantAkkusativ(mandant)}, in der oben genannten Angelegenheit vertreten. Eine Vollmacht liegt uns vor.`,
+        `wir zeigen an, dass wir ${versicherungsnehmer(mandant)} in der oben genannten Angelegenheit vertreten. Eine Vollmacht liegt uns vor.`,
         "",
         "**Sachverhalt**",
         akte.beschreibung,
@@ -259,7 +308,7 @@ export function entwurfOffline(art: SchriftsatzArt, ton: Ton, hinweise: string, 
         "In dem Rechtsstreit",
         "",
         `${gegner?.name ?? "[Klagepartei]"}`,
-        "– Klagepartei –",
+        `– Klagepartei –${gegneranwalt ? `, Prozessbevollmächtigte: ${gegneranwalt.name}` : ""}`,
         "",
         "gegen",
         "",
@@ -282,7 +331,7 @@ export function entwurfOffline(art: SchriftsatzArt, ton: Ton, hinweise: string, 
         "1. [Zulässigkeit: Zuständigkeit, Rechtsschutzbedürfnis]",
         "2. [Begründetheit: Anspruchsgrundlage der Klagepartei und Einwendungen der Beklagtenpartei]",
         ...(quellen.length
-          ? ["", "Zur Rechtslage verweisen wir auf:", ...quellen.map((q) => `• ${q.zitat} („${q.titel}“)${q.geheftet ? "" : " [Fundstelle prüfen]"}`)]
+          ? ["", "Zur Rechtslage verweisen wir auf:", ...quellen.map((q) => `• ${q.zitat} ${titelInKlammern(q.titel)}${q.geheftet ? "" : " [Fundstelle prüfen]"}`)]
           : []),
         "",
         "**III. Beweisangebote**",
@@ -296,10 +345,61 @@ export function entwurfOffline(art: SchriftsatzArt, ton: Ton, hinweise: string, 
         .join("\n");
     }
 
+    case "replik": {
+      const quellen = gepruefteQuellen(akte, data, 2);
+      const erwiderung = data.dokumente
+        .filter((d) => d.akteId === akte.id && /klageerwiderung/i.test(d.name) && d.quelle !== "generiert" && !d.autorId)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+      const aufrechnung = data.dokumente.some((d) => d.akteId === akte.id && /aufrechn|aufgerechnet/i.test(d.inhalt));
+      return [
+        gericht ? `An das\n${gericht.name}\n${gericht.strasse ?? "[Anschrift]"}${gericht.plz ? `\n${gericht.plz} ${gericht.ort ?? ""}` : ""}` : "An das\n[Gericht]\n[Anschrift]",
+        "",
+        kopf,
+        "",
+        `Az.: ${akte.gerichtsAz ?? "[Gerichtsaktenzeichen]"}`,
+        "",
+        "**Replik**",
+        "",
+        "In dem Rechtsstreit",
+        "",
+        `${mandant?.name ?? "[Klagepartei]"}`,
+        `– Klagepartei –, Prozessbevollmächtigte: ${tenant.name}`,
+        "",
+        "gegen",
+        "",
+        `${gegner?.name ?? "[Beklagtenpartei]"}`,
+        `– Beklagtenpartei –${gegneranwalt ? `, Prozessbevollmächtigte: ${gegneranwalt.name}` : ""}`,
+        "",
+        `nehmen wir zur Klageerwiderung ${erwiderung ? `vom ${fmtDate(erwiderung.createdAt.slice(0, 10))}` : "[vom Datum]"} wie folgt Stellung. Die Klagepartei hält an ihren Anträgen aus der Klageschrift fest.`,
+        "",
+        "**I. Zum Vorbringen der Beklagtenpartei**",
+        "[Einwendungen der Klageerwiderung einzeln aufgreifen; streitige Tatsachen ausdrücklich bestreiten und mit Beweisangebot versehen]",
+        ...(aufrechnung ? ["[Zur Hilfsaufrechnung: Gegenforderung dem Grunde und der Höhe nach bestreiten]"] : []),
+        "",
+        "**II. Rechtliche Würdigung**",
+        akte.beschreibung,
+        "[Rechtliche Würdigung ergänzen]",
+        ...(quellen.length
+          ? ["", "Zur Rechtslage verweisen wir auf:", ...quellen.map((q) => `• ${q.zitat} ${titelInKlammern(q.titel)}${q.geheftet ? "" : " [Fundstelle prüfen]"}`)]
+          : []),
+        "",
+        "**III. Beweisangebote**",
+        "[Zeugen, Urkunden, Sachverständigengutachten – Anlagen K … ff.]",
+        hinweisAbsatz,
+        "Beglaubigte und einfache Abschrift anbei.",
+        "",
+        signatur(user),
+      ]
+        .filter((z, i, a) => !(z === "" && a[i - 1] === ""))
+        .join("\n");
+    }
+
     case "kosten": {
       const wert = akte.gegenstandswert || 0;
-      const aussergerichtlich = wert ? berechneRvg({ positionen: [{ nr: "2300" }], gegenstandswert: wert }) : null;
-      const gerichtlich = wert ? berechneRvg({ positionen: [{ nr: "3100" }, { nr: "3104" }], gegenstandswert: wert }) : null;
+      // Übergangsrecht § 60 RVG: maßgeblich ist der Tag der Auftragserteilung (z. B. bei übernommenen Altakten)
+      const fassung = fassungFuerAuftrag(akte.createdAt.slice(0, 10));
+      const aussergerichtlich = wert ? berechneRvg({ positionen: [{ nr: "2300" }], gegenstandswert: wert, fassung }) : null;
+      const gerichtlich = wert ? berechneRvg({ positionen: [{ nr: "3100" }, { nr: "3104" }], gegenstandswert: wert, fassung }) : null;
       const zeile = (titel: string, betrag: number) => `• ${titel}: ${fmtEUR(betrag)}`;
       const arbeitsrecht = akte.sachgebiet === "Arbeitsrecht";
       return [
@@ -318,6 +418,7 @@ export function entwurfOffline(art: SchriftsatzArt, ton: Ton, hinweise: string, 
         "",
         "Nach § 49b Abs. 5 BRAO weisen wir darauf hin, dass sich die Gebühren nach dem Gegenstandswert richten (Rechtsanwaltsvergütungsgesetz, RVG).",
         `Gegenstandswert: ${wert ? fmtEUR(wert) : "[Gegenstandswert]"}`,
+        `Gebührentabelle: ${fassung === "2025" ? "RVG in der Fassung ab 01.06.2025" : "RVG in der bis 31.05.2025 geltenden Fassung (Auftrag vor dem 01.06.2025, § 60 RVG)"}`,
         "",
         ...(aussergerichtlich && gerichtlich
           ? [
@@ -338,7 +439,7 @@ export function entwurfOffline(art: SchriftsatzArt, ton: Ton, hinweise: string, 
             ]
           : ["[Gebührenberechnung ergänzen – Gegenstandswert in der Akte hinterlegen]"]),
         ...(arbeitsrecht
-          ? ["", "**Wichtiger Hinweis:** Im arbeitsgerichtlichen Verfahren erster Instanz trägt jede Partei ihre Anwaltskosten selbst – auch im Fall des Obsiegens (§ 12a Abs. 1 S. 1 ArbGG)."]
+          ? ["", "**Wichtiger Hinweis nach § 12a Abs. 1 S. 2 ArbGG:** Im arbeitsgerichtlichen Urteilsverfahren erster Instanz trägt jede Partei ihre Anwaltskosten selbst – auch im Fall des Obsiegens; eine Kostenerstattung findet nicht statt (§ 12a Abs. 1 S. 1 ArbGG)."]
           : []),
         ...(akte.rsv
           ? ["", `Ihre Rechtsschutzversicherung (${akte.rsv.versicherung}) ${akte.rsv.deckung === "erteilt" ? "hat die Deckung erteilt" : "ist angefragt"}${akte.rsv.selbstbeteiligung ? `; Ihre Selbstbeteiligung beträgt ${fmtEUR(akte.rsv.selbstbeteiligung)}` : ""}.`]
@@ -370,8 +471,12 @@ export function entwurfPrompt(art: SchriftsatzArt, ton: Ton, hinweise: string, k
     "- Schreibe korrektes, klares Deutsch im Stil einer deutschen Kanzlei. Kein Markdown außer **Fettdruck** für Betreff und Zwischenüberschriften.",
     "- Gib nur den Brieftext aus (Anschrift, Ort/Datum, Zeichen, Betreff, Anrede, Text, Grußformel, Unterschrift) – ohne Einleitung oder Erläuterung davor oder danach.",
   ].join("\n");
+  const rolle = mandantRolle(akte, data);
   const user_ = [
     `Dokumentart: ${artInfo(art).titel} – ${artInfo(art).kurz}.`,
+    art === "klageerwiderung" || art === "replik"
+      ? `Parteirolle der Mandantschaft: ${rolle === "klaeger" ? "Klagepartei" : rolle === "beklagter" ? "Beklagtenpartei" : "geht aus der Akte nicht hervor – Parteibezeichnungen als [Platzhalter]"}.`
+      : "",
     `Tonalität: ${ton === "sachlich" ? "sachlich, präzise und knapp" : "verbindlich, freundlich-zugewandt, aber juristisch präzise"}.`,
     hinweise.trim() ? `Zusätzliche Anweisungen der Anwältin/des Anwalts: ${hinweise.trim()}` : "",
     "",
@@ -380,7 +485,7 @@ export function entwurfPrompt(art: SchriftsatzArt, ton: Ton, hinweise: string, k
     `Datum: ${fmtDateLong(today())}, Ort: ${tenant.stadt}`,
     "",
     "Geprüfte Entscheidungen (nur diese dürfen zitiert werden):",
-    quellen.length ? quellen.map((q) => `- ${q.zitat} („${q.titel}“)`).join("\n") : "- keine",
+    quellen.length ? quellen.map((q) => `- ${q.zitat} ${titelInKlammern(q.titel)}`).join("\n") : "- keine",
     "",
     "Akte:",
     akteAlsText(akte, data, 5),
@@ -403,6 +508,8 @@ export function dokumentName(art: SchriftsatzArt, akte: Akte, data: TenantData):
       return `Aufforderungsschreiben an ${kontakt(data, akte.gegneranwaltId ?? akte.gegnerId)?.name ?? "Gegenseite"} (${datum})`;
     case "klageerwiderung":
       return `Klageerwiderung – Entwurf (${datum})`;
+    case "replik":
+      return `Replik – Entwurf (${datum})`;
     case "kosten":
       return `Kostenhinweis nach § 49b Abs. 5 BRAO (${datum})`;
   }

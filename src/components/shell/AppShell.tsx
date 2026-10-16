@@ -42,7 +42,7 @@ export function AppShell() {
       <div className="relative z-10 flex min-w-0 flex-1 flex-col">
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden" id="haupt-scroll">
           <TopBar />
-          <main className="mx-auto w-full max-w-[1480px] px-4 pb-32 pt-6 md:px-8 md:pb-16">
+          <main className="mx-auto w-full max-w-[1480px] px-4 pb-32 pt-6 md:px-8 md:pb-24">
             <AnimatePresence mode="wait">
               <motion.div
                 key={loc.pathname}

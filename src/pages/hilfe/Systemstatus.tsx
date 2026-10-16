@@ -71,13 +71,13 @@ export function Systemstatus() {
             <span className="absolute inset-0 animate-ping rounded-full bg-[var(--green)] opacity-15 [animation-duration:2.6s]" />
             <CheckCircle2 className="size-6" />
           </motion.div>
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 basis-[200px]">
             <div className="text-[17px] font-semibold tracking-[-0.02em]">Alle Systeme betriebsbereit</div>
             <div className="text-[12.5px] text-fg-3">
               Zuletzt geprüft vor <GeprueftZaehler /> Sek. · nächste Prüfung automatisch
             </div>
           </div>
-          <span className="text-[11.5px] text-fg-4">Messwerte im Demo-Betrieb simuliert</span>
+          <span className="w-full text-[11.5px] text-fg-3 sm:w-auto">Messwerte im Demo-Betrieb simuliert</span>
         </div>
         <ul className="divide-y divide-[var(--line)]">
           {dienste.map((d, i) => (

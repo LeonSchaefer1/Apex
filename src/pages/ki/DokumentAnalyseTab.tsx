@@ -11,7 +11,7 @@ import { useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
 import { fmtDateWd, fmtNum, nowLocal, relDays, today, uid } from "@/core/dates";
-import { fristDringlichkeit } from "@/core/fristen";
+import { fristArtZu, fristDringlichkeit } from "@/core/fristen";
 import type { Frist } from "@/core/types";
 import { AiChip, Button, Card, Chip, Field, Input, ProgressRing, Select, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -22,7 +22,7 @@ const SCHRITTE: KiSchritt[] = [
   { label: "Lesen", detail: "Text & Struktur", icon: <ScanText /> },
   { label: "Typ erkennen", detail: "Schriftstück & Ereignis", icon: <Tags /> },
   { label: "Akte zuordnen", detail: "Az., Parteien, Gericht", icon: <FolderSearch /> },
-  { label: "Fristen berechnen", detail: "Fristenrechner § 222 ZPO", icon: <Calculator /> },
+  { label: "Fristen berechnen", detail: "Fristenrechner mit Rechenweg", icon: <Calculator /> },
 ];
 
 const SICHER_AB = 0.8;
@@ -41,6 +41,9 @@ export function DokumentAnalyseTab({ akteParam }: { akteParam?: string }) {
   const [betreff, setBetreff] = useState("");
   const [von, setVon] = useState("");
   const [beispielAktiv, setBeispielAktiv] = useState<number | null>(null);
+  // Betreff/Absender stammen aus Beispiel oder Datei – beim Ersetzen des Texts wieder leeren
+  const [autoFelder, setAutoFelder] = useState(false);
+  const textRef = useRef<HTMLTextAreaElement>(null);
   const [analyse, setAnalyse] = useState<DokAnalyse | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
   const [laeuft, setLaeuft] = useState(false);
@@ -60,6 +63,20 @@ export function DokumentAnalyseTab({ akteParam }: { akteParam?: string }) {
     setBetreff(b.betreff);
     setVon(b.von);
     setBeispielAktiv(i);
+    setAutoFelder(true);
+  };
+
+  /** Neuer Text: Stammen Betreff und Absender noch vom vorigen Beispiel bzw. der Datei, gehören sie nicht mehr dazu. */
+  const textAendern = (neu: string) => {
+    const alt = text;
+    const ersetzt = !neu.trim() || (alt.length >= 40 && !neu.includes(alt.slice(0, 40)) && !alt.includes(neu.slice(0, 40)));
+    if (autoFelder && ersetzt) {
+      setBetreff("");
+      setVon("");
+      setAutoFelder(false);
+    }
+    setText(neu);
+    setBeispielAktiv(null);
   };
 
   const ladeDatei = (f: File | undefined) => {
@@ -74,6 +91,7 @@ export function DokumentAnalyseTab({ akteParam }: { akteParam?: string }) {
       setBetreff(f.name.replace(/\.[^.]+$/, ""));
       setVon("Upload");
       setBeispielAktiv(null);
+      setAutoFelder(true);
       toast("Datei geladen", { text: f.name, ton: "info" });
     };
     r.onerror = () => toast("Datei konnte nicht gelesen werden", { text: "Bitte als UTF-8-Textdatei (.txt) speichern und erneut versuchen.", ton: "fehler" });
@@ -163,11 +181,18 @@ export function DokumentAnalyseTab({ akteParam }: { akteParam?: string }) {
     });
   };
 
+  /** „Neues Dokument“: Ergebnis und Eingabe (Text, Betreff, Absender) leeren. */
   const neuStarten = () => {
     setAnalyse(null);
     setFehler(null);
     setUebernommen(null);
+    setText("");
+    setBetreff("");
+    setVon("");
+    setBeispielAktiv(null);
+    setAutoFelder(false);
     zuruecksetzen();
+    setTimeout(() => textRef.current?.focus(), 60);
   };
 
   const kannUebernehmen = !!analyse && (analyse.fristen.length > 0 || !!analyse.termin);
@@ -210,21 +235,19 @@ export function DokumentAnalyseTab({ akteParam }: { akteParam?: string }) {
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <Field label="Betreff" htmlFor="dok-betreff">
-            <Input id="dok-betreff" value={betreff} onChange={(e) => setBetreff(e.target.value)} placeholder="z. B. Zustellung eines Urteils" />
+            <Input id="dok-betreff" value={betreff} onChange={(e) => { setBetreff(e.target.value); setAutoFelder(false); }} placeholder="z. B. Zustellung eines Urteils" />
           </Field>
           <Field label="Absender" htmlFor="dok-von">
-            <Input id="dok-von" value={von} onChange={(e) => setVon(e.target.value)} placeholder="z. B. Landgericht Berlin" />
+            <Input id="dok-von" value={von} onChange={(e) => { setVon(e.target.value); setAutoFelder(false); }} placeholder="z. B. Landgericht Berlin" />
           </Field>
         </div>
         <Field label="Text des Schreibens" htmlFor="dok-text" className="mt-3">
           <Textarea
             id="dok-text"
+            ref={textRef}
             rows={9}
             value={text}
-            onChange={(e) => {
-              setText(e.target.value);
-              setBeispielAktiv(null);
-            }}
+            onChange={(e) => textAendern(e.target.value)}
             placeholder="Fügen Sie hier den Text eines Schreibens ein – z. B. eine gerichtliche Verfügung, ein Urteil, eine Kündigung oder eine Mandanten-E-Mail."
             className="text-[13.5px]"
           />
@@ -312,7 +335,7 @@ export function DokumentAnalyseTab({ akteParam }: { akteParam?: string }) {
                               "Die KI liest das Schreiben vollständig – auch lange gerichtliche Verfügungen.",
                               "Urteil, Versäumnisurteil, Verfügung, Ladung, Kündigung oder Mandanten-E-Mail.",
                               "Über Gerichtsaktenzeichen, Ihr Aktenzeichen oder die Namen der Parteien.",
-                              "Die KI erkennt nur die Fristart. Das Fristende berechnet der Fristenrechner – mit Feiertagen Ihres Bundeslands.",
+                              "Die KI erkennt nur die Fristart. Das Fristende berechnet der Fristenrechner – mit den Feiertagen am Gerichtsort.",
                             ][i]
                           }
                         </span>
@@ -366,7 +389,7 @@ function Ergebnis({
             <div className="mt-3 flex items-start gap-2 rounded-[14px] bg-amber-soft px-3.5 py-2.5 text-[12.5px] text-amber">
               <Inbox className="mt-0.5 size-4 shrink-0" />
               <span>
-                <span className="font-semibold">Elektronisches Empfangsbekenntnis (eEB) erforderlich.</span> Erst abgeben, wenn die Fristen notiert und kontrolliert sind – das Abgabedatum gilt als Zustellungsdatum.
+                <span className="font-semibold">Elektronisches Empfangsbekenntnis (eEB) erforderlich.</span> Zugestellt ist an dem Tag, an dem Sie das Schriftstück empfangsbereit zur Kenntnis genommen haben – dieses Datum tragen Sie im eEB ein. AnwaltApex rechnet vorsorglich ab dem Eingangstag. Das eEB erst abgeben, wenn die Fristen notiert und kontrolliert sind.
               </span>
             </div>
           )}
@@ -503,17 +526,25 @@ function Ergebnis({
 function FristKarte({ f }: { f: FristVorschlag }) {
   const [offen, setOffen] = useState(false);
   const d = fristDringlichkeit(f.ende, today());
+  const art = fristArtZu(f);
   const notfrist = f.typ === "notfrist";
+  const kritisch = !!art?.kritisch;
   return (
     <Card className="!p-0">
       <div className="flex flex-wrap items-start gap-3 p-4">
-        <div className={cn("grid size-10 shrink-0 place-items-center rounded-[12px]", notfrist ? "bg-seal-soft text-seal" : "bg-amber-soft text-amber")}>
+        <div className={cn("grid size-10 shrink-0 place-items-center rounded-[12px]", kritisch ? "bg-seal-soft text-seal" : "bg-amber-soft text-amber")}>
           <CalendarClock className="size-5" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-[14px] font-semibold">{f.titel}</span>
-            {notfrist ? <Chip tone="seal">Notfrist</Chip> : <Chip tone="amber">Frist</Chip>}
+            {notfrist ? (
+              <Chip tone="seal" title={art?.kurz}>Notfrist</Chip>
+            ) : kritisch ? (
+              <Chip tone="seal" title={art?.kurz}>Frist · nicht verlängerbar</Chip>
+            ) : (
+              <Chip tone="amber" title={art?.kurz}>Frist</Chip>
+            )}
           </div>
           <div className="mt-0.5 text-[12px] text-fg-3">{f.grundlage}</div>
         </div>
@@ -539,7 +570,7 @@ function FristKarte({ f }: { f: FristVorschlag }) {
       >
         <Calculator className="size-4 shrink-0 text-green" />
         <span className="min-w-0 flex-1">
-          <span className="font-semibold text-fg">Berechnet vom Fristenrechner nach § 222 ZPO</span>
+          <span className="font-semibold text-fg">Berechnet vom Fristenrechner</span>
           <span className="text-fg-3"> – nicht von der KI. Rechenweg</span>
         </span>
         <ChevronDown className={cn("size-4 shrink-0 text-fg-3 transition-transform duration-300", offen && "rotate-180")} />

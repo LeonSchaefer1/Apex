@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Zap } from "lucide-react";
 import { useMotorStore } from "@/lib/motor";
 import { useData } from "@/store/data";
+import { useToasts } from "@/store/ui";
 import { addDays, fmtNum, today } from "@/core/dates";
 
 /** „Apex Island": schwarze Kapsel, die zeigt, was der 38h-Motor gerade erledigt. */
@@ -11,6 +12,9 @@ export function ApexIsland() {
   const aktuell = useMotorStore((s) => s.aktuell);
   const akt = useData((s) => s.data.aktivitaeten);
   const nav = useNavigate();
+  // Benachrichtigungen erscheinen als Dynamic-Island-Kapsel oben – solange eine sichtbar ist, tritt die Island zurück,
+  // statt halb verdeckt hinter ihr hervorzuschauen.
+  const toastSichtbar = useToasts((s) => s.toasts.length > 0);
   const stunden = useMemo(() => {
     const grenze = addDays(today(), -6);
     return akt.filter((a) => a.zeit.slice(0, 10) >= grenze).reduce((s, a) => s + (a.minutenGespart ?? 0), 0) / 60;
@@ -21,7 +25,11 @@ export function ApexIsland() {
       type="button"
       layout
       onClick={() => nav("/automatisierung")}
+      animate={{ opacity: toastSichtbar ? 0 : 1, scale: toastSichtbar ? 0.85 : 1, filter: toastSichtbar ? "blur(4px)" : "blur(0px)" }}
       transition={{ type: "spring", stiffness: 420, damping: 32 }}
+      aria-hidden={toastSichtbar || undefined}
+      tabIndex={toastSichtbar ? -1 : undefined}
+      style={{ pointerEvents: toastSichtbar ? "none" : undefined }}
       className="relative hidden h-9 max-w-full shrink-0 items-center gap-2 overflow-hidden rounded-full bg-[#090b14] pl-2 pr-3.5 text-white shadow-[0_8px_24px_-10px_rgba(0,0,0,0.6)] ring-1 ring-white/10 lg:inline-flex"
       title="38h-Motor: Was die Automatisierung gerade für Sie erledigt"
     >

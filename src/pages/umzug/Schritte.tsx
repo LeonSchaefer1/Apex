@@ -5,7 +5,7 @@ import {
   UploadCloud, Users, Wand2, X,
 } from "lucide-react";
 import { fmtDate, fmtEUR, fmtNum } from "@/core/dates";
-import type { Ansprechpartner, Kontakt } from "@/core/types";
+import type { Ansprechpartner, FristTyp, Kontakt } from "@/core/types";
 import { AnimatedNumber, Avatar, Button, Chip, DataTable, Segmented, Select, type ColumnDef } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { TRENNZEICHEN_NAME, type CsvErgebnis, type DateiInfo } from "./csv";
@@ -182,6 +182,9 @@ export function SchrittDaten({
 
 /* ───────── Schritt 3: Zuordnung ───────── */
 
+const FRIST_KURZ: Record<FristTyp, string> = { notfrist: "Notfrist", frist: "Frist", vorfrist: "Vorfrist", wiedervorlage: "WV", termin: "Termin" };
+const FRIST_TON: Record<FristTyp, "seal" | "ink" | "outline" | "neutral" | "violet"> = { notfrist: "seal", frist: "ink", vorfrist: "outline", wiedervorlage: "neutral", termin: "violet" };
+
 export function SchrittZuordnung({
   csv, zuordnung, auto, setZuordnung, zeilen, kontakte, modus, setModus, ausnahmen, setAusnahme,
 }: {
@@ -198,14 +201,22 @@ export function SchrittZuordnung({
 }) {
   const dubletten = zeilen.filter((z) => z.dublette && !z.fehler);
   const fehler = zeilen.filter((z) => z.fehler);
-  const hinweise = zeilen.filter((z) => z.hinweis && !z.fehler);
   const ohneKern = !zuordnung.includes("titel") && !zuordnung.includes("aktenzeichen") && !zuordnung.includes("mandant");
+  // Hinweise je Zeile: unlesbares Fristdatum, Plausibilität des Fristendes, unsicheres Sachgebiet
+  const hinweise = zeilen
+    .filter((z) => !z.fehler)
+    .flatMap((z) => [z.hinweis, z.fristWarnung, z.sachgebietHinweis].filter((t): t is string => !!t).map((text) => ({ nr: z.nr, text, warnung: text === z.fristWarnung })));
+  const fristWarnungen = zeilen.filter((z) => !z.fehler && z.fristWarnung).length;
+  const sgPruefen = zeilen.filter((z) => !z.fehler && !z.sachgebietErkannt).length;
+  const [alleHinweise, setAlleHinweise] = useState(false);
 
+  // Kontakte so zählen wie die Übernahme: nur Zeilen, die tatsächlich übernommen werden (übersprungene Dubletten nicht)
   const kontaktZahl = useMemo(() => {
     const vorhanden = new Set(kontakte.map((k) => normName(k.name)));
     const namen = new Set<string>();
     let bekannt = 0;
     for (const z of zeilen) {
+      if (z.fehler || (z.dublette && (ausnahmen[z.nr] ?? modus) === "skip")) continue;
       for (const n of [z.mandant, z.gegner]) {
         const k = normName(n);
         if (!k || namen.has(k)) continue;
@@ -214,7 +225,7 @@ export function SchrittZuordnung({
       }
     }
     return { gesamt: namen.size, bekannt };
-  }, [zeilen, kontakte]);
+  }, [zeilen, kontakte, ausnahmen, modus]);
 
   const setze = (spalte: number, wert: ZielFeld | null) => {
     const next = zuordnung.map((z, i) => (i === spalte ? wert : wert && z === wert ? null : z));
@@ -236,11 +247,30 @@ export function SchrittZuordnung({
       },
       { id: "mandant", header: "Mandant", size: 170, accessorFn: (z) => z.mandant, cell: ({ row }) => <span className="truncate">{row.original.mandant || "–"}</span> },
       { id: "gegner", header: "Gegner", size: 170, accessorFn: (z) => z.gegner, cell: ({ row }) => <span className="truncate">{row.original.gegner || "–"}</span> },
-      { id: "sg", header: "Sachgebiet", size: 130, accessorFn: (z) => z.sachgebiet, cell: ({ row }) => <span title={row.original.sachgebietRoh ? `Original: ${row.original.sachgebietRoh}` : undefined}>{row.original.sachgebiet}</span> },
+      {
+        id: "sg", header: "Sachgebiet", size: 150, accessorFn: (z) => z.sachgebiet,
+        cell: ({ row }) => (
+          <span className="flex min-w-0 items-center gap-1.5" title={row.original.sachgebietHinweis ?? (row.original.sachgebietRoh ? `Original: ${row.original.sachgebietRoh}` : undefined)}>
+            <span className="truncate">{row.original.sachgebiet}</span>
+            {!row.original.sachgebietErkannt && <Chip tone="amber">prüfen</Chip>}
+          </span>
+        ),
+      },
       { id: "wert", header: "Gegenstandswert", size: 130, accessorFn: (z) => z.gegenstandswert, cell: ({ row }) => <span className="num">{row.original.gegenstandswert ? fmtEUR(row.original.gegenstandswert) : "–"}</span> },
       {
-        id: "frist", header: "Frist", size: 210, accessorFn: (z) => z.fristDatum ?? "",
-        cell: ({ row }) => (row.original.fristDatum ? <span className="truncate"><span className="num font-medium">{fmtDate(row.original.fristDatum)}</span> <span className="text-fg-3">{row.original.fristTitel}</span></span> : <span className="text-fg-4">–</span>),
+        id: "frist", header: "Frist", size: 250, accessorFn: (z) => z.fristDatum ?? "",
+        cell: ({ row }) => {
+          const z = row.original;
+          if (!z.fristDatum) return <span className="text-fg-4">–</span>;
+          return (
+            <span className="flex min-w-0 items-center gap-1.5" title={z.fristWarnung}>
+              {z.fristWarnung && <AlertTriangle className="size-3.5 shrink-0 text-amber" aria-label="Fristende prüfen" />}
+              <Chip tone={FRIST_TON[z.fristTyp]}>{FRIST_KURZ[z.fristTyp]}</Chip>
+              <span className="num font-medium">{fmtDate(z.fristDatum)}</span>
+              <span className="truncate text-fg-3">{z.fristTitel}</span>
+            </span>
+          );
+        },
       },
     ],
     [],
@@ -260,6 +290,8 @@ export function SchrittZuordnung({
           </Chip>
           <Chip tone="ink" icon={<CalendarClock className="size-3" />}>{mitFrist} Fristen</Chip>
           {dubletten.length > 0 && <Chip tone="amber">{dubletten.length} Dubletten</Chip>}
+          {fristWarnungen > 0 && <Chip tone="amber" icon={<AlertTriangle className="size-3" />}>{fristWarnungen} {fristWarnungen === 1 ? "Fristende prüfen" : "Fristenden prüfen"}</Chip>}
+          {sgPruefen > 0 && <Chip tone="amber">{sgPruefen} {sgPruefen === 1 ? "Sachgebiet prüfen" : "Sachgebiete prüfen"}</Chip>}
           {fehler.length > 0 && <Chip tone="seal">{fehler.length} nicht lesbar</Chip>}
         </div>
       </div>
@@ -374,14 +406,23 @@ export function SchrittZuordnung({
 
       {(fehler.length > 0 || hinweise.length > 0) && (
         <section className="grid grid-cols-1 gap-2">
-          {[...fehler, ...hinweise].slice(0, 6).map((z) => (
-            <div key={z.nr} className={cn("flex gap-2.5 rounded-[14px] px-3.5 py-2.5 text-[12.5px]", z.fehler ? "bg-seal-soft text-seal" : "bg-[var(--ink-softer)] text-fg-2")}>
-              {z.fehler ? <X className="mt-0.5 size-3.5 shrink-0" /> : <Info className="mt-0.5 size-3.5 shrink-0 text-ink" />}
-              <span>
-                Zeile {z.nr}: {z.fehler ?? z.hinweis}
-              </span>
-            </div>
-          ))}
+          <div className="eyebrow">Vor der Übernahme prüfen</div>
+          {[...fehler.map((z) => ({ nr: z.nr, text: z.fehler!, fehler: true, warnung: false })), ...hinweise.map((h) => ({ ...h, fehler: false }))]
+            .slice(0, alleHinweise ? undefined : 6)
+            .map((h, i) => (
+              <div key={`${h.nr}-${i}`} className={cn("flex gap-2.5 rounded-[14px] px-3.5 py-2.5 text-[12.5px]", h.fehler ? "bg-seal-soft text-seal" : h.warnung ? "bg-amber-soft text-fg-2" : "bg-[var(--ink-softer)] text-fg-2")}>
+                {h.fehler ? <X className="mt-0.5 size-3.5 shrink-0" /> : h.warnung ? <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber" /> : <Info className="mt-0.5 size-3.5 shrink-0 text-ink" />}
+                <span>
+                  Zeile {h.nr}: {h.text}
+                </span>
+              </div>
+            ))}
+          {fehler.length + hinweise.length > 6 && (
+            <button type="button" className="justify-self-start text-[12.5px] font-medium text-ink hover:underline" onClick={() => setAlleHinweise((v) => !v)}>
+              {alleHinweise ? "Weniger anzeigen" : `Alle ${fehler.length + hinweise.length} Hinweise anzeigen`}
+            </button>
+          )}
+          {fristWarnungen > 0 && <p className="text-[11.5px] text-fg-4">Übernommen wird das Datum aus dem Altsystem – die Vier-Augen-Kontrolle prüft jede Frist vor der Freigabe.</p>}
         </section>
       )}
 
@@ -403,8 +444,14 @@ export function SchrittZuordnung({
               <div className="truncate text-[12px] text-fg-3">
                 {z.sachgebiet}
                 {z.gegenstandswert ? ` · ${fmtEUR(z.gegenstandswert, { cents: false })}` : ""}
-                {z.fristDatum ? ` · Frist ${fmtDate(z.fristDatum)}` : ""}
+                {z.fristDatum ? ` · ${FRIST_KURZ[z.fristTyp]} ${fmtDate(z.fristDatum)}` : ""}
               </div>
+              {(z.fristWarnung || !z.sachgebietErkannt) && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {z.fristWarnung && <Chip tone="amber" icon={<AlertTriangle className="size-3" />}>Fristende prüfen</Chip>}
+                  {!z.sachgebietErkannt && <Chip tone="amber">Sachgebiet prüfen</Chip>}
+                </div>
+              )}
             </div>
           )}
         />
@@ -425,7 +472,7 @@ const ENTITAETEN: { key: Entitaet; label: string; icon: React.ReactNode }[] = [
 export function SchrittUebernahme({
   plan, fortschritt, laeuft, onStart, systemName,
 }: {
-  plan: { akten: number; aktualisieren: number; ueberspringen: number; fristen: number; kontakte: number };
+  plan: { akten: number; aktualisieren: number; ueberspringen: number; fristen: number; wiedervorlagen: number; kontakte: number; kontakteVorhanden: number };
   fortschritt: Partial<Record<Entitaet, Fortschritt>>;
   laeuft: boolean;
   onStart: () => void;
@@ -444,15 +491,15 @@ export function SchrittUebernahme({
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
             <PlanZahl label="Neue Akten" wert={plan.akten} />
             <PlanZahl label="Akten aktualisieren" wert={plan.aktualisieren} />
-            <PlanZahl label="Kontakte" wert={plan.kontakte} />
-            <PlanZahl label="Fristen zur Kontrolle" wert={plan.fristen} />
+            <PlanZahl label="Kontakte" wert={plan.kontakte} sub={plan.kontakteVorhanden ? `davon ${plan.kontakteVorhanden} bereits vorhanden` : undefined} />
+            <PlanZahl label="Fristen zur Kontrolle" wert={plan.fristen} sub={plan.wiedervorlagen ? `+ ${plan.wiedervorlagen} Wiedervorlagen/Termine` : undefined} />
           </div>
           {plan.ueberspringen > 0 && <p className="text-[12.5px] text-fg-3">{plan.ueberspringen} Dublette(n) werden übersprungen.</p>}
           <div className="flex flex-col items-center gap-3 rounded-[22px] bg-[radial-gradient(120%_140%_at_50%_0%,var(--ink-soft),transparent_70%)] px-5 py-8 text-center ring-1 ring-[var(--line)]">
             <Button variant="primary" size="lg" icon={<ArrowRight className="size-4" />} onClick={onStart} data-autofocus>
               Jetzt mit einem Klick übernehmen
             </Button>
-            <p className="max-w-[48ch] text-[12px] text-fg-3">Fristen werden mit Vorfrist angelegt und als „aus Umzug“ markiert – eine zweite Person bestätigt sie im Vier-Augen-Prinzip.</p>
+            <p className="max-w-[48ch] text-[12px] text-fg-3">Fristen werden mit Vorfrist (eine Woche vorher) angelegt und als „Migration“ markiert – eine zweite Person prüft und bestätigt sie im Vier-Augen-Prinzip.</p>
           </div>
         </div>
       )}
@@ -503,11 +550,12 @@ export function SchrittUebernahme({
   );
 }
 
-function PlanZahl({ label, wert }: { label: string; wert: number }) {
+function PlanZahl({ label, wert, sub }: { label: string; wert: number; sub?: string }) {
   return (
     <div className="rounded-[16px] bg-[var(--surface-2)] px-3.5 py-3 ring-1 ring-[var(--line)]">
       <div className="text-[24px] font-semibold leading-none tracking-[-0.03em]">{fmtNum(wert)}</div>
       <div className="mt-1.5 text-[12px] text-fg-3">{label}</div>
+      {sub && <div className="mt-0.5 text-[11px] leading-snug text-fg-4">{sub}</div>}
     </div>
   );
 }
@@ -530,7 +578,7 @@ export function SchrittFertig({
   const zahlen = [
     { label: "Akten übernommen", wert: e.aktenNeu + e.aktenAktualisiert, sub: e.aktenAktualisiert ? `${e.aktenAktualisiert} davon aktualisiert` : "alle neu angelegt", icon: <FolderOpen className="size-4" /> },
     { label: "Kontakte angelegt", wert: e.kontakteNeu, sub: e.kontakteZusammengefuehrt ? `${e.kontakteZusammengefuehrt} mit vorhandenen zusammengeführt` : "ohne Dubletten", icon: <Users className="size-4" /> },
-    { label: "Fristen zur Kontrolle", wert: e.fristen, sub: "mit Vorfrist, Vier-Augen-Prinzip", icon: <CalendarClock className="size-4" /> },
+    { label: "Fristen zur Kontrolle", wert: e.fristenKontrolle, sub: e.fristen > e.fristenKontrolle ? `mit Vorfrist · dazu ${e.fristen - e.fristenKontrolle} Wiedervorlagen/Termine` : "mit Vorfrist, Vier-Augen-Prinzip", icon: <CalendarClock className="size-4" /> },
     { label: "Dokumente-Verweise", wert: e.dokumente, sub: "Datenblatt je Akte", icon: <FileText className="size-4" /> },
   ];
   return (

@@ -200,7 +200,7 @@ export const ENTSCHEIDUNGEN: Entscheidung[] = [
     art: "Urteil", rechtsgebiet: "Vertragsrecht", titel: "„Sommer unseres Lebens“ – WLAN-Haftung",
     leitsatz: "Der private Betreiber eines WLAN-Anschlusses haftet als Störer auf Unterlassung, wenn er den Anschluss nicht ausreichend gegen Missbrauch durch Dritte gesichert hat; Schadensersatz schuldet er nicht.",
     normen: ["§ 97 UrhG", "§ 1004 BGB analog"], schlagworte: ["filesharing", "wlan", "störerhaftung", "abmahnung", "urheberrecht"],
-    bedeutung: "Historische Grundlage bei Filesharing-Abmahnungen (heute § 8 TMG / DDG beachten).",
+    bedeutung: "Historische Grundlage bei Filesharing-Abmahnungen – heute schließt § 7 DDG (früher § 8 Abs. 1 S. 2 TMG) Unterlassungsansprüche gegen WLAN-Betreiber aus; möglich bleibt ein Sperranspruch nach § 8 DDG.",
   },
   {
     id: "bverfg-1bvr400-51", gericht: "BVerfG", ebene: "BVerfG", spruchkoerper: "1. Senat", datum: "1958-01-15", az: "1 BvR 400/51",

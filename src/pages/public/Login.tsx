@@ -1,29 +1,27 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router";
 import { motion } from "motion/react";
-import { ArrowRight, Lock, Mail, ShieldCheck, Sparkles, Infinity as InfinityIcon, Building2, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, ArrowRight, KeyRound, Lock, Mail, ShieldCheck, Sparkles, Infinity as InfinityIcon, Building2, Eye, EyeOff } from "lucide-react";
 import { useSession } from "@/store/session";
 import { useData } from "@/store/data";
-import { getBackend, getInfo, istConsole, type SchnellLogin } from "@/lib/backend";
+import { PASSWORT_MIN, PasswortWechselNoetig, getBackend, getInfo, istConsole, pruefeNeuesPasswort, type SchnellLogin } from "@/lib/backend";
 import { Avatar, Button, Chip, Input } from "@/components/ui";
 import { CONSOLE_DEMO, DEMO_PASSWORT, DEMO_TENANTS } from "@/core/seed/tenants";
 import { AppIcon, Wordmark } from "@/components/Logo";
 import { cn } from "@/lib/cn";
 
-/** E-Mail-Adressen der fest eingebauten Beispielkanzleien (Passwort öffentlich: Apex-Demo-2026). */
-const BEISPIEL_EMAILS = new Set(DEMO_TENANTS.flatMap((t) => t.users.map((u) => u.email.toLowerCase())));
 const BEISPIEL_STAEDTE = DEMO_TENANTS.map((t) => t.tenant.stadt).join(", ");
 
 type ZugangArt = "console" | "beispiel" | "beispiel-eigenes-pw" | "kundentest";
 function zugangArt(s: SchnellLogin): ZugangArt {
   if (s.console) return "console";
-  if (!BEISPIEL_EMAILS.has(s.email.toLowerCase())) return "kundentest";
+  if (s.kundentest) return "kundentest";
   return s.passwort === DEMO_PASSWORT ? "beispiel" : "beispiel-eigenes-pw";
 }
 
 /** Anmeldung – jede Kanzlei hat eigene Zugänge und einen streng getrennten Datenbestand. */
 export default function Login() {
-  const { login, sitzung, status } = useSession();
+  const { login, passwortErsetzen, sitzung, status } = useSession();
   const clear = useData((s) => s.clear);
   const nav = useNavigate();
   const [email, setEmail] = useState("");
@@ -32,6 +30,10 @@ export default function Login() {
   const [fehler, setFehler] = useState<string | null>(null);
   const [laedt, setLaedt] = useState<string | null>(null);
   const [schnell, setSchnell] = useState<SchnellLogin[]>([]);
+  /** Erste Anmeldung mit Startpasswort: eigenes Passwort festlegen */
+  const [wechsel, setWechsel] = useState<{ email: string; start: string } | null>(null);
+  const [neuPw, setNeuPw] = useState("");
+  const [neuPw2, setNeuPw2] = useState("");
   const info = getInfo();
 
   useEffect(() => {
@@ -51,7 +53,30 @@ export default function Login() {
       const s = await login(e ?? email, p ?? pw);
       nav(istConsole(s) ? "/console" : "/cockpit", { replace: true });
     } catch (err) {
-      setFehler(err instanceof Error ? err.message : "Anmeldung fehlgeschlagen.");
+      if (err instanceof PasswortWechselNoetig) {
+        setWechsel({ email: err.email || (e ?? email), start: p ?? pw });
+        setNeuPw("");
+        setNeuPw2("");
+        setZeigePw(false);
+      } else setFehler(err instanceof Error ? err.message : "Anmeldung fehlgeschlagen.");
+    } finally {
+      setLaedt(null);
+    }
+  };
+
+  const eigenesPasswort = async () => {
+    if (!wechsel) return;
+    setFehler(null);
+    const regel = pruefeNeuesPasswort(neuPw, wechsel.start);
+    if (regel) return setFehler(regel);
+    if (neuPw !== neuPw2) return setFehler("Die beiden Eingaben stimmen nicht überein.");
+    setLaedt("wechsel");
+    try {
+      clear();
+      const s = await passwortErsetzen(wechsel.email, wechsel.start, neuPw);
+      nav(istConsole(s) ? "/console" : "/cockpit", { replace: true });
+    } catch (err) {
+      setFehler(err instanceof Error ? err.message : "Das Passwort konnte nicht gespeichert werden.");
     } finally {
       setLaedt(null);
     }
@@ -71,7 +96,7 @@ export default function Login() {
             <span className="ai-text">die mitdenkt.</span>
           </h1>
           <p className="mt-5 max-w-[46ch] text-[16px] leading-relaxed text-fg-2">
-            Ein Werkzeug, volle Kontrolle: Akten, beA, Fristen, Abrechnung und eine KI, die Präzedenzfälle in Sekunden findet. Einmal investieren, für immer nutzen.
+            Ein Werkzeug, volle Kontrolle: Akten, beA, Fristen, Abrechnung und eine KI, die passende Präzedenzfälle in Sekunden findet. Einmal investieren, dauerhaft nutzen.
           </p>
           <ul className="mt-8 grid max-w-[520px] gap-3 sm:grid-cols-2">
             {[
@@ -98,6 +123,62 @@ export default function Login() {
           className="order-1 lg:order-2"
         >
           <div className="glass-strong glow rounded-[32px] p-6 sm:p-8" style={{ boxShadow: "var(--glass-shadow-lg)" }}>
+            {wechsel ? (
+              <motion.form
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="grid gap-3.5"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void eigenesPasswort();
+                }}
+              >
+                <div className="mb-2.5 flex items-start gap-3">
+                  <span className="grid size-10 shrink-0 place-items-center rounded-[13px] bg-ink-soft text-ink">
+                    <KeyRound className="size-5" />
+                  </span>
+                  <div className="min-w-0">
+                    <h2 className="title-lg">Eigenes Passwort festlegen</h2>
+                    <p className="mt-1 text-[13px] text-fg-3">
+                      Sie melden sich zum ersten Mal mit dem Startpasswort an. Bitte vergeben Sie jetzt ein eigenes Passwort für <span className="break-all font-medium text-fg-2">{wechsel.email}</span>.
+                    </p>
+                  </div>
+                </div>
+                <input type="email" autoComplete="username" value={wechsel.email} readOnly hidden />
+                <div className="relative">
+                  <Lock className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-fg-4" />
+                  <Input id="login-neu" type={zeigePw ? "text" : "password"} autoComplete="new-password" required value={neuPw} onChange={(e) => setNeuPw(e.target.value)} placeholder="Neues Passwort" aria-label="Neues Passwort" className="!h-12 !pl-10 !pr-11" />
+                  <button type="button" onClick={() => setZeigePw((v) => !v)} className="icon-btn absolute right-1.5 top-1/2 !size-9 -translate-y-1/2" aria-label={zeigePw ? "Passwort verbergen" : "Passwort anzeigen"}>
+                    {zeigePw ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </button>
+                </div>
+                <div className="relative">
+                  <Lock className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-fg-4" />
+                  <Input id="login-neu2" type={zeigePw ? "text" : "password"} autoComplete="new-password" required value={neuPw2} onChange={(e) => setNeuPw2(e.target.value)} placeholder="Neues Passwort wiederholen" aria-label="Neues Passwort wiederholen" className="!h-12 !pl-10" />
+                </div>
+                <p className="text-[12px] text-fg-3">Mindestens {PASSWORT_MIN} Zeichen mit Buchstaben und mindestens einer Ziffer – anders als das Startpasswort.</p>
+                {fehler && (
+                  <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="rounded-[12px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal" role="alert">
+                    {fehler}
+                  </motion.div>
+                )}
+                <Button type="submit" variant="primary" size="lg" loading={laedt === "wechsel"} iconRight={<ArrowRight className="size-4" />} className="mt-1 w-full">
+                  Passwort speichern und anmelden
+                </Button>
+                <Button
+                  variant="ghost"
+                  icon={<ArrowLeft className="size-4" />}
+                  onClick={() => {
+                    setWechsel(null);
+                    setFehler(null);
+                    setPw("");
+                  }}
+                >
+                  Zurück zur Anmeldung
+                </Button>
+              </motion.form>
+            ) : (
+            <>
             <div className="mb-6">
               <h2 className="title-lg">Anmelden</h2>
               <p className="mt-1 text-[13px] text-fg-3">Mit dem Zugang Ihrer Kanzlei.</p>
@@ -196,6 +277,8 @@ export default function Login() {
                   {info?.modus === "demo" && <p className="mt-1.5">Demo-Modus: Ihre Änderungen bleiben in diesem Browser gespeichert.</p>}
                 </div>
               </div>
+            )}
+            </>
             )}
           </div>
         </motion.section>

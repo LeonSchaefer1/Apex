@@ -19,17 +19,37 @@ function write(key: string, value: unknown) {
   }
 }
 
-let themeVonApp = false;
+/** Vom einbettenden Viewer gesetztes data-theme (Ausgangswert bzw. seine spätere Änderung); null = keins. */
+let viewerTheme: string | null | undefined;
+/** Zuletzt von der App gesetztes data-theme; null = App steht auf „System“. */
+let appTheme: string | null = null;
+let beobachter: MutationObserver | null = null;
 
-/** Setzt das Farbschema. „System" lässt ein vom einbettenden Viewer gesetztes data-theme unangetastet. */
+function beobachteViewer(root: HTMLElement) {
+  if (beobachter || typeof MutationObserver === "undefined") return;
+  // Änderungen, die nicht von der App stammen, gehören dem Viewer – auch wenn er sein Schema später umschaltet.
+  beobachter = new MutationObserver(() => {
+    const v = root.getAttribute("data-theme");
+    if (appTheme === null || v !== appTheme) viewerTheme = v;
+  });
+  beobachter.observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+}
+
+/** Setzt das Farbschema. „System" stellt ein vom einbettenden Viewer gesetztes data-theme wieder her (statt es zu löschen). */
 export function applyTheme(t: ThemeWahl) {
   const root = document.documentElement;
+  if (viewerTheme === undefined) viewerTheme = root.getAttribute("data-theme");
+  beobachteViewer(root);
   if (t === "system") {
-    if (themeVonApp) root.removeAttribute("data-theme");
-    themeVonApp = false;
+    appTheme = null;
+    const ziel = viewerTheme ?? null;
+    if (root.getAttribute("data-theme") !== ziel) {
+      if (ziel === null) root.removeAttribute("data-theme");
+      else root.setAttribute("data-theme", ziel);
+    }
   } else {
+    appTheme = t;
     root.setAttribute("data-theme", t);
-    themeVonApp = true;
   }
 }
 

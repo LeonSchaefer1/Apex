@@ -15,7 +15,7 @@ import { MonatsAnsicht } from "./MonatsAnsicht";
 import { FristDetail } from "./FristDetail";
 import { Fristenrechner } from "./Fristenrechner";
 import { FeiertageInfo } from "./FeiertageInfo";
-import { TYP_META, TYP_REIHENFOLGE, istUngeprueft, wochenStart } from "./logik";
+import { TYP_META, TYP_REIHENFOLGE, istUngeprueft, wochenAnsichtStart, wochenStart } from "./logik";
 
 type Ansicht = "liste" | "woche" | "monat";
 type Fokus = "heute" | "woche" | "notfristen" | "unkontrolliert";
@@ -68,7 +68,7 @@ export default function Fristen() {
   const [nurMeine, setNurMeine] = useState(false);
   const [erledigte, setErledigte] = useState(false);
   const [fokus, setFokusRaw] = useState<Fokus | null>(dlFokus);
-  const [wocheStart, setWocheStart] = useState(() => wochenStart(dlDatum ?? heute));
+  const [wocheStart, setWocheStart] = useState(() => (dlDatum ? wochenStart(dlDatum) : wochenAnsichtStart(heute)));
   const [monat, setMonat] = useState(() => (dlDatum ?? heute).slice(0, 7));
   const [tag, setTag] = useState(dlDatum ?? heute);
   const [detailId, setDetailId] = useState<string | null>(null);

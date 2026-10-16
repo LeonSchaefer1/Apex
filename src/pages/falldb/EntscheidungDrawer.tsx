@@ -12,6 +12,7 @@ import { Button, Chip, Drawer, Field, Select } from "@/components/ui";
 import { GERICHT_NAME, aehnlicheEntscheidungen, passendeAkten, zitat } from "./recherche";
 import { GerichtSiegel } from "./EntscheidungKarte";
 import { kopiereText } from "./zwischenablage";
+import { titelInKlammern } from "@/pages/ki/schriftsatz";
 
 /** Detailansicht einer Entscheidung: Leitsatz, Bedeutung, Zitat, Anheften an Akte, ähnliche Entscheidungen. */
 export function EntscheidungDrawer({ e, onClose, onOpen }: { e: Entscheidung | undefined; onClose: () => void; onOpen: (id: string) => void }) {
@@ -258,7 +259,9 @@ function Inhalt({ e, onOpen, onClose }: { e: Entscheidung; onOpen: (id: string) 
           icon={<Sparkles className="size-4 text-violet" />}
           onClick={() => {
             onClose();
-            useUI.getState().oeffneAssistent(`Wie kann ich ${z} („${e.titel}“) in meiner Argumentation nutzen?`);
+            // Bezug zur Akte: die angeheftete bzw. am besten passende offene Akte – dann antwortet der Assistent konkret dazu
+            const bezug = geheftetAn.find((a) => a.status === "offen") ?? vorschlaege[0];
+            useUI.getState().oeffneAssistent(`Wie nutze ich ${z} ${titelInKlammern(e.titel)} in meiner Argumentation${bezug ? ` für Akte ${bezug.aktenzeichen}` : ""}?`);
           }}
         >
           Mit dem Assistenten besprechen

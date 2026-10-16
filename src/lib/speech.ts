@@ -8,6 +8,8 @@ type RecCtor = new () => {
   onresult: ((e: { resultIndex: number; results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }> }) => void) | null;
   onerror: ((e: { error: string }) => void) | null;
   onend: (() => void) | null;
+  onstart: (() => void) | null;
+  onaudiostart: (() => void) | null;
   start: () => void;
   stop: () => void;
   abort: () => void;
@@ -18,19 +20,40 @@ function recCtor(): RecCtor | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
+/** Für diese Sitzung gesperrt (Mikrofon verweigert oder in der eingebetteten Ansicht nicht erlaubt) → Mikrofon-Knopf ausblenden. */
+let gesperrt = false;
+
 export function spracheingabeVerfuegbar(): boolean {
-  return !!recCtor();
+  return !gesperrt && !!recCtor();
 }
 
 export function sprachausgabeVerfuegbar(): boolean {
   return typeof window !== "undefined" && "speechSynthesis" in window;
 }
 
-/** Startet die Spracheingabe (Deutsch). Gibt eine Stopp-Funktion zurück. */
-export function hoeren(cb: { onInterim: (t: string) => void; onFinal: (t: string) => void; onEnde: () => void; onFehler: (msg: string) => void }): () => void {
+function eingebettet(): boolean {
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true;
+  }
+}
+
+/** Ohne Lebenszeichen (onstart/onaudiostart) gilt die Spracheingabe als nicht verfügbar – z. B. in einer Sandbox ohne Mikrofon. */
+const WACHHUND_MS = 4000;
+/** Steht die Browser-Abfrage zur Mikrofonfreigabe noch aus, bekommt die Nutzerin mehr Zeit zum Bestätigen. */
+const WACHHUND_ABFRAGE_MS = 10000;
+const NICHT_VERFUEGBAR = "Spracheingabe ist in dieser Ansicht nicht verfügbar – bitte tippen Sie Ihre Frage.";
+
+/**
+ * Startet die Spracheingabe (Deutsch). Gibt eine Stopp-Funktion zurück.
+ * `onEnde` wird genau einmal aufgerufen – nach Ende, Fehler, Stopp oder wenn der Wachhund anschlägt.
+ * `onFehler(msg, dauerhaft)`: `dauerhaft` = Spracheingabe ist für diese Sitzung gesperrt (Knopf ausblenden).
+ */
+export function hoeren(cb: { onInterim: (t: string) => void; onFinal: (t: string) => void; onEnde: () => void; onFehler: (msg: string, dauerhaft?: boolean) => void }): () => void {
   const Ctor = recCtor();
-  if (!Ctor) {
-    cb.onFehler("Spracheingabe wird von diesem Browser nicht unterstützt. Bitte Chrome, Edge oder Safari verwenden.");
+  if (!Ctor || gesperrt) {
+    cb.onFehler(gesperrt ? NICHT_VERFUEGBAR : "Spracheingabe wird von diesem Browser nicht unterstützt. Bitte Chrome, Edge oder Safari verwenden.");
     cb.onEnde();
     return () => {};
   }
@@ -40,7 +63,51 @@ export function hoeren(cb: { onInterim: (t: string) => void; onFinal: (t: string
   rec.continuous = false;
   rec.maxAlternatives = 1;
   let final = "";
+  let gestartet = false;
+  let beendet = false;
+  let wachhund: ReturnType<typeof setTimeout> | undefined;
+  let nachlauf: ReturnType<typeof setTimeout> | undefined;
+
+  const ende = () => {
+    if (beendet) return;
+    beendet = true;
+    clearTimeout(wachhund);
+    clearTimeout(nachlauf);
+    rec.onresult = rec.onerror = rec.onend = rec.onstart = rec.onaudiostart = null;
+    if (final.trim()) cb.onFinal(final.trim());
+    cb.onEnde();
+  };
+  const abbrechen = () => {
+    try {
+      rec.abort();
+    } catch {
+      /* bereits beendet */
+    }
+  };
+  const sperren = (msg: string) => {
+    gesperrt = true;
+    abbrechen();
+    cb.onFehler(msg, true);
+    ende();
+  };
+  const wachhundStellen = (ms: number, msg = NICHT_VERFUEGBAR) => {
+    clearTimeout(wachhund);
+    wachhund = setTimeout(() => {
+      if (gestartet || beendet) return;
+      abbrechen();
+      cb.onFehler(msg);
+      ende();
+    }, ms);
+  };
+  const lebt = () => {
+    gestartet = true;
+    clearTimeout(wachhund);
+  };
+
+  rec.onstart = lebt;
+  rec.onaudiostart = lebt;
   rec.onresult = (e) => {
+    lebt();
     let interim = "";
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const r = e.results[i];
@@ -50,31 +117,67 @@ export function hoeren(cb: { onInterim: (t: string) => void; onFinal: (t: string
     cb.onInterim((final + " " + interim).trim());
   };
   rec.onerror = (e) => {
+    if (beendet) return;
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+      sperren(
+        e.error === "service-not-allowed" || eingebettet()
+          ? NICHT_VERFUEGBAR
+          : "Mikrofon nicht freigegeben – bitte tippen Sie Ihre Frage. Den Zugriff können Sie in den Browser-Einstellungen erlauben.",
+      );
+      return;
+    }
     const map: Record<string, string> = {
-      "not-allowed": "Mikrofon nicht freigegeben. Bitte erlauben Sie den Zugriff in Ihrem Browser.",
-      "service-not-allowed": "Spracheingabe ist in dieser Ansicht nicht erlaubt.",
       "no-speech": "Ich habe nichts gehört – bitte noch einmal versuchen.",
-      "audio-capture": "Kein Mikrofon gefunden.",
-      network: "Die Spracherkennung ist gerade nicht erreichbar.",
+      "audio-capture": "Kein Mikrofon gefunden – bitte tippen Sie Ihre Frage.",
+      network: "Die Spracherkennung ist gerade nicht erreichbar – bitte tippen Sie Ihre Frage.",
     };
     if (e.error !== "aborted") cb.onFehler(map[e.error] ?? "Spracheingabe fehlgeschlagen.");
+    // Manche Browser senden nach einem Fehler kein onend mehr – den Zustand trotzdem sicher beenden.
+    ende();
   };
-  rec.onend = () => {
-    if (final.trim()) cb.onFinal(final.trim());
-    cb.onEnde();
-  };
+  rec.onend = ende;
+
   try {
     rec.start();
   } catch {
     cb.onFehler("Spracheingabe konnte nicht gestartet werden.");
-    cb.onEnde();
+    ende();
+    return () => {};
   }
+  wachhundStellen(WACHHUND_MS);
+  // Mikrofon bereits verweigert (z. B. Sandbox ohne Mikrofon) → sofort ehrlich melden statt zu warten;
+  // Abfrage noch offen → mehr Zeit, damit eine Freigabe im Browser nicht abgeschnitten wird.
+  try {
+    void navigator.permissions
+      ?.query({ name: "microphone" as PermissionName })
+      .then((p) => {
+        if (beendet || gestartet) return;
+        if (p.state === "denied") sperren(eingebettet() ? NICHT_VERFUEGBAR : "Mikrofon blockiert – bitte tippen Sie Ihre Frage. Den Zugriff können Sie in den Browser-Einstellungen erlauben.");
+        else if (p.state === "prompt") wachhundStellen(WACHHUND_ABFRAGE_MS, "Keine Mikrofonfreigabe erhalten – bitte tippen Sie Ihre Frage oder versuchen Sie es erneut.");
+      })
+      .catch(() => {});
+  } catch {
+    /* Permissions-API nicht verfügbar */
+  }
+
   return () => {
+    if (beendet) return;
+    if (!gestartet) {
+      // Nie richtig gestartet: es kommt kein onend mehr – sofort beenden.
+      abbrechen();
+      ende();
+      return;
+    }
     try {
       rec.stop();
     } catch {
       /* bereits beendet */
     }
+    // Erkanntes noch auswerten lassen, aber nicht ewig auf onend warten.
+    nachlauf = setTimeout(() => {
+      abbrechen();
+      ende();
+    }, 2500);
   };
 }
 

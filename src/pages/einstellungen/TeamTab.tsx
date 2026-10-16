@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Check, KeyRound, Minus, MoreHorizontal, ShieldCheck, Trash2, UserPlus, Users } from "lucide-react";
+import { Check, Info, KeyRound, Minus, MoreHorizontal, ShieldCheck, Trash2, UserPlus, Users } from "lucide-react";
 import type { Rolle, User } from "@/core/types";
-import { getBackend, istConsole } from "@/lib/backend";
+import { darfVerwalten, getBackend, istConsole } from "@/lib/backend";
 import { useData } from "@/store/data";
 import { useKanzlei, useSession } from "@/store/session";
 import { toast } from "@/store/ui";
@@ -18,12 +18,13 @@ const TITEL_VORSCHLAG: Record<Rolle, string> = {
   admin: "Kanzleiverwaltung",
 };
 
+// Muss mit der Rechteprüfung in src/lib/backend (Demo) und server/index.ts übereinstimmen (VERWALTUNGS_ROLLEN).
 const RECHTE: { bereich: string; r: Record<Rolle, boolean> }[] = [
-  { bereich: "Akten, Fristen & Kontakte", r: { partner: true, anwalt: true, refa: true, admin: false } },
-  { bereich: "Posteingang, beA & eEB", r: { partner: true, anwalt: true, refa: true, admin: false } },
-  { bereich: "Abrechnung & Aktenkonten", r: { partner: true, anwalt: true, refa: true, admin: false } },
-  { bereich: "Team & Zugänge", r: { partner: true, anwalt: false, refa: false, admin: true } },
-  { bereich: "Lizenz, KI & Datenschutz", r: { partner: true, anwalt: false, refa: false, admin: true } },
+  { bereich: "Akten, Fristen & Kontakte", r: { partner: true, anwalt: true, refa: true, admin: true } },
+  { bereich: "Posteingang, beA & eEB", r: { partner: true, anwalt: true, refa: true, admin: true } },
+  { bereich: "Abrechnung & Aktenkonten", r: { partner: true, anwalt: true, refa: true, admin: true } },
+  { bereich: "Team & Zugänge verwalten", r: { partner: true, anwalt: false, refa: false, admin: true } },
+  { bereich: "Kanzleiprofil & Datenbestand", r: { partner: true, anwalt: false, refa: false, admin: true } },
 ];
 
 function aktualisiereTeam(fn: (team: User[]) => User[]) {
@@ -34,6 +35,8 @@ function aktualisiereTeam(fn: (team: User[]) => User[]) {
 export function TeamTab() {
   const { team, user, tenant } = useKanzlei();
   const [einladen, setEinladen] = useState(false);
+  const [neuPw, setNeuPw] = useState<{ user: User; passwort: string } | null>(null);
+  const darf = darfVerwalten(user.rolle);
   const plaetze = tenant.lizenz.arbeitsplaetze;
   const voll = team.length >= plaetze;
   const sortiert = [...team].sort((a, b) => ["partner", "anwalt", "refa", "admin"].indexOf(a.rolle) - ["partner", "anwalt", "refa", "admin"].indexOf(b.rolle));
@@ -51,6 +54,18 @@ export function TeamTab() {
     }
   };
 
+  const neuesPasswort = async (u: User) => {
+    const ok = await confirmDialog({ titel: `Neues Startpasswort für ${u.name}?`, text: "Das bisherige Passwort wird sofort ungültig. Bei der nächsten Anmeldung legt die Person ein eigenes Passwort fest.", bestaetigen: "Startpasswort vergeben" });
+    if (!ok) return;
+    try {
+      const passwort = await getBackend().team.neuesPasswort(u.id);
+      useData.getState().log({ akteur: "nutzer", userId: user.id, text: `Neues Startpasswort für ${u.name} vergeben` });
+      setNeuPw({ user: u, passwort });
+    } catch (e) {
+      toast("Passwort konnte nicht vergeben werden", { text: e instanceof Error ? e.message : "Bitte erneut versuchen.", ton: "fehler" });
+    }
+  };
+
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
       <Abschnitt
@@ -58,11 +73,17 @@ export function TeamTab() {
         text="Jede Person meldet sich mit eigenem Zugang an – Rechte folgen der Rolle."
         icon={<Users className="size-[18px]" />}
         aktion={
-          <Button variant="primary" icon={<UserPlus className="size-4" />} onClick={() => setEinladen(true)}>
+          <Button variant="primary" icon={<UserPlus className="size-4" />} disabled={!darf} title={darf ? undefined : "Zugänge verwalten Partner und Administration"} onClick={() => setEinladen(true)}>
             Person einladen
           </Button>
         }
       >
+        {!darf && (
+          <p className="mb-4 flex items-start gap-2 rounded-[12px] bg-[var(--ink-softer)] px-3.5 py-2.5 text-[12.5px] text-fg-2">
+            <Info className="mt-0.5 size-3.5 shrink-0 text-ink" />
+            Zugänge einladen, entfernen oder neu vergeben dürfen Partner und Administration Ihrer Kanzlei.
+          </p>
+        )}
         <div className="mb-4">
           <div className="mb-1.5 flex items-baseline justify-between text-[12.5px]">
             <span className="text-fg-3">Arbeitsplätze der Lifetime-Lizenz</span>
@@ -101,14 +122,17 @@ export function TeamTab() {
                     <Chip tone={u.rolle === "partner" ? "ink" : "outline"} className="hidden sm:inline-flex">
                       {ROLLEN_LABEL[u.rolle]}
                     </Chip>
-                    {!ich && u.rolle !== "partner" ? (
+                    {darf && !ich && u.rolle !== "partner" ? (
                       <Menu
                         trigger={({ toggle }) => (
                           <button type="button" className="icon-btn !size-8" aria-label={`Aktionen für ${u.name}`} onClick={toggle}>
                             <MoreHorizontal className="size-4" />
                           </button>
                         )}
-                        items={[{ label: "Zugang entfernen", icon: <Trash2 />, danger: true, onClick: () => void entfernen(u) }]}
+                        items={[
+                          { label: "Neues Startpasswort vergeben", icon: <KeyRound />, onClick: () => void neuesPasswort(u) },
+                          { label: "Zugang entfernen", icon: <Trash2 />, danger: true, onClick: () => void entfernen(u) },
+                        ]}
                       />
                     ) : (
                       <span className="size-8 shrink-0" />
@@ -149,10 +173,43 @@ export function TeamTab() {
             </tbody>
           </table>
         </div>
-        <p className="mt-3 text-[12px] text-fg-3">Zugriffe werden serverseitig geprüft – nicht nur in der Oberfläche. Einzelne Akten lassen sich zusätzlich beschränken.</p>
+        <p className="mt-3 text-[12px] text-fg-3">Verwaltungsrechte prüft nicht nur die Oberfläche, sondern auch der Kanzlei-Server (im Demo-Betrieb das Demo-Backend). Lizenz und KI-Status sehen alle; der KI-Präsentationsmodus gilt je Gerät.</p>
       </Abschnitt>
 
       <EinladenModal open={einladen} onClose={() => setEinladen(false)} voll={voll} />
+      <Modal
+        open={!!neuPw}
+        onClose={() => setNeuPw(null)}
+        title="Neues Startpasswort"
+        subtitle={neuPw ? `${neuPw.user.name} · ${neuPw.user.email}` : undefined}
+        icon={<KeyRound className="size-5" />}
+        size="sm"
+        footer={
+          <Button variant="primary" onClick={() => setNeuPw(null)}>
+            Fertig
+          </Button>
+        }
+      >
+        {neuPw && (
+          <div className="grid grid-cols-1 gap-4">
+            <div className="rounded-[18px] bg-[radial-gradient(120%_140%_at_0%_0%,var(--ink-soft),transparent_70%)] p-4 ring-2 ring-[var(--ink)]">
+              <div className="text-[12px] font-medium text-fg-3">Startpasswort</div>
+              <div className="mt-1 flex items-center gap-2">
+                <span className="mono min-w-0 flex-1 select-all break-all text-[22px] font-semibold tracking-[0.02em]">{neuPw.passwort}</span>
+                <CopyButton text={neuPw.passwort} label="Startpasswort kopieren" toastTitel="Startpasswort kopiert" />
+              </div>
+            </div>
+            <ul className="grid grid-cols-1 gap-1.5 text-[12.5px] text-fg-2">
+              <li className="flex gap-2">
+                <Check className="mt-0.5 size-3.5 shrink-0 text-green" /> Bei der nächsten Anmeldung legt {neuPw.user.name.split(" ")[0]} ein eigenes Passwort fest.
+              </li>
+              <li className="flex gap-2">
+                <Check className="mt-0.5 size-3.5 shrink-0 text-green" /> Bitte persönlich oder über einen sicheren Weg weitergeben – nicht per unverschlüsselter E-Mail.
+              </li>
+            </ul>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
@@ -248,13 +305,13 @@ function EinladenModal({ open, onClose, voll }: { open: boolean; onClose: () => 
           </div>
           <ul className="grid grid-cols-1 gap-1.5 text-[12.5px] text-fg-2">
             <li className="flex gap-2">
-              <Check className="mt-0.5 size-3.5 shrink-0 text-green" /> Das Passwort muss bei der ersten Anmeldung geändert werden.
+              <Check className="mt-0.5 size-3.5 shrink-0 text-green" /> Bei der ersten Anmeldung legt die Person ein eigenes Passwort fest.
             </li>
             <li className="flex gap-2">
               <Check className="mt-0.5 size-3.5 shrink-0 text-green" /> Bitte persönlich oder über einen sicheren Weg weitergeben – nicht per unverschlüsselter E-Mail.
             </li>
             <li className="flex gap-2">
-              <Check className="mt-0.5 size-3.5 shrink-0 text-green" /> Es wird nur jetzt angezeigt. Bei Verlust vergibt die Kanzleiverwaltung ein neues.
+              <Check className="mt-0.5 size-3.5 shrink-0 text-green" /> Es wird nur jetzt angezeigt. Bei Verlust vergeben Partner oder Administration über „⋯“ ein neues Startpasswort.
             </li>
           </ul>
         </motion.div>

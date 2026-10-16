@@ -40,8 +40,9 @@
   --surface-2: #f6f8fc;
   --fg: #0b1020; /* Robe */
   --fg-2: #39415a;
-  --fg-3: #687089;
-  --fg-4: #9aa1b5;
+  /* Kontrast (WCAG AA ≥ 4,5:1 auf Weiß, surface-2 und Arbeitsgrund): fg-3 ≈ 6,9:1, fg-4 ≈ 5,3:1 auf Weiß */
+  --fg-3: #525a72;
+  --fg-4: #636b82;
   --line: rgba(16, 24, 48, 0.08);
   --line-strong: rgba(16, 24, 48, 0.15);
 
@@ -52,6 +53,9 @@
   --ink-soft: rgba(36, 64, 216, 0.1);
   --ink-softer: rgba(36, 64, 216, 0.06);
   --on-ink: #ffffff;
+  /* Fläche der Primärknöpfe (weiße Schrift ≥ 4,5:1) */
+  --ink-fill-top: color-mix(in oklab, var(--ink-bright) 70%, var(--ink));
+  --ink-fill: var(--ink);
 
   /* Semantik */
   --seal: #d4283a; /* Siegellack: Notfrist / kritisch */
@@ -60,6 +64,7 @@
   --amber-soft: rgba(230, 150, 20, 0.14);
   --green: #0f7f55;
   --green-soft: rgba(15, 127, 85, 0.11);
+  --on-green: #ffffff; /* Schrift/Icons auf vollflächigem --green */
   --violet: #6d4bd8;
   --violet-soft: rgba(109, 75, 216, 0.1);
 
@@ -113,8 +118,8 @@
     --surface-2: #121729;
     --fg: #f1f3fa;
     --fg-2: #bcc3d7;
-    --fg-3: #8890a8;
-    --fg-4: #5b627a;
+    --fg-3: #9aa2b9;
+    --fg-4: #8088a3;
     --line: rgba(255, 255, 255, 0.075);
     --line-strong: rgba(255, 255, 255, 0.14);
     --ink: #5c7bff;
@@ -123,12 +128,15 @@
     --ink-soft: rgba(92, 123, 255, 0.17);
     --ink-softer: rgba(92, 123, 255, 0.09);
     --on-ink: #ffffff;
+    --ink-fill-top: #4a68f0;
+    --ink-fill: #3f5ce4;
     --seal: #ff5a68;
     --seal-soft: rgba(255, 90, 104, 0.15);
     --amber: #ffb547;
     --amber-soft: rgba(255, 181, 71, 0.14);
     --green: #3ed79a;
     --green-soft: rgba(62, 215, 154, 0.13);
+    --on-green: #04130c;
     --violet: #a78bfa;
     --violet-soft: rgba(167, 139, 250, 0.15);
     --glass: rgba(24, 29, 48, 0.5);
@@ -158,8 +166,8 @@
   --surface-2: #121729;
   --fg: #f1f3fa;
   --fg-2: #bcc3d7;
-  --fg-3: #8890a8;
-  --fg-4: #5b627a;
+  --fg-3: #9aa2b9;
+  --fg-4: #8088a3;
   --line: rgba(255, 255, 255, 0.075);
   --line-strong: rgba(255, 255, 255, 0.14);
   --ink: #5c7bff;
@@ -168,12 +176,15 @@
   --ink-soft: rgba(92, 123, 255, 0.17);
   --ink-softer: rgba(92, 123, 255, 0.09);
   --on-ink: #ffffff;
+  --ink-fill-top: #4a68f0;
+  --ink-fill: #3f5ce4;
   --seal: #ff5a68;
   --seal-soft: rgba(255, 90, 104, 0.15);
   --amber: #ffb547;
   --amber-soft: rgba(255, 181, 71, 0.14);
   --green: #3ed79a;
   --green-soft: rgba(62, 215, 154, 0.13);
+  --on-green: #04130c;
   --violet: #a78bfa;
   --violet-soft: rgba(167, 139, 250, 0.15);
   --glass: rgba(24, 29, 48, 0.5);
@@ -577,7 +588,7 @@
 }
 .btn-primary {
   color: var(--on-ink);
-  background: linear-gradient(180deg, color-mix(in oklab, var(--ink-bright) 70%, var(--ink)) 0%, var(--ink) 100%);
+  background: linear-gradient(180deg, var(--ink-fill-top) 0%, var(--ink-fill) 100%);
   box-shadow:
     0 1px 0 0 rgba(255, 255, 255, 0.35) inset,
     0 -1px 0 0 rgba(0, 0, 0, 0.12) inset,
@@ -685,6 +696,10 @@ textarea.field {
 select.field {
   appearance: none;
   padding-right: 34px;
+  /* lange Optionen enden mit „…“ vor dem Pfeil statt hart abgeschnitten */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23878ea6' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
   background-repeat: no-repeat;
   background-position: right 12px center;
@@ -949,7 +964,26 @@ select.field {
   }
 }
 
+/* Eingebettete Ansicht (Artefakt): Der Viewer bringt ggf. eine eigene, nicht geschichtete Regel wie
+   body{font:14px system-ui} mit – sie überstimmt @layer base. Diese Regel liegt deshalb außerhalb jeder Ebene
+   und trifft nur body selbst; Kinder erben, Tailwind-Utilities auf Kindelementen bleiben wirksam.
+   (Der font-Kurzbefehl des Viewers setzt auch font-feature-settings zurück.) */
+html body {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+  font-feature-settings: "ss01", "cv11";
+}
+
 /* Dichte (Einstellungen → Darstellung) */
 :root[data-density="compact"] body {
   font-size: 13px;
+}
+/* Tabellen ohne eigene Dichte-Einstellung (Aktenkonto, RVG, Forderungskonto) folgen der globalen Dichte;
+   DataTable übernimmt sie über data-density selbst. */
+:root[data-density="compact"] .table:not([data-density]) td {
+  padding-block: 6px;
+}
+:root[data-density="compact"] .table:not([data-density]) th {
+  padding-block: 7px;
 }

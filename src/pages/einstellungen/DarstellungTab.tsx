@@ -24,7 +24,7 @@ export function DarstellungTab() {
               ]}
             />
           </Zeile>
-          <Zeile titel="Dichte" text={dichte === "compact" ? "Kompakt: mehr Zeilen auf einen Blick – ideal für große Aktenlisten." : "Großzügig: mehr Luft, ruhiger zu lesen."}>
+          <Zeile titel="Dichte" text={dichte === "compact" ? "Kompakt: engere Tabellenzeilen und kleinere Grundschrift – mehr Zeilen auf einen Blick, ideal für große Aktenlisten." : "Großzügig: mehr Luft, ruhiger zu lesen. Gilt für alle Tabellen, sofern Sie dort nichts anderes gewählt haben."}>
             <Segmented<Dichte>
               value={dichte}
               onChange={setDichte}
@@ -72,7 +72,7 @@ export function DarstellungTab() {
             <span className="grid size-5 shrink-0 place-items-center text-ink">
               <Columns3 className="size-4" />
             </span>
-            <span>Tabellen merken sich Spaltenbreite, Reihenfolge und Zeilendichte pro Ansicht.</span>
+            <span>Tabellen merken sich Spaltenbreite, Sortierung und sichtbare Spalten pro Ansicht. Der Zeilen-Schalter in einer Tabelle weicht nur dort von der Dichte oben ab.</span>
           </li>
         </ul>
       </Abschnitt>

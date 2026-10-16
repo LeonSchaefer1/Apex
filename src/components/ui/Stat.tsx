@@ -30,11 +30,12 @@ export function Stat({ label, value, sub, icon, tone = "ink", className, onClick
       className={cn("sheet glow relative flex min-w-0 flex-col gap-3 rounded-[22px] p-4 text-left", onClick && "transition-transform duration-300 ease-[var(--spring)] hover:-translate-y-0.5 active:scale-[0.98]", className)}
     >
       <div className="flex items-center gap-2.5">
-        {icon && <div className={cn("grid size-8 place-items-center rounded-[10px]", toneCls)}>{icon}</div>}
-        <div className="truncate text-[12.5px] font-medium text-fg-3">{label}</div>
+        {icon && <div className={cn("grid size-8 shrink-0 place-items-center rounded-[10px]", toneCls)}>{icon}</div>}
+        {/* schmale Kacheln (2 Spalten mobil): Beschriftung darf umbrechen statt abgeschnitten zu werden */}
+        <div className="line-clamp-2 min-w-0 text-[12.5px] font-medium leading-snug text-fg-3">{label}</div>
       </div>
       <div className="text-[28px] font-semibold leading-none tracking-[-0.03em]">{value}</div>
-      {sub && <div className="truncate text-[12px] text-fg-3">{sub}</div>}
+      {sub && <div className="line-clamp-2 text-[12px] leading-snug text-fg-3">{sub}</div>}
     </Comp>
   );
 }

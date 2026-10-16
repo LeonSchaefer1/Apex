@@ -184,7 +184,7 @@ export function kiAnsicht(n: Nachricht, data: TenantData, land: Bundesland, fris
     };
   }
   if (!n.ki || n.kiStatus === "ausstehend") return null;
-  const rb = analysiereRegelbasiert({ text: n.text, betreff: n.betreff, von: n.von, eingang: n.eingang, kanal: n.kanal }, data, land);
+  const rb = analysiereRegelbasiert({ text: n.text, betreff: n.betreff, von: n.von, vonAdresse: n.vonAdresse, eingang: n.eingang, kanal: n.kanal }, data, land);
   const ki = n.ki;
   let fristen: FristVorschlag[] = [];
   if (ki.frist) {

@@ -23,6 +23,9 @@ const JAHRE = [2020, 2015, 2010, 2000];
 const EBENEN_ANZAHL = ENTSCHEIDUNGEN.reduce<Record<string, number>>((acc, e) => ((acc[e.ebene] = (acc[e.ebene] ?? 0) + 1), acc), {});
 const RECHTSGEBIETE = Array.from(new Set(ENTSCHEIDUNGEN.map((e) => e.rechtsgebiet))).sort((a, b) => a.localeCompare(b, "de"));
 const GERICHTE_IM_AUSZUG = Object.keys(EBENEN_ANZAHL).length;
+/** Filter nur für Gerichte, die im Demo-Auszug vorkommen – leere Filter wirken wie ein Defekt. */
+const EBENEN_IM_AUSZUG = GERICHTSEBENEN.filter((eb) => EBENEN_ANZAHL[eb]);
+const EBENEN_SPAETER = GERICHTSEBENEN.filter((eb) => !EBENEN_ANZAHL[eb]);
 
 /** Fall-Datenbank: Präzedenzfälle in Sekunden – Stichwortsuche mit Live-Treffern und KI-Recherche nach Sachverhalt. */
 export default function FallDatenbank() {
@@ -187,14 +190,22 @@ export default function FallDatenbank() {
                   <FilterChip aktiv={!ebenen.length} onClick={() => setEbenen([])}>
                     Alle Gerichte
                   </FilterChip>
-                  {GERICHTSEBENEN.map((eb) => {
+                  {EBENEN_IM_AUSZUG.map((eb) => {
                     const n = EBENEN_ANZAHL[eb] ?? 0;
                     return (
-                      <FilterChip key={eb} aktiv={ebenen.includes(eb)} onClick={() => toggleEbene(eb)} disabled={!n} title={n ? `${n} Entscheidungen` : "Im Demo-Auszug nicht enthalten – in der Produktivversion über Open Legal Data"} anzahl={n}>
+                      <FilterChip key={eb} aktiv={ebenen.includes(eb)} onClick={() => toggleEbene(eb)} title={`${n} Entscheidungen im Demo-Auszug`} anzahl={n}>
                         {eb}
                       </FilterChip>
                     );
                   })}
+                  {EBENEN_SPAETER.length > 0 && (
+                    <span
+                      className="w-[150px] shrink-0 pl-1.5 text-[11.5px] leading-tight text-fg-3"
+                      title={`${EBENEN_SPAETER.join(", ")}: im Demo-Auszug nicht enthalten – die Produktivversion bindet die Instanzrechtsprechung über Open Legal Data an.`}
+                    >
+                      + {EBENEN_SPAETER.join(", ")} in der Produktivversion
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <Select id="falldb-rechtsgebiet" aria-label="Rechtsgebiet" value={gebiet} onChange={(e) => setGebiet(e.target.value)} className="!h-9 min-w-0 flex-1 !rounded-full text-[13px] lg:!w-[200px] lg:flex-none">
@@ -237,7 +248,7 @@ export default function FallDatenbank() {
           <section aria-label="Suchergebnisse">
             {!suche && (
               <div className="mb-3 text-[13px] text-fg-3">
-                <span className="num font-semibold text-fg">{ergebnis.hits.length}</span> Entscheidungen, neueste zuerst
+                <span className="num font-semibold text-fg">{ergebnis.hits.length}</span> {ergebnis.hits.length === 1 ? "Entscheidung" : "Entscheidungen, neueste zuerst"}
               </div>
             )}
             {ergebnis.hits.length ? (

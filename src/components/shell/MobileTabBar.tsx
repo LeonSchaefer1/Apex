@@ -4,7 +4,7 @@ import { motion } from "motion/react";
 import { MoreHorizontal } from "lucide-react";
 import { MOBILE_TABS, NAV, navFor } from "@/app/nav";
 import { cn } from "@/lib/cn";
-import { Drawer } from "@/components/ui";
+import { Drawer, useDialogOffen } from "@/components/ui";
 import { useBadges } from "./useBadges";
 
 /** Schwebende Tab-Leiste (iOS 26) für das Smartphone. */
@@ -16,11 +16,18 @@ export function MobileTabBar() {
   const badges = useBadges();
   const tabs = NAV.filter((n) => MOBILE_TABS.includes(n.to));
   const mehrAktiv = !!active && !MOBILE_TABS.includes(active);
+  // Hinter Dialogen und Drawern würde die Leiste durch deren Glas-Fußzeile scheinen – solange einer offen ist, taucht sie ab.
+  const dialogOffen = useDialogOffen();
 
   return (
     <>
-      <nav
+      <motion.nav
         aria-label="Hauptnavigation"
+        aria-hidden={dialogOffen || undefined}
+        inert={dialogOffen || undefined}
+        initial={false}
+        animate={{ y: dialogOffen ? "130%" : "0%", opacity: dialogOffen ? 0 : 1 }}
+        transition={{ type: "spring", stiffness: 420, damping: 38 }}
         className="fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-[max(10px,env(safe-area-inset-bottom))] md:hidden"
       >
         <div className="glass-strong refract flex h-[62px] w-full max-w-[460px] items-center gap-1 rounded-full px-1.5">
@@ -48,7 +55,7 @@ export function MobileTabBar() {
             <span className={mehrAktiv ? "text-ink" : "text-fg-2"}>Mehr</span>
           </button>
         </div>
-      </nav>
+      </motion.nav>
       <Drawer open={mehr} onClose={() => setMehr(false)} title="Alle Bereiche" subtitle="Jede Funktion mit einem Satz erklärt.">
         <div className="grid gap-2">
           {NAV.filter((n) => !MOBILE_TABS.includes(n.to)).map((n) => (

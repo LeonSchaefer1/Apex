@@ -1,8 +1,8 @@
 // Bankabgleich: ordnet Kontoumsätze offenen Rechnungen zu – regelbasiert, nachvollziehbar, mit Sicherheitswert.
 import { useData } from "@/store/data";
-import { fmtDate, round2 } from "@/core/dates";
+import { fmtDate, fmtEUR, round2 } from "@/core/dates";
 import type { Akte, Kontakt, Rechnung, Transaktion } from "@/core/types";
-import { erfasseZahlung } from "./aktionen";
+import { erfasseZahlung, type ZahlungsErgebnis } from "./aktionen";
 import { istOffen, offenerBetrag } from "./lib";
 
 /** Ab dieser Sicherheit bucht AnwaltApex selbstständig. */
@@ -20,11 +20,13 @@ export interface Treffer {
   akteId?: string;
   kategorie?: string;
   teilzahlung?: boolean;
+  /** Betrag über dem offenen Rest – wird nicht automatisch gebucht, sondern als Guthaben vorgeschlagen. */
+  ueberzahlung?: number;
 }
 
 /** Regeln in der Reihenfolge ihrer Sicherheit – auch für die Erklärkarte. */
 export const REGELN: { regel: Regel; titel: string; text: string; sicherheit: number | null; folge: "auto" | "vorschlag" | "kosten" }[] = [
-  { regel: "nummer", titel: "Rechnungsnummer im Verwendungszweck", text: "z. B. „RE-2026-0022“ – eindeutig.", sicherheit: 0.99, folge: "auto" },
+  { regel: "nummer", titel: "Rechnungsnummer im Verwendungszweck", text: "z. B. „RE-2026-0022“ – eindeutig. Übersteigt der Betrag den offenen Rest, entscheiden Sie.", sicherheit: 0.99, folge: "auto" },
   { regel: "aktenzeichen", titel: "Aktenzeichen und offener Betrag", text: "Aktenzeichen erkannt, Betrag entspricht genau dem offenen Rest.", sicherheit: 0.95, folge: "auto" },
   {
     regel: "name-datum",
@@ -84,7 +86,11 @@ export function gleicheAb(input: { transaktionen: Transaktion[]; rechnungen: Rec
       const datum = vz.includes(fmtDate(r.datum));
       let best: Omit<Treffer, "transaktionId" | "art"> | null = null;
       if (vz.includes(norm(r.nummer))) {
-        best = { regel: "nummer", sicherheit: 0.99, grund: `Rechnungsnummer ${r.nummer} im Verwendungszweck`, teilzahlung: t.betrag < rest - 0.005 };
+        const ueber = round2(t.betrag - rest);
+        best =
+          ueber > 0.004
+            ? { regel: "nummer", sicherheit: 0.85, grund: `Rechnungsnummer ${r.nummer} im Verwendungszweck – Betrag übersteigt den offenen Rest um ${fmtEUR(ueber)}`, ueberzahlung: ueber }
+            : { regel: "nummer", sicherheit: 0.99, grund: `Rechnungsnummer ${r.nummer} im Verwendungszweck`, teilzahlung: t.betrag < rest - 0.005 };
       } else if (az && exakt) {
         best = { regel: "aktenzeichen", sicherheit: 0.95, grund: `Aktenzeichen ${akte?.aktenzeichen} und offener Betrag stimmen überein` };
       } else if (name && exakt && datum) {
@@ -122,8 +128,11 @@ export function gleicheAb(input: { transaktionen: Transaktion[]; rechnungen: Rec
 
 export const istAuto = (t: Treffer) => t.art === "kosten" || (t.art === "rechnung" && t.sicherheit >= AUTO_SCHWELLE);
 
-/** Bucht einen Treffer: Rechnung (teil-)bezahlt, Zahlung im Aktenkonto, Umsatz als zugeordnet markiert. */
-export function bucheTreffer(t: Transaktion, tr: Treffer, durch: "auto" | "manuell") {
+/**
+ * Bucht einen Treffer: Rechnung (teil-)bezahlt, Zahlung im Aktenkonto, Umsatz als zugeordnet markiert. Ein Mehrbetrag
+ * über dem offenen Rest wird als Guthaben der Mandantschaft gebucht (der Umsatz ist ja tatsächlich eingegangen).
+ */
+export function bucheTreffer(t: Transaktion, tr: Treffer, durch: "auto" | "manuell"): ZahlungsErgebnis | undefined {
   const st = useData.getState();
   if (tr.art === "kosten") {
     st.patch("transaktionen", t.id, { status: "ignoriert", zuordnung: { sicherheit: tr.sicherheit, durch, grund: tr.grund } });
@@ -132,6 +141,8 @@ export function bucheTreffer(t: Transaktion, tr: Treffer, durch: "auto" | "manue
   if (tr.art !== "rechnung" || !tr.rechnungId) return;
   const r = st.data.rechnungen.find((x) => x.id === tr.rechnungId);
   if (!r) return;
-  erfasseZahlung(r, round2(t.betrag), t.datum, { transaktionId: t.id, text: `Zahlungseingang ${r.nummer} (${t.gegenpartei})` });
-  st.patch("transaktionen", t.id, { status: "zugeordnet", zuordnung: { rechnungId: r.id, akteId: r.akteId, sicherheit: tr.sicherheit, durch, grund: tr.grund } });
+  const erg = erfasseZahlung(r, round2(t.betrag), t.datum, { transaktionId: t.id, text: `Zahlungseingang ${r.nummer} (${t.gegenpartei})`, ueberzahlung: "guthaben" });
+  const grund = erg.guthaben > 0 ? `${tr.grund} · ${fmtEUR(erg.guthaben)} Überzahlung als Guthaben gebucht` : tr.grund;
+  st.patch("transaktionen", t.id, { status: "zugeordnet", zuordnung: { rechnungId: r.id, akteId: r.akteId, sicherheit: tr.sicherheit, durch, grund } });
+  return erg;
 }

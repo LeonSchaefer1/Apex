@@ -88,7 +88,7 @@ Posteingang (beA + E-Mail, KI-Zuordnung, Fristenerkennung, eEB erst nach notiert
 Fristen (Kalender, Vorfristen, Vier-Augen-Kontrolle, Fristenrechner mit Rechenweg, Feiertage je Bundesland) ·
 Apex KI (Fallanalyse, Dokument-Analyse, Schriftsatz-Assistent) · Fall-Datenbank · 38h-Motor ·
 Abrechnung (RVG 2025/2021 nach § 60 RVG, Sammelabrechnung, E-Rechnung, Bankabgleich CAMT.053/MT940,
-Fremdgeld-Wächter § 43a Abs. 5 BRAO, Forderungskonto, Zeiterfassung) · FiBu mit DATEV-Export ·
+Fremdgeld-Wächter § 43a Abs. 7 BRAO, Forderungskonto, Zeiterfassung) · FiBu mit DATEV-Export ·
 Kontakte (Kollisionsprüfung) · Mandantenportal · Diktat & Spracherkennung · Umzug · Hilfe & Support ·
 Einstellungen (Team, Rollen, Lizenz, KI, Darstellung, Datenschutz) · Apex Console (Anbieter: Kunden & Testzugänge).
 

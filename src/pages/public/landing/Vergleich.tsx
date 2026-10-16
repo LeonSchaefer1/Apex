@@ -12,7 +12,7 @@ export const VERGLEICH: { thema: string; klassisch: string; apex: string }[] = [
   { thema: "Kontext nach E-Mail-Versand", klassisch: "Nach dem Versand ist der Fall aus dem Blick – Ablage von Hand.", apex: "Versand aus der Akte bleibt in der Akte – Sie arbeiten ohne Unterbrechung weiter." },
   { thema: "Sicherheit ohne Admin-Rechte", klassisch: "Lokale Admin-Rechte und Virenscanner-Ausnahmen als Workaround.", apex: "Läuft ohne lokale Admin-Rechte; Rollen und Rechte zentral verwaltet." },
   { thema: "Kostenmodell", klassisch: "Monatliche Gebühren – Preiserhöhungen inklusive.", apex: "Einmalige Investition, Lifetime-Zugang ohne versteckte Monatsgebühren." },
-  { thema: "Umzug", klassisch: "Hoher Migrationsaufwand bindet an den Anbieter.", apex: "One-Klick-Migration mit Vorschau – Akten, Kontakte und Fristen ziehen vollständig um." },
+  { thema: "Umzug", klassisch: "Hoher Migrationsaufwand bindet an den Anbieter.", apex: "One-Klick-Migration mit Vorschau – Akten, Kontakte und Fristen ziehen mit einem Klick um." },
 ];
 
 function Nein() {

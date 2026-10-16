@@ -3,7 +3,7 @@ import { AUTOMATION_DEFS } from "../automationen";
 import { addDays, addMonthsBGB, diffDays, fmtDate, fmtEUR, round2, toLocalISO } from "../dates";
 import { istWerktag } from "../feiertage";
 import { berechneNachRegel, regel as fristRegel } from "../fristen";
-import { berechneRvg, fassungFuerAuftrag } from "../rvg";
+import { berechneRvg, fassungFuerAuftrag, rvgRechnungsPositionen } from "../rvg";
 import type {
   Akte, Aktivitaet, Automation, Dokument, Frist, Kontakt, KontaktRolle, Nachricht,
   Rechnung, Sachgebiet, Tenant, TenantData, Transaktion, User, Zeiteintrag,
@@ -256,10 +256,7 @@ export function addRechnung(ctx: Ctx, akte: Akte, opts: { positionen?: string[];
     r = {
       id: ctx.id("r"), nummer, akteId: akte.id, empfaengerId: akte.rsv?.deckung === "erteilt" ? akte.mandantId : akte.mandantId,
       datum, faellig: addDays(datum, 14),
-      positionen: [
-        ...calc.zeilen.map((z) => ({ vv: z.nr, bezeichnung: z.titel, satz: z.satz, gegenstandswert: z.gegenstandswert, betrag: z.betrag })),
-        { vv: "7002", bezeichnung: "Pauschale für Post- und Telekommunikation", betrag: calc.auslagenpauschale },
-      ],
+      positionen: rvgRechnungsPositionen(calc.angelegenheiten),
       netto: calc.netto, ust: calc.ust, brutto: calc.brutto, status: "gestellt", bezahlt: 0,
       format: ctx.rng.chance(0.3) ? "XRechnung" : "PDF", createdAt: `${datum}T10:00:00`,
     };
@@ -322,9 +319,12 @@ function generischeAkte(ctx: Ctx, sachgebiet: Sachgebiet, azNummer: number) {
     ? ctx.firma(`${rng.pick(NACHNAMEN)} ${rng.pick(BRANCHEN)}`, ["mandant"])
     : ctx.person(["mandant"]);
   const gegner = gegnerFuer(ctx, v);
-  const gerichtName = v.gericht ? (v.gericht === "ag" ? rng.pick(stadt.gerichte.ag) : stadt.gerichte[v.gericht]) : undefined;
-  const gericht = gerichtName && v.gericht !== "sta" ? ctx.gericht(gerichtName) : undefined;
   const wert = v.wert[0] === v.wert[1] ? v.wert[0] : Math.round(rng.int(v.wert[0], v.wert[1]) / 50) * 50;
+  // Sachliche Zuständigkeit (§ 23 Nr. 1 GVG): Amtsgericht bis einschließlich 10.000 € (seit 01.01.2026, vorher 5.000 €), darüber Landgericht
+  const agGrenze = ctx.today >= "2026-01-01" ? 10000 : 5000;
+  const gerichtArt = v.gericht === "lg" && wert <= agGrenze ? "ag" : v.gericht;
+  const gerichtName = gerichtArt ? (gerichtArt === "ag" ? rng.pick(stadt.gerichte.ag) : stadt.gerichte[gerichtArt]) : undefined;
+  const gericht = gerichtName && gerichtArt !== "sta" ? ctx.gericht(gerichtName) : undefined;
   const az = nextAz(ctx, azNummer);
   const yearStart = `20${ctx.yy}-01-05`;
   const span = Math.max(30, diffDays(yearStart, ctx.today) - 4);
@@ -345,13 +345,13 @@ function generischeAkte(ctx: Ctx, sachgebiet: Sachgebiet, azNummer: number) {
     AZ: "",
   };
   const gerichtsAz = gericht
-    ? v.gericht === "arbg" ? `${rng.int(1, 60)} Ca ${rng.int(1000, 9999)}/${ctx.yy}`
-      : v.gericht === "fam" ? `${rng.int(270, 290)} F ${rng.int(100, 999)}/${ctx.yy}`
-      : v.gericht === "mahn" ? `${ctx.yy}-${rng.int(1000000, 9999999)}-0-${rng.int(1, 9)}`
-      : v.gericht === "lg" ? `${rng.int(2, 35)} O ${rng.int(100, 480)}/${ctx.yy}`
-      : v.gericht === "straf" ? `${rng.int(200, 290)} Cs ${rng.int(100, 999)}/${ctx.yy}`
+    ? gerichtArt === "arbg" ? `${rng.int(1, 60)} Ca ${rng.int(1000, 9999)}/${ctx.yy}`
+      : gerichtArt === "fam" ? `${rng.int(270, 290)} F ${rng.int(100, 999)}/${ctx.yy}`
+      : gerichtArt === "mahn" ? `${ctx.yy}-${rng.int(1000000, 9999999)}-0-${rng.int(1, 9)}`
+      : gerichtArt === "lg" ? `${rng.int(2, 35)} O ${rng.int(100, 480)}/${ctx.yy}`
+      : gerichtArt === "straf" ? `${rng.int(200, 290)} Cs ${rng.int(100, 999)}/${ctx.yy}`
       : `${rng.int(1, 240)} C ${rng.int(100, 999)}/${ctx.yy}`
-    : v.gericht === "sta" ? `${rng.int(200, 290)} Js ${rng.int(1000, 9999)}/${ctx.yy}` : undefined;
+    : gerichtArt === "sta" ? `${rng.int(200, 290)} Js ${rng.int(1000, 9999)}/${ctx.yy}` : undefined;
   p.AZ = gerichtsAz ?? "";
   const akte: Akte = {
     id: ctx.id("a"),
@@ -449,6 +449,30 @@ function generischeAkte(ctx: Ctx, sachgebiet: Sachgebiet, azNummer: number) {
   if (rng.chance(0.3) && status === "offen") {
     const vb = Math.round(rng.int(300, 1500) / 50) * 50;
     data.buchungen.push({ id: ctx.id("b"), akteId: akte.id, datum: ctx.d(createdOffset + 2), art: "vorschuss", betrag: -vb, text: "Vorschuss nach § 9 RVG (bezahlt)" });
+  }
+}
+
+/**
+ * Rechnungsnummern fortlaufend nach Rechnungsdatum (§ 14 Abs. 4 Nr. 4 UStG): Die Rechnungen entstehen beim Erzeugen
+ * akteweise, nicht chronologisch – deshalb werden sie zum Schluss je Jahr nach Datum durchnummeriert. Buchungstexte
+ * („Rechnung RE-…“, „Zahlungseingang RE-…“) ziehen mit.
+ */
+export function nummeriereRechnungen(data: TenantData): void {
+  const reihenfolge = data.rechnungen.map((r, i) => ({ r, i })).sort((a, b) => a.r.datum.localeCompare(b.r.datum) || a.r.createdAt.localeCompare(b.r.createdAt) || a.i - b.i);
+  const zaehler: Record<string, number> = {};
+  const neu = new Map<string, string>();
+  for (const { r } of reihenfolge) {
+    const jahr = r.datum.slice(0, 4);
+    zaehler[jahr] = (zaehler[jahr] ?? 0) + 1;
+    const nummer = `RE-${jahr}-${String(zaehler[jahr]).padStart(4, "0")}`;
+    if (nummer !== r.nummer) neu.set(r.id, nummer);
+  }
+  if (!neu.size) return;
+  const alt = new Map(data.rechnungen.map((r) => [r.id, r.nummer]));
+  for (const r of data.rechnungen) r.nummer = neu.get(r.id) ?? r.nummer;
+  for (const b of data.buchungen) {
+    const n = b.rechnungId ? neu.get(b.rechnungId) : undefined;
+    if (n) b.text = b.text.replace(alt.get(b.rechnungId!)!, n);
   }
 }
 
@@ -676,6 +700,7 @@ export function generateTenantData(input: SeedInput, today: string, opts: { leer
     generischeAkte(ctx, sg, az);
     az += ctx.rng.chance(0.25) ? 2 : 1;
   }
+  nummeriereRechnungen(ctx.data);
   generischerPosteingang(ctx);
   bankUmsaetze(ctx);
   zeiten(ctx);

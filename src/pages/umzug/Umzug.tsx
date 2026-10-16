@@ -46,7 +46,7 @@ export default function Umzug() {
   const name = sysName(system);
   // Dublettenprüfung gegen den Bestand vor dem Import (während/nach der Übernahme eingefroren)
   const [aktenStand, setAktenStand] = useState<typeof akten | null>(null);
-  const zeilen = useMemo(() => (csv ? baueZeilen(csv, zuordnung, aktenStand ?? akten) : []), [csv, zuordnung, akten, aktenStand]);
+  const zeilen = useMemo(() => (csv ? baueZeilen(csv, zuordnung, aktenStand ?? akten, tenant.bundesland) : []), [csv, zuordnung, akten, aktenStand, tenant.bundesland]);
   const aktionFuer = (nr: number) => ausnahmen[nr] ?? modus;
 
   const plan = useMemo(() => {
@@ -57,8 +57,19 @@ export default function Umzug() {
     const rein = ok.filter((z) => !(z.dublette && aktionFuer(z.nr) === "skip"));
     const namen = new Set<string>();
     for (const z of rein) for (const n of [z.mandant, z.gegner]) if (normName(n)) namen.add(normName(n));
-    return { akten: ok.length - dub.length, aktualisieren, ueberspringen, fristen: rein.filter((z) => z.fristDatum).length, kontakte: namen.size };
-  }, [zeilen, modus, ausnahmen]);
+    const vorhanden = new Set(kontakte.map((k) => normName(k.name)));
+    const mitFrist = rein.filter((z) => z.fristDatum);
+    const kontrolle = mitFrist.filter((z) => z.fristTyp === "notfrist" || z.fristTyp === "frist").length;
+    return {
+      akten: ok.length - dub.length,
+      aktualisieren,
+      ueberspringen,
+      fristen: kontrolle,
+      wiedervorlagen: mitFrist.length - kontrolle,
+      kontakte: namen.size,
+      kontakteVorhanden: [...namen].filter((n) => vorhanden.has(n)).length,
+    };
+  }, [zeilen, modus, ausnahmen, kontakte]);
 
   const ladeCsv = (text: string, info: DateiInfo) => {
     const p = parseCsv(text);
@@ -170,10 +181,10 @@ export default function Umzug() {
         title="Umzug"
         hilfe="umzug"
         eyebrow="One-Klick-Migration"
-        subtitle="Wechseln Sie mit einem Klick: Akten, Kontakte und Fristen ziehen vollständig um – mit Vorschau, Dublettenprüfung und Fristen-Kontrolle."
+        subtitle="Wechseln Sie mit einem Klick: Akten, Kontakte und Fristen ziehen mit um – mit Vorschau, Dublettenprüfung, Plausibilitätsprüfung und Vier-Augen-Kontrolle der Fristen."
       />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
         <Card padded={false} className="min-w-0">
           <Stepper schritt={schritt} />
           <div className="relative overflow-hidden px-5 pb-5 pt-5 md:px-7 md:pb-7">
@@ -219,7 +230,7 @@ export default function Umzug() {
                     ergebnis={ergebnis}
                     ansprechpartner={ap}
                     systemName={name}
-                    onFristen={() => nav("/fristen")}
+                    onFristen={() => nav("/fristen?filter=kontrolle")}
                     onAkten={() => nav("/akten")}
                     onTermin={() => {
                       useData.getState().log({ akteur: "nutzer", userId: user.id, text: `Durchsicht des Umzugs mit ${ap.name} angefragt` });

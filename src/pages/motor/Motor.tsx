@@ -22,7 +22,7 @@ type Filter = "alle" | Automation["kategorie"];
 export default function Motor() {
   const automationen = useCol("automationen");
   const aktivitaeten = useCol("aktivitaeten");
-  const { user, team, tenant } = useKanzlei();
+  const { user, tenant } = useKanzlei();
   const now = useNow(20000);
   const [filter, setFilter] = useState<Filter>("alle");
   const [offenId, setOffenId] = useState<string | null>(null);
@@ -66,7 +66,6 @@ export default function Motor() {
 
   const gefiltert = filter === "alle" ? automationen : automationen.filter((a) => a.kategorie === filter);
   const offen = automationen.find((a) => a.id === offenId) ?? null;
-  const anwaelte = Math.max(1, team.filter((u) => u.rolle === "partner" || u.rolle === "anwalt").length);
 
   return (
     <div>
@@ -175,7 +174,7 @@ export default function Motor() {
           <h2 className="title-lg">Was sich das rechnet</h2>
           <p className="mt-1 text-[13px] text-fg-3">Gesparte Zeit in Euro – und der Kostenvergleich zwischen Lifetime-Lizenz und Abo-Modell.</p>
         </div>
-        <RoiRechner startAnwaelte={anwaelte} startSatz={satz} startArbeitsplaetze={tenant.lizenz.arbeitsplaetze} gemessen={stunden} />
+        <RoiRechner startSatz={satz} startArbeitsplaetze={tenant.lizenz.arbeitsplaetze} gemessen={stunden} />
       </section>
 
       <AutomationDrawer a={offen} onClose={() => setOffenId(null)} aktivitaeten={aktivitaeten} now={now} />

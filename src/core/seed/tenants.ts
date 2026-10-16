@@ -26,13 +26,12 @@ export const DEMO_TENANTS: DemoTenant[] = [
       schwerpunkte: ["Arbeitsrecht", "Mietrecht", "Verkehrsrecht", "Erbrecht"],
       lizenz: { typ: "lifetime", seit: "2026-03-02", arbeitsplaetze: 8, lizenzNr: "AAX-LT-2026-0142" },
       ansprechpartner: {
-        name: "Lena Vogt", rolle: "Ihre persönliche Ansprechpartnerin", telefon: "+49 30 555 018 42",
+        name: "Lena Vogt", rolle: "Ihr fester Ansprechpartner", telefon: "+49 30 555 018 42",
         email: "lena.vogt@anwaltapex.de", initialen: "LV", verfuegbar: "Mo–Fr 7:30–19:00 Uhr",
       },
       farbe: "#2440D8",
       createdAt: "2026-03-02T09:00:00",
-      status: "test",
-      testBis: "2026-12-31",
+      status: "aktiv",
     },
     users: [
       { id: "u-hartmann-1", tenantId: "t-hartmann", name: "Dr. Julia Hartmann", email: "julia.hartmann@hartmann-partner.de", rolle: "partner", titel: "Rechtsanwältin · Fachanwältin für Arbeitsrecht", initialen: "JH", farbe: "#2440D8", stundensatz: 280, passwort: DEMO_PASSWORT },
@@ -56,13 +55,12 @@ export const DEMO_TENANTS: DemoTenant[] = [
       schwerpunkte: ["Forderungseinzug", "Vertragsrecht", "Baurecht", "Verkehrsrecht"],
       lizenz: { typ: "lifetime", seit: "2026-05-18", arbeitsplaetze: 12, lizenzNr: "AAX-LT-2026-0217" },
       ansprechpartner: {
-        name: "Markus Seidel", rolle: "Ihr persönlicher Ansprechpartner", telefon: "+49 89 555 027 13",
+        name: "Markus Seidel", rolle: "Ihr fester Ansprechpartner", telefon: "+49 89 555 027 13",
         email: "markus.seidel@anwaltapex.de", initialen: "MS", verfuegbar: "Mo–Fr 7:30–19:00 Uhr",
       },
       farbe: "#0E7C66",
       createdAt: "2026-05-18T09:00:00",
-      status: "test",
-      testBis: "2026-12-31",
+      status: "aktiv",
     },
     users: [
       { id: "u-lindner-1", tenantId: "t-lindner", name: "Stefan Lindner", email: "stefan.lindner@lindner-recht.de", rolle: "partner", titel: "Rechtsanwalt · Fachanwalt für Bau- und Architektenrecht", initialen: "SL", farbe: "#0E7C66", stundensatz: 300, passwort: DEMO_PASSWORT },
@@ -86,13 +84,12 @@ export const DEMO_TENANTS: DemoTenant[] = [
       schwerpunkte: ["Familienrecht", "Strafrecht", "Erbrecht", "Mietrecht"],
       lizenz: { typ: "lifetime", seit: "2026-07-01", arbeitsplaetze: 6, lizenzNr: "AAX-LT-2026-0288" },
       ansprechpartner: {
-        name: "Lena Vogt", rolle: "Ihre persönliche Ansprechpartnerin", telefon: "+49 30 555 018 42",
+        name: "Lena Vogt", rolle: "Ihr fester Ansprechpartner", telefon: "+49 30 555 018 42",
         email: "lena.vogt@anwaltapex.de", initialen: "LV", verfuegbar: "Mo–Fr 7:30–19:00 Uhr",
       },
       farbe: "#BE185D",
       createdAt: "2026-07-01T09:00:00",
-      status: "test",
-      testBis: "2026-12-31",
+      status: "aktiv",
     },
     users: [
       { id: "u-demir-1", tenantId: "t-demir", name: "Selin Demir", email: "selin.demir@demir-kollegen.de", rolle: "partner", titel: "Rechtsanwältin · Fachanwältin für Familienrecht", initialen: "SD", farbe: "#BE185D", stundensatz: 260, passwort: DEMO_PASSWORT },

@@ -169,7 +169,7 @@ export const WIKI: WikiArtikel[] = [
     schritte: [
       { titel: "Abgleich starten", text: "„Abgleich starten“ prüft alle offenen Umsätze gegen offene Rechnungen.", visual: "bank" },
       { titel: "Sicherheit prüfen", text: "Rechnungsnummer im Verwendungszweck = sicher. Nur Name und Betrag = Vorschlag zur Bestätigung.", visual: "bank" },
-      { titel: "Fremdgeld", text: "Zahlungen Dritter für Mandanten werden als Fremdgeld markiert – mit Erinnerung zur unverzüglichen Weiterleitung (§ 43a Abs. 5 BRAO).", visual: "bank" },
+      { titel: "Fremdgeld", text: "Zahlungen Dritter für Mandanten werden als Fremdgeld markiert – mit Erinnerung zur unverzüglichen Weiterleitung (§ 43a Abs. 7 BRAO, § 4 BORA).", visual: "bank" },
     ],
   },
   {

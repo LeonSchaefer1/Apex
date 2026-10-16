@@ -1,6 +1,7 @@
 // Dokument- & Posteingangs-Analyse: Die KI erkennt Akte, Ereignis und Fristart – berechnet wird ausschließlich mit dem Fristenrechner.
-import { berechneFrist, berechneNachRegel, FRIST_REGELN, type Einheit } from "@/core/fristen";
-import { fmtDate, today, addDays } from "@/core/dates";
+import { berechneFestesEnde, berechneFrist, berechneNachRegel, FRIST_REGELN, gerichtsortDerAkte, type Einheit } from "@/core/fristen";
+import { bundeslandAusGericht } from "@/core/feiertage";
+import { fmtDate, today, addDays, addMonthsBGB, wochentagName } from "@/core/dates";
 import { normalize } from "@/core/search";
 import type { Bundesland, FristTyp, ISODate, KiVorschlag, Nachricht, TenantData, DokumentArt } from "@/core/types";
 import { DemoModus, llmJson, aktuelleQuelle } from "./llm";
@@ -123,7 +124,8 @@ function klassifiziere(t: string): { typ: string; art: DokumentArt } {
   if (/vollstreckungsbescheid/.test(n)) return { typ: "Vollstreckungsbescheid", art: "beschluss" };
   if (/mahnbescheid/.test(n)) return { typ: "Mahnbescheid", art: "beschluss" };
   if (/vermögensauskunft|gerichtsvollzieher/.test(n)) return { typ: "Mitteilung Gerichtsvollzieher", art: "brief" };
-  if (/ladung|termin[^.]{0,80}bestimmt|bestimmt auf/.test(n)) return { typ: "Ladung / Terminbestimmung", art: "beschluss" };
+  if (/verkündungstermin|termin zur verkündung/.test(n)) return { typ: "Terminsmitteilung (Verkündung)", art: "beschluss" };
+  if (/ladung|termin[^.]{0,80}(bestimmt|anberaumt)|bestimmt auf|anberaumt auf|güteverhandlung|kammertermin|hauptverhandlung/.test(n)) return { typ: "Ladung / Terminbestimmung", art: "beschluss" };
   if (/bericht/.test(n) && /stellungnahme|stellung/.test(n)) return { typ: "Gerichtliche Mitteilung mit Stellungnahmefrist", art: "beschluss" };
   if (/verfügung|aufgegeben|stellung zu nehmen/.test(n)) return { typ: "Gerichtliche Verfügung", art: "beschluss" };
   if (/beschluss/.test(n)) return { typ: "Beschluss", art: "beschluss" };
@@ -168,14 +170,97 @@ function zusammenfassen(text: string, max = 2): string {
   return out.charAt(0).toUpperCase() + out.slice(1);
 }
 
-function vorschlag(key: string, ereignis: ISODate, land: Bundesland): FristVorschlag {
-  const r = berechneNachRegel(key, ereignis, land);
-  return { regelKey: key, titel: r.regel.titel, typ: r.regel.typ, ereignisDatum: ereignis, ende: r.ende, vorfrist: r.vorfrist, grundlage: r.regel.grundlage, rechenweg: r.rechenweg, warnungen: r.warnungen };
+/** Feiertags-Bundesland für die Fristberechnung: Gerichtsort laut Schreiben bzw. Akte, sonst Kanzleisitz. */
+interface FristOrt {
+  land: Bundesland;
+  /** nur gesetzt, wenn vom Kanzleisitz abweichend – erscheint dann im Rechenweg */
+  hinweis?: string;
 }
 
-function freieFrist(titel: string, dauer: number, einheit: Einheit, ereignis: ISODate, land: Bundesland, grundlage = "Richterliche Frist"): FristVorschlag {
-  const r = berechneFrist({ ereignis, dauer, einheit, land, vorfristTage: einheit === "tage" && dauer <= 10 ? 3 : 7, ereignisLabel: "Zustellung der Verfügung" });
+function vorschlag(key: string, ereignis: ISODate, ort: FristOrt, opts: { ereignisLabel?: string; warnung?: string } = {}): FristVorschlag {
+  const r = berechneNachRegel(key, ereignis, ort.land, undefined, { ereignisLabel: opts.ereignisLabel, feiertagsOrt: ort.hinweis });
+  return {
+    regelKey: key, titel: r.regel.titel, typ: r.regel.typ, ereignisDatum: ereignis, ende: r.ende, vorfrist: r.vorfrist, grundlage: r.regel.grundlage, rechenweg: r.rechenweg,
+    warnungen: opts.warnung ? [opts.warnung, ...r.warnungen] : r.warnungen,
+  };
+}
+
+function freieFrist(titel: string, dauer: number, einheit: Einheit, ereignis: ISODate, ort: FristOrt, grundlage = "Richterliche Frist"): FristVorschlag {
+  const r = berechneFrist({ ereignis, dauer, einheit, land: ort.land, vorfristTage: einheit === "tage" && dauer <= 10 ? 3 : 7, ereignisLabel: "Zustellung der Verfügung", feiertagsOrt: ort.hinweis });
   return { regelKey: "richterlich", titel, typ: "frist", ereignisDatum: ereignis, ende: r.ende, vorfrist: r.vorfrist, grundlage, rechenweg: r.rechenweg, warnungen: r.warnungen };
+}
+
+/** Schreiben eines Gerichts bzw. einer Behörde? Dann bestimmt deren Sitz die Feiertage. */
+const GERICHTSPOST = /^(Urteil|Versäumnisurteil|Strafbefehl|Bußgeldbescheid|Mitteilung Mahngericht|Vollstreckungsbescheid|Mahnbescheid|Ladung|Terminsmitteilung|Gerichtliche|Beschluss)/;
+
+/**
+ * Ort der fristwahrenden Handlung (§ 222 Abs. 2 ZPO): Gericht/Behörde laut Absender bzw. Schreiben, sonst das Gericht
+ * der zugeordneten Akte, sonst der Kanzleisitz. Im Rechenweg erscheint der Ort nur, wenn er vom Kanzleisitz abweicht.
+ */
+function fristOrt(typ: string, input: { von?: string; text: string; betreff?: string }, data: TenantData, akteId: string | undefined, land: Bundesland): FristOrt {
+  const ausSchreiben = GERICHTSPOST.test(typ) ? bundeslandAusGericht(`${input.von ?? ""}\n${input.betreff ?? ""}\n${input.text.slice(0, 1500)}`) : undefined;
+  if (ausSchreiben) return { land: ausSchreiben.land, hinweis: ausSchreiben.land !== land ? `Gerichtsort laut Schreiben: ${ausSchreiben.gericht}` : undefined };
+  const akte = akteId ? data.akten.find((a) => a.id === akteId) : undefined;
+  const ausAkte = gerichtsortDerAkte(akte, data.kontakte);
+  if (ausAkte) return { land: ausAkte.land, hinweis: ausAkte.land !== land ? `Gericht der Akte: ${ausAkte.gericht}` : undefined };
+  return { land };
+}
+
+/** Zustellung später als fünf Monate nach Verkündung? Dann beginnt die Rechtsmittelfrist schon mit Ablauf der fünf Monate. */
+function fuenfMonatsGrenze(n: string, zustellung: ISODate, norm: string): { ereignis: ISODate; label?: string; warnung?: string } {
+  const verkuendet = parseDatum(n.match(/urteil vom ([0-9.\s]+\d{2,4}|\d{1,2}\.\s?[a-zä]+\s+\d{4})/)?.[1] ?? "");
+  if (!verkuendet) return { ereignis: zustellung };
+  const grenze = addMonthsBGB(verkuendet, 5).date;
+  if (grenze >= zustellung) return { ereignis: zustellung };
+  return {
+    ereignis: grenze,
+    label: `Ablauf von fünf Monaten nach Verkündung am ${fmtDate(verkuendet)} (${norm})`,
+    warnung: `Das Urteil wurde am ${fmtDate(verkuendet)} verkündet – die Frist begann spätestens mit Ablauf von fünf Monaten danach (${norm}), nicht erst mit der Zustellung. Fristende sofort prüfen!`,
+  };
+}
+
+const ZAHLWORT_RE = "(\\d+|eine[rm]?|zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn|elf|zwölf|vierzehn|einundzwanzig)";
+const DATUM_RE = "(\\d{1,2}\\.\\s?\\d{1,2}\\.\\s?\\d{2,4}|\\d{1,2}\\.\\s?(?:januar|februar|märz|maerz|april|mai|juni|juli|august|september|oktober|november|dezember)\\s+\\d{4})";
+/** „bis zum 20.11.2026“, „bis spätestens 20. November 2026“, „spätestens bis zum …“ */
+const FEST_RE = new RegExp(`(?:bis\\s+(?:spätestens\\s+)?(?:zum\\s+|einschließlich\\s+)?|spätestens\\s+(?:bis\\s+)?(?:zum\\s+|am\\s+)?)(?:[a-zäöü]+,\\s+(?:den\\s+)?)?${DATUM_RE}`);
+/** Handlungsaufforderung, ohne die ein Datum keine Frist ist */
+const AUFGABE_RE = /frist|aufgegeben|stellung|gelegenheit|äußer|erwider|einzureichen|vorzulegen|nachzureichen|mitzuteilen|zu zahlen|zahlbar|zu begleichen|zu überweisen|zurückzusenden|zu bestätigen|zu unterzeichnen/;
+/** Termine: „Termin zur mündlichen Verhandlung wird bestimmt auf …“, „Termin zur Verkündung einer Entscheidung: …“, „Verkündungstermin: …“ */
+const TERMIN_RE = new RegExp(
+  `(?:termin|verhandlung|anhörung|ladung)[^.\\n]{0,80}?(?:bestimmt auf|anberaumt auf|findet am|am|auf|:)\\s+(?:[a-zäöü]+,\\s+)?(?:den\\s+)?${DATUM_RE}[,\\s]+(?:um\\s+)?(\\d{1,2}[:.]\\d{2})\\s*uhr(?:(?:,\\s*|\\s+(?:in|im)\\s+)([^\\n]+?)(?=\\.\\s|\\.?$|\\n))?`,
+  "im",
+);
+
+/**
+ * Arbeitsuchendmeldung (§ 38 Abs. 1 SGB III): spätestens drei Monate vor Ende des Arbeitsverhältnisses, bei kürzerer
+ * Zeit innerhalb von drei Tagen nach Kenntnis. Bei fristloser Kündigung mit bekanntem Zugang wird der Zeitablauf geprüft.
+ */
+function meldepflichtHinweis(data: TenantData, akteId: string | undefined, heute: ISODate, land: Bundesland): string {
+  const kschg = akteId ? data.fristen.find((f) => f.akteId === akteId && f.regelKey === "kschg_klage" && f.ereignisDatum) : undefined;
+  const akte = akteId ? data.akten.find((a) => a.id === akteId) : undefined;
+  const fristlos = !!akte && (/fristlos|außerordentlich/i.test(akte.beschreibung) || data.dokumente.some((d) => d.akteId === akte.id && /kündigung/i.test(d.name) && /fristlos/i.test(d.inhalt)));
+  if (kschg?.ereignisDatum && fristlos) {
+    // drei Tage ab Kenntnis (Zugang); Ende am Wochenende/Feiertag → nächster Werktag (§ 26 Abs. 3 SGB X)
+    const ablauf = berechneFrist({ ereignis: kschg.ereignisDatum, dauer: 3, einheit: "tage", land, verfahren: "BGB" }).ende;
+    if (ablauf < heute)
+      return `Mandanten auf die Arbeitsuchendmeldung hinweisen: Die Dreitagesfrist ab Kenntnis der fristlosen Kündigung (§ 38 Abs. 1 S. 2 SGB III) ist am ${fmtDate(ablauf)} abgelaufen – Meldung sofort nachholen, sonst droht eine Sperrzeit von einer Woche (§ 159 Abs. 1 S. 2 Nr. 7, Abs. 6 SGB III).`;
+    return `Mandanten auf die Arbeitsuchendmeldung hinweisen: wegen der fristlosen Kündigung bis spätestens ${fmtDate(ablauf)} – drei Tage nach Kenntnis (§ 38 Abs. 1 S. 2 SGB III); sonst droht eine Sperrzeit (§ 159 SGB III).`;
+  }
+  return "Mandanten auf die Arbeitsuchendmeldung hinweisen: spätestens drei Monate vor Ende des Arbeitsverhältnisses, bei kürzerer Zeit innerhalb von drei Tagen nach Kenntnis (§ 38 Abs. 1 SGB III) – sonst droht eine Sperrzeit (§ 159 SGB III).";
+}
+
+/** „Die Revision wird zugelassen“ – aber nicht „Die Revision wird nicht zugelassen“. */
+function revisionZugelassen(n: string): boolean {
+  const m = n.match(/revision (?:wird|ist)((?: [a-zäöüß]+){0,3}) (?:zugelassen|zulässig)|lässt die revision zu/);
+  return !!m && !/\bnicht\b/.test(m[1] ?? "");
+}
+
+function terminTitel(kontext: string): string {
+  if (/verkündung/.test(kontext)) return "Verkündungstermin";
+  if (/hauptverhandlung/.test(kontext)) return "Hauptverhandlung";
+  if (/güte/.test(kontext)) return "Gütetermin";
+  if (/anhörung/.test(kontext)) return "Anhörungstermin";
+  return "Mündliche Verhandlung";
 }
 
 /** Regelbasierte Analyse (offline) – auch Basis zur Prüfung der Live-KI. */
@@ -189,50 +274,87 @@ export function analysiereRegelbasiert(input: { text: string; betreff?: string; 
   const aktionen: string[] = [];
   let termin: DokAnalyse["termin"];
   const eeb = /empfangsbekenntnis|\beeb\b/.test(n);
-  const zustellung = eingang; // beA: Zustellung mit Abgabe des eEB – vorsorglich Eingangstag
+  // Zustellung gegen (e)EB: zugestellt ist am Tag, an dem die Anwältin bzw. der Anwalt das Schriftstück empfangsbereit
+  // zur Kenntnis genommen hat (dieses Datum steht im eEB) – vorsorglich rechnet AnwaltApex ab dem Eingangstag.
+  const zustellung = eingang;
+  const ort = fristOrt(typ, input, data, match.akteId, land);
 
-  if (typ === "Urteil" && /berufung/.test(n)) {
-    fristen.push(vorschlag("berufung", zustellung, land), vorschlag("berufungsbegruendung", zustellung, land));
-    aktionen.push("Mandanten über das Urteil informieren und Berufung prüfen (Beschwer, Kostenrisiko).");
-    if (/arbeitsgericht/.test(n)) fristen.splice(0, 1, vorschlag("berufung_arbg", zustellung, land));
+  if (typ === "Urteil") {
+    // Jedes zugestellte Urteil löst eine Rechtsmittelfrist aus – auch ohne Rechtsmittelbelehrung im Text.
+    const absender = (input.von ?? "").toLowerCase();
+    const strafsache = /angeklagte|strafsache|strafverfahren|staatsanwaltschaft|freiheitsstrafe|geldstrafe|tagessätze/.test(n);
+    const lag = /landesarbeitsgericht|\blag\b/.test(absender) || /urteil des landesarbeitsgerichts/.test(n);
+    const zweiteInstanz = lag || /oberlandesgericht|kammergericht|\bolg\b/.test(absender) || /urteil des (oberlandesgerichts|kammergerichts)|berufungsurteil|auf die berufung (des|der)/.test(n);
+    const arbeitsgericht = /arbeitsgericht/.test(absender) || /urteil des arbeitsgerichts|\barbeitsgericht\b/.test(n);
+    if (strafsache) {
+      aktionen.push("Rechtsmittelfrist sofort prüfen: Berufung bzw. Revision binnen einer Woche nach Verkündung (§§ 314, 341 StPO), bei Verkündung in Abwesenheit ab Zustellung.");
+    } else if (/verwaltungsgericht/.test(`${absender} ${n}`) && !/oberverwaltungsgericht|verwaltungsgerichtshof/.test(absender)) {
+      aktionen.push("Antrag auf Zulassung der Berufung prüfen – binnen eines Monats nach Zustellung des vollständigen Urteils (§ 124a Abs. 4 VwGO).");
+    } else if (lag) {
+      aktionen.push("Rechtsmittel prüfen: Revision zum BAG nur bei Zulassung (§ 72 ArbGG), sonst Nichtzulassungsbeschwerde (§ 72a ArbGG) – Frist jeweils ein Monat ab Zustellung.");
+    } else if (zweiteInstanz && revisionZugelassen(n)) {
+      fristen.push(vorschlag("revision", zustellung, ort), vorschlag("revisionsbegruendung", zustellung, ort));
+      aktionen.push("Mandanten über das Berufungsurteil informieren und Revision prüfen.");
+    } else if (zweiteInstanz) {
+      aktionen.push("Rechtsmittel prüfen: Revision nur bei Zulassung, sonst Nichtzulassungsbeschwerde – Frist jeweils ein Monat ab Zustellung.");
+    } else {
+      const [ein, begr, norm] = arbeitsgericht ? (["berufung_arbg", "berufungsbegruendung_arbg", "§ 66 Abs. 1 S. 2 ArbGG"] as const) : (["berufung", "berufungsbegruendung", "§ 517 Hs. 2 ZPO"] as const);
+      const g = fuenfMonatsGrenze(n, zustellung, norm);
+      fristen.push(vorschlag(ein, g.ereignis, ort, { ereignisLabel: g.label, warnung: g.warnung }), vorschlag(begr, g.ereignis, ort, { ereignisLabel: g.label }));
+      aktionen.push(`Mandanten über das Urteil informieren und Berufung prüfen (${arbeitsgericht ? "Zulassung oder Beschwer über 600 €, § 64 Abs. 2 ArbGG" : "Beschwer über 600 € oder Zulassung, § 511 Abs. 2 ZPO"}; Kostenrisiko).`);
+    }
   } else if (typ === "Versäumnisurteil") {
-    fristen.push(vorschlag("einspruch_vu", zustellung, land));
+    fristen.push(vorschlag("einspruch_vu", zustellung, ort));
     aktionen.push("Einspruch einlegen und Säumnisgrund klären.");
   } else if (typ === "Strafbefehl") {
     const zd = parseDatum(n.match(/zugestellt am ([^.\n]+\.\d{2,4})/)?.[1] ?? "") ?? zustellung;
-    fristen.push(vorschlag("einspruch_strafbefehl", zd, land));
+    fristen.push(vorschlag("einspruch_strafbefehl", zd, ort));
     aktionen.push("Einspruch prüfen – ggf. auf Rechtsfolgen beschränken.");
   } else if (typ === "Bußgeldbescheid") {
-    fristen.push(vorschlag("einspruch_bussgeld", zustellung, land));
+    fristen.push(vorschlag("einspruch_bussgeld", zustellung, ort));
     aktionen.push("Einspruch einlegen und Akteneinsicht inkl. Rohmessdaten beantragen.");
   } else if (typ === "Mahnbescheid") {
-    fristen.push(vorschlag("widerspruch_mb", zustellung, land));
+    fristen.push(vorschlag("widerspruch_mb", zustellung, ort));
   } else if (typ === "Kündigung (Arbeitsverhältnis)") {
     const zug = parseDatum(n.match(/zugegangen[^0-9]*(\d{1,2}\.\d{1,2}\.\d{2,4})/)?.[1] ?? "") ?? eingang;
-    fristen.push(vorschlag("kschg_klage", zug, land));
+    fristen.push(vorschlag("kschg_klage", zug, ort));
     aktionen.push("Kündigungsschutzklage vorbereiten; Betriebsratsanhörung (§ 102 BetrVG) prüfen.");
   }
 
   // Richterliche Fristen: „binnen drei Wochen", „innerhalb von zehn Tagen"
-  const rich = n.match(/(?:binnen|innerhalb von|innerhalb)\s+(?:einer frist von\s+)?(\d+|eine[rm]?|zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn|elf|zwölf|vierzehn|einundzwanzig)\s+(tag|tagen|woche|wochen|monat|monaten)/);
+  const rich = n.match(new RegExp(`(?:binnen|innerhalb von|innerhalb)\\s+(?:einer frist von\\s+)?${ZAHLWORT_RE}\\s+(tag|tagen|woche|wochen|monat|monaten)`));
+  const fristTitel = /stellung|äußer|erwider/.test(n) ? "Stellungnahmefrist (gerichtlich gesetzt)" : /zahl|begleich|überweis/.test(n) ? "Zahlungsfrist" : "Frist laut Schreiben";
   if (rich && !fristen.length) {
     const dauer = zahl(rich[1]) ?? 2;
     const einheit: Einheit = rich[2].startsWith("tag") ? "tage" : rich[2].startsWith("woche") ? "wochen" : "monate";
-    const titel = /stellung/.test(n) ? "Stellungnahmefrist (gerichtlich gesetzt)" : /zahl/.test(n) ? "Zahlungsfrist" : "Frist laut Schreiben";
-    fristen.push(freieFrist(titel, dauer, einheit, zustellung, land));
+    fristen.push(freieFrist(fristTitel, dauer, einheit, zustellung, ort));
+  }
+
+  // Fristen mit festem Datum: „bis zum 20.11.2026 Stellung zu nehmen“
+  const fest = !fristen.length && typ !== "Rechnung" && typ !== "Newsletter" ? n.match(FEST_RE) : null;
+  const festEnde = fest ? parseDatum(fest[1]) : undefined;
+  if (festEnde && festEnde >= zustellung && festEnde <= addDays(zustellung, 730) && AUFGABE_RE.test(n)) {
+    const gericht = GERICHTSPOST.test(typ) || /gericht/i.test(input.von ?? "");
+    const titel = gericht
+      ? fristTitel === "Frist laut Schreiben" ? "Frist laut Verfügung (gerichtlich gesetzt)" : fristTitel
+      : fristTitel === "Stellungnahmefrist (gerichtlich gesetzt)" ? "Stellungnahmefrist laut Schreiben" : fristTitel;
+    const r = berechneFestesEnde({ ende: festEnde, ereignis: zustellung, land: ort.land, ereignisLabel: gericht ? "Zustellung der Verfügung" : "Eingang des Schreibens", quelle: gericht ? "Verfügung" : "Schreiben" });
+    fristen.push({ regelKey: "richterlich", titel, typ: "frist", ereignisDatum: zustellung, ende: r.ende, vorfrist: r.vorfrist, grundlage: gericht ? "Richterliche Frist (Datum laut Verfügung)" : "Frist laut Schreiben (festes Datum)", rechenweg: r.rechenweg, warnungen: r.warnungen });
   }
 
   // Termine
-  const tm = voll.match(/(?:termin[^.]*?(?:bestimmt auf|am)|auf)\s+(?:[A-Za-zäöü]+,\s+)?(?:den\s+)?(\d{1,2}\.\s?(?:\d{1,2}\.\s?\d{2,4}|[A-Za-zä]+\s+\d{4}))[,\s]+(\d{1,2}[:.]\d{2})\s*Uhr(?:,\s*([^.\n]+))?/i);
+  const tm = voll.match(TERMIN_RE);
   if (tm && /termin|ladung|verhandlung|anhörung/.test(n)) {
     const datum = parseDatum(tm[1]);
-    if (datum) termin = { datum, uhrzeit: tm[2].replace(".", ":"), ort: tm[3]?.trim(), titel: /anhörung/.test(n) ? "Anhörungstermin" : "Mündliche Verhandlung" };
+    const ortText = tm[3]?.trim().replace(/[.,;]+$/, "");
+    const kontext = voll.slice(Math.max(0, (tm.index ?? 0) - 40), (tm.index ?? 0) + tm[0].length).toLowerCase();
+    if (datum) termin = { datum, uhrzeit: tm[2].replace(".", ":"), ort: ortText || undefined, titel: terminTitel(kontext) };
   }
 
   // Weitere Handlungsempfehlungen
   if (/vergleich/.test(n)) aktionen.push("Vergleichsangebot mit Mandantschaft abstimmen (Erfolgsaussichten gegenüberstellen).");
   if (/zeuge|bestätigen/.test(n) && typ === "Mandantenkorrespondenz") aktionen.push("Zeugenhinweis in der Akte notieren und Zeugen benennen lassen.");
-  if (/arbeitsagentur|arbeitsuchend/.test(n)) aktionen.push("Mandanten auf die Meldepflicht bei der Agentur für Arbeit (§ 38 SGB III, innerhalb von 3 Tagen) hinweisen.");
+  if (/arbeitsagentur|arbeitsuchend/.test(n)) aktionen.push(meldepflichtHinweis(data, match.akteId, eingang, land));
   if (/anbei|anhang|unterlagen/.test(n) && typ === "Mandantenkorrespondenz") aktionen.push("Anhänge in der E-Akte (Ordner „Mandant“) ablegen.");
   if (/vermögensauskunft/.test(n)) aktionen.push("Vermögensverzeichnis abrufen und Pfändungsmöglichkeiten prüfen (Kontopfändung, Lohnpfändung).");
   if (/widerspruch erhoben|widerspruch gegen (den )?mahnbescheid/.test(n)) aktionen.push("Weitere Gerichtskosten einzahlen und Anspruchsbegründung vorbereiten (§ 697 ZPO).");
@@ -240,7 +362,7 @@ export function analysiereRegelbasiert(input: { text: string; betreff?: string; 
   if (typ.startsWith("Mandatsanfrage")) aktionen.push("Mandatsaufnahme starten: Akte anlegen, Vollmacht und Deckungsanfrage automatisch erzeugen.");
   if (typ === "Newsletter") aktionen.push("Kein Handlungsbedarf – archivieren.");
   if (termin) aktionen.push("Termin in den Kalender übernehmen und Mandantschaft informieren.");
-  if (fristen.length && !aktionen.length) aktionen.push("Frist eintragen und Stellungnahme in der Akte vorbereiten.");
+  if (fristen.length && !aktionen.length) aktionen.push(fristen[0].titel.startsWith("Zahlungsfrist") ? "Frist eintragen und Zahlung bzw. Einwendungen mit der Mandantschaft klären." : "Frist eintragen und Stellungnahme in der Akte vorbereiten.");
   if (eeb) aktionen.unshift("Elektronisches Empfangsbekenntnis abgeben, sobald die Fristen notiert sind.");
   if (!aktionen.length) aktionen.push(match.akteId ? "Zur Kenntnis nehmen und in der E-Akte ablegen." : "Prüfen, ob eine neue Akte angelegt werden soll.");
 
@@ -299,12 +421,13 @@ export async function analysiereDokument(
       effort: "low",
     });
     const ereignis = res.ereignisDatum && /^\d{4}-\d{2}-\d{2}$/.test(res.ereignisDatum) ? res.ereignisDatum : (input.eingang ?? today()).slice(0, 10);
+    const match = findeAkte(`${input.betreff ?? ""}\n${input.text}`, data, [...(res.hinweiseAkte ?? []), input.von ?? ""], input.vonAdresse ?? input.von);
+    const ort = fristOrt(basis.typ, input, data, match.akteId ?? basis.akteId, land);
     const fristen: FristVorschlag[] = [];
     for (const f of res.fristen ?? []) {
-      if (f.regelKey && FRIST_REGELN.some((r) => r.key === f.regelKey)) fristen.push(vorschlag(f.regelKey, ereignis, land));
-      else if (f.dauer && f.einheit) fristen.push(freieFrist(f.titel ?? "Frist laut Schreiben", f.dauer, f.einheit, ereignis, land));
+      if (f.regelKey && FRIST_REGELN.some((r) => r.key === f.regelKey)) fristen.push(vorschlag(f.regelKey, ereignis, ort));
+      else if (f.dauer && f.einheit) fristen.push(freieFrist(f.titel ?? "Frist laut Schreiben", f.dauer, f.einheit, ereignis, ort));
     }
-    const match = findeAkte(`${input.betreff ?? ""}\n${input.text}`, data, [...(res.hinweiseAkte ?? []), input.von ?? ""], input.vonAdresse ?? input.von);
     const termin = res.termin?.datum && /^\d{4}-\d{2}-\d{2}$/.test(res.termin.datum) ? { datum: res.termin.datum, uhrzeit: res.termin.uhrzeit, ort: res.termin.ort, titel: res.termin.titel ?? "Termin" } : basis.termin;
     return {
       ...basis,
@@ -348,6 +471,9 @@ export async function analysiereNachricht(n: Nachricht, data: TenantData, land: 
 /** Beispieldokumente für die Dokument-Analyse im KI-Bereich. */
 export function beispielDokumente(): { titel: string; text: string; betreff: string; von: string }[] {
   const zust = fmtDate(today());
+  // Verhandlungstermin auf einen Werktag in rund sechs Wochen legen (Wochentag passend zum Datum)
+  let termin = addDays(today(), 41);
+  while ([0, 6].includes(new Date(termin + "T00:00:00Z").getUTCDay())) termin = addDays(termin, 1);
   return [
     {
       titel: "Versäumnisurteil (Zivilsache)",
@@ -359,7 +485,7 @@ export function beispielDokumente(): { titel: string; text: string; betreff: str
       titel: "Richterliche Verfügung",
       von: "Landgericht",
       betreff: "Verfügung – Stellungnahmefrist",
-      text: `Der Klagepartei wird aufgegeben, zu dem Schriftsatz der Gegenseite binnen drei Wochen Stellung zu nehmen. Termin zur mündlichen Verhandlung wird bestimmt auf Donnerstag, den ${fmtDate(addDays(today(), 41))}, 10:30 Uhr, Sitzungssaal 2.14.`,
+      text: `Der Klagepartei wird aufgegeben, zu dem Schriftsatz der Gegenseite binnen drei Wochen Stellung zu nehmen. Termin zur mündlichen Verhandlung wird bestimmt auf ${wochentagName(termin)}, den ${fmtDate(termin)}, 10:30 Uhr, Sitzungssaal 2.14.`,
     },
     {
       titel: "Kündigung (Arbeitsrecht)",

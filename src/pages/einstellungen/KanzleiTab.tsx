@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Building2, Check, Info, MapPin } from "lucide-react";
 import { motion } from "motion/react";
 import type { Sachgebiet, Tenant } from "@/core/types";
 import { bundeslandName } from "@/core/feiertage";
 import { fmtDate } from "@/core/dates";
+import { darfVerwalten, getBackend, istConsole } from "@/lib/backend";
 import { useData } from "@/store/data";
-import { useKanzlei } from "@/store/session";
+import { useKanzlei, useSession } from "@/store/session";
 import { toast } from "@/store/ui";
 import { Button, Field, Input } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -15,24 +16,44 @@ const SACHGEBIETE: Sachgebiet[] = ["Arbeitsrecht", "Mietrecht", "Verkehrsrecht",
 
 type Profil = Pick<Tenant, "name" | "kurzname" | "adresse" | "stadt"> & { schwerpunkte: string[] };
 
+const profilAus = (t: Tenant): Profil => ({ name: t.name, kurzname: t.kurzname, adresse: t.adresse, stadt: t.stadt, schwerpunkte: t.schwerpunkte });
+
 export function KanzleiTab() {
   const { tenant, user } = useKanzlei();
-  const start: Profil = { name: tenant.name, kurzname: tenant.kurzname, adresse: tenant.adresse, stadt: tenant.stadt, schwerpunkte: tenant.schwerpunkte };
-  const [gespeichert, setGespeichert] = useState<Profil>(start);
-  const [p, setP] = useState<Profil>(start);
+  const darf = darfVerwalten(user.rolle);
+  const gespeichert = profilAus(tenant);
+  const [p, setP] = useState<Profil>(gespeichert);
   const [fehler, setFehler] = useState<string | null>(null);
+  const [laedt, setLaedt] = useState(false);
   const geaendert = JSON.stringify(p) !== JSON.stringify(gespeichert);
+  const stand = JSON.stringify(gespeichert);
+
+  // Gespeicherter Stand kam von außen (z. B. andere Sitzung, Neuladen) → Formular nachziehen, solange nichts bearbeitet wird
+  useEffect(() => {
+    setP(JSON.parse(stand) as Profil);
+  }, [stand]);
 
   const set = <K extends keyof Profil>(k: K, v: Profil[K]) => setP((x) => ({ ...x, [k]: v }));
   const toggle = (sg: string) => set("schwerpunkte", p.schwerpunkte.includes(sg) ? p.schwerpunkte.filter((x) => x !== sg) : [...p.schwerpunkte, sg]);
 
-  const speichern = () => {
+  const speichern = async () => {
+    if (!darf) return;
     if (!p.name.trim()) return setFehler("Bitte geben Sie den Namen der Kanzlei an – er erscheint auf Schriftsätzen und Rechnungen.");
     if (!p.adresse.trim()) return setFehler("Bitte geben Sie die Anschrift an.");
     setFehler(null);
-    setGespeichert(p);
-    useData.getState().log({ akteur: "nutzer", userId: user.id, text: "Kanzleiprofil bearbeitet" });
-    toast("Gespeichert", { text: "Im Prototyp gilt die Änderung für diese Sitzung. Dauerhafte Stammdaten pflegt Ihr Ansprechpartner.", ton: "erfolg" });
+    setLaedt(true);
+    try {
+      const neu = await getBackend().kanzlei.profilSpeichern({ ...p, name: p.name.trim(), kurzname: p.kurzname.trim(), adresse: p.adresse.trim(), stadt: p.stadt.trim() });
+      const s = useSession.getState().sitzung;
+      if (s && !istConsole(s)) useSession.getState().setSitzung({ ...s, tenant: neu });
+      setP(profilAus(neu));
+      useData.getState().log({ akteur: "nutzer", userId: user.id, text: "Kanzleiprofil bearbeitet" });
+      toast("Kanzleiprofil gespeichert", { text: "Gilt ab sofort für Seitenleiste, Briefkopf, Rechnungen und Schriftsätze.", ton: "erfolg" });
+    } catch (e) {
+      setFehler(e instanceof Error ? e.message : "Das Kanzleiprofil konnte nicht gespeichert werden.");
+    } finally {
+      setLaedt(false);
+    }
   };
 
   return (
@@ -42,9 +63,10 @@ export function KanzleiTab() {
           className="grid grid-cols-1 gap-4"
           onSubmit={(e) => {
             e.preventDefault();
-            speichern();
+            void speichern();
           }}
         >
+          <fieldset disabled={!darf} className="contents">
           <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
             <Field label="Name der Kanzlei" htmlFor="k-name" className="md:col-span-2">
               <Input id="k-name" value={p.name} onChange={(e) => set("name", e.target.value)} autoComplete="organization" />
@@ -78,6 +100,7 @@ export function KanzleiTab() {
                     type="button"
                     whileTap={{ scale: 0.95 }}
                     aria-pressed={an}
+                    disabled={!darf}
                     onClick={() => toggle(sg)}
                     className={cn("chip !h-8 !px-3 !text-[12.5px] transition-colors", an ? "chip-ink" : "chip-outline hover:bg-[var(--ink-softer)]")}
                   >
@@ -89,6 +112,7 @@ export function KanzleiTab() {
             </div>
           </div>
 
+          </fieldset>
           {fehler && (
             <div role="alert" className="rounded-[12px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal">
               {fehler}
@@ -96,19 +120,22 @@ export function KanzleiTab() {
           )}
 
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-4">
-            <span className="flex items-center gap-1.5 text-[12px] text-fg-3">
-              <Info className="size-3.5" /> Prototyp: Stammdaten sind schreibgeschützt – Änderungen gelten für diese Sitzung.
+            <span className="flex min-w-0 flex-1 basis-[220px] items-center gap-1.5 text-[12px] text-fg-3">
+              <Info className="size-3.5 shrink-0" />
+              {darf ? "Änderungen gelten sofort für Seitenleiste, Briefkopf, Rechnungen und Schriftsätze." : "Das Kanzleiprofil ändern Partner und Administration Ihrer Kanzlei."}
             </span>
-            <div className="flex gap-2">
-              {geaendert && (
-                <Button variant="ghost" onClick={() => setP(gespeichert)}>
-                  Verwerfen
+            {darf && (
+              <div className="flex gap-2">
+                {geaendert && (
+                  <Button variant="ghost" onClick={() => setP(gespeichert)}>
+                    Verwerfen
+                  </Button>
+                )}
+                <Button type="submit" variant="primary" disabled={!geaendert} loading={laedt}>
+                  Änderungen speichern
                 </Button>
-              )}
-              <Button type="submit" variant="primary" disabled={!geaendert}>
-                Änderungen speichern
-              </Button>
-            </div>
+              </div>
+            )}
           </div>
         </form>
       </Abschnitt>

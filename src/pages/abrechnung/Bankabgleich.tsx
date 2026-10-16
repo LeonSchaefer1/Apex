@@ -209,21 +209,36 @@ export function BankabgleichTab() {
 
   const setZustand = (id: string, zustand: Zustand, patch: Partial<Ergebnis> = {}) => setErgebnisse((e) => (e[id] ? { ...e, [id]: { ...e[id], ...patch, zustand } } : e));
 
+  const zahlungsToast = (titel: string, t: Transaktion, nummer: string, erg: ReturnType<typeof bucheTreffer>) =>
+    erg && erg.guthaben > 0
+      ? toast(`${titel} – mit Überzahlung`, { text: `${fmtEUR(erg.verrechnet)} auf ${nummer} verrechnet · ${fmtEUR(erg.guthaben)} als Guthaben der Mandantschaft im Aktenkonto (erstatten oder verrechnen)`, ton: "warnung" })
+      : toast(titel, { text: `${fmtEUR(t.betrag)} auf ${nummer}`, ton: "erfolg" });
+
   const bestaetigen = (t: Transaktion, e: Ergebnis) => {
-    bucheTreffer(t, e, "manuell");
+    const erg = bucheTreffer(t, e, "manuell");
     setZustand(t.id, "bestaetigt");
     const r = e.rechnungId ? rById.get(e.rechnungId) : undefined;
-    toast("Zahlung gebucht", { text: `${fmtEUR(t.betrag)} auf ${r?.nummer ?? "Rechnung"}`, ton: "erfolg" });
+    zahlungsToast("Zahlung gebucht", t, r?.nummer ?? "Rechnung", erg);
   };
 
   const zuordnen = (t: Transaktion) => {
     const rid = manuell[t.id];
     const r = rid ? rById.get(rid) : undefined;
     if (!r) return;
-    const tr: Treffer = { transaktionId: t.id, art: "rechnung", regel: "keine", sicherheit: 1, grund: "Manuell zugeordnet", rechnungId: r.id, akteId: r.akteId };
-    bucheTreffer(t, tr, "manuell");
+    const ueber = round2(t.betrag - offenerBetrag(r));
+    const tr: Treffer = {
+      transaktionId: t.id,
+      art: "rechnung",
+      regel: "keine",
+      sicherheit: 1,
+      grund: "Manuell zugeordnet",
+      rechnungId: r.id,
+      akteId: r.akteId,
+      ...(ueber > 0.004 ? { ueberzahlung: ueber } : {}),
+    };
+    const erg = bucheTreffer(t, tr, "manuell");
     setErgebnisse((e) => ({ ...e, [t.id]: { ...tr, zustand: "manuell" } }));
-    toast("Zahlung zugeordnet", { text: `${fmtEUR(t.betrag)} auf ${r.nummer}`, ton: "erfolg" });
+    zahlungsToast("Zahlung zugeordnet", t, r.nummer, erg);
   };
 
   const importieren = (f: File | undefined) => {
@@ -291,6 +306,7 @@ export function BankabgleichTab() {
               )}
               {e.zustand === "vorschlag" && <Chip tone="amber">Vorschlag</Chip>}
               {e.teilzahlung && <Chip tone="outline">Teilzahlung</Chip>}
+              {e.ueberzahlung && <Chip tone="amber">Überzahlung {fmtEUR(e.ueberzahlung)}</Chip>}
             </div>
             <AkteLabel akte={akte} className="mt-0.5 text-[12.5px]" />
             <div className="mt-0.5 truncate text-[11.5px] text-fg-3" title={e.grund}>
@@ -311,10 +327,17 @@ export function BankabgleichTab() {
       );
     }
     // keine Zuordnung / abgelehnt → manuell zuordnen
+    const gewaehlt = manuell[t.id] ? rById.get(manuell[t.id]) : undefined;
+    const mehr = gewaehlt ? round2(t.betrag - offenerBetrag(gewaehlt)) : 0;
     return (
       <Ziel gestrichelt>
         <div className="min-w-0 flex-1">
           <div className="text-[13px] font-medium">{e.zustand === "abgelehnt" ? "Vorschlag abgelehnt – manuell zuordnen" : "Keine passende Rechnung"}</div>
+          {gewaehlt && mehr > 0.004 && (
+            <p className="mt-1 text-[11.5px] leading-snug text-amber">
+              Der Umsatz übersteigt den offenen Rest von {gewaehlt.nummer} um {fmtEUR(mehr)} – der Mehrbetrag wird als Guthaben der Mandantschaft gebucht.
+            </p>
+          )}
           <div className="mt-2 flex gap-2">
             <Select aria-label="Rechnung wählen" value={manuell[t.id] ?? ""} onChange={(ev) => setManuell((m) => ({ ...m, [t.id]: ev.target.value }))} className="!h-8 !rounded-[10px] !text-[12.5px]">
               <option value="">Rechnung wählen …</option>
