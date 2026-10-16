@@ -19,10 +19,18 @@ function write(key: string, value: unknown) {
   }
 }
 
+let themeVonApp = false;
+
+/** Setzt das Farbschema. „System" lässt ein vom einbettenden Viewer gesetztes data-theme unangetastet. */
 export function applyTheme(t: ThemeWahl) {
   const root = document.documentElement;
-  if (t === "system") root.removeAttribute("data-theme");
-  else root.setAttribute("data-theme", t);
+  if (t === "system") {
+    if (themeVonApp) root.removeAttribute("data-theme");
+    themeVonApp = false;
+  } else {
+    root.setAttribute("data-theme", t);
+    themeVonApp = true;
+  }
 }
 
 interface UIState {
@@ -83,6 +91,7 @@ export interface Toast {
   titel: string;
   text?: string;
   ton?: "info" | "erfolg" | "warnung" | "fehler" | "ki";
+  icon?: import("react").ReactNode;
   aktion?: { label: string; onClick: () => void };
 }
 

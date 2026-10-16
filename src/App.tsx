@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { RouterProvider } from "react-router";
+import { MotionConfig } from "motion/react";
 import { initBackend } from "@/lib/backend";
 import { useSession } from "@/store/session";
 import { useAiStatus } from "@/ai/status";
@@ -31,7 +32,7 @@ export default function App() {
   }, [setSitzung]);
 
   return (
-    <>
+    <MotionConfig reducedMotion="user">
       <div className="aura" aria-hidden>
         <i />
         <i />
@@ -39,9 +40,9 @@ export default function App() {
         <i />
       </div>
       <RefractionDefs />
-      {bereit && router ? <RouterProvider router={router} /> : <div className="relative z-10 h-full"><LadeBildschirm fehler={fehler ?? undefined} text="AnwaltApex startet …" /></div>}
+      <div className="relative z-10 h-full">{bereit && router ? <RouterProvider router={router} /> : <LadeBildschirm fehler={fehler ?? undefined} text="AnwaltApex startet …" />}</div>
       <Toaster />
       <ConfirmHost />
-    </>
+    </MotionConfig>
   );
 }

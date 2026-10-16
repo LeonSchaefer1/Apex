@@ -110,12 +110,15 @@ export async function llmAgent(opts: {
     const sample = useAiStatus.getState().sample;
     if (!sample) throw new DemoModus();
     const turns = [{ role: "user" as const, content: opts.system }, ...opts.messages];
+    const grenzen = await sample.limits?.().catch(() => null);
+    if (grenzen && !grenzen.tools) return llmText({ system: opts.system, messages: opts.messages, onText: opts.onText, signal: opts.signal, effort: "low" });
+    const tools = opts.tools.slice(0, grenzen?.tools?.maxCount ?? opts.tools.length);
     try {
       const r = await sample(turns, {
         onText: opts.onText ? ({ text }: { text: string }) => opts.onText!(text) : undefined,
         signal: opts.signal,
-        modelTier: "default",
-        tools: opts.tools.map((t) => ({
+        modelTier: "quick",
+        tools: tools.map((t) => ({
           name: t.name,
           description: t.description,
           inputSchema: t.inputSchema,

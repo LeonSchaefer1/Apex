@@ -141,6 +141,7 @@ export interface Frist {
   verantwortlichId: ID;
   quelle: "manuell" | "ki" | "automatisch" | "migration";
   kontrolliertVon?: ID; // Vier-Augen-Prinzip
+  bezugId?: ID; // Vorfrist → zugehörige Frist
   notiz?: string;
   createdAt: ISODateTime;
 }
@@ -171,20 +172,27 @@ export interface Anhang {
   groesseKb: number;
 }
 
+export interface KiFristVorschlag {
+  regelKey: string;
+  titel: string;
+  ereignisDatum: ISODate;
+  datum: ISODate;
+  vorfrist?: ISODate;
+  grundlage: string;
+  rechenweg: string[];
+  typ: FristTyp;
+}
+
 export interface KiVorschlag {
   akteId?: ID;
   sicherheit: number; // 0..1
   zusammenfassung: string;
-  frist?: {
-    regelKey: string;
-    titel: string;
-    ereignisDatum: ISODate;
-    datum: ISODate;
-    vorfrist?: ISODate;
-    grundlage: string;
-    rechenweg: string[];
-    typ: FristTyp;
-  };
+  frist?: KiFristVorschlag; // erste (wichtigste) Frist
+  fristen?: KiFristVorschlag[]; // alle erkannten Fristen
+  termin?: { datum: ISODate; uhrzeit?: string; ort?: string; titel: string };
+  akteGrund?: string;
+  typ?: string;
+  aktionen?: string[];
   aktion?: string;
   dokumentArt?: DokumentArt;
 }

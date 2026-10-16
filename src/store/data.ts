@@ -24,7 +24,11 @@ const empty: TenantData = {
 };
 
 function persist(col: CollectionKey, doc: { id: string }) {
-  getBackend().putDoc(col, structuredClone(doc)).catch((e) => console.warn("Speichern fehlgeschlagen", e));
+  try {
+    getBackend().putDoc(col, structuredClone(doc)).catch((e) => console.warn("Speichern fehlgeschlagen", e));
+  } catch (e) {
+    console.warn("Speichern nicht möglich", e);
+  }
 }
 
 export const useData = create<DataState>((set, get) => ({
@@ -63,7 +67,11 @@ export const useData = create<DataState>((set, get) => ({
   remove: (col, id) => {
     const arr = get().data[col] as { id: string }[];
     set({ data: { ...get().data, [col]: arr.filter((x) => x.id !== id) } });
-    getBackend().deleteDoc(col, id).catch((e) => console.warn("Löschen fehlgeschlagen", e));
+    try {
+      getBackend().deleteDoc(col, id).catch((e) => console.warn("Löschen fehlgeschlagen", e));
+    } catch (e) {
+      console.warn("Löschen nicht möglich", e);
+    }
   },
   log: (a) => {
     const doc: Aktivitaet = { id: uid("ak"), zeit: a.zeit ?? nowLocal(), ...a };

@@ -162,17 +162,20 @@ export function DataTable<T>({
                 <tr key={hg.id}>
                   {hg.headers.map((h) => (
                     <th key={h.id} style={{ width: h.getSize() }} className="group relative">
-                      {h.isPlaceholder ? null : (
+                      {h.isPlaceholder ? null : h.column.getCanSort() ? (
                         <button
                           type="button"
-                          disabled={!h.column.getCanSort()}
                           onClick={h.column.getToggleSortingHandler()}
-                          className={cn("inline-flex items-center gap-1", h.column.getCanSort() && "hover:text-fg")}
+                          className={cn("inline-flex items-center gap-1 hover:text-fg", (h.column.columnDef.meta as { align?: string } | undefined)?.align === "right" && "w-full justify-end")}
                         >
                           {flexRender(h.column.columnDef.header, h.getContext())}
                           {h.column.getIsSorted() === "asc" && <ArrowUp className="size-3" />}
                           {h.column.getIsSorted() === "desc" && <ArrowDown className="size-3" />}
                         </button>
+                      ) : (
+                        <div className={cn("inline-flex items-center", (h.column.columnDef.meta as { align?: string } | undefined)?.align === "right" && "w-full justify-end")}>
+                          {flexRender(h.column.columnDef.header, h.getContext())}
+                        </div>
                       )}
                       {h.column.getCanResize() && (
                         <div
@@ -202,7 +205,7 @@ export function DataTable<T>({
                   className={cn(onRowClick && "cursor-pointer")}
                 >
                   {r.getVisibleCells().map((c) => (
-                    <td key={c.id} style={{ width: c.column.getSize(), maxWidth: c.column.getSize() }} className="truncate">
+                    <td key={c.id} style={{ width: c.column.getSize(), maxWidth: c.column.getSize() }} className={cn("truncate", (c.column.columnDef.meta as { align?: string } | undefined)?.align === "right" && "text-right")}>
                       {flexRender(c.column.columnDef.cell, c.getContext())}
                     </td>
                   ))}

@@ -79,3 +79,10 @@ export const AUTOMATION_DEFS: Omit<Automation, "id" | "laeufe" | "letzterLauf" |
 export function automationDef(key: string) {
   return AUTOMATION_DEFS.find((a) => a.key === key);
 }
+
+/**
+ * Bewertung einer automatisch erledigten Stunde mit internen Personalkosten (Kanzleimitarbeiter):
+ * 38 Std./Woche × 48 Wochen ≈ 1.824 Std. ≙ ca. 36.000 € pro Jahr (Werbeaussage AnwaltApex).
+ */
+export const WOCHEN_PRO_JAHR = 48;
+export const WERT_PRO_STUNDE = 36_000 / (38 * WOCHEN_PRO_JAHR);

@@ -109,6 +109,10 @@ export function relDays(iso: ISODate, ref: ISODate = today()): string {
 
 export function relTime(isoDateTime: string, now = Date.now()): string {
   const diff = Math.round((now - new Date(isoDateTime).getTime()) / 1000);
+  if (diff < -60) {
+    const d = new Date(isoDateTime);
+    return new Date(now).toDateString() === d.toDateString() ? `heute, ${fmtTime(isoDateTime)}` : fmtDate(isoDateTime.slice(0, 10));
+  }
   if (diff < 45) return "gerade eben";
   if (diff < 3600) return `vor ${Math.max(1, Math.round(diff / 60))} Min.`;
   if (diff < 86400) return `vor ${Math.round(diff / 3600)} Std.`;

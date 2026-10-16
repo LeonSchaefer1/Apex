@@ -120,7 +120,16 @@ export function snippet(text: string, query: string, radius = 90): string {
     if (i >= 0 && (idx < 0 || i < idx)) idx = i;
   }
   if (idx < 0) return text.slice(0, radius * 2) + (text.length > radius * 2 ? " …" : "");
-  const start = Math.max(0, idx - radius);
-  const end = Math.min(text.length, idx + radius);
+  let start = Math.max(0, idx - radius);
+  let end = Math.min(text.length, idx + radius);
+  // an Wortgrenzen ausrichten
+  if (start > 0) {
+    const sp = text.indexOf(" ", start);
+    if (sp > 0 && sp < idx) start = sp + 1;
+  }
+  if (end < text.length) {
+    const sp = text.lastIndexOf(" ", end);
+    if (sp > idx) end = sp;
+  }
   return (start > 0 ? "… " : "") + text.slice(start, end).trim() + (end < text.length ? " …" : "");
 }

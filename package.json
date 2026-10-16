@@ -14,10 +14,11 @@
     "build:web": "vite build",
     "build:demo": "VITE_APP_MODE=demo VITE_ROUTER=memory vite build --outDir dist-demo",
     "build:static": "VITE_APP_MODE=demo VITE_ROUTER=hash vite build --outDir dist-static --base ./",
-    "build:server": "esbuild server/index.ts --bundle --platform=node --format=esm --target=node22 --packages=external --outfile=dist-server/index.js",
-    "start": "node dist-server/index.js",
+    "build:server": "esbuild server/index.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist-server/index.js --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
+    "start": "node --no-warnings=ExperimentalWarning dist-server/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/core/**/*.test.ts"
+    "test": "tsx --test src/core/core.test.ts src/ai/analyse.test.ts",
+    "build:artifact": "npm run build:demo && node scripts/build-artifact.mjs dist-demo dist-artifact/anwaltapex.html"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.135.0",

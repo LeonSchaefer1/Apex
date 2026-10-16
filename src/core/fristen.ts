@@ -119,6 +119,7 @@ export function regel(key: string): FristRegel | undefined {
 
 export interface FristErgebnis {
   ende: ISODate;
+  rohesEnde: ISODate; // rechnerisches Ende vor Verschiebung nach § 222 Abs. 2 ZPO
   vorfrist: ISODate;
   rechenweg: string[];
   verschoben: boolean;
@@ -201,7 +202,7 @@ export function berechneFrist(params: {
   while (!istWerktag(vorfrist, land) && guard++ < 10) vorfrist = addDays(vorfrist, -1);
   rechenweg.push(`Vorfrist ${vt} Tage vorher, auf Werktag gelegt: ${fmtDateWd(vorfrist)}`);
 
-  return { ende, vorfrist, rechenweg, verschoben, warnungen };
+  return { ende, rohesEnde: roh, vorfrist, rechenweg, verschoben, warnungen };
 }
 
 export function berechneNachRegel(key: string, ereignis: ISODate, land: Bundesland, dauerOverride?: number): FristErgebnis & { regel: FristRegel } {

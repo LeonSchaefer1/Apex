@@ -1,0 +1,15 @@
+# Start: cp .env.example .env  (Werte anpassen)  ->  docker compose up -d  ->  http://localhost:8787
+services:
+  anwaltapex:
+    build: .
+    image: anwaltapex:latest
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    env_file: .env
+    environment:
+      DATABASE_PATH: /data/anwaltapex.db
+    volumes:
+      - anwaltapex-daten:/data
+volumes:
+  anwaltapex-daten:

@@ -7,6 +7,7 @@ export type KiQuelle = "server" | "artefakt" | "demo";
 export interface SampleFn {
   (input: string | { role: "user" | "assistant"; content: string }[], options?: Record<string, unknown>): Promise<{ text: string; truncated: boolean }>;
   json?: <T = unknown>(input: string | { role: "user" | "assistant"; content: string }[], options?: Record<string, unknown>) => Promise<T>;
+  limits?: () => Promise<{ maxPromptBytes: number; tools?: { maxCount: number } }>;
 }
 
 interface AiStatusState {

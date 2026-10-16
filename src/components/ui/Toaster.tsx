@@ -28,7 +28,7 @@ export function Toaster() {
             role="status"
             onClick={() => dismiss(t.id)}
           >
-            <div className="shrink-0">{ICON[t.ton ?? "info"]}</div>
+            <div className="shrink-0 [&>svg]:size-[18px]">{t.icon ?? ICON[t.ton ?? "info"]}</div>
             <div className="min-w-0 flex-1">
               <div className="text-[13.5px] font-semibold leading-tight">{t.titel}</div>
               {t.text && <div className="mt-0.5 text-[12.5px] leading-snug text-white/70">{t.text}</div>}

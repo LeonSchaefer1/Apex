@@ -1,9 +1,9 @@
 // Erzeugt einen vollständigen, in sich stimmigen Datenbestand für eine Kanzlei – relativ zum heutigen Datum.
 import { AUTOMATION_DEFS } from "../automationen";
-import { addDays, addMonthsBGB, diffDays, fmtDate, fmtEUR, round2 } from "../dates";
+import { addDays, addMonthsBGB, diffDays, fmtDate, fmtEUR, round2, toLocalISO } from "../dates";
 import { istWerktag } from "../feiertage";
 import { berechneNachRegel, regel as fristRegel } from "../fristen";
-import { berechneRvg } from "../rvg";
+import { berechneRvg, fassungFuerAuftrag } from "../rvg";
 import type {
   Akte, Aktivitaet, Automation, Dokument, Frist, Kontakt, KontaktRolle, Nachricht,
   Rechnung, Sachgebiet, Tenant, TenantData, Transaktion, User, Zeiteintrag,
@@ -13,7 +13,7 @@ import { createRng, hashString, type Rng } from "./rng";
 import { vorlagenFuer, type FallVorlage, type Parteien } from "./vorlagen";
 import { heroesBerlin, heroesMuenchen, heroesHamburg } from "./heroes";
 
-export const SEED_VERSION = 3;
+export const SEED_VERSION = 4;
 
 export interface SeedInput {
   tenant: Tenant;
@@ -72,7 +72,19 @@ export function createCtx(input: SeedInput, today: string): Ctx {
     usedAz: new Set(),
     counters,
     d: (o) => addDays(today, o),
-    dt: (o, hh = rng.int(8, 17), mm = rng.int(0, 59)) => `${addDays(today, o)}T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00`,
+    dt: (o, hh = rng.int(8, 17), mm = rng.int(0, 59)) => {
+      if (o === 0 && typeof Date !== "undefined") {
+        // Zeitpunkte von heute nie in der Zukunft erzeugen
+        const jetzt = new Date();
+        const jetztMin = jetzt.getHours() * 60 + jetzt.getMinutes();
+        if (today === toLocalISO(jetzt).slice(0, 10) && hh * 60 + mm > jetztMin) {
+          const t = Math.max(0, jetztMin - rng.int(4, 75));
+          hh = Math.floor(t / 60);
+          mm = t % 60;
+        }
+      }
+      return `${addDays(today, o)}T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00`;
+    },
     id: (prefix) => {
       counters[prefix] = (counters[prefix] ?? 0) + 1;
       return `${prefix}-${counters[prefix]}`;
@@ -158,7 +170,7 @@ export function addRegelFrist(ctx: Ctx, akte: Akte, key: string, ereignis: strin
   // Vorfrist als eigener Kalendereintrag
   if (r.vorfrist >= ctx.today || frist.status === "erledigt") {
     addFrist(ctx, {
-      akteId: akte.id, titel: `Vorfrist: ${r.regel.titel}`, typ: "vorfrist", datum: r.vorfrist,
+      akteId: akte.id, titel: `Vorfrist: ${r.regel.titel}`, typ: "vorfrist", datum: r.vorfrist, bezugId: frist.id,
       verantwortlichId: akte.sachbearbeiterId ?? akte.bearbeiterId, quelle: "automatisch", status: frist.status,
     });
   }
@@ -222,7 +234,7 @@ export function addRechnung(ctx: Ctx, akte: Akte, opts: { positionen?: string[];
   } else {
     const pos = opts.positionen ?? [];
     if (!pos.length || akte.gegenstandswert <= 0) return undefined;
-    const calc = berechneRvg({ positionen: pos.map((nr) => ({ nr })), gegenstandswert: akte.gegenstandswert });
+    const calc = berechneRvg({ positionen: pos.map((nr) => ({ nr })), gegenstandswert: akte.gegenstandswert, fassung: fassungFuerAuftrag(akte.createdAt.slice(0, 10)) });
     r = {
       id: ctx.id("r"), nummer, akteId: akte.id, empfaengerId: akte.rsv?.deckung === "erteilt" ? akte.mandantId : akte.mandantId,
       datum, faellig: addDays(datum, 14),

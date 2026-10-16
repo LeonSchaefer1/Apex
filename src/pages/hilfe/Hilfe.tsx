@@ -1,5 +1,97 @@
-import { PageHeader } from "@/components/ui";
+import { useEffect } from "react";
+import { useLocation } from "react-router";
+import { motion, useReducedMotion } from "motion/react";
+import { MessageCircleQuestion, Mic, Sparkles } from "lucide-react";
+import { useKanzlei } from "@/store/session";
+import { useUI } from "@/store/ui";
+import { AiChip, Button, Card, PageHeader } from "@/components/ui";
+import { AnsprechpartnerKarte } from "./Ansprechpartner";
+import { WikiBibliothek } from "./WikiBibliothek";
+import { Systemstatus } from "./Systemstatus";
+import { GepruefteUpdates } from "./Updates";
+
+const BEISPIELE = ["Wie berechne ich eine Berufungsfrist?", "Wie lade ich eine Kollegin ins Team ein?", "Was erledigt der 38h-Motor für mich?"];
 
 export default function Hilfe() {
-  return <PageHeader title="Hilfe & Support" hilfe="hilfe" subtitle="Wird gerade gebaut." />;
+  const { tenant } = useKanzlei();
+  const loc = useLocation();
+
+  // Sprung zum Systemstatus (z. B. aus der Kopfleiste „Alle Dienste verbunden")
+  useEffect(() => {
+    if (loc.hash !== "#status") return;
+    const t = setTimeout(() => document.getElementById("status")?.scrollIntoView({ behavior: "smooth", block: "start" }), 300);
+    return () => clearTimeout(t);
+  }, [loc.hash, loc.key]);
+
+  return (
+    <div>
+      <PageHeader title="Hilfe & Support" hilfe="hilfe" subtitle="Animiertes Wiki, Systemstatus und Ihr persönlicher Ansprechpartner – Hilfe, die wirklich hilft, ohne Hotline-Warteschleife." />
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <AnsprechpartnerKarte ap={tenant.ansprechpartner} className="lg:col-span-2" />
+        <AssistentKarte />
+      </div>
+
+      <div className="mt-10">
+        <WikiBibliothek />
+      </div>
+      <div className="mt-10">
+        <Systemstatus />
+      </div>
+      <div className="mt-10">
+        <GepruefteUpdates />
+      </div>
+    </div>
+  );
+}
+
+function AssistentKarte() {
+  const oeffne = useUI((s) => s.oeffneAssistent);
+  const reduziert = useReducedMotion();
+  return (
+    <Card className="ai-ring flex flex-col overflow-hidden">
+      <div className="flex items-start justify-between gap-3">
+        <div className="relative grid size-16 place-items-center">
+          <motion.span
+            aria-hidden
+            className="ai-fill absolute inset-1 rounded-full opacity-45 blur-[14px]"
+            animate={reduziert ? undefined : { scale: [1, 1.15, 1], opacity: [0.35, 0.55, 0.35] }}
+            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+          />
+          <motion.span
+            aria-hidden
+            className="ai-fill relative size-12 rounded-full shadow-[inset_0_2px_6px_rgba(255,255,255,0.55),inset_0_-6px_12px_rgba(0,0,0,0.18)]"
+            animate={reduziert ? undefined : { scale: [1, 1.04, 1], rotate: [0, 8, 0] }}
+            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+          />
+        </div>
+        <AiChip>KI</AiChip>
+      </div>
+      <div className="mt-4">
+        <div className="title-lg">Apex Assistent</div>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-fg-3">Fragen Sie per Text oder Sprache. Der Assistent erklärt, zeigt den Weg, erledigt Aufgaben – und verbindet Sie bei Bedarf mit einem Menschen.</p>
+      </div>
+      <div className="mt-4 grid grid-cols-1 gap-1.5">
+        {BEISPIELE.map((b) => (
+          <button
+            key={b}
+            type="button"
+            onClick={() => oeffne(b)}
+            className="flex items-center gap-2 rounded-[12px] bg-[var(--ink-softer)] px-3 py-2 text-left text-[12.5px] text-fg-2 transition-colors hover:bg-[var(--ink-soft)] hover:text-fg"
+          >
+            <MessageCircleQuestion className="size-3.5 shrink-0 text-violet" />
+            <span className="min-w-0 truncate">{b}</span>
+          </button>
+        ))}
+      </div>
+      <div className="mt-auto flex flex-wrap items-center gap-2 pt-5">
+        <Button variant="ai" icon={<Sparkles className="size-4" />} onClick={() => oeffne()}>
+          Assistent öffnen
+        </Button>
+        <span className="flex items-center gap-1 text-[12px] text-fg-3">
+          <Mic className="size-3.5" /> auch per Sprache
+        </span>
+      </div>
+    </Card>
+  );
 }

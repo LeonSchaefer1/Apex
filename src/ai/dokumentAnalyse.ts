@@ -82,7 +82,8 @@ export function findeAkte(text: string, data: TenantData, hinweise: string[] = [
     }
     if (s > best.sicherheit) best = { akteId: a.id, sicherheit: Math.min(0.96, s + 0.02), grund: gruende.join(" · ") };
   }
-  return best.sicherheit >= 0.36 ? best : { sicherheit: 0 };
+  // Nur Nachname allein reicht nicht für eine automatische Zuordnung (zu unsicher).
+  return best.sicherheit >= 0.5 ? best : { sicherheit: 0 };
 }
 
 function klassifiziere(t: string): { typ: string; art: DokumentArt } {
@@ -159,7 +160,7 @@ export function analysiereRegelbasiert(input: { text: string; betreff?: string; 
   const fristen: FristVorschlag[] = [];
   const aktionen: string[] = [];
   let termin: DokAnalyse["termin"];
-  const eeb = /empfangsbekenntnis|eeb|gegen eeb/.test(n);
+  const eeb = /empfangsbekenntnis|\beeb\b/.test(n);
   const zustellung = eingang; // beA: Zustellung mit Abgabe des eEB – vorsorglich Eingangstag
 
   if (typ === "Urteil" && /berufung/.test(n)) {
@@ -307,6 +308,11 @@ export async function analysiereNachricht(n: Nachricht, data: TenantData, land: 
     aktion: analyse.aktionen.join(" "),
     dokumentArt: analyse.dokumentArt,
     frist: f ? { regelKey: f.regelKey, titel: f.titel, ereignisDatum: f.ereignisDatum, datum: f.ende, vorfrist: f.vorfrist, grundlage: f.grundlage, rechenweg: f.rechenweg, typ: f.typ } : undefined,
+    fristen: analyse.fristen.map((x) => ({ regelKey: x.regelKey, titel: x.titel, ereignisDatum: x.ereignisDatum, datum: x.ende, vorfrist: x.vorfrist, grundlage: x.grundlage, rechenweg: x.rechenweg, typ: x.typ })),
+    termin: analyse.termin,
+    akteGrund: analyse.akteGrund,
+    typ: analyse.typ,
+    aktionen: analyse.aktionen,
   };
   return { analyse, vorschlag };
 }

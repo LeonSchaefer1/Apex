@@ -1,0 +1,11 @@
+node_modules
+dist
+dist-demo
+dist-static
+dist-server
+data
+.git
+screenshots
+research
+*.log
+.env
