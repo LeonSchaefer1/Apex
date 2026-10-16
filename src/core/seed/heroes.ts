@@ -53,7 +53,7 @@ export function heroesBerlin(ctx: Ctx) {
   const a1 = akte(ctx, {
     aktenzeichen: nextAz(ctx, 142), titel: "Weber ./. Kröger Logistik GmbH", sachgebiet: "Arbeitsrecht", phase: "Mandatsaufnahme", status: "offen",
     mandantId: weber.id, gegnerId: kroeger.id, gerichtId: arbg.id, gegenstandswert: 10200, bearbeiterId: julia.id, sachbearbeiterId: mia?.id,
-    rsv: { versicherung: "Nordlicht Rechtsschutz AG", versicherungsnummer: "RS-4471209", schadennummer: `S${ctx.yy}-88412`, deckung: "angefragt", selbstbeteiligung: 150 },
+    rsv: { versicherung: "Nordlicht Rechtsschutz AG", versicherungsnummer: "RS-4471209", schadennummer: `S${ctx.yy}-88412`, deckung: "offen", selbstbeteiligung: 150 },
     beschreibung: "Fristlose, hilfsweise ordentliche Kündigung nach 14 Jahren Betriebszugehörigkeit wegen Mitnahme von drei beschädigten, zur Entsorgung bestimmten Kaffeepackungen (Warenwert 8,97 €). Keine Abmahnung. Mandant (52, verheiratet, zwei Kinder) möchte den Arbeitsplatz behalten.",
     schlagworte: ["fristlose kündigung", "bagatelle", "geringwertig", "abmahnung", "interessenabwägung", "betriebszugehörigkeit", "kündigungsschutz", "emmely", "pfandbon"],
     prioritaet: "hoch", createdAt: dt(-2, 10, 12), updatedAt: dt(0, 8, 2), mandantenportal: true,
@@ -141,7 +141,7 @@ export function heroesBerlin(ctx: Ctx) {
   addRechnung(ctx, a4, { positionen: ["2300", "3100", "3104"], datumOffset: -38, status: "gestellt" });
   addMsg(ctx, {
     kanal: "bea", von: G.lg, vonAdresse: "DE.Justiz.LG-Berlin-II", betreff: `${neumannAz} – Neumann ./. Arslan Autohaus GmbH – Zustellung Urteil gegen eEB`,
-    text: `In dem Rechtsstreit\nMichael Neumann ./. Arslan Autohaus GmbH\nAz.: ${neumannAz}\n\nwird Ihnen anliegend das Urteil vom ${fmtDate(d(-7))} zugestellt.\n\nDie Beklagte wird verurteilt, an den Kläger 14.250,00 € nebst Zinsen Zug um Zug gegen Rückgabe des Fahrzeugs zu zahlen. Im Übrigen wird die Klage abgewiesen (Nutzungsentschädigung 4.650,00 €). Die Kosten des Rechtsstreits tragen der Kläger zu 25 %, die Beklagte zu 75 %.\n\nSie werden gebeten, das elektronische Empfangsbekenntnis abzugeben.\n\nRechtsbehelfsbelehrung: Gegen dieses Urteil ist die Berufung zulässig. Sie ist binnen einer Notfrist von einem Monat ab Zustellung beim Kammergericht einzulegen und binnen zwei Monaten ab Zustellung zu begründen.`,
+    text: `In dem Rechtsstreit\nMichael Neumann ./. Arslan Autohaus GmbH\nAz.: ${neumannAz}\n\nwird Ihnen anliegend das Urteil vom ${fmtDate(d(-7))} zugestellt.\n\nDie Beklagte wird verurteilt, an den Kläger 14.250,00 € nebst Zinsen Zug um Zug gegen Rückgabe des Fahrzeugs zu zahlen. Im Übrigen wird die Klage abgewiesen (Nutzungsentschädigung 4.650,00 €). Die Kosten des Rechtsstreits tragen der Kläger zu 25 %, die Beklagte zu 75 %. Das Urteil ist gegen Sicherheitsleistung in Höhe von 110 % des jeweils zu vollstreckenden Betrags vorläufig vollstreckbar.\n\nSie werden gebeten, das elektronische Empfangsbekenntnis abzugeben.\n\nRechtsbehelfsbelehrung: Gegen dieses Urteil ist die Berufung zulässig. Sie ist binnen einer Notfrist von einem Monat ab Zustellung beim Kammergericht einzulegen und binnen zwei Monaten ab Zustellung zu begründen.`,
     eingang: dt(0, 8, 12), akteId: undefined, status: "neu", zugeordnet: false, eebErforderlich: true, kiStatus: "ausstehend",
     anhaenge: [{ name: `Urteil_${neumannAz.replace(/\s/g, "").replace("/", "-")}.pdf`, groesseKb: 412 }, { name: "Zustellungsnachricht.xml", groesseKb: 6 }],
   });
@@ -232,11 +232,11 @@ export function heroesBerlin(ctx: Ctx) {
 
   // Verlauf der Präsentationsakten – passend zu Dokumenten, Fristen und Posteingang
   verlauf(ctx, a1, [
-    { zeit: plusMin(a1.createdAt, 1), akteur: "automation", key: "mandatsaufnahme", text: "Mandatsaufnahme-Paket (Vollmacht, Mandatsbestätigung, Datenschutz) erstellt – 142/26" },
+    { zeit: plusMin(a1.createdAt, 1), akteur: "automation", key: "mandatsaufnahme", text: "Mandatsaufnahme-Paket (Vollmacht, Mandatsbestätigung, Datenschutz) erstellt und zur Freigabe vorgelegt – 142/26" },
     { zeit: dt(-2, 10, 41), akteur: "ki", key: "posteingang-fristen", text: "Kündigungsschreiben gelesen: Klagefrist nach § 4 S. 1 KSchG erkannt und berechnet – 142/26" },
     { zeit: dt(-2, 10, 42), akteur: "automation", key: "vorfristen", text: "Vorfrist zur Kündigungsschutzklage gesetzt und Verantwortliche informiert – 142/26" },
     { zeit: dt(-2, 11, 5), akteur: "nutzer", userId: julia.id, text: "Gesprächsnotiz Erstberatung angelegt – 142/26" },
-    { zeit: dt(-2, 11, 34), akteur: "automation", key: "deckungsanfrage", text: "Deckungsanfrage an Nordlicht Rechtsschutz AG versendet – 142/26" },
+    { zeit: dt(-2, 11, 34), akteur: "automation", key: "deckungsanfrage", text: "Deckungsanfrage an Nordlicht Rechtsschutz AG zur Freigabe vorgelegt – 142/26" },
     { zeit: dt(-2, 11, 35), akteur: "automation", key: "vorfristen", text: "Wiedervorlage „Deckungszusage Nordlicht“ gesetzt – 142/26" },
     ...(mia ? [{ zeit: dt(-1, 9, 14), akteur: "nutzer" as const, userId: mia.id, text: "Klagefrist (§ 4 KSchG) im Vier-Augen-Prinzip kontrolliert – 142/26" }] : []),
     { zeit: dt(-1, 7, 30), akteur: "automation", key: "bankabgleich", text: "Bankabgleich: Vorschuss Thomas Weber (500,00 €) auf 142/26 gebucht" },
@@ -244,29 +244,30 @@ export function heroesBerlin(ctx: Ctx) {
   const klageerwiderung = data.dokumente.find((x) => x.akteId === a2.id && x.name.startsWith("Klageerwiderung"));
   verlauf(ctx, a2, [
     ...(klageerwiderung ? [
-      { zeit: plusMin(klageerwiderung.createdAt, 1), akteur: "automation" as const, key: "zuordnung", text: "Klageerwiderung Möller & Thiel (beA) automatisch der Akte 137/26 zugeordnet" },
+      { zeit: plusMin(klageerwiderung.createdAt, 1), akteur: "automation" as const, key: "zuordnung", text: "Klageerwiderung Möller & Thiel (beA) der Akte 137/26 zugeordnet" },
       { zeit: plusMin(klageerwiderung.createdAt, 2), akteur: "ki" as const, key: "posteingang-fristen", text: "Richterliche Frist zur Replik erkannt und eingetragen – 137/26" },
     ] : []),
     { zeit: dt(-6, 10, 15), akteur: "ki", key: "posteingang-fristen", text: "Ladung erkannt: Termin zur mündlichen Verhandlung eingetragen – 137/26" },
     { zeit: dt(-6, 10, 16), akteur: "automation", key: "eeb", text: "Empfangsbekenntnis vorbereitet – 137/26" },
     { zeit: dt(-6, 10, 40), akteur: "nutzer", userId: jonas.id, text: "Empfangsbekenntnis abgegeben – 137/26" },
-    { zeit: dt(-1, 15, 3), akteur: "automation", key: "zuordnung", text: "Vergleichsvorschlag Möller & Thiel automatisch der Akte 137/26 zugeordnet" },
+    { zeit: dt(-1, 15, 3), akteur: "automation", key: "zuordnung", text: "Vergleichsvorschlag Möller & Thiel der Akte 137/26 zugeordnet" },
   ]);
   verlauf(ctx, a3, [
-    { zeit: plusMin(a3.createdAt, 1), akteur: "automation", key: "mandatsaufnahme", text: "Mandatsaufnahme-Paket (Vollmacht, Mandatsbestätigung, Datenschutz) erstellt – 131/26" },
+    { zeit: plusMin(a3.createdAt, 1), akteur: "automation", key: "mandatsaufnahme", text: "Mandatsaufnahme-Paket (Vollmacht, Mandatsbestätigung, Datenschutz) erstellt und zur Freigabe vorgelegt – 131/26" },
     { zeit: dt(-4, 8, 5), akteur: "automation", key: "bankabgleich", text: "Bankabgleich: Zahlung Elbtal Versicherung (6.120,00 €) als Fremdgeld erkannt – Weiterleitung an die Mandantin vorgemerkt – 131/26" },
-    { zeit: dt(-1, 11, 23), akteur: "automation", key: "zuordnung", text: "Schreiben der Elbtal Versicherung automatisch der Akte 131/26 zugeordnet" },
+    { zeit: dt(-1, 11, 23), akteur: "automation", key: "zuordnung", text: "Schreiben der Elbtal Versicherung der Akte 131/26 zugeordnet" },
     { zeit: dt(-1, 11, 24), akteur: "automation", key: "vorfristen", text: "Wiedervorlage „Nachforderung Reparaturkosten“ gesetzt – 131/26" },
   ]);
   verlauf(ctx, a4, [
-    { zeit: dt(-10, 9, 0), akteur: "automation", key: "mahnwesen", text: "Zahlungserinnerung versendet – 118/26" },
+    { zeit: dt(-10, 9, 0), akteur: "automation", key: "mahnwesen", text: "Zahlungserinnerung zur Freigabe vorgelegt – 118/26" },
+    { zeit: dt(-10, 9, 26), akteur: "nutzer", userId: julia.id, text: "Zahlungserinnerung freigegeben und versandt – 118/26" },
   ]);
   verlauf(ctx, a5, [
     { zeit: dt(-45, 7, 50), akteur: "automation", key: "bankabgleich", text: "Bankabgleich: Teilzahlung Rainer Lenz (500,00 €) auf das Forderungskonto 126/26 gebucht" },
     { zeit: dt(-15, 7, 50), akteur: "automation", key: "bankabgleich", text: "Bankabgleich: Teilzahlung Rainer Lenz (500,00 €) auf das Forderungskonto 126/26 gebucht" },
   ]);
   verlauf(ctx, a6, [
-    { zeit: plusMin(a6.createdAt, 2), akteur: "automation", key: "mandatsaufnahme", text: "Mandatsaufnahme-Paket (Vollmacht, Mandatsbestätigung, Datenschutz) erstellt – 149/26" },
+    { zeit: plusMin(a6.createdAt, 2), akteur: "automation", key: "mandatsaufnahme", text: "Mandatsaufnahme-Paket (Vollmacht, Mandatsbestätigung, Datenschutz) erstellt und zur Freigabe vorgelegt – 149/26" },
   ]);
 }
 
@@ -333,7 +334,7 @@ export function heroesMuenchen(ctx: Ctx) {
     ki: { akteId: a3.id, sicherheit: 0.98, zusammenfassung: "Mandantin dokumentiert fortschreitenden Mangel; dritter Nachbesserungsversuch faktisch gescheitert (Erklärung des Monteurs).", aktion: "Rücktrittserklärung mit Fristsetzung für Rückabwicklung vorbereiten." },
   });
   verlauf(ctx, a3, [
-    { zeit: dt(0, 7, 56), akteur: "automation", key: "zuordnung", text: `Nachricht automatisch der Akte ${a3.aktenzeichen} zugeordnet` },
+    { zeit: dt(0, 7, 56), akteur: "automation", key: "zuordnung", text: `Nachricht der Akte ${a3.aktenzeichen} zugeordnet` },
   ]);
   void a2;
 }
@@ -390,10 +391,10 @@ export function heroesHamburg(ctx: Ctx) {
     ki: { akteId: a3.id, sicherheit: 0.97, zusammenfassung: "Privates Nachlassverzeichnis mit vermutlich zu niedrigem Immobilienwert (310.000 € vs. ca. 480.000 € Vergleichswert).", aktion: "Notarielles Nachlassverzeichnis und Wertgutachten nach § 2314 Abs. 1 S. 2, 3 BGB verlangen (Entwurf liegt bereit)." },
   });
   verlauf(ctx, a1, [
-    { zeit: plusMin(a1.createdAt, 1), akteur: "automation", key: "mandatsaufnahme", text: `Mandatsaufnahme-Paket (Vollmacht, Mandatsbestätigung, Datenschutz) erstellt – ${a1.aktenzeichen}` },
+    { zeit: plusMin(a1.createdAt, 1), akteur: "automation", key: "mandatsaufnahme", text: `Mandatsaufnahme-Paket (Vollmacht, Mandatsbestätigung, Datenschutz) erstellt und zur Freigabe vorgelegt – ${a1.aktenzeichen}` },
     { zeit: plusMin(a1.createdAt, 3), akteur: "ki", key: "posteingang-fristen", text: `Strafbefehl gelesen: Einspruchsfrist (§ 410 StPO) erkannt und berechnet – ${a1.aktenzeichen}` },
   ]);
   verlauf(ctx, a3, [
-    { zeit: dt(0, 7, 21), akteur: "automation", key: "zuordnung", text: `Nachricht automatisch der Akte ${a3.aktenzeichen} zugeordnet` },
+    { zeit: dt(0, 7, 21), akteur: "automation", key: "zuordnung", text: `Nachricht der Akte ${a3.aktenzeichen} zugeordnet` },
   ]);
 }

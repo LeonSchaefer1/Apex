@@ -1,24 +1,17 @@
 import { useState } from "react";
 import { motion } from "motion/react";
-import { Check, Clock, Mail, MonitorUp, Phone, PhoneCall, ShieldCheck, Timer } from "lucide-react";
+import { AlarmClock, Check, Clock, Mail, MonitorUp, Phone, PhoneCall, ShieldCheck, Timer } from "lucide-react";
 import type { Ansprechpartner } from "@/core/types";
 import { useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
 import { Avatar, Button, Card, Chip, Field, Input, Modal, Segmented, Select, Textarea } from "@/components/ui";
 import { festeAnsprechperson } from "@/lib/rollen";
+import { RUECKRUF_SIMULIERT, rueckrufZusage } from "@/core/rueckruf";
 import { CopyButton } from "./kopieren";
 
 const THEMEN = ["Umzug & Datenübernahme", "Fristen & beA", "Abrechnung & RVG", "Schnittstellen (E-Mail, Bank)", "Team & Zugänge", "Etwas anderes"];
-type Wunsch = "sofort" | "nachmittag" | "morgen";
-const spaet = () => new Date().getHours() >= 16;
-const WUNSCH_TEXT: Record<Wunsch, string> = {
-  sofort: "so bald wie möglich",
-  get nachmittag() {
-    return spaet() ? "morgen zwischen 14 und 17 Uhr" : "heute zwischen 14 und 17 Uhr";
-  },
-  morgen: "morgen Vormittag",
-};
+type Wunsch = "sofort" | "wunschzeit";
 
 /** Fester, direkter Ansprechpartner statt Hotline-Warteschleife. */
 export function AnsprechpartnerKarte({ ap, className }: { ap: Ansprechpartner; className?: string }) {
@@ -48,8 +41,8 @@ export function AnsprechpartnerKarte({ ap, className }: { ap: Ansprechpartner; c
               <Chip tone="green" dot>
                 Erreichbar · {ap.verfuegbar}
               </Chip>
-              <Chip tone="ink" icon={<Timer className="size-3" />} title="Demo-Wert">
-                Ø Antwortzeit heute: 4 Min.
+              <Chip tone="ink" icon={<Timer className="size-3" />} title="Beispielwert – im Prototyp simuliert">
+                Ø Antwortzeit heute: 4 Min. (Beispiel)
               </Chip>
             </div>
           </div>
@@ -71,9 +64,9 @@ export function AnsprechpartnerKarte({ ap, className }: { ap: Ansprechpartner; c
 
         <div className="relative mt-6 rounded-[18px] bg-[var(--surface-2)] p-4 ring-1 ring-[var(--line)]">
           <div className="mb-3 text-[12.5px] font-semibold">Statt Warteschleife und Ticket-Sackgasse: {vorname} kennt Ihre Kanzlei.</div>
-          <Vergleich label="Hotline klassischer Kanzleisoftware" wert="45–60 Min." anteil={1} ton="neutral" />
+          <Vergleich label="Telefon-Warteschleife klassischer Kanzleisoftware" wert="45–60 Min." anteil={1} ton="neutral" />
           <Vergleich label={`${ap.name} (Ø heute)`} wert="4 Min." anteil={4 / 60} ton="green" />
-          <p className="mt-2.5 text-[11.5px] leading-snug text-fg-4">Wartezeiten klassischer Hotlines laut Bewertungen von Kanzleien; Antwortzeit hier ist ein Demo-Wert. Unser Ziel: Rückruf innerhalb von 30 Minuten.</p>
+          <p className="mt-2.5 text-[12.5px] leading-snug text-fg-3">Wartezeiten klassischer Telefon-Warteschleifen laut Bewertungen von Kanzleien; die Antwortzeit hier ist ein Beispielwert. Unsere Zusage: Rückruf innerhalb von 30 Minuten in der Servicezeit ({ap.verfuegbar}).</p>
         </div>
       </div>
 
@@ -88,7 +81,7 @@ function KontaktZeile({ icon, label, wert }: { icon: React.ReactNode; label: str
     <div className="flex min-w-0 items-center gap-3 rounded-[14px] bg-[var(--ink-softer)] py-2 pl-3 pr-1.5">
       <span className="text-ink">{icon}</span>
       <span className="min-w-0 flex-1">
-        <span className="block text-[11px] text-fg-4">{label}</span>
+        <span className="block text-[12.5px] text-fg-3">{label}</span>
         <span className="block select-all truncate text-[13.5px] font-medium">{wert}</span>
       </span>
       <CopyButton text={wert} label={`${label} kopieren`} />
@@ -99,7 +92,7 @@ function KontaktZeile({ icon, label, wert }: { icon: React.ReactNode; label: str
 function Vergleich({ label, wert, anteil, ton }: { label: string; wert: string; anteil: number; ton: "neutral" | "green" }) {
   return (
     <div className="mb-2 last:mb-0">
-      <div className="mb-1 flex items-baseline justify-between gap-3 text-[12px]">
+      <div className="mb-1 flex items-baseline justify-between gap-3 text-[12.5px]">
         <span className="truncate text-fg-3">{label}</span>
         <span className="num shrink-0 font-semibold text-fg">{wert}</span>
       </div>
@@ -117,31 +110,45 @@ function Vergleich({ label, wert, anteil, ton }: { label: string; wert: string; 
 }
 
 function RueckrufModal({ open, onClose, ap }: { open: boolean; onClose: () => void; ap: Ansprechpartner }) {
-  const { user } = useKanzlei();
-  const [thema, setThema] = useState(THEMEN[0]);
+  const { user, tenant } = useKanzlei();
+  const [thema, setThema] = useState("");
   const [wunsch, setWunsch] = useState<Wunsch>("sofort");
+  const [wunschzeit, setWunschzeit] = useState("");
+  const [dringend, setDringend] = useState(false);
   const [nummer, setNummer] = useState("");
   const [anliegen, setAnliegen] = useState("");
-  const [gesendet, setGesendet] = useState(false);
+  const [zusage, setZusage] = useState<string | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
+  // Verbindliche Zusage mit Uhrzeit: jetzt + 30 Min. in der Servicezeit, sonst nächster Werktag 8:30 Uhr
+  const jetztZusage = rueckrufZusage(new Date(), ap.verfuegbar, tenant.bundesland).text;
+  const gesendet = zusage !== null;
 
   const schliessen = () => {
     onClose();
     setTimeout(() => {
-      setGesendet(false);
+      setZusage(null);
+      setThema("");
+      setWunsch("sofort");
+      setWunschzeit("");
+      setDringend(false);
       setAnliegen("");
       setFehler(null);
     }, 300);
   };
 
   const senden = () => {
+    if (!thema) return setFehler(`Bitte wählen Sie ein Thema – so kann sich ${ap.name.split(" ")[0]} auf den Rückruf vorbereiten.`);
+    if (wunsch === "wunschzeit" && !wunschzeit.trim()) return setFehler("Bitte nennen Sie Ihre Wunschzeit, z. B. „morgen ab 14 Uhr“ – oder wählen Sie „So bald wie möglich“.");
     if (nummer.trim() && !/^[+\d][\d\s/()-]{5,}$/.test(nummer.trim())) {
       setFehler("Bitte geben Sie eine Telefonnummer mit Ziffern an, z. B. +49 30 1234567 – oder lassen Sie das Feld leer.");
       return;
     }
-    useData.getState().log({ akteur: "nutzer", userId: user.id, text: `Rückruf angefordert bei ${ap.name}: ${thema} – ${WUNSCH_TEXT[wunsch]}` });
-    setGesendet(true);
-    toast("Rückrufwunsch übermittelt", { text: `${ap.name} ruft Sie ${WUNSCH_TEXT[wunsch]} an. (Demo: keine echte Anfrage)`, ton: "erfolg" });
+    setFehler(null);
+    const text = wunsch === "sofort" ? jetztZusage : `Rückruf zu Ihrer Wunschzeit: ${wunschzeit.trim()}`;
+    const prio = dringend ? " · Priorität: dringend (Frist läuft heute ab)" : "";
+    useData.getState().log({ akteur: "nutzer", userId: user.id, text: `Rückruf angefordert bei ${ap.name}: ${thema} – ${text}${prio}` });
+    setZusage(text);
+    toast("Rückrufwunsch vorgemerkt", { text: `${text}${dringend ? " · dringend" : ""} ${RUECKRUF_SIMULIERT}`, ton: "erfolg" });
   };
 
   return (
@@ -174,21 +181,38 @@ function RueckrufModal({ open, onClose, ap }: { open: boolean; onClose: () => vo
           <motion.div initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 420, damping: 20 }} className="mb-3 grid size-14 place-items-center rounded-full bg-green-soft text-green">
             <Check className="size-7" strokeWidth={2.6} />
           </motion.div>
-          <p className="text-[14px] text-fg-2">
-            {ap.name} ruft Sie <strong className="text-fg">{WUNSCH_TEXT[wunsch]}</strong> an{nummer.trim() ? ` unter ${nummer.trim()}` : ""}.
+          <p className="text-[15px] font-semibold text-fg">{zusage}</p>
+          <p className="mt-1 text-[13.5px] text-fg-2">
+            {ap.name} ruft Sie an{nummer.trim() ? ` unter ${nummer.trim()}` : ""}.
           </p>
-          <p className="mt-1 text-[13px] text-fg-3">Thema: {thema}</p>
-          <p className="mt-4 rounded-[12px] bg-amber-soft px-3 py-2 text-[12px] text-fg-2">Demo-Betrieb: Es wurde keine echte Anfrage versendet. Der Wunsch steht im Aktivitätsprotokoll.</p>
+          <p className="mt-1 text-[13px] text-fg-3">
+            Thema: {thema}
+            {dringend && " · Priorität: dringend (Frist läuft heute ab)"}
+          </p>
+          <p className="mt-4 rounded-[12px] bg-amber-soft px-3 py-2 text-[12.5px] text-fg-2">{RUECKRUF_SIMULIERT.replace(/^\(|\)$/g, "").replace(/^i/, "I")}. Der Wunsch steht im Aktivitätsprotokoll.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-3.5">
-          <Field label="Worum geht es?" htmlFor="rr-thema">
-            <Select id="rr-thema" value={thema} onChange={(e) => setThema(e.target.value)}>
+          <div className="flex items-start gap-2.5 rounded-[14px] bg-green-soft px-3.5 py-2.5 text-[13px] text-fg-2">
+            <Clock className="mt-0.5 size-4 shrink-0 text-green" />
+            <span>
+              <strong className="text-fg">Zusage: {jetztZusage}</strong>
+              <span className="block text-[12.5px] text-fg-3">{RUECKRUF_SIMULIERT}</span>
+            </span>
+          </div>
+          <Field label="Worum geht es? (Pflicht)" htmlFor="rr-thema">
+            <Select id="rr-thema" value={thema} onChange={(e) => setThema(e.target.value)} aria-required="true">
+              <option value="">Bitte wählen …</option>
               {THEMEN.map((t) => (
                 <option key={t}>{t}</option>
               ))}
             </Select>
           </Field>
+          <label htmlFor="rr-dringend" className="flex cursor-pointer items-center gap-2.5 rounded-[12px] px-1 text-[13.5px] text-fg-2">
+            <input id="rr-dringend" type="checkbox" checked={dringend} onChange={(e) => setDringend(e.target.checked)} className="size-4 accent-[var(--seal)]" />
+            <AlarmClock className="size-4 text-seal" />
+            Frist läuft heute ab – bitte vorrangig
+          </label>
           <Field label="Wann passt es Ihnen?">
             <Segmented<Wunsch>
               full
@@ -197,11 +221,15 @@ function RueckrufModal({ open, onClose, ap }: { open: boolean; onClose: () => vo
               onChange={setWunsch}
               options={[
                 { value: "sofort", label: "Sofort" },
-                { value: "nachmittag", label: spaet() ? "Morgen 14–17 Uhr" : "Heute 14–17 Uhr" },
-                { value: "morgen", label: "Morgen früh" },
+                { value: "wunschzeit", label: "Wunschzeit" },
               ]}
             />
           </Field>
+          {wunsch === "wunschzeit" && (
+            <Field label="Ihre Wunschzeit" htmlFor="rr-zeit">
+              <Input id="rr-zeit" placeholder="z. B. morgen ab 14 Uhr" value={wunschzeit} onChange={(e) => setWunschzeit(e.target.value)} />
+            </Field>
+          )}
           <Field label="Rückrufnummer (optional)" htmlFor="rr-nummer" hint="Leer lassen, wenn die Nummer in Ihrem Profil stimmt.">
             <Input id="rr-nummer" inputMode="tel" placeholder="+49 30 …" value={nummer} onChange={(e) => setNummer(e.target.value)} />
           </Field>
@@ -213,8 +241,8 @@ function RueckrufModal({ open, onClose, ap }: { open: boolean; onClose: () => vo
               {fehler}
             </div>
           )}
-          <div className="flex items-center gap-2 text-[12px] text-fg-3">
-            <Clock className="size-3.5" /> {ap.verfuegbar}
+          <div className="flex items-center gap-2 text-[12.5px] text-fg-3">
+            <Clock className="size-3.5" /> Servicezeit: {ap.verfuegbar}
           </div>
         </div>
       )}
@@ -255,12 +283,12 @@ function FernwartungModal({ open, onClose, ap }: { open: boolean; onClose: () =>
       </ol>
       <div className="mt-5 flex items-center gap-3 rounded-[16px] bg-[var(--ink-softer)] p-3.5">
         <div className="min-w-0 flex-1">
-          <div className="text-[11.5px] text-fg-3">Ihr Sitzungscode (Beispiel)</div>
+          <div className="text-[12.5px] text-fg-3">Ihr Sitzungscode (Beispiel)</div>
           <div className="mono select-all text-[24px] font-semibold tracking-[0.12em]">{code}</div>
         </div>
         <CopyButton text={code.replace(/\s/g, "")} label="Sitzungscode kopieren" />
       </div>
-      <p className="mt-3 flex gap-2 text-[12px] text-fg-3">
+      <p className="mt-3 flex gap-2 text-[12.5px] text-fg-3">
         <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-green" />
         Keine Software-Installation, keine lokalen Administratorrechte, kein dauerhafter Zugang. Im Demo-Betrieb wird keine Verbindung aufgebaut.
       </p>

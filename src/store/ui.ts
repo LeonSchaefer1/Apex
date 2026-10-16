@@ -2,6 +2,16 @@ import { create } from "zustand";
 
 export type ThemeWahl = "system" | "light" | "dark";
 export type Dichte = "comfortable" | "compact";
+/** Schriftgröße der Oberfläche (je Gerät): 100 %, 112 % oder 125 %. */
+export type Schriftgroesse = 100 | 112 | 125;
+export const SCHRIFTGROESSEN: readonly Schriftgroesse[] = [100, 112, 125];
+
+/** Schriftgröße anwenden – die Oberfläche nutzt überwiegend px-Größen, deshalb skaliert `zoom` am Wurzelelement alles gleichmäßig. */
+export function applySchrift(g: Schriftgroesse) {
+  const root = document.documentElement;
+  if (g === 100) root.removeAttribute("data-schrift");
+  else root.setAttribute("data-schrift", String(g));
+}
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -56,6 +66,13 @@ export function applyTheme(t: ThemeWahl) {
 interface UIState {
   theme: ThemeWahl;
   dichte: Dichte;
+  schrift: Schriftgroesse;
+  /** Apex Island zeigt Live-Meldungen des 38h-Motors (aus = ruhige, statische Anzeige ohne Aus- und Einklappen). */
+  liveMeldungen: boolean;
+  /** Assistent-Kugel unten rechts anzeigen (ausgeblendet bleibt der Assistent über Strg+K bzw. das Menü erreichbar). */
+  kugel: boolean;
+  /** Kugel an den Rand eingeklappt (kleiner Griff) – verdeckt dann keine Inhalte. */
+  kugelEingeklappt: boolean;
   sidebarKompakt: boolean;
   assistentOffen: boolean;
   assistentPrompt: string | null;
@@ -63,6 +80,16 @@ interface UIState {
   hilfeThema: string | null;
   setTheme: (t: ThemeWahl) => void;
   setDichte: (d: Dichte) => void;
+  setSchrift: (g: Schriftgroesse) => void;
+  setLiveMeldungen: (an: boolean) => void;
+  setKugel: (an: boolean) => void;
+  setKugelEingeklappt: (an: boolean) => void;
+  /** Kürzel-Übersicht (Taste „?“) */
+  kuerzelOffen: boolean;
+  setKuerzel: (o: boolean) => void;
+  /** Schnelle Wiedervorlage (Taste „W“) – optional mit vorbelegter Akte */
+  wiedervorlage: { akteId?: string } | null;
+  setWiedervorlage: (w: { akteId?: string } | null) => void;
   toggleSidebar: () => void;
   oeffneAssistent: (prompt?: string) => void;
   schliesseAssistent: () => void;
@@ -74,6 +101,12 @@ interface UIState {
 export const useUI = create<UIState>((set, get) => ({
   theme: read<ThemeWahl>("aa:theme", "system"),
   dichte: read<Dichte>("aa:dichte", "comfortable"),
+  schrift: ((g) => (SCHRIFTGROESSEN.includes(g) ? g : 100))(read<Schriftgroesse>("aa:schrift", 100)),
+  liveMeldungen: read<boolean>("aa:live-meldungen", true),
+  kugel: read<boolean>("aa:kugel", true),
+  kugelEingeklappt: read<boolean>("aa:kugel-eingeklappt", false),
+  kuerzelOffen: false,
+  wiedervorlage: null,
   sidebarKompakt: read<boolean>("aa:sidebar", false),
   assistentOffen: false,
   assistentPrompt: null,
@@ -89,6 +122,25 @@ export const useUI = create<UIState>((set, get) => ({
     document.documentElement.setAttribute("data-density", d);
     set({ dichte: d });
   },
+  setSchrift: (g) => {
+    write("aa:schrift", g);
+    applySchrift(g);
+    set({ schrift: g });
+  },
+  setLiveMeldungen: (an) => {
+    write("aa:live-meldungen", an);
+    set({ liveMeldungen: an });
+  },
+  setKugel: (an) => {
+    write("aa:kugel", an);
+    set({ kugel: an });
+  },
+  setKugelEingeklappt: (an) => {
+    write("aa:kugel-eingeklappt", an);
+    set({ kugelEingeklappt: an });
+  },
+  setKuerzel: (o) => set({ kuerzelOffen: o }),
+  setWiedervorlage: (w) => set({ wiedervorlage: w }),
   toggleSidebar: () => {
     const v = !get().sidebarKompakt;
     write("aa:sidebar", v);
@@ -119,18 +171,52 @@ interface ToastState {
   toasts: Toast[];
   push: (t: Omit<Toast, "id">) => void;
   dismiss: (id: number) => void;
+  /** Zeitgeber anhalten, solange die Maus über der Meldung liegt oder der Fokus darin ist. */
+  pause: (id: number) => void;
+  weiter: (id: number) => void;
 }
 
+/** Anzeigedauer: Meldungen mit Aktion (z. B. „Rückgängig“) mindestens 8 s, sonst mindestens 5 s. */
+export const TOAST_DAUER_AKTION = 9000;
+export const TOAST_DAUER = 5500;
+
 let toastId = 0;
-export const useToasts = create<ToastState>((set, get) => ({
-  toasts: [],
-  push: (t) => {
-    const id = ++toastId;
-    set({ toasts: [...get().toasts.slice(-2), { ...t, id }] });
-    setTimeout(() => get().dismiss(id), t.aktion ? 7000 : 4200);
-  },
-  dismiss: (id) => set({ toasts: get().toasts.filter((x) => x.id !== id) }),
-}));
+const zeitgeber = new Map<number, { timer?: ReturnType<typeof setTimeout>; rest: number; start: number }>();
+export const useToasts = create<ToastState>((set, get) => {
+  const starte = (id: number, ms: number) => {
+    const z = { rest: ms, start: Date.now(), timer: setTimeout(() => get().dismiss(id), ms) };
+    zeitgeber.set(id, z);
+  };
+  return {
+    toasts: [],
+    push: (t) => {
+      const id = ++toastId;
+      const weg = get().toasts.slice(0, -2);
+      for (const x of weg) zeitgeber.delete(x.id);
+      set({ toasts: [...get().toasts.slice(-2), { ...t, id }] });
+      starte(id, t.aktion ? TOAST_DAUER_AKTION : TOAST_DAUER);
+    },
+    dismiss: (id) => {
+      const z = zeitgeber.get(id);
+      if (z?.timer) clearTimeout(z.timer);
+      zeitgeber.delete(id);
+      set({ toasts: get().toasts.filter((x) => x.id !== id) });
+    },
+    pause: (id) => {
+      const z = zeitgeber.get(id);
+      if (!z?.timer) return;
+      clearTimeout(z.timer);
+      z.timer = undefined;
+      z.rest = Math.max(1500, z.rest - (Date.now() - z.start));
+    },
+    weiter: (id) => {
+      const z = zeitgeber.get(id);
+      if (!z || z.timer) return;
+      z.start = Date.now();
+      z.timer = setTimeout(() => get().dismiss(id), z.rest);
+    },
+  };
+});
 
 export function toast(titel: string, opts: Omit<Toast, "id" | "titel"> = {}) {
   useToasts.getState().push({ titel, ...opts });

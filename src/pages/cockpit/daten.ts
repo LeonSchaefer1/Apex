@@ -4,6 +4,8 @@ import { useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { addDays, diffDays, fmtDateShort, fmtEUR, today, wochentagName } from "@/core/dates";
 import { istWerktag } from "@/core/feiertage";
+import { vertreteneIds } from "@/core/vertretung";
+import { gruss as foermlicherGruss } from "@/lib/rollen";
 import { aktenMitFrist, fristenLage, istKritisch, nachDringlichkeit, zaehltAlsFrist, type FristenLage } from "@/core/fristenLage";
 import {
   briefingText, finanzZahlen, fristArtLabel, motorZahlen, naechsteTermine, posteingangZahlen, tagesbriefing,
@@ -27,11 +29,17 @@ export function vorname(name: string): string {
   return n.split(/\s+/)[0] || name;
 }
 
+/** Tageszeitgruß ohne Namen. */
 export function gruss(d = new Date()): string {
   const h = d.getHours();
   if (h >= 5 && h < 11) return "Guten Morgen";
   if (h >= 11 && h < 18) return "Guten Tag";
   return "Guten Abend";
+}
+
+/** Förmliche Begrüßung mit Anrede und Grad: „Guten Tag, Frau Dr. Hartmann“ – nie mit Vornamen (src/lib/rollen.ts). */
+export function begruessung(u: User, d = new Date()): string {
+  return foermlicherGruss(u, d.getHours());
 }
 
 export function naechsterWerktag(iso: string, land: Bundesland): string {
@@ -84,6 +92,12 @@ export interface CockpitDaten {
   kiFertig: number;
   eeb: number;
   termine: Frist[];
+  /** Termine heute (typ 'termin', offen) – nach Uhrzeit, in „Nur meine“ auch die der vertretenen Personen */
+  termineHeute: Frist[];
+  /** Personen, die heute abwesend sind und von mir vertreten werden (§ 53 BRAO) – mit ihren heute und bald fälligen Einträgen */
+  vertretung: { person: User; fristen: number; weitere: number }[];
+  /** verantwortlichId → vertretene Person, für die Kennzeichnung „Vertretung für …“ */
+  vertreten: Map<string, User>;
   /** Wochenblick: Fristen und Termine je Werktag; Wiedervorlagen getrennt (nur im Tooltip) */
   wochenTage: { datum: string; fristen: number; wiedervorlagen: number; termine: number; kritisch: boolean }[];
   /** Offene Akten mit Frist ≤ 7 Tage (wie Akten-Kennzahl, `aktenMitFrist`), danach Akten mit hoher Priorität */
@@ -129,11 +143,20 @@ export function useCockpitDaten(ansicht: Ansicht): CockpitDaten {
     const akten = new Map(aktenArr.map((a) => [a.id, a]));
     const teamMap = new Map(team.map((u) => [u.id, u]));
     const meine = ansicht === "meine";
+    // Vertretung (§ 53 BRAO): Wer heute abwesend ist und mich als Vertretung eingetragen hat – dessen Fristen gehören in „Nur meine“.
+    const vIds = vertreteneIds(team, user.id, heute);
+    const vertreten = new Map<string, User>();
+    for (const id of vIds) {
+      const p = teamMap.get(id);
+      if (p) vertreten.set(id, p);
+    }
+    const zustaendig = (f: Frist) => f.verantwortlichId === user.id || vertreten.has(f.verantwortlichId);
+    const meineFristen = meine ? fristen.filter(zustaendig) : fristen;
 
-    const offen = fristen.filter((f) => f.status === "offen" && (!meine || f.verantwortlichId === user.id));
+    const offen = fristen.filter((f) => f.status === "offen" && (!meine || zustaendig(f)));
     const ohneTermine = offen.filter((f) => f.typ !== "termin");
     // Zahlen für Briefing und Kennzahlen: dieselbe Zählweise wie Navigation, Fristenkalender und Apex Assistent.
-    const lage = fristenLage(fristen, heute, meine ? user.id : undefined);
+    const lage = fristenLage(meineFristen, heute);
     const bisWerktag = ohneTermine.filter((f) => f.datum <= bisTag).sort(sortiereFristen);
     const ueberfaellig = lage.ueberfaellig.length;
     const heuteFaellig = lage.heute.length;
@@ -156,6 +179,13 @@ export function useCockpitDaten(ansicht: Ansicht): CockpitDaten {
 
     // Termine (offen, ab heute; in „Meine Sicht“ nur eigene)
     const termine = naechsteTermine(fristen, heute, meine ? user.id : undefined);
+    const termineHeute = offen.filter((f) => f.typ === "termin" && f.datum === heute).sort((a, b) => (a.uhrzeit ?? "99").localeCompare(b.uhrzeit ?? "99"));
+    const in7 = addDays(heute, 7);
+    const vertretung = [...vertreten.values()].map((person) => {
+      const seine = fristen.filter((f) => f.status === "offen" && f.verantwortlichId === person.id && f.typ !== "termin" && f.datum <= in7);
+      const echte = seine.filter(zaehltAlsFrist).length;
+      return { person, fristen: echte, weitere: seine.length - echte };
+    });
 
     // Wochenblick: die nächsten 5 Werktage ab heute
     const wochenTage: CockpitDaten["wochenTage"] = [];
@@ -234,12 +264,16 @@ export function useCockpitDaten(ansicht: Ansicht): CockpitDaten {
     // ── KI-Tagesbriefing: drei Sätze aus den Daten – wortgleich mit dem Apex Assistenten („Was steht heute an?“) ──
     // „fällig“ = heute fällig + überfällig; gezählt werden nur Fristen (Notfristen und Fristen) – wie Badge, Fristen-Kennzahl
     // und Assistent. Wiedervorlagen und Vorfristen werden getrennt genannt.
-    const briefing: Satz[] = tagesbriefing({ heute, fristen, akten: aktenArr, nachrichten, nurFuer: meine ? user.id : undefined });
+    // Mit Vertretung zählen in „Nur meine“ auch die Fristen der vertretenen Person mit – sonst wortgleich mit dem Assistenten.
+    const briefing: Satz[] =
+      meine && vertreten.size > 0
+        ? tagesbriefing({ heute, fristen: meineFristen, akten: aktenArr, nachrichten })
+        : tagesbriefing({ heute, fristen, akten: aktenArr, nachrichten, nurFuer: meine ? user.id : undefined });
 
     return {
       heute, bisTag, wochenende: bisTag !== addDays(heute, 1), user, team: teamMap, akten,
       lage, bisWerktag, ueberfaellig, heuteFaellig, kritischWoche, woche, kritischste,
-      posteingang, wartetAufKi, kiFertig, eeb, termine, wochenTage, handlungsbedarf,
+      posteingang, wartetAufKi, kiFertig, eeb, termine, termineHeute, vertretung, vertreten, wochenTage, handlungsbedarf,
       aktenMitFrist: aktenMitFristAnzahl, aktenNurPrio: handlungsbedarf.length - aktenMitFristAnzahl, motor, finanzen,
       kiAkte, kiAkteFrist, briefing,
     };

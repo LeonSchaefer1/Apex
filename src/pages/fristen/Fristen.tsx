@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { AlarmClock, Calculator, CalendarDays, CalendarRange, List, ShieldAlert, UserCheck, X, CalendarClock } from "lucide-react";
+import { AlarmClock, Calculator, CalendarDays, CalendarRange, List, ShieldAlert, ShieldCheck, UserCheck, X, CalendarClock, CalendarPlus, Download, Printer } from "lucide-react";
 import { addDays, fmtDateShort, today } from "@/core/dates";
 import { FENSTER_TAGE, fristenImZeitraum, fristenLage, istKritisch, nachDringlichkeit, zaehltAlsFrist } from "@/core/fristenLage";
 import type { Akte, Frist, FristTyp } from "@/core/types";
 import { useCol } from "@/store/data";
 import { useKanzlei } from "@/store/session";
+import { useUI } from "@/store/ui";
+import { vertreteneIds } from "@/core/vertretung";
 import { AnimatedNumber, Button, PageHeader, Segmented, Select, Stat, Switch } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { FristListe } from "./FristListe";
@@ -16,8 +18,11 @@ import { FristDetail } from "./FristDetail";
 import { Fristenrechner } from "./Fristenrechner";
 import { FeiertageInfo } from "./FeiertageInfo";
 import { QUELLE_LABEL, TYP_META, TYP_REIHENFOLGE, brauchtKontrolle, wochenAnsichtStart, wochenStart } from "./logik";
+import { Ausgangskontrolle, Druckansicht } from "./Ausgangskontrolle";
+import { DateiDialog, type AusgabeDatei } from "./dateiAusgabe";
+import { erzeugeIcs } from "./ics";
 
-type Ansicht = "liste" | "woche" | "monat";
+type Ansicht = "liste" | "woche" | "monat" | "ausgang";
 type Fokus = "heute" | "woche" | "kritisch" | "unkontrolliert";
 
 const FOKUS_LABEL: Record<Fokus, string> = {
@@ -62,7 +67,7 @@ const istDatum = (d: string | null): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/
 function ladeAnsicht(): Ansicht {
   try {
     const v = localStorage.getItem("aa:fristen-ansicht");
-    return v === "woche" || v === "monat" || v === "liste" ? v : "liste";
+    return v === "woche" || v === "monat" || v === "liste" || v === "ausgang" ? v : "liste";
   } catch {
     return "liste";
   }
@@ -86,15 +91,22 @@ export default function Fristen() {
   const dlFokus = (pFilter && FILTER_PARAM[pFilter]) || null;
   const dlDatum = istDatum(pDatum) ? pDatum : null;
 
-  const [ansicht, setAnsichtRaw] = useState<Ansicht>(() => (dlFokus ? "liste" : dlDatum ? "woche" : ladeAnsicht()));
+  const [ansicht, setAnsichtRaw] = useState<Ansicht>(() => (dlFokus || params.get("nur") === "meine" ? "liste" : dlDatum ? "woche" : ladeAnsicht()));
   const [typ, setTyp] = useState<"alle" | FristTyp>("alle");
-  const [nurMeine, setNurMeine] = useState(false);
+  // ?nur=meine (z. B. aus dem Cockpit-Hinweis „Sie vertreten heute …“): eigene Fristen samt Vertretung
+  const pNur = params.get("nur");
+  const [nurMeine, setNurMeineRaw] = useState(pNur === "meine");
   const [erledigte, setErledigte] = useState(false);
   const [fokus, setFokusRaw] = useState<Fokus | null>(dlFokus);
   const [wocheStart, setWocheStart] = useState(() => (dlDatum ? wochenStart(dlDatum) : wochenAnsichtStart(heute)));
   const [monat, setMonat] = useState(() => (dlDatum ?? heute).slice(0, 7));
   const [tag, setTag] = useState(dlDatum ?? heute);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [druck, setDruck] = useState(false);
+  const [datei, setDatei] = useState<AusgabeDatei | null>(null);
+  // Vertretung (§ 53 BRAO): Personen, die heute abwesend sind und mich als Vertretung eingetragen haben
+  const vertretene = useMemo(() => vertreteneIds(team, user.id, heute), [team, user.id, heute]);
+  const vertretungFuer = useMemo(() => new Map(vertretene.map((id) => [id, team.find((u) => u.id === id)?.name ?? "Kollegin/Kollege"])), [vertretene, team]);
   /** Deep-Link-Filter auf eine Akte (`?akte=` ohne Rechner) */
   const [akteFilter, setAkteFilterRaw] = useState<string | null>(pAkte);
   /** Per Deep-Link angesprungener Tag (`?datum=`), wird im Kalender hervorgehoben */
@@ -107,6 +119,10 @@ export default function Fristen() {
       setAnsichtRaw("liste");
     }
     if (pAkte) setAkteFilterRaw(pAkte);
+    if (pNur === "meine") {
+      setNurMeineRaw(true);
+      if (!dlDatum) setAnsichtRaw("liste");
+    }
     if (dlDatum) {
       setTag(dlDatum);
       setWocheStart(wochenStart(dlDatum));
@@ -114,7 +130,7 @@ export default function Fristen() {
       setMarkiert(dlDatum);
       if (!dlFokus) setAnsichtRaw("woche");
     }
-  }, [dlFokus, pAkte, dlDatum]);
+  }, [dlFokus, pAkte, dlDatum, pNur]);
 
   /** Entfernt Deep-Link-Parameter, sobald der Nutzer den Filter selbst ändert. */
   const entferneParam = (...keys: string[]) => {
@@ -126,6 +142,10 @@ export default function Fristen() {
   const setFokus = (f: Fokus | null | ((cur: Fokus | null) => Fokus | null)) => {
     setFokusRaw(f);
     entferneParam("filter", "quelle");
+  };
+  const setNurMeine = (v: boolean) => {
+    setNurMeineRaw(v);
+    entferneParam("nur");
   };
   const setAkteFilter = (a: string | null) => {
     setAkteFilterRaw(a);
@@ -187,7 +207,7 @@ export default function Fristen() {
     return fristen.filter((f) => {
       if (!erledigte && f.status === "erledigt") return false;
       if (typ !== "alle" && f.typ !== typ) return false;
-      if (nurMeine && f.verantwortlichId !== user.id) return false;
+      if (nurMeine && f.verantwortlichId !== user.id && !vertretene.includes(f.verantwortlichId)) return false;
       if (akteFilter && f.akteId !== akteFilter) return false;
       if (quelleFilter && f.quelle !== quelleFilter) return false;
       // Kennzahl-Filter zeigen Fristen und die getrennt genannten Einträge (Wiedervorlagen, Vorfristen, Termine) mit Typ
@@ -197,7 +217,18 @@ export default function Fristen() {
       if (fokus === "unkontrolliert" && !brauchtKontrolle(f)) return false;
       return true;
     });
-  }, [fristen, erledigte, typ, nurMeine, user.id, fokus, heute, akteFilter, quelleFilter]);
+  }, [fristen, erledigte, typ, nurMeine, user.id, fokus, heute, akteFilter, quelleFilter, vertretene]);
+
+  /** „Meine Fristen als .ics“: offene Einträge, für die ich verantwortlich bin (inkl. Vertretung) */
+  const meineIcs = () => {
+    const meine = fristen.filter((f) => f.status === "offen" && f.typ !== "vorfrist" && (f.verantwortlichId === user.id || vertretene.includes(f.verantwortlichId)));
+    setDatei({
+      name: `Fristen_${user.name.replace(/[^A-Za-zÄÖÜäöüß]+/g, "-")}_${heute}.ics`,
+      mime: "text/calendar",
+      inhalt: erzeugeIcs(meine.map((f) => ({ f, akte: akten.get(f.akteId) })), `Fristen ${user.name}`),
+      beschreibung: `${meine.length} offene Einträge (Fristen, Wiedervorlagen, Termine) als Kalenderdatei – kein Abo, einmalige Übernahme`,
+    });
+  };
 
   const detail = detailId ? fristen.find((f) => f.id === detailId) : undefined;
 
@@ -232,9 +263,20 @@ export default function Fristen() {
         hilfe="fristen"
         subtitle="Fristenkalender mit Vorfristen, Vier-Augen-Kontrolle und Fristenrechner nach § 222 ZPO."
         actions={
-          <Button variant="primary" icon={<Calculator className="size-4" />} onClick={oeffneRechner}>
-            Frist berechnen
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="ghost" icon={<Printer className="size-4" />} onClick={() => setDruck(true)} title="Druckansicht „Fristen heute und morgen“">
+              Drucken
+            </Button>
+            <Button variant="ghost" icon={<Download className="size-4" />} onClick={meineIcs} title="Ihre offenen Fristen, Wiedervorlagen und Termine als Kalenderdatei (.ics)">
+              Meine Fristen als .ics
+            </Button>
+            <Button variant="secondary" icon={<CalendarPlus className="size-4" />} onClick={() => useUI.getState().setWiedervorlage({})} aria-keyshortcuts="W" title="Wiedervorlage anlegen (Taste W)">
+              Wiedervorlage <kbd className="kbd ml-1 hidden sm:inline-flex">W</kbd>
+            </Button>
+            <Button variant="primary" icon={<Calculator className="size-4" />} onClick={oeffneRechner} aria-keyshortcuts="F" title="Frist berechnen (Taste F)">
+              Frist berechnen <kbd className="kbd ml-1 hidden sm:inline-flex">F</kbd>
+            </Button>
+          </div>
         }
       />
 
@@ -271,6 +313,7 @@ export default function Fristen() {
             { value: "liste", label: "Liste", icon: <List className="size-3.5" /> },
             { value: "woche", label: "Woche", icon: <CalendarRange className="size-3.5" /> },
             { value: "monat", label: "Monat", icon: <CalendarDays className="size-3.5" /> },
+            { value: "ausgang", label: "Ausgangskontrolle", icon: <ShieldCheck className="size-3.5" /> },
           ]}
         />
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 lg:ml-auto">
@@ -285,7 +328,7 @@ export default function Fristen() {
           <div className="flex items-center gap-4">
             <label className="inline-flex cursor-pointer select-none items-center gap-2 text-[13px] font-medium text-fg-2" htmlFor="fristen-meine">
               <Switch id="fristen-meine" checked={nurMeine} onChange={setNurMeine} label="Nur meine Fristen" />
-              Nur meine
+              Nur meine{vertretene.length ? ` (+ Vertretung)` : ""}
             </label>
             <label className="inline-flex cursor-pointer select-none items-center gap-2 text-[13px] font-medium text-fg-2" htmlFor="fristen-erledigt">
               <Switch id="fristen-erledigt" checked={erledigte} onChange={setErledigte} label="Erledigte anzeigen" />
@@ -347,8 +390,10 @@ export default function Fristen() {
               gefiltert={istGefiltert}
               ohneHorizont={!!akteFilter || !!quelleFilter || fokus === "unkontrolliert" || fokus === "kritisch"}
               markiert={markiert ?? undefined}
+              vertretungFuer={vertretungFuer}
             />
           )}
+          {ansicht === "ausgang" && <Ausgangskontrolle fristen={fristen} akten={akten} team={team} user={user} heute={heute} />}
           {ansicht === "woche" && <WochenAnsicht fristen={gefiltert} akten={akten} start={wocheStart} setStart={setWocheStart} land={tenant.bundesland} heute={heute} markiert={markiert ?? undefined} onOpen={(f) => setDetailId(f.id)} />}
           {ansicht === "monat" && (
             <MonatsAnsicht fristen={gefiltert} akten={akten} monat={monat} setMonat={setMonat} auswahl={tag} setAuswahl={setTag} land={tenant.bundesland} heute={heute} onOpen={(f) => setDetailId(f.id)} />
@@ -360,12 +405,14 @@ export default function Fristen() {
         <FeiertageInfo land={tenant.bundesland} />
       </div>
 
-      <div className="mt-4 flex items-center justify-center gap-1.5 text-[11.5px] text-fg-4">
+      <div className="mt-4 flex items-center justify-center gap-1.5 text-[12.5px] text-fg-3">
         <CalendarClock className="size-3.5" />
         Jede Frist speichert Regel, Ereignisdatum und Rechenweg – revisionssicher.
       </div>
 
       <FristDetail f={detail} akte={detail ? akten.get(detail.akteId) : undefined} team={team} user={user} onClose={() => setDetailId(null)} />
+      <Druckansicht open={druck} onClose={() => setDruck(false)} fristen={fristen} akten={akten} team={team} heute={heute} />
+      <DateiDialog datei={datei} onClose={() => setDatei(null)} />
       <Fristenrechner
         open={rechnerOffen}
         onClose={schliesseRechner}

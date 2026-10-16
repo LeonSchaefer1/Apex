@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { Calculator, Landmark, LayoutGrid, Layers, Receipt, Scale, Timer } from "lucide-react";
+import { Calculator, Landmark, LayoutGrid, Layers, Percent, Receipt, Scale, Timer } from "lucide-react";
 import { Button, PageHeader, Segmented, type SegOption } from "@/components/ui";
 import { useCol } from "@/store/data";
 import { BankabgleichTab } from "./Bankabgleich";
@@ -15,8 +15,9 @@ import { Sammelabrechnung } from "./Sammelabrechnung";
 import { useAbrechnungUI } from "./store";
 import { UebersichtTab } from "./Uebersicht";
 import { ZeiterfassungTab } from "./Zeiterfassung";
+import { ZinsrechnerTab } from "./Zinsrechner";
 
-const TAB_LABEL: Record<TabKey, string> = { uebersicht: "Übersicht", rechnungen: "Rechnungen", rvg: "RVG-Rechner", bank: "Bankabgleich", forderung: "Forderungskonto", zeit: "Zeiterfassung" };
+const TAB_LABEL: Record<TabKey, string> = { uebersicht: "Übersicht", rechnungen: "Rechnungen", rvg: "RVG-Rechner", bank: "Bankabgleich", forderung: "Forderungskonto", zinsen: "Zinsrechner", zeit: "Zeiterfassung" };
 
 export default function Abrechnung() {
   const [params, setParams] = useSearchParams();
@@ -70,6 +71,7 @@ export default function Abrechnung() {
     { value: "rvg", label: "RVG-Rechner", icon: <Calculator className="size-3.5" /> },
     { value: "bank", label: "Bankabgleich", icon: <Landmark className="size-3.5" />, count: offeneUmsaetze || undefined },
     { value: "forderung", label: "Forderungskonto", icon: <Scale className="size-3.5" /> },
+    { value: "zinsen", label: "Zinsrechner", icon: <Percent className="size-3.5" /> },
     {
       value: "zeit",
       label: (
@@ -87,7 +89,7 @@ export default function Abrechnung() {
       <PageHeader
         title="Abrechnung"
         hilfe="abrechnung"
-        subtitle="RVG-Rechner, Sammelabrechnung, Forderungskonto und automatischer Bankabgleich – Honorare vollständig abrechnen, Zahlungen ohne Handarbeit zuordnen."
+        subtitle="RVG-Rechner, Sammelabrechnung, Forderungskonto, Zinsrechner und automatischer Bankabgleich – Honorare vollständig abrechnen, Zahlungen ohne Handarbeit zuordnen."
         actions={
           <Button variant="primary" icon={<Layers className="size-4" />} onClick={() => setSammel(true)}>
             Sammelabrechnung
@@ -113,6 +115,7 @@ export default function Abrechnung() {
           {tab === "rvg" && <RvgRechnerTab onTab={setTab} />}
           {tab === "bank" && <BankabgleichTab />}
           {tab === "forderung" && <ForderungskontoTab />}
+          {tab === "zinsen" && <ZinsrechnerTab />}
           {tab === "zeit" && <ZeiterfassungTab onTab={setTab} />}
         </motion.section>
       </AnimatePresence>

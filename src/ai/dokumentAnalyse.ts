@@ -1,6 +1,6 @@
 // Dokument- & Posteingangs-Analyse: Die KI erkennt Akte, Ereignis und Fristart – berechnet wird ausschließlich mit dem Fristenrechner.
 import { berechneFestesEnde, berechneFrist, berechneNachRegel, FRIST_REGELN, gerichtsortDerAkte, type Einheit } from "@/core/fristen";
-import { bundeslandAusGericht } from "@/core/feiertage";
+import { bundeslandAusGericht, bundeslandAusOrt } from "@/core/feiertage";
 import { fmtDate, today, addDays, addMonthsBGB, wochentagName } from "@/core/dates";
 import { normalize } from "@/core/search";
 import type { Bundesland, FristTyp, ISODate, Kontakt, KiVorschlag, Nachricht, TenantData, DokumentArt } from "@/core/types";
@@ -20,10 +20,41 @@ export interface FristVorschlag {
   warnungen: string[];
 }
 
+/** Vertragliche Ausschluss- bzw. Verfallklausel (z. B. „Ausschlussfrist: drei Monate ab Fälligkeit“). */
+export interface Ausschlussklausel {
+  dauer: number;
+  einheit: "tage" | "wochen" | "monate";
+  /** fristauslösendes Ereignis laut Klausel, z. B. „Fälligkeit“ */
+  beginn: string;
+  /** Wortlaut der Klausel (gekürzt) */
+  zitat: string;
+  /** Vertragsparagraph, falls im Text genannt („§ 12“) */
+  fundstelle?: string;
+  /** Art des Dokuments, z. B. „Arbeitsvertrag“ */
+  quelle: string;
+  /** Zweite Stufe: gerichtliche Geltendmachung nach Ablehnung bzw. Schweigen der Gegenseite */
+  zweiteStufe?: { dauer: number; einheit: "tage" | "wochen" | "monate"; beginn: string; zitat: string };
+}
+
+/** Rechtsmittelgericht bei Urteilen, z. B. „Berufung einzulegen beim Kammergericht, § 519 Abs. 1 ZPO“. */
+export interface Rechtsmittelhinweis {
+  art: "Berufung" | "Revision";
+  gericht: string;
+  norm: string;
+  /** Satz für die Oberfläche */
+  text: string;
+  /** Gericht steht in der Rechtsbehelfsbelehrung (sonst aus dem Instanzenzug abgeleitet) */
+  ausBelehrung: boolean;
+}
+
 export interface DokAnalyse {
   typ: string;
   dokumentArt: DokumentArt;
   zusammenfassung: string;
+  /** Erkannte vertragliche Ausschlussfrist – das Fristende berechnet der Fristenrechner erst mit der Fälligkeit. */
+  ausschlussfrist?: Ausschlussklausel;
+  /** Rechtsmittelgericht bei Urteilen */
+  rechtsmittel?: Rechtsmittelhinweis;
   akteId?: string;
   akteSicherheit: number;
   akteGrund?: string;
@@ -120,6 +151,9 @@ function klassifiziere(t: string): { typ: string; art: DokumentArt } {
   const n = t.toLowerCase();
   if (/versäumnisurteil/.test(n)) return { typ: "Versäumnisurteil", art: "urteil" };
   if (/\burteil\b|urteil vom/.test(n) && /zugestellt|zustellung|verurteilt|abgewiesen/.test(n)) return { typ: "Urteil", art: "urteil" };
+  // Verträge vor den Stichwortregeln prüfen („Kündigungsfristen“, „vergleichbar“ …)
+  if (/^\s*(?:\S+\s+){0,3}arbeitsvertrag\b/.test(n) || /arbeitsvertrag zwischen|anstellungsvertrag zwischen/.test(n)) return { typ: "Arbeitsvertrag", art: "vertrag" };
+  if (/^\s*[a-zäöüß-]*vertrag\b[^.\n]{0,80}\bzwischen\b/.test(n)) return { typ: "Vertrag", art: "vertrag" };
   if (/strafbefehl/.test(n)) return { typ: "Strafbefehl", art: "beschluss" };
   if (/bußgeldbescheid/.test(n)) return { typ: "Bußgeldbescheid", art: "bea" };
   if (/widerspruch gegen (den )?mahnbescheid|widerspruch erhoben/.test(n)) return { typ: "Mitteilung Mahngericht (Widerspruch)", art: "beschluss" };
@@ -227,6 +261,268 @@ function mandantenZusammenfassung(text: string, absender: { name: string; kontak
   return saetze.join(" ");
 }
 
+/** Sätze eines Textes (Abkürzungen wie „Abs.“, „Nr.“ und „./.“ trennen nicht). */
+function saetzeVon(text: string): string[] {
+  let t = text.replace(/\s*\n\s*/g, " ").replace(/\s+/g, " ");
+  ABKUERZUNGEN.forEach((a, i) => (t = t.split(a).join(`§AB${i}§`)));
+  return t
+    .split(/(?<=[.!?])\s+(?=[A-ZÄÖÜ„(])/)
+    .map((x) => {
+      let y = x.trim();
+      ABKUERZUNGEN.forEach((a, i) => (y = y.split(`§AB${i}§`).join(a)));
+      return y;
+    })
+    .filter(Boolean);
+}
+
+type Partei = "Kläger" | "Beklagte";
+
+/** Kostenquote aus dem Tenor: „tragen der Kläger zu 25 %, die Beklagte zu 75 %“ → { Kläger: 25, Beklagte: 75 }. */
+function kostenquote(satz: string): Partial<Record<Partei, number>> | undefined {
+  const q: Partial<Record<Partei, number>> = {};
+  for (const m of satz.matchAll(/(?:der|die|den)\s+(Kläger(?:in)?|Beklagten?)\s+(?:zu\s+)?(\d{1,3}(?:,\d+)?)\s*%/gi)) {
+    q[/^kläger/i.test(m[1]) ? "Kläger" : "Beklagte"] = Number(m[2].replace(",", "."));
+  }
+  if (q.Kläger !== undefined && q.Beklagte === undefined) q.Beklagte = 100 - q.Kläger;
+  if (q.Beklagte !== undefined && q.Kläger === undefined) q.Kläger = 100 - q.Beklagte;
+  if (q.Kläger !== undefined) return q;
+  // „Die Kosten des Rechtsstreits trägt die Beklagte.“ / „… hat der Kläger zu tragen.“
+  const allein = satz.match(/(?:trägt|tragen|hat|haben)\s+(?:die|der)\s+(Kläger(?:in)?|Beklagten?)\b|(?:die|der)\s+(Kläger(?:in)?|Beklagten?)\s+(?:zu tragen|trägt)/i);
+  const wer = allein?.[1] ?? allein?.[2];
+  if (wer) return /^kläger/i.test(wer) ? { Kläger: 100, Beklagte: 0 } : { Kläger: 0, Beklagte: 100 };
+  return undefined;
+}
+
+/** Rolle der Mandantschaft im Rechtsstreit: im Rubrum „Kläger ./. Beklagte“, sonst laut Aktenbezeichnung. */
+function eigeneRolle(text: string, data: TenantData, akteId: string | undefined): { rolle: Partei; name: string; bezeichnung: string } | undefined {
+  const akte = akteId ? data.akten.find((a) => a.id === akteId) : undefined;
+  const mandant = akte ? data.kontakte.find((k) => k.id === akte.mandantId) : undefined;
+  if (!akte || !mandant) return undefined;
+  const merkmal = normalize(mandant.nachname ?? mandant.name);
+  const rubrum = text.match(/([^\n]{2,80}?)\s+\.\/\.\s+([^\n]{2,80})/) ?? akte.titel.match(/(.+?)\s+\.\/\.\s+(.+)/);
+  if (!rubrum) return undefined;
+  const links = normalize(rubrum[1]).includes(merkmal);
+  const rechts = normalize(rubrum[2]).includes(merkmal);
+  if (links === rechts) return undefined;
+  return { rolle: links ? "Kläger" : "Beklagte", name: mandant.name, bezeichnung: mandantBezeichnung(mandant) };
+}
+
+/**
+ * Tenor eines Urteils vollständig: Hauptsache, Abweisung im Übrigen, Kostenquote, vorläufige Vollstreckbarkeit und das
+ * Ergebnis für die eigene Partei („überwiegend erfolgreich“). Fehlt eine Angabe im Schreiben, steht das ausdrücklich da.
+ */
+function tenorZusammenfassung(text: string, data: TenantData, akteId: string | undefined): string | undefined {
+  const saetze = saetzeVon(text);
+  const haupt = saetze.find((x) => /\b(?:wird|werden) (?:verurteilt|verpflichtet)\b|\bwird stattgegeben\b|wird festgestellt, dass/i.test(x));
+  const abweisung = saetze.find((x) => x !== haupt && /\b(?:klage|berufung|einspruch)\b[^.]{0,40}\b(?:abgewiesen|zurückgewiesen|verworfen)\b/i.test(x));
+  if (!haupt && !abweisung) return undefined;
+  const kostenSatz = saetze.find((x) => /\bkosten des (?:rechtsstreits|verfahrens|berufungsverfahrens)\b/i.test(x));
+  const quote = kostenSatz ? kostenquote(kostenSatz) : undefined;
+  const vollstr = saetze.find((x) => /vorläufig vollstreckbar/i.test(x));
+  const teile: string[] = [];
+  teile.push(`Tenor: ${[haupt, abweisung].filter(Boolean).join(" ")}`);
+  if (quote) teile.push(`Kostenquote ${quote.Kläger}/${quote.Beklagte} (Kläger ${quote.Kläger} %, Beklagte ${quote.Beklagte} %).`);
+  else if (kostenSatz) teile.push(kostenSatz);
+  else teile.push("Kostenentscheidung: im Schreiben nicht genannt – im Urteil prüfen.");
+  teile.push(vollstr ? `Vorläufige Vollstreckbarkeit: ${vollstr}` : "Vorläufige Vollstreckbarkeit: im Schreiben nicht genannt – im Urteil prüfen.");
+  const eigen = eigeneRolle(text, data, akteId);
+  if (eigen) {
+    let ergebnis: string | undefined;
+    const last = quote?.[eigen.rolle];
+    if (last !== undefined) {
+      ergebnis = last === 0 ? "voll erfolgreich" : last < 50 ? "überwiegend erfolgreich" : last === 50 ? "zur Hälfte erfolgreich" : last < 100 ? "überwiegend unterlegen" : "unterlegen";
+      ergebnis += ` (trägt ${last} % der Kosten)`;
+    } else if (haupt && abweisung) ergebnis = "teilweise erfolgreich";
+    else if (haupt) ergebnis = eigen.rolle === "Kläger" ? "erfolgreich" : "unterlegen";
+    else if (abweisung) ergebnis = /klage/i.test(abweisung) ? (eigen.rolle === "Kläger" ? "unterlegen" : "erfolgreich") : undefined;
+    const rolle = eigen.rolle === "Kläger" ? (/^Frau|in$/.test(eigen.bezeichnung) ? "Klägerin" : "Kläger") : "Beklagte";
+    if (ergebnis) teile.push(`Ergebnis für ${eigen.bezeichnung} ${eigen.name} (${rolle}): ${ergebnis}.`);
+  }
+  return teile.join(" ");
+}
+
+// ───────────── Rechtsmittelgericht (Instanzenzug) ─────────────
+
+const OLG_BEZIRK: [RegExp, string][] = [
+  [/\bberlin\b/, "Kammergericht"],
+  [/\b(paderborn|bielefeld|detmold|dortmund|essen|bochum|hagen|arnsberg|siegen|münster|hamm)\b/, "Oberlandesgericht Hamm"],
+  [/\b(köln|bonn|aachen)\b/, "Oberlandesgericht Köln"],
+  [/\b(düsseldorf|duisburg|wuppertal|krefeld|mönchengladbach|kleve)\b/, "Oberlandesgericht Düsseldorf"],
+  [/\b(münchen|landshut|traunstein|augsburg|kempten|memmingen|ingolstadt|passau|deggendorf)\b/, "Oberlandesgericht München"],
+  [/\b(nürnberg|regensburg|amberg|ansbach|weiden)\b/, "Oberlandesgericht Nürnberg"],
+  [/\b(bamberg|würzburg|bayreuth|coburg|hof|aschaffenburg|schweinfurt)\b/, "Oberlandesgericht Bamberg"],
+  [/\bfrankfurt\s*(?:\(oder\)|\/\s*oder|an der oder)|\b(potsdam|cottbus|neuruppin)\b/, "Brandenburgisches Oberlandesgericht"],
+  [/\b(frankfurt|wiesbaden|darmstadt|kassel|gießen|marburg|fulda|hanau|limburg)\b/, "Oberlandesgericht Frankfurt am Main"],
+  [/\b(stuttgart|heilbronn|ulm|tübingen|ellwangen|hechingen|ravensburg|rottweil)\b/, "Oberlandesgericht Stuttgart"],
+  [/\b(karlsruhe|mannheim|heidelberg|freiburg|baden-baden|konstanz|mosbach|offenburg|waldshut-tiengen)\b/, "Oberlandesgericht Karlsruhe"],
+  [/\b(hannover|hildesheim|lüneburg|stade|verden|bückeburg)\b/, "Oberlandesgericht Celle"],
+  [/\b(braunschweig|göttingen)\b/, "Oberlandesgericht Braunschweig"],
+  [/\b(oldenburg|osnabrück|aurich)\b/, "Oberlandesgericht Oldenburg"],
+  [/\bbremen\b/, "Hanseatisches Oberlandesgericht in Bremen"],
+  [/\bhamburg\b/, "Hanseatisches Oberlandesgericht"],
+  [/\b(dresden|leipzig|chemnitz|zwickau|görlitz)\b/, "Oberlandesgericht Dresden"],
+  [/\b(halle|magdeburg|dessau|stendal)\b/, "Oberlandesgericht Naumburg"],
+  [/\b(erfurt|gera|meiningen|mühlhausen)\b/, "Thüringer Oberlandesgericht"],
+  [/\b(rostock|schwerin|stralsund|neubrandenburg)\b/, "Oberlandesgericht Rostock"],
+  [/\b(kiel|lübeck|flensburg|itzehoe)\b/, "Schleswig-Holsteinisches Oberlandesgericht"],
+  [/\b(koblenz|mainz|trier|bad kreuznach)\b/, "Oberlandesgericht Koblenz"],
+  [/\b(kaiserslautern|frankenthal|landau|zweibrücken)\b/, "Pfälzisches Oberlandesgericht Zweibrücken"],
+  [/\bsaarbrücken\b/, "Saarländisches Oberlandesgericht"],
+];
+
+const LAG_BEZIRK: [RegExp, string][] = [
+  [/\b(berlin|potsdam|cottbus|eberswalde|brandenburg|neuruppin)\b|frankfurt\s*\(oder\)/, "Landesarbeitsgericht Berlin-Brandenburg"],
+  [/\b(paderborn|bielefeld|detmold|dortmund|bochum|hagen|herne|gelsenkirchen|hamm|iserlohn|minden|rheine|siegen|arnsberg|münster|herford)\b/, "Landesarbeitsgericht Hamm"],
+  [/\b(köln|bonn|aachen|siegburg)\b/, "Landesarbeitsgericht Köln"],
+  [/\b(düsseldorf|duisburg|essen|krefeld|mönchengladbach|oberhausen|solingen|wesel|wuppertal)\b/, "Landesarbeitsgericht Düsseldorf"],
+  [/\b(münchen|augsburg|kempten|passau|rosenheim)\b/, "Landesarbeitsgericht München"],
+  [/\b(nürnberg|bamberg|bayreuth|würzburg|weiden|regensburg)\b/, "Landesarbeitsgericht Nürnberg"],
+];
+const LAG_LAND: Partial<Record<Bundesland, string>> = {
+  BW: "Landesarbeitsgericht Baden-Württemberg", HE: "Hessisches Landesarbeitsgericht", NI: "Landesarbeitsgericht Niedersachsen", HB: "Landesarbeitsgericht Bremen",
+  HH: "Landesarbeitsgericht Hamburg", SN: "Sächsisches Landesarbeitsgericht", ST: "Landesarbeitsgericht Sachsen-Anhalt", TH: "Thüringer Landesarbeitsgericht",
+  MV: "Landesarbeitsgericht Mecklenburg-Vorpommern", SH: "Landesarbeitsgericht Schleswig-Holstein", RP: "Landesarbeitsgericht Rheinland-Pfalz", SL: "Landesarbeitsgericht Saarland",
+  BE: "Landesarbeitsgericht Berlin-Brandenburg", BB: "Landesarbeitsgericht Berlin-Brandenburg",
+};
+
+/** Länder mit nur einem Oberlandesgericht */
+const OLG_LAND: Partial<Record<Bundesland, string>> = {
+  BE: "Kammergericht", BB: "Brandenburgisches Oberlandesgericht", HB: "Hanseatisches Oberlandesgericht in Bremen", HH: "Hanseatisches Oberlandesgericht",
+  HE: "Oberlandesgericht Frankfurt am Main", MV: "Oberlandesgericht Rostock", SL: "Saarländisches Oberlandesgericht", SN: "Oberlandesgericht Dresden",
+  ST: "Oberlandesgericht Naumburg", SH: "Schleswig-Holsteinisches Oberlandesgericht", TH: "Thüringer Oberlandesgericht",
+};
+
+/** Ort aus dem Gerichtsnamen („Arbeitsgericht Kassel“ → „kassel“). */
+function gerichtsOrt(gericht: string): string {
+  return gericht.toLowerCase().replace(/^(?:amts|land|arbeits|familien)gericht\s+|^(?:ag|lg|arbg)\s+/, "").replace(/\s+i{1,3}\b/, "").trim();
+}
+
+/**
+ * Rechtsmittelgericht zur Berufung: aus der Rechtsbehelfsbelehrung („… beim Kammergericht einzulegen“), sonst aus dem
+ * Instanzenzug (LG → OLG bzw. KG, AG → LG bzw. OLG in Familiensachen, ArbG → LAG).
+ */
+export function rechtsmittelgerichtZu(text: string, ausgangsgericht: string | undefined, art: { arbeitsgericht: boolean }): Rechtsmittelhinweis | undefined {
+  const norm = art.arbeitsgericht ? "§ 64 Abs. 6 ArbGG i. V. m. § 519 Abs. 1 ZPO" : "§ 519 Abs. 1 ZPO";
+  const belehrung = text.match(/(?:beim|bei dem)\s+((?:[A-ZÄÖÜ][\wäöüß.()-]*\s?){1,6}?)\s*(?:schriftlich\s+)?einzulegen/);
+  let gericht = belehrung?.[1].trim();
+  if (!gericht && ausgangsgericht) {
+    const g = ausgangsgericht.toLowerCase();
+    const ort = gerichtsOrt(ausgangsgericht);
+    const familie = /familiengericht|familiensache/.test(`${g} ${text.toLowerCase()}`);
+    if (/arbeitsgericht|\barbg\b/.test(g)) {
+      gericht = LAG_BEZIRK.find(([re]) => re.test(ort))?.[1];
+      if (!gericht) {
+        const land = bundeslandAusGericht(ausgangsgericht)?.land ?? bundeslandAusOrt(ort);
+        gericht = land ? LAG_LAND[land] : undefined;
+      }
+      gericht ??= "zuständigen Landesarbeitsgericht";
+    } else if (/landgericht|\blg\b/.test(g) || familie) {
+      const land = bundeslandAusGericht(ausgangsgericht)?.land ?? bundeslandAusOrt(ort);
+      gericht = OLG_BEZIRK.find(([re]) => re.test(ort))?.[1] ?? (land ? OLG_LAND[land] : undefined) ?? "zuständigen Oberlandesgericht";
+    } else if (/amtsgericht|\bag\b/.test(g)) {
+      gericht = bundeslandAusGericht(ausgangsgericht)?.land === "BE" ? "Landgericht Berlin II" : /\b(münchen)\b/.test(ort) ? "Landgericht München I" : /\bhamburg\b/.test(ort) ? "Landgericht Hamburg" : "zuständigen Landgericht";
+    }
+  }
+  if (!gericht) return undefined;
+  return { art: "Berufung", gericht, norm, text: `Berufung einzulegen beim ${gericht}, ${norm}`, ausBelehrung: !!belehrung };
+}
+
+// ───────────── Vertragliche Ausschlussfristen ─────────────
+
+const EINHEIT_RE = "(tag|tage|tagen|woche|wochen|monat|monate|monaten)";
+function einheitAus(w: string): "tage" | "wochen" | "monate" {
+  return w.startsWith("tag") ? "tage" : w.startsWith("woche") ? "wochen" : "monate";
+}
+
+/** Satz um eine Fundstelle (für das Zitat der Klausel). */
+function satzUm(text: string, index: number): string {
+  const start = Math.max(text.lastIndexOf(". ", index) + 1, text.lastIndexOf("\n", index) + 1, 0);
+  const endePunkt = text.indexOf(". ", index);
+  const endeZeile = text.indexOf("\n", index);
+  const ende = [endePunkt, endeZeile].filter((x) => x >= 0).sort((a, b) => a - b)[0] ?? text.length;
+  const satz = text.slice(start, ende + 1).trim();
+  return satz.length > 240 ? `${satz.slice(0, 237)}…` : satz;
+}
+
+/**
+ * Erkennt vertragliche Ausschluss- und Verfallklauseln: „Ausschlussfrist: drei Monate ab Fälligkeit“, „… verfallen, wenn sie
+ * nicht innerhalb von drei Monaten nach Fälligkeit schriftlich geltend gemacht werden“, zweite Stufe „… gerichtlich geltend
+ * gemacht“. Zahlwörter und Ziffern. Das Fristende berechnet erst der Fristenrechner – mit der erfragten Fälligkeit.
+ */
+export function erkenneAusschlussfrist(text: string, quelle = "Vertrag"): Ausschlussklausel | undefined {
+  const t = text.replace(/[ \t]+/g, " ");
+  const n = t.toLowerCase();
+  if (!/ausschlussfrist|verfallfrist|ausschlussklausel|verfallklausel|\bverfallen\b|\bverfällt\b|ausgeschlossen, wenn/.test(n)) return undefined;
+  const ZAHL = ZAHLWORT_RE;
+  const stufe1: RegExp[] = [
+    // „Ausschlussfrist: drei Monate ab Fälligkeit“ / „Ausschlussfrist drei Monate“
+    new RegExp(`(?:ausschluss|verfall)(?:frist|klausel)(?:en)?\\s*(?:[:–-]|von|beträgt)?\\s*${ZAHL}\\s+${EINHEIT_RE}\\b(?:\\s+(?:ab|nach|seit)\\s+(?:der\\s+|ihrer\\s+|deren\\s+)?(fälligkeit|entstehung|beendigung des arbeitsverhältnisses))?`),
+    // „… innerhalb von drei Monaten nach (ihrer) Fälligkeit … geltend gemacht …“
+    new RegExp(`innerhalb\\s+(?:von\\s+|einer frist von\\s+)?${ZAHL}\\s+${EINHEIT_RE}\\s+(?:ab|nach|seit)\\s+(?:der\\s+|ihrer\\s+|deren\\s+|dem\\s+)?(fälligkeit|entstehung|beendigung des arbeitsverhältnisses)[^.]{0,120}?geltend`),
+  ];
+  let treffer: RegExpExecArray | null = null;
+  for (const re of stufe1) {
+    treffer = re.exec(n);
+    if (treffer) break;
+  }
+  if (!treffer) return undefined;
+  const dauer = zahl(treffer[1]);
+  if (!dauer) return undefined;
+  const beginnRoh = treffer[3] ?? "fälligkeit";
+  const beginn = beginnRoh === "fälligkeit" ? "Fälligkeit" : beginnRoh === "entstehung" ? "Entstehung des Anspruchs" : "Beendigung des Arbeitsverhältnisses";
+  // Zweite Stufe: gerichtliche Geltendmachung
+  const stufe2 = new RegExp(`innerhalb\\s+(?:von\\s+|einer (?:weiteren )?frist von\\s+)?${ZAHL}\\s+${EINHEIT_RE}\\s+(?:nach|ab|seit)\\s+(?:der\\s+|dem\\s+|deren\\s+)?([a-zäöüß ]{3,40}?)\\s+(?:[a-zäöüß]+\\s+){0,4}?gerichtlich geltend`).exec(n)
+    ?? new RegExp(`gerichtlich geltend[^.]{0,80}?innerhalb\\s+(?:von\\s+)?${ZAHL}\\s+${EINHEIT_RE}\\s+(?:nach|ab|seit)\\s+(?:der\\s+|dem\\s+)?([a-zäöüß ]{3,40}?)(?=[,.;]|$)`).exec(n);
+  let zweiteStufe: Ausschlussklausel["zweiteStufe"];
+  if (stufe2 && stufe2.index !== treffer.index) {
+    const d2 = zahl(stufe2[1]);
+    if (d2) zweiteStufe = { dauer: d2, einheit: einheitAus(stufe2[2]), beginn: stufe2[3].trim().replace(/^der |^dem /, "") || "Ablehnung", zitat: satzUm(t, stufe2.index) };
+  }
+  // Vertragsparagraph als Überschrift („§ 12 Ausschlussfristen“), keine Gesetzeszitate wie „§ 622 BGB“
+  const vor = t.slice(Math.max(0, treffer.index - 400), treffer.index + 40);
+  const paragraphen = [...vor.matchAll(/§\s*(\d+[a-z]?)\s+(?!(?:Abs\.|S\.|Nr\.|[A-ZÄÖÜ][A-Za-zÄÖÜäöü]*(?:G|B|O)\b))([A-ZÄÖÜ][a-zäöüß]+)/g)];
+  const fundstelle = paragraphen.length ? `§ ${paragraphen[paragraphen.length - 1][1]}` : undefined;
+  return { dauer, einheit: einheitAus(treffer[2]), beginn, zitat: satzUm(t, treffer.index), fundstelle, quelle, zweiteStufe };
+}
+
+/** „3 Monate“, „2 Wochen“, „1 Monat“ */
+export function dauerText(dauer: number, einheit: "tage" | "wochen" | "monate"): string {
+  const e = { tage: ["Tag", "Tage"], wochen: ["Woche", "Wochen"], monate: ["Monat", "Monate"] }[einheit];
+  return `${dauer} ${dauer === 1 ? e[0] : e[1]}`;
+}
+
+/** Überschrift der Ausschlussfrist-Karte: „Ausschlussfrist erkannt: 3 Monate ab Fälligkeit (Arbeitsvertrag, § 12)“ */
+export function ausschlussfristTitel(k: Ausschlussklausel): string {
+  return `Ausschlussfrist erkannt: ${dauerText(k.dauer, k.einheit)} ab ${k.beginn} (${k.quelle}${k.fundstelle ? `, ${k.fundstelle}` : ""})`;
+}
+
+/**
+ * Fristvorschlag zur Ausschlussfrist – erst mit der (erfragten, nie erfundenen) Fälligkeit. Berechnet vom Fristenrechner
+ * (Regel „ausschlussfrist_vertrag“: §§ 187 Abs. 1, 188 Abs. 2, 193 BGB).
+ */
+export function ausschlussfristVorschlag(k: Ausschlussklausel, faelligkeit: ISODate, land: Bundesland, opts: { feiertagsOrt?: string; kanzleiLand?: Bundesland; anspruch?: string } = {}): FristVorschlag {
+  const r = berechneNachRegel("ausschlussfrist_vertrag", faelligkeit, land, k.dauer, {
+    einheit: k.einheit,
+    ereignisLabel: `${k.beginn === "Fälligkeit" ? "Fälligkeit des Anspruchs" : k.beginn}${opts.anspruch ? ` (${opts.anspruch})` : ""}`,
+    feiertagsOrt: opts.feiertagsOrt ?? "Kanzleisitz",
+    kanzleiLand: opts.kanzleiLand,
+  });
+  const warnungen = [...r.warnungen];
+  if (k.zweiteStufe)
+    warnungen.push(`Zweite Stufe: Lehnt die Gegenseite ab oder äußert sie sich nicht, ist der Anspruch binnen ${dauerText(k.zweiteStufe.dauer, k.zweiteStufe.einheit)} nach ${k.zweiteStufe.beginn} gerichtlich geltend zu machen – sonst verfällt er. Diese Frist bei Eingang der Ablehnung gesondert notieren.`);
+  return {
+    regelKey: "ausschlussfrist_vertrag",
+    titel: `Ausschlussfrist (${k.quelle}): Ansprüche geltend machen${opts.anspruch ? ` – ${opts.anspruch}` : ""}`,
+    typ: "frist",
+    ereignisDatum: faelligkeit,
+    ende: r.ende,
+    vorfrist: r.vorfrist,
+    grundlage: `${k.quelle}${k.fundstelle ? `, ${k.fundstelle}` : ""} – vertragliche Ausschlussfrist (§§ 187 Abs. 1, 188 Abs. 2, 193 BGB)`,
+    rechenweg: [`Klausel: „${k.zitat.replace(/[„“]/g, "")}“`, ...r.rechenweg],
+    warnungen,
+  };
+}
+
 /** Zusammenfassung: Post von Mandanten in der dritten Person, sonst die aussagekräftigsten Sätze (als Zitat, wenn in Ich-Form). */
 function zusammenfassungFuer(typ: string, input: { text: string; von?: string; vonAdresse?: string; kanal?: string }, data: TenantData, akteId: string | undefined): string {
   const akte = akteId ? data.akten.find((a) => a.id === akteId) : undefined;
@@ -237,6 +533,10 @@ function zusammenfassungFuer(typ: string, input: { text: string; von?: string; v
     const name = vomMandanten ? mandant!.name : (input.von ?? "").replace(/\s*<.*>$/, "").trim();
     const s = name ? mandantenZusammenfassung(input.text, { name, kontakt: vomMandanten ? mandant : undefined, bezeichnung: vomMandanten ? mandantBezeichnung(mandant) : undefined }) : undefined;
     if (s) return s;
+  }
+  if (typ === "Urteil" || typ === "Versäumnisurteil") {
+    const tenor = tenorZusammenfassung(input.text, data, akteId);
+    if (tenor) return tenor;
   }
   const auszug = zusammenfassen(input.text);
   // Ich-Form aus E-Mails nicht als eigene Aussage der KI stehen lassen, sondern als Zitat kennzeichnen
@@ -249,12 +549,16 @@ function zusammenfassungFuer(typ: string, input: { text: string; von?: string; v
 /** Feiertags-Bundesland für die Fristberechnung: Gerichtsort laut Schreiben bzw. Akte, sonst Kanzleisitz. */
 interface FristOrt {
   land: Bundesland;
-  /** nur gesetzt, wenn vom Kanzleisitz abweichend – erscheint dann im Rechenweg */
+  /** Gericht und Herkunft, z. B. „Landgericht Berlin II – laut Schreiben“ – erscheint immer im Rechenweg (ohne: „Kanzleisitz“) */
   hinweis?: string;
+  /** Bundesland des Kanzleisitzes – für den Hinweis auf Feiertage, die nur dort gelten */
+  kanzleiLand?: Bundesland;
+  /** erkanntes Gericht (für das Rechtsmittelgericht) */
+  gericht?: string;
 }
 
 function vorschlag(key: string, ereignis: ISODate, ort: FristOrt, opts: { ereignisLabel?: string; warnung?: string } = {}): FristVorschlag {
-  const r = berechneNachRegel(key, ereignis, ort.land, undefined, { ereignisLabel: opts.ereignisLabel, feiertagsOrt: ort.hinweis });
+  const r = berechneNachRegel(key, ereignis, ort.land, undefined, { ereignisLabel: opts.ereignisLabel, feiertagsOrt: ort.hinweis, kanzleiLand: ort.kanzleiLand });
   return {
     regelKey: key, titel: r.regel.titel, typ: r.regel.typ, ereignisDatum: ereignis, ende: r.ende, vorfrist: r.vorfrist, grundlage: r.regel.grundlage, rechenweg: r.rechenweg,
     warnungen: opts.warnung ? [opts.warnung, ...r.warnungen] : r.warnungen,
@@ -262,7 +566,7 @@ function vorschlag(key: string, ereignis: ISODate, ort: FristOrt, opts: { ereign
 }
 
 function freieFrist(titel: string, dauer: number, einheit: Einheit, ereignis: ISODate, ort: FristOrt, grundlage = "Richterliche Frist"): FristVorschlag {
-  const r = berechneFrist({ ereignis, dauer, einheit, land: ort.land, vorfristTage: einheit === "tage" && dauer <= 10 ? 3 : 7, ereignisLabel: "Zustellung der Verfügung", feiertagsOrt: ort.hinweis });
+  const r = berechneFrist({ ereignis, dauer, einheit, land: ort.land, vorfristTage: einheit === "tage" && dauer <= 10 ? 3 : 7, ereignisLabel: "Zustellung der Verfügung", feiertagsOrt: ort.hinweis, kanzleiLand: ort.kanzleiLand });
   return { regelKey: "richterlich", titel, typ: "frist", ereignisDatum: ereignis, ende: r.ende, vorfrist: r.vorfrist, grundlage, rechenweg: r.rechenweg, warnungen: r.warnungen };
 }
 
@@ -271,15 +575,15 @@ const GERICHTSPOST = /^(Urteil|Versäumnisurteil|Strafbefehl|Bußgeldbescheid|Mi
 
 /**
  * Ort der fristwahrenden Handlung (§ 222 Abs. 2 ZPO): Gericht/Behörde laut Absender bzw. Schreiben, sonst das Gericht
- * der zugeordneten Akte, sonst der Kanzleisitz. Im Rechenweg erscheint der Ort nur, wenn er vom Kanzleisitz abweicht.
+ * der zugeordneten Akte, sonst der Kanzleisitz. Der Rechenweg nennt immer Land und Gericht („Feiertage am Gerichtsort geprüft …“).
  */
 function fristOrt(typ: string, input: { von?: string; text: string; betreff?: string }, data: TenantData, akteId: string | undefined, land: Bundesland): FristOrt {
   const ausSchreiben = GERICHTSPOST.test(typ) ? bundeslandAusGericht(`${input.von ?? ""}\n${input.betreff ?? ""}\n${input.text.slice(0, 1500)}`) : undefined;
-  if (ausSchreiben) return { land: ausSchreiben.land, hinweis: ausSchreiben.land !== land ? `Gerichtsort laut Schreiben: ${ausSchreiben.gericht}` : undefined };
+  if (ausSchreiben) return { land: ausSchreiben.land, hinweis: `${ausSchreiben.gericht} – laut Schreiben`, kanzleiLand: land, gericht: ausSchreiben.gericht };
   const akte = akteId ? data.akten.find((a) => a.id === akteId) : undefined;
   const ausAkte = gerichtsortDerAkte(akte, data.kontakte);
-  if (ausAkte) return { land: ausAkte.land, hinweis: ausAkte.land !== land ? `Gericht der Akte: ${ausAkte.gericht}` : undefined };
-  return { land };
+  if (ausAkte) return { land: ausAkte.land, hinweis: `${ausAkte.gericht} – laut Akte`, kanzleiLand: land, gericht: ausAkte.gericht };
+  return { land, hinweis: "Kanzleisitz", kanzleiLand: land };
 }
 
 /** Zustellung später als fünf Monate nach Verkündung? Dann beginnt die Rechtsmittelfrist schon mit Ablauf der fünf Monate. */
@@ -354,6 +658,7 @@ export function analysiereRegelbasiert(input: { text: string; betreff?: string; 
   // zur Kenntnis genommen hat (dieses Datum steht im eEB) – vorsorglich rechnet AnwaltApex ab dem Eingangstag.
   const zustellung = eingang;
   const ort = fristOrt(typ, input, data, match.akteId, land);
+  let rechtsmittel: Rechtsmittelhinweis | undefined;
 
   if (typ === "Urteil") {
     // Jedes zugestellte Urteil löst eine Rechtsmittelfrist aus – auch ohne Rechtsmittelbelehrung im Text.
@@ -370,6 +675,9 @@ export function analysiereRegelbasiert(input: { text: string; betreff?: string; 
       aktionen.push("Rechtsmittel prüfen: Revision zum BAG nur bei Zulassung (§ 72 ArbGG), sonst Nichtzulassungsbeschwerde (§ 72a ArbGG) – Frist jeweils ein Monat ab Zustellung.");
     } else if (zweiteInstanz && revisionZugelassen(n)) {
       fristen.push(vorschlag("revision", zustellung, ort), vorschlag("revisionsbegruendung", zustellung, ort));
+      rechtsmittel = lag
+        ? { art: "Revision", gericht: "Bundesarbeitsgericht", norm: "§ 74 Abs. 1 ArbGG", text: "Revision einzulegen beim Bundesarbeitsgericht (Erfurt), § 74 Abs. 1 ArbGG", ausBelehrung: false }
+        : { art: "Revision", gericht: "Bundesgerichtshof", norm: "§ 549 Abs. 1 ZPO", text: "Revision einzulegen beim Bundesgerichtshof (Karlsruhe), § 549 Abs. 1 ZPO", ausBelehrung: false };
       aktionen.push("Mandanten über das Berufungsurteil informieren und Revision prüfen.");
     } else if (zweiteInstanz) {
       aktionen.push("Rechtsmittel prüfen: Revision nur bei Zulassung, sonst Nichtzulassungsbeschwerde – Frist jeweils ein Monat ab Zustellung.");
@@ -377,6 +685,7 @@ export function analysiereRegelbasiert(input: { text: string; betreff?: string; 
       const [ein, begr, norm] = arbeitsgericht ? (["berufung_arbg", "berufungsbegruendung_arbg", "§ 66 Abs. 1 S. 2 ArbGG"] as const) : (["berufung", "berufungsbegruendung", "§ 517 Hs. 2 ZPO"] as const);
       const g = fuenfMonatsGrenze(n, zustellung, norm);
       fristen.push(vorschlag(ein, g.ereignis, ort, { ereignisLabel: g.label, warnung: g.warnung }), vorschlag(begr, g.ereignis, ort, { ereignisLabel: g.label }));
+      rechtsmittel = rechtsmittelgerichtZu(input.text, ort.gericht ?? (arbeitsgericht ? input.von : undefined), { arbeitsgericht });
       aktionen.push(`Mandanten über das Urteil informieren und Berufung prüfen (${arbeitsgericht ? "Zulassung, Beschwer über 600 € oder Bestandsstreit, § 64 Abs. 2 ArbGG" : "Beschwer über 1.000 € oder Zulassung, § 511 Abs. 2 ZPO"}; Kostenrisiko).`);
     }
   } else if (typ === "Versäumnisurteil") {
@@ -397,8 +706,15 @@ export function analysiereRegelbasiert(input: { text: string; betreff?: string; 
     aktionen.push("Kündigungsschutzklage vorbereiten; Betriebsratsanhörung (§ 102 BetrVG) prüfen.");
   }
 
+  // Vertragliche Ausschlussfristen (Arbeitsvertrag u. a.): Dauer aus der Klausel, Fälligkeit wird erfragt – nie erfunden.
+  const ausschlussfrist = art === "vertrag" || /ausschlussfrist|verfallfrist|verfallen, wenn/.test(n) ? erkenneAusschlussfrist(voll, typ === "Schreiben" ? "Vertrag" : typ) : undefined;
+  if (ausschlussfrist) {
+    aktionen.push(`${ausschlussfristTitel(ausschlussfrist)} – Fälligkeit der Ansprüche klären und die Frist notieren. Bei Versäumung verfällt der Anspruch.`);
+    if (ausschlussfrist.zweiteStufe) aktionen.push(`Zweite Stufe beachten: gerichtliche Geltendmachung binnen ${dauerText(ausschlussfrist.zweiteStufe.dauer, ausschlussfrist.zweiteStufe.einheit)} nach ${ausschlussfrist.zweiteStufe.beginn}.`);
+  }
+
   // Richterliche Fristen: „binnen drei Wochen", „innerhalb von zehn Tagen"
-  const rich = n.match(new RegExp(`(?:binnen|innerhalb von|innerhalb)\\s+(?:einer frist von\\s+)?${ZAHLWORT_RE}\\s+(tag|tagen|woche|wochen|monat|monaten)`));
+  const rich = ausschlussfrist ? null : n.match(new RegExp(`(?:binnen|innerhalb von|innerhalb)\\s+(?:einer frist von\\s+)?${ZAHLWORT_RE}\\s+(tag|tagen|woche|wochen|monat|monaten)`));
   const fristTitel = /stellung|äußer|erwider/.test(n) ? "Stellungnahmefrist (gerichtlich gesetzt)" : /zahl|begleich|überweis/.test(n) ? "Zahlungsfrist" : "Frist laut Schreiben";
   if (rich && !fristen.length) {
     const dauer = zahl(rich[1]) ?? 2;
@@ -414,7 +730,7 @@ export function analysiereRegelbasiert(input: { text: string; betreff?: string; 
     const titel = gericht
       ? fristTitel === "Frist laut Schreiben" ? "Frist laut Verfügung (gerichtlich gesetzt)" : fristTitel
       : fristTitel === "Stellungnahmefrist (gerichtlich gesetzt)" ? "Stellungnahmefrist laut Schreiben" : fristTitel;
-    const r = berechneFestesEnde({ ende: festEnde, ereignis: zustellung, land: ort.land, ereignisLabel: gericht ? "Zustellung der Verfügung" : "Eingang des Schreibens", quelle: gericht ? "Verfügung" : "Schreiben" });
+    const r = berechneFestesEnde({ ende: festEnde, ereignis: zustellung, land: ort.land, ereignisLabel: gericht ? "Zustellung der Verfügung" : "Eingang des Schreibens", quelle: gericht ? "Verfügung" : "Schreiben", feiertagsOrt: ort.hinweis, kanzleiLand: ort.kanzleiLand });
     fristen.push({ regelKey: "richterlich", titel, typ: "frist", ereignisDatum: zustellung, ende: r.ende, vorfrist: r.vorfrist, grundlage: gericht ? "Richterliche Frist (Datum laut Verfügung)" : "Frist laut Schreiben (festes Datum)", rechenweg: r.rechenweg, warnungen: r.warnungen });
   }
 
@@ -454,6 +770,8 @@ export function analysiereRegelbasiert(input: { text: string; betreff?: string; 
     termin,
     aktionen,
     eeb,
+    ausschlussfrist,
+    rechtsmittel,
   };
 }
 
@@ -515,7 +833,8 @@ export async function analysiereDokument(
       akteGrund: match.grund ?? basis.akteGrund,
       fristen: fristen.length ? fristen : basis.fristen,
       termin,
-      aktionen: res.aktionen?.length ? res.aktionen : basis.aktionen,
+      // Die regelbasierte Erkennung der Ausschlussfrist läuft auch bei Live-KI – ihr Hinweis bleibt immer erhalten.
+      aktionen: res.aktionen?.length ? [...basis.aktionen.filter((a) => /^Ausschlussfrist erkannt|^Zweite Stufe beachten/.test(a)), ...res.aktionen] : basis.aktionen,
       quelle: aktuelleQuelle(),
       dauerMs: performance.now() - t0,
     };

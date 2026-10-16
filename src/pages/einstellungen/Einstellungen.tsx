@@ -8,6 +8,8 @@ import { LizenzTab } from "./LizenzTab";
 import { KiTab } from "./KiTab";
 import { DarstellungTab } from "./DarstellungTab";
 import { DatenschutzTab } from "./DatenschutzTab";
+import { useKanzlei } from "@/store/session";
+import { darfLizenzSehen } from "@/lib/backend";
 
 type Tab = "kanzlei" | "team" | "lizenz" | "ki" | "darstellung" | "datenschutz";
 
@@ -22,18 +24,22 @@ const TABS: { value: Tab; label: string; icon: React.ReactNode }[] = [
 
 export default function Einstellungen() {
   const [params, setParams] = useSearchParams();
+  const { user } = useKanzlei();
+  // Reiter „Lizenz“ und die Teamliste mit E-Mails nur für Partner und Administration; alle anderen sehen „Ihr Zugang“.
+  const verwaltung = darfLizenzSehen(user.rolle);
+  const tabs = TABS.filter((t) => verwaltung || t.value !== "lizenz").map((t) => (t.value === "team" && !verwaltung ? { ...t, label: "Ihr Zugang" } : t));
   const roh = params.get("tab");
-  const tab: Tab = TABS.some((t) => t.value === roh) ? (roh as Tab) : "kanzlei";
+  const tab: Tab = tabs.some((t) => t.value === roh) ? (roh as Tab) : roh === "lizenz" ? "team" : "kanzlei";
 
   return (
     <div>
-      <PageHeader title="Einstellungen" hilfe="einstellungen" subtitle="Kanzlei, Team & Zugänge, Lizenz, KI und Darstellung – alles, was Ihre Kanzlei in AnwaltApex ausmacht, an einem Ort." />
+      <PageHeader title="Einstellungen" hilfe="einstellungen" subtitle={verwaltung ? "Kanzlei, Team & Zugänge, Lizenz, KI, Darstellung und Datenschutz – alles, was Ihre Kanzlei in AnwaltApex ausmacht, an einem Ort." : "Ihr Zugang, Kanzleiangaben, KI, Darstellung und Datenschutz – an einem Ort."} />
       <div className="sticky top-[76px] z-30 -mx-1 mb-5 px-1 md:static">
         <Segmented<Tab>
           value={tab}
           onChange={(t) => setParams(t === "kanzlei" ? {} : { tab: t }, { replace: true })}
-          options={TABS}
-          className="max-w-full !bg-[var(--glass-strong)] backdrop-blur-xl md:!bg-[var(--ink-softer)] md:backdrop-blur-none"
+          options={tabs}
+          className="max-w-full !bg-[color-mix(in_oklab,var(--surface)_97%,transparent)] shadow-[var(--glass-shadow)] md:!bg-[var(--ink-softer)] md:shadow-none"
         />
       </div>
       <AnimatePresence mode="wait" initial={false}>

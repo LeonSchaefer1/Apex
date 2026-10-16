@@ -187,7 +187,7 @@ export default function Kontakte() {
               ))}
             </AnimatePresence>
           </ul>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 px-1 text-[12px] text-fg-4">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 px-1 text-[12px] text-fg-3">
             <span>
               {Math.min(anzahl, liste.length)} von {liste.length} {liste.length === 1 ? "Kontakt" : "Kontakten"}
               {q.trim() ? " · nach Relevanz" : " · alphabetisch nach Nachname"}
@@ -244,29 +244,29 @@ function KontaktKarte({ k, q, akten, konflikt, aktiv, onClick }: { k: Kontakt; q
       <div className="relative mt-2 truncate text-[12.5px] text-fg-3 sm:hidden">{[k.email, k.telefon].filter(Boolean).join(" · ") || "keine Kontaktdaten"}</div>
       <div className="relative mt-3 hidden w-full grid-cols-1 gap-1 text-[12.5px] text-fg-2 sm:grid">
         <span className="flex min-w-0 items-center gap-2">
-          <AtSign className="size-3.5 shrink-0 text-fg-4" />
-          <span className={cn("truncate", !k.email && "text-fg-4")}>{k.email ? <Highlight text={k.email} q={q} /> : "keine E-Mail"}</span>
+          <AtSign className="size-3.5 shrink-0 text-fg-3" />
+          <span className={cn("truncate", !k.email && "text-fg-3")}>{k.email ? <Highlight text={k.email} q={q} /> : "keine E-Mail"}</span>
         </span>
         <span className="flex min-w-0 items-center gap-2">
-          <Phone className="size-3.5 shrink-0 text-fg-4" />
-          <span className={cn("num truncate", !k.telefon && "text-fg-4", istTelefonSuche(q) && telefonPasst(k.telefon, q) && "rounded-[6px] bg-ink-soft px-1 font-medium text-ink")}>{k.telefon ?? "kein Telefon"}</span>
+          <Phone className="size-3.5 shrink-0 text-fg-3" />
+          <span className={cn("num truncate", !k.telefon && "text-fg-3", istTelefonSuche(q) && telefonPasst(k.telefon, q) && "rounded-[6px] bg-ink-soft px-1 font-medium text-ink")}>{k.telefon ?? "kein Telefon"}</span>
         </span>
       </div>
       <div className="flex-1" />
       <div className="relative mt-3 flex w-full items-center gap-2 border-t border-[var(--line)] pt-2.5 text-[12.5px] sm:mt-3.5 sm:pt-3">
-        <FolderOpen className="size-3.5 text-fg-4" />
+        <FolderOpen className="size-3.5 text-fg-3" />
         <span className="text-fg-2">
           {akten.length === 0 ? (
-            <span className="text-fg-4">keine Akte</span>
+            <span className="text-fg-3">keine Akte</span>
           ) : (
             <>
               <span className="num font-semibold text-fg">{akten.length}</span> {akten.length === 1 ? "Akte" : "Akten"}
-              {offene.length !== akten.length && <span className="text-fg-4"> · {offene.length} offen</span>}
+              {offene.length !== akten.length && <span className="text-fg-3"> · {offene.length} offen</span>}
             </>
           )}
         </span>
-        {akten[0] && <span className="mono ml-1 truncate text-[11.5px] text-fg-4">{akten.slice(0, 3).map((a) => a.aktenzeichen).join(" · ")}</span>}
-        <ChevronRight className="ml-auto size-4 shrink-0 text-fg-4 transition-transform group-hover:translate-x-0.5 group-hover:text-ink" />
+        {akten[0] && <span className="mono ml-1 truncate text-[12.5px] text-fg-3">{akten.slice(0, 3).map((a) => a.aktenzeichen).join(" · ")}</span>}
+        <ChevronRight className="ml-auto size-4 shrink-0 text-fg-3 transition-transform group-hover:translate-x-0.5 group-hover:text-ink" />
       </div>
     </button>
   );

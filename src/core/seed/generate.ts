@@ -1,5 +1,5 @@
 // Erzeugt einen vollständigen, in sich stimmigen Datenbestand für eine Kanzlei – relativ zum heutigen Datum.
-import { AUTOMATION_DEFS, ausloesungAm } from "../automationen";
+import { AUTOMATION_DEFS, ausloesungAm, ersparnisMinuten } from "../automationen";
 import { addDays, addMonthsBGB, diffDays, fmtDate, fmtEUR, round2, toLocalISO } from "../dates";
 import { istWerktag } from "../feiertage";
 import { berechneNachRegel, regel as fristRegel } from "../fristen";
@@ -8,12 +8,12 @@ import type {
   Akte, Aktivitaet, Automation, Dokument, Frist, Kontakt, KontaktRolle, Nachricht,
   Rechnung, Sachgebiet, Tenant, TenantData, Transaktion, User, Zeiteintrag,
 } from "../types";
-import { stadtDatenFuer, type StadtDaten, type StadtKey, VORNAMEN_M, VORNAMEN_W, NACHNAMEN, BRANCHEN, HAUSVERWALTUNGEN, GEGNERANWAELTE, VERSICHERUNGEN, KFZ_VERSICHERER } from "./pools";
+import { KAMMERN, stadtDatenFuer, type StadtDaten, type StadtKey, VORNAMEN_M, VORNAMEN_W, NACHNAMEN, BRANCHEN, HAUSVERWALTUNGEN, GEGNERANWAELTE, VERSICHERUNGEN, KFZ_VERSICHERER } from "./pools";
 import { createRng, hashString, type Rng } from "./rng";
 import { vorlagenFuer, type FallVorlage, type Parteien } from "./vorlagen";
 import { heroesBerlin, heroesMuenchen, heroesHamburg } from "./heroes";
 
-export const SEED_VERSION = 7;
+export const SEED_VERSION = 9;
 
 export interface SeedInput {
   tenant: Tenant;
@@ -47,7 +47,7 @@ export interface Ctx {
 function emptyData(): TenantData {
   return {
     kontakte: [], akten: [], fristen: [], dokumente: [], nachrichten: [], rechnungen: [],
-    buchungen: [], transaktionen: [], zeiten: [], automationen: [], aktivitaeten: [], notizen: [], meta: [],
+    buchungen: [], transaktionen: [], zeiten: [], automationen: [], aktivitaeten: [], notizen: [], umzugLaeufe: [], meta: [],
   };
 }
 
@@ -357,14 +357,17 @@ function generischeAkte(ctx: Ctx, sachgebiet: Sachgebiet, azNummer: number) {
     DATUM: fmtDate(ctx.d(createdOffset + rng.int(0, 6))),
     AZ: "",
   };
+  // Kammer- und Abteilungsnummern nach Gerichtsgröße: ArbG Paderborn 1–4 Ca, AG Paderborn 1–20 C und 1–8 F; Großstädte wie bisher
+  const k = KAMMERN[stadt.groesse ?? "gross"];
+  const nr = (r: [number, number]) => rng.int(r[0], r[1]);
   const gerichtsAz = gericht
-    ? gerichtArt === "arbg" ? `${rng.int(1, 60)} Ca ${rng.int(1000, 9999)}/${ctx.yy}`
-      : gerichtArt === "fam" ? `${rng.int(270, 290)} F ${rng.int(100, 999)}/${ctx.yy}`
+    ? gerichtArt === "arbg" ? `${nr(k.arbg)} Ca ${rng.int(1000, 9999)}/${ctx.yy}`
+      : gerichtArt === "fam" ? `${nr(k.fam)} F ${rng.int(100, 999)}/${ctx.yy}`
       : gerichtArt === "mahn" ? `${ctx.yy}-${rng.int(1000000, 9999999)}-0-${rng.int(1, 9)}`
-      : gerichtArt === "lg" ? `${rng.int(2, 35)} O ${rng.int(100, 480)}/${ctx.yy}`
-      : gerichtArt === "straf" ? `${rng.int(200, 290)} Cs ${rng.int(100, 999)}/${ctx.yy}`
-      : `${rng.int(1, 240)} C ${rng.int(100, 999)}/${ctx.yy}`
-    : gerichtArt === "sta" ? `${rng.int(200, 290)} Js ${rng.int(1000, 9999)}/${ctx.yy}` : undefined;
+      : gerichtArt === "lg" ? `${nr(k.lg)} O ${rng.int(100, 480)}/${ctx.yy}`
+      : gerichtArt === "straf" ? `${nr(k.straf)} Cs ${rng.int(100, 999)}/${ctx.yy}`
+      : `${nr(k.ag)} C ${rng.int(100, 999)}/${ctx.yy}`
+    : gerichtArt === "sta" ? `${nr(k.sta)} Js ${rng.int(1000, 9999)}/${ctx.yy}` : undefined;
   p.AZ = gerichtsAz ?? "";
   const akte: Akte = {
     id: ctx.id("a"),
@@ -559,7 +562,20 @@ function bankUmsaetze(ctx: Ctx) {
     };
     data.transaktionen.push(t);
   });
-  // Versicherungszahlung (Fremdgeld) und sonstige Umsätze
+  // Versicherungszahlung (Fremdgeld): Ein Kfz-Haftpflichtversicherer reguliert für die Mandantschaft auf das Anderkonto –
+  // erkennbar an Aktenzeichen und Schadennummer. Ohne Zufallszug, damit der übrige Demobestand unverändert bleibt.
+  const fremdAkte = data.akten.find(
+    (a) => a.status === "offen" && a.gegenstandswert > 0 && !!a.gegnerId && data.kontakte.find((k) => k.id === a.gegnerId)?.rollen.includes("versicherung") && !data.buchungen.some((b) => b.akteId === a.id && b.fremdgeld),
+  );
+  if (fremdAkte) {
+    const versicherer = data.kontakte.find((k) => k.id === fremdAkte.gegnerId)!;
+    const nr = fremdAkte.aktenzeichen.replace(/\D/g, "");
+    data.transaktionen.push({
+      id: ctx.id("t"), datum: ctx.d(-1), betrag: Math.max(500, Math.round((fremdAkte.gegenstandswert * 0.6) / 10) * 10), gegenpartei: versicherer.name.toUpperCase(),
+      iban: "DE02 1203 0000 0000 2020 51", verwendungszweck: `Schaden-Nr. KH-${ctx.yy}-${nr.padStart(6, "0")} / Ihr Az. ${fremdAkte.aktenzeichen} – Regulierung Fahrzeugschaden`, status: "offen",
+    });
+  }
+  // Sonstige Umsätze
   data.transaktionen.push(
     { id: ctx.id("t"), datum: ctx.d(-1), betrag: -2450, gegenpartei: "Bürohaus Verwaltung GmbH", iban: "DE44 1001 0010 0123 4567 89", verwendungszweck: `Miete Kanzleiräume ${["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"][Number(ctx.today.slice(5, 7)) - 1]}`, status: "offen" },
     { id: ctx.id("t"), datum: ctx.d(-2), betrag: -189.9, gegenpartei: "Telekommunikation AG", iban: "DE12 3004 0000 0123 4567 00", verwendungszweck: "Kundennr. 4711-0815 Rechnung", status: "offen" },
@@ -626,73 +642,123 @@ function automationenUndAktivitaeten(ctx: Ctx) {
   };
   const texte: Record<string, (a: Akte) => string> = {
     "posteingang-fristen": (a) => `Frist aus Posteingang erkannt und nach § 222 ZPO berechnet – ${a.aktenzeichen} ${a.titel}`,
-    "mandatsaufnahme": (a) => `Mandatsaufnahme-Paket (Vollmacht, Mandatsbestätigung, Datenschutz) erstellt – ${a.aktenzeichen}`,
-    "deckungsanfrage": (a) => `Deckungsanfrage an ${a.rsv?.versicherung ?? "Rechtsschutzversicherung"} versendet – ${a.aktenzeichen}`,
-    "mandanten-update": (a) => `Mandanten-Update versendet – ${a.aktenzeichen} ${a.titel.split(" ./. ")[0]}`,
+    "mandatsaufnahme": (a) => `Mandatsaufnahme-Paket (Vollmacht, Mandatsbestätigung, Datenschutz) zur Freigabe vorgelegt – ${a.aktenzeichen}`,
+    "deckungsanfrage": (a) => `Deckungsanfrage an ${a.rsv?.versicherung ?? "Rechtsschutzversicherung"} zur Freigabe vorgelegt – ${a.aktenzeichen}`,
+    "mandanten-update": (a) => `Mandanten-Update zur Freigabe vorgelegt – ${a.aktenzeichen} ${a.titel.split(" ./. ")[0]}`,
     "vorfristen": (a) => `Vorfrist gesetzt und Verantwortliche informiert – ${a.aktenzeichen}`,
     "eeb": (a) => `Empfangsbekenntnis vorbereitet – ${a.aktenzeichen}`,
-    "bankabgleich": () => `Bankabgleich: ${rng.int(2, 6)} Zahlungen automatisch zugeordnet`,
-    "mahnwesen": (a) => `Zahlungserinnerung versendet – ${a.aktenzeichen}`,
-    "kostenfestsetzung": (a) => `Kostenfestsetzungsantrag vorbereitet – ${a.aktenzeichen}`,
-    "archivierung": (a) => `Akte archiviert, Aufbewahrungsfrist bis ${Number((a.abgeschlossenAm ?? ctx.today).slice(0, 4)) + 6} vorgemerkt – ${a.aktenzeichen}`,
-    "zeiterfassung": () => zeiterfassungText(),
-    "zuordnung": (a) => `Nachricht automatisch der Akte ${a.aktenzeichen} zugeordnet`,
+    "bankabgleich": () => "Kontoumsatz einer offenen Rechnung zugeordnet",
+    "mahnwesen": (a) => `Zahlungserinnerung zur Freigabe vorgelegt – ${a.aktenzeichen}`,
+    "kostenfestsetzung": (a) => `Kostenfestsetzungsantrag zur Prüfung und Unterschrift vorbereitet – ${a.aktenzeichen}`,
+    "archivierung": (a) => `Archivierung vorgeschlagen, Aufbewahrungsfrist bis ${Number((a.abgeschlossenAm ?? ctx.today).slice(0, 4)) + 6} vorgemerkt – ${a.aktenzeichen}`,
+    "zeiterfassung": () => "Zeiteinträge vorgeschlagen",
+    "zuordnung": (a) => `Nachricht der Akte ${a.aktenzeichen} zugeordnet`,
   };
-  function zeiterfassungText() {
-    return `${rng.int(4, 11)} Zeiteinträge aus Telefonaten und E-Mails vorgeschlagen`;
-  }
-  const def = (key: string) => AUTOMATION_DEFS.find((x) => x.key === key)!;
+  /** Sammeleinträge (ein Lauf, mehrere Vorgänge): Minuten je Vorgang × Anzahl. */
+  const SAMMEL: Record<string, (n: number) => string> = {
+    "bankabgleich": (n) => `Bankabgleich: ${n} ${n === 1 ? "Zahlung" : "Zahlungen"} zugeordnet (ab 90 % gebucht, Rest zur Bestätigung)`,
+    "zeiterfassung": (n) => `${n} Zeiteinträge aus Telefonaten und E-Mails vorgeschlagen`,
+    "zuordnung": (n) => `${n} Nachrichten den Akten zugeordnet (Vorschläge)`,
+    "posteingang-fristen": (n) => `${n} Fristen aus dem Posteingang erkannt und zur Vier-Augen-Kontrolle vorgelegt`,
+    "vorfristen": (n) => `${n} Vorfristen gesetzt`,
+    "eeb": (n) => `${n} Empfangsbekenntnisse vorbereitet`,
+  };
   const akteur = (key: string): Aktivitaet["akteur"] => (key === "posteingang-fristen" ? "ki" : "automation");
-  // Ereignisgesteuerte Automationen laufen zu beliebigen Zeiten; zeitgesteuerte (Mandanten-Update, Zeiterfassung) nur zu
-  // ihren Auslösezeiten – sie werden unten getrennt erzeugt.
-  const ohneAkte = ["bankabgleich"];
-  const gewichte: [string, number][] = [
-    ["posteingang-fristen", 10], ["zuordnung", 12], ["vorfristen", 8], ["bankabgleich", 5],
-    ["mandatsaufnahme", 3], ["deckungsanfrage", 3], ["eeb", 4], ["mahnwesen", 3], ["archivierung", 2], ["kostenfestsetzung", 1],
+  // Plausible Mengen für eine Kanzlei dieser Größe – gezählt wird je tatsächlich bearbeitetem Vorgang (src/core/automationen.ts).
+  // Die Summe der letzten 7 Tage ergibt sich daraus; sie darf vom Zielwert 38 Std. abweichen und wird ausgewiesen, wie sie fällt.
+  // Größe nach Arbeitsplätzen der Lizenz (bzw. Teamgröße): 6 Arbeitsplätze = Faktor 1
+  const groesse = Math.min(2.5, Math.max(0.6, Math.max(ctx.users.length, ctx.tenant.lizenz?.arbeitsplaetze ?? 0) / 6));
+  const menge = (min: number, max: number) => Math.max(0, Math.round(rng.int(min, max) * groesse));
+  /** Ereignisgesteuerte Vorgänge je Werktag [min, max] (für 6 Personen; skaliert mit der Teamgröße) */
+  const JE_WERKTAG: [string, number, number][] = [
+    ["zuordnung", 35, 50], ["posteingang-fristen", 4, 7], ["vorfristen", 4, 6], ["eeb", 2, 4],
   ];
-  /** Eine Automations-Aktivität zum Zeitpunkt `zeit` – passt keine Akte, wird es ein Bankabgleich (ohne Aktenbezug). */
-  const eintrag = (zeit: string, faktor = 1): Aktivitaet => {
-    let key = pickWeighted(rng, gewichte);
-    const kandidaten = ohneAkte.includes(key) ? [] : generisch.filter((a) => passt(key, a, zeit));
-    const a = kandidaten.length ? rng.pick(kandidaten) : undefined;
-    if (!a && !ohneAkte.includes(key)) key = "bankabgleich";
-    return {
-      id: ctx.id("ak"), zeit, akteur: akteur(key), automationKey: key,
-      akteId: a?.id, text: texte[key](a as Akte), minutenGespart: def(key).minutenProLauf * faktor,
-    };
+  /** Seltene Vorgänge je Woche [min, max] – Kostenfestsetzung nur nach obsiegenden Urteilen, höchstens einer pro Woche */
+  const JE_WOCHE: [string, number, number][] = [
+    ["mandatsaufnahme", 2, 5], ["deckungsanfrage", 1, 3], ["mahnwesen", 2, 6], ["archivierung", 1, 4], ["kostenfestsetzung", 0, 1],
+  ];
+  const werktag = (datum: string) => istWerktag(datum, ctx.tenant.bundesland);
+  /** Einzelner Vorgang an einer passenden Akte – ohne passende Akte entfällt er (nichts wird erfunden). */
+  const einzel = (key: string, zeit: string): Aktivitaet | undefined => {
+    const kandidaten = generisch.filter((a) => passt(key, a, zeit));
+    if (!kandidaten.length) return undefined;
+    const a = rng.pick(kandidaten);
+    return { id: ctx.id("ak"), zeit, akteur: akteur(key), automationKey: key, akteId: a.id, text: texte[key](a), minutenGespart: ersparnisMinuten(key, 1) };
   };
+  const sammel = (key: string, zeit: string, n: number): Aktivitaet => ({
+    id: ctx.id("ak"), zeit, akteur: akteur(key), automationKey: key, text: SAMMEL[key](n), minutenGespart: ersparnisMinuten(key, n) || undefined,
+  });
 
   const acts: Aktivitaet[] = [];
   // Zeitgesteuerte Läufe der letzten fünf Wochen – nur an vergangenen Tagen, damit kein Lauf vor seiner Uhrzeit liegt:
-  // Zeiterfassung werktags um 18:00 Uhr, Mandanten-Update freitags ab 14:00 Uhr (je Akte mit Mandantenportal eine Nachricht).
+  // Zeiterfassung werktags um 18:00 Uhr (Minuten je Vorschlag), Mandanten-Update freitags ab 14:00 Uhr (je Akte mit Mandantenportal).
   for (let off = -34; off <= -1; off++) {
     const datum = ctx.d(off);
     const ze = ausloesungAm("zeiterfassung", datum, ctx.tenant.bundesland);
-    if (ze) acts.push({ id: ctx.id("ak"), zeit: ze, akteur: "automation", automationKey: "zeiterfassung", text: zeiterfassungText(), minutenGespart: def("zeiterfassung").minutenProLauf });
+    if (ze) acts.push(sammel("zeiterfassung", ze, menge(5, 11)));
     const mu = ausloesungAm("mandanten-update", datum, ctx.tenant.bundesland);
     if (mu) {
       const empfaenger = rng.shuffle(generisch.filter((a) => a.mandantenportal && passt("mandanten-update", a, mu))).slice(0, rng.int(5, 8));
       empfaenger.forEach((a, i) => {
         const zeit = `${datum}T14:${String(i * 2 + rng.int(0, 1)).padStart(2, "0")}:00`;
-        acts.push({ id: ctx.id("ak"), zeit, akteur: "automation", automationKey: "mandanten-update", akteId: a.id, text: texte["mandanten-update"](a), minutenGespart: def("mandanten-update").minutenProLauf });
+        acts.push({ id: ctx.id("ak"), zeit, akteur: "automation", automationKey: "mandanten-update", akteId: a.id, text: texte["mandanten-update"](a), minutenGespart: ersparnisMinuten("mandanten-update", 1) });
       });
     }
   }
 
-  // Letzte 7 Tage: Ziel ≈ 38 Std. gesparte Zeit (inkl. der festen Einträge der Präsentationsakten und der zeitgesteuerten Läufe)
-  const wochenStart = ctx.d(-6);
-  let wochenMin = [...data.aktivitaeten, ...acts].filter((x) => x.zeit >= wochenStart).reduce((sum, x) => sum + (x.minutenGespart ?? 0), 0);
-  const ziel = 2280 + rng.int(-40, 60);
-  while (wochenMin < ziel) {
-    const off = -rng.int(0, 6);
-    let hh = rng.int(7, 19);
-    if (off === 0) hh = Math.min(hh, 9);
-    const e = eintrag(zeitpunkt(off, hh));
-    acts.push(e);
-    wochenMin += e.minutenGespart ?? 0;
+  // Letzte 7 Tage: jeder Vorgang einzeln (heute nur bis 9 Uhr, damit nichts in der Zukunft liegt)
+  for (let off = -6; off <= 0; off++) {
+    const datum = ctx.d(off);
+    if (!werktag(datum)) continue;
+    const anteil = off === 0 ? 0.25 : 1;
+    const stunde = () => (off === 0 ? rng.int(7, 8) : rng.int(7, 18));
+    for (const [key, min, max] of JE_WERKTAG) {
+      const n = Math.round(menge(min, max) * anteil);
+      for (let i = 0; i < n; i++) {
+        const e = einzel(key, zeitpunkt(off, stunde()));
+        if (e) acts.push(e);
+      }
+    }
+    // Bankabgleich: stündlicher Abruf – gezählt werden nur zugeordnete Umsätze (ein Sammeleintrag je Abruf mit neuen Zahlungen)
+    const abrufe = off === 0 ? 1 : rng.int(2, 4);
+    for (let i = 0; i < abrufe; i++) {
+      const n = menge(0, 3);
+      if (n > 0) acts.push(sammel("bankabgleich", zeitpunkt(off, stunde()), n));
+    }
   }
-  // ältere Einträge (Vorwochen, zusammengefasst)
-  for (let i = 0; i < 70; i++) acts.push(eintrag(zeitpunkt(-rng.int(7, 34)), rng.int(4, 9)));
+  for (const [key, min, max] of JE_WOCHE) {
+    const n = key === "kostenfestsetzung" ? rng.int(min, max) : menge(min, max);
+    for (let i = 0; i < n; i++) {
+      let off = -rng.int(0, 6);
+      for (let k = 0; k < 7 && !werktag(ctx.d(off)); k++) off = off <= -6 ? 0 : off - 1;
+      if (!werktag(ctx.d(off))) continue;
+      const e = einzel(key, zeitpunkt(off, off === 0 ? rng.int(7, 8) : rng.int(8, 17)));
+      if (e) acts.push(e);
+    }
+  }
+
+  // Vorwochen: je Werktag ein Sammeleintrag pro Automatik (Anzahl Vorgänge × Minuten je Vorgang) – ohne Einzelakten
+  for (let off = -34; off <= -7; off++) {
+    const datum = ctx.d(off);
+    if (!werktag(datum)) continue;
+    for (const [key, min, max] of JE_WERKTAG) {
+      const n = menge(min, max);
+      if (n > 0) acts.push(sammel(key, zeitpunkt(off, rng.int(17, 18)), n));
+    }
+    const bank = menge(3, 9);
+    if (bank > 0) acts.push(sammel("bankabgleich", zeitpunkt(off, rng.int(9, 16)), bank));
+  }
+  for (let w = 1; w <= 4; w++) {
+    for (const [key, min, max] of JE_WOCHE) {
+      const n = key === "kostenfestsetzung" ? rng.int(min, max) : menge(min, max);
+      for (let i = 0; i < n; i++) {
+        const off = -7 * w - rng.int(0, 6);
+        if (!werktag(ctx.d(off))) continue;
+        const e = einzel(key, zeitpunkt(off, rng.int(8, 17)));
+        if (e) acts.push(e);
+      }
+    }
+  }
   // menschliche Aktivitäten
   for (let i = 0; i < 18; i++) {
     const zeit = zeitpunkt(-rng.int(0, 6));
@@ -777,7 +843,12 @@ function verteileHeuteFristen(ctx: Ctx) {
 }
 
 /** Hauptfunktion: kompletter Datenbestand für eine Kanzlei. */
-export function generateTenantData(input: SeedInput, today: string, opts: { leer?: boolean } = {}): TenantData {
+/**
+ * `kundentest`: Kanzlei aus der Apex Console (keine Präsentationskanzlei). Ihre Beispielaktivitäten werden als `beispiel`
+ * gekennzeichnet und keiner echten Person zugeschrieben – im Protokoll steht nichts auf den Namen der Kundin, was sie nicht
+ * selbst ausgelöst hat. Standard: Kanzleien ohne Präsentationsakten (`heroes: "none"`).
+ */
+export function generateTenantData(input: SeedInput, today: string, opts: { leer?: boolean; kundentest?: boolean } = {}): TenantData {
   rechnungsNr = 0;
   const ctx = createCtx(input, today);
   ctx.data.meta.push({ seedVersion: SEED_VERSION, seededAt: `${today}T06:00:00` });
@@ -809,6 +880,13 @@ export function generateTenantData(input: SeedInput, today: string, opts: { leer
   automationenUndAktivitaeten(ctx);
   gerichtlicheFristen(ctx);
   verteileHeuteFristen(ctx);
+
+  if (opts.kundentest ?? input.profil.heroes === "none") {
+    for (const a of ctx.data.aktivitaeten) {
+      a.beispiel = true;
+      delete a.userId;
+    }
+  }
 
   ctx.data.akten.sort((a, b) => b.aktenzeichen.localeCompare(a.aktenzeichen, "de", { numeric: true }));
   ctx.data.nachrichten.sort((a, b) => b.eingang.localeCompare(a.eingang));

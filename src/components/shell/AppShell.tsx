@@ -13,22 +13,41 @@ import { CommandPalette } from "./CommandPalette";
 import { QuickHelp } from "./QuickHelp";
 import { AssistantDock } from "@/components/assistant/AssistantDock";
 import { LadeBildschirm } from "./LadeBildschirm";
+import { Sperrbildschirm } from "./Sperrbildschirm";
+import { ZweiFaktorPflicht } from "./ZweiFaktorPflicht";
+import { WiedervorlageDialog, useTastenkuerzel } from "./Tastenkuerzel";
+import { KeinZugriff } from "./KeinZugriff";
+import { bereichErlaubt } from "@/app/nav";
+import { useUI } from "@/store/ui";
 
 /** Rahmen der Kanzlei-App: schwebende Glas-Navigation über dem belichteten Arbeitsgrund. */
 export function AppShell() {
-  const { sitzung, status } = useSession();
+  const { sitzung, status, gesperrt } = useSession();
   const dataStatus = useData((s) => s.status);
   const load = useData((s) => s.load);
   const loc = useLocation();
   const nav = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
   usePointerGlow();
+  const zweiFaktorFehlt = !!sitzung && !istConsole(sitzung) && !!sitzung.betrieb?.zweiFaktorFehlt;
   // Simulierter 38h-Motor nur für Präsentations- und Beispieldaten-Kanzleien – nie in echten Kundendaten.
-  useMotor(dataStatus === "bereit" && hatBeispieldaten(sitzung));
+  useMotor(dataStatus === "bereit" && hatBeispieldaten(sitzung) && !gesperrt);
+  useTastenkuerzel();
 
   useEffect(() => {
-    if (sitzung && !istConsole(sitzung) && dataStatus === "leer") void load();
-  }, [sitzung, dataStatus, load]);
+    if (sitzung && !istConsole(sitzung) && dataStatus === "leer" && !zweiFaktorFehlt) void load();
+  }, [sitzung, dataStatus, load, zweiFaktorFehlt]);
+
+  // Gesperrt: Suche, Assistent und Dialoge schließen – nichts bleibt hinter dem Sperrbildschirm offen.
+  useEffect(() => {
+    if (!gesperrt) return;
+    const ui = useUI.getState();
+    ui.setPalette(false);
+    ui.schliesseAssistent();
+    ui.setWiedervorlage(null);
+    ui.setKuerzel(false);
+    ui.zeigeHilfe(null);
+  }, [gesperrt]);
 
   // Sitzung wurde in einem anderen Tab gewechselt: Die bisherige Seite (z. B. eine Akte) gehört zur alten Kanzlei → Cockpit.
   const kanzleiSchluessel = sitzung && !istConsole(sitzung) ? `${sitzung.tenant.id}:${sitzung.user.id}` : null;
@@ -44,6 +63,7 @@ export function AppShell() {
 
   if (status !== "angemeldet" || !sitzung) return <Navigate to="/login" replace />;
   if (istConsole(sitzung)) return <Navigate to="/console" replace />;
+  if (zweiFaktorFehlt) return <ZweiFaktorPflicht />;
   if (dataStatus !== "bereit")
     return (
       <LadeBildschirm
@@ -58,32 +78,39 @@ export function AppShell() {
       />
     );
 
+  const erlaubt = bereichErlaubt(loc.pathname, sitzung.user.rolle);
   return (
-    <div className="relative flex h-full">
-      <Sidebar />
-      <div className="relative z-10 flex min-w-0 flex-1 flex-col">
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden" id="haupt-scroll">
-          <TopBar />
-          <main className="mx-auto w-full max-w-[1480px] px-4 pb-32 pt-6 md:px-8 md:pb-24">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={loc.pathname}
-                initial={{ opacity: 0, y: 10, filter: "blur(4px)" }}
-                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                exit={{ opacity: 0, y: -6, filter: "blur(3px)" }}
-                transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
-              >
-                <FrozenOutlet />
-              </motion.div>
-            </AnimatePresence>
-          </main>
+    <>
+      {/* Gesperrt: Inhalte unsichtbar und nicht bedienbar, darüber der Sperrbildschirm */}
+      <div className={gesperrt ? "invisible relative flex h-full" : "relative flex h-full"} aria-hidden={gesperrt || undefined} inert={gesperrt || undefined}>
+        <Sidebar />
+        <div className="relative z-10 flex min-w-0 flex-1 flex-col">
+          {/* Unten Freiraum für die Assistent-Kugel (Kugel + 16 px): Fokus und letzte Inhalte liegen nie unter ihr (WCAG 2.4.11). */}
+          <div ref={scrollRef} className="haupt-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden" id="haupt-scroll">
+            <TopBar />
+            <main className="mx-auto w-full max-w-[1480px] px-4 pb-36 pt-6 md:px-8 md:pb-28">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={loc.pathname}
+                  initial={{ opacity: 0, y: 10, filter: "blur(4px)" }}
+                  animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                  exit={{ opacity: 0, y: -6, filter: "blur(3px)" }}
+                  transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  {erlaubt ? <FrozenOutlet /> : <KeinZugriff />}
+                </motion.div>
+              </AnimatePresence>
+            </main>
+          </div>
         </div>
+        <MobileTabBar />
+        <CommandPalette />
+        <QuickHelp />
+        <WiedervorlageDialog />
+        <AssistantDock />
       </div>
-      <MobileTabBar />
-      <CommandPalette />
-      <QuickHelp />
-      <AssistantDock />
-    </div>
+      {gesperrt && <Sperrbildschirm />}
+    </>
   );
 }
 

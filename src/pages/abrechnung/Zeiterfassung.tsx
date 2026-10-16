@@ -1,7 +1,7 @@
 // Reiter „Zeiterfassung“: Zeiten je Akte erfassen (Formular oder Stoppuhr) und nach Stundensatz abrechnen.
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Clock, FilePlus2, Hourglass, Play, Plus, Square, Timer, Wallet } from "lucide-react";
+import { AlertTriangle, Clock, FilePlus2, FileSignature, Hourglass, PenLine, Play, Plus, Square, Timer, Wallet } from "lucide-react";
 import { AnimatedNumber, Avatar, Button, Card, CardHeader, Chip, Empty, Field, Input, Segmented, Select, Stat, Switch } from "@/components/ui";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
@@ -10,7 +10,7 @@ import { addDays, fmtDate, fmtDateShort, fmtDateWd, fmtEUR, relDays, round2, tod
 import type { Zeiteintrag } from "@/core/types";
 import { cn } from "@/lib/cn";
 import { erstelleRechnungen } from "./aktionen";
-import { fmtDauer, fmtStunden, hatVerguetungsvereinbarung, isoWoche, STANDARD_STUNDENSATZ, stundenPositionen, summen, type TabKey } from "./lib";
+import { fmtDauer, fmtStunden, hatVerguetungsvereinbarung, isoWoche, parseBetrag, satzFuerAbrechnung, STANDARD_STUNDENSATZ, stundenPositionen, summen, type TabKey } from "./lib";
 import { useAbrechnungUI } from "./store";
 import { TabKopf, useLookups } from "./ui";
 
@@ -55,7 +55,8 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
   const [abrAkte, setAbrAkte] = useState("");
 
   const satzVon = (userId: string) => users.get(userId)?.stundensatz ?? user.stundensatz ?? STANDARD_STUNDENSATZ;
-  const wert = (z: Zeiteintrag) => round2((z.minuten / 60) * satzVon(z.userId));
+  // Wert einer Zeit: vereinbarter Stundensatz der Akte (§ 3a RVG) hat Vorrang vor dem Satz der Person
+  const wert = (z: Zeiteintrag) => round2((z.minuten / 60) * (akten.get(z.akteId)?.verguetungsvereinbarung?.stundensatz ?? satzVon(z.userId)));
 
   const heute = today();
   const wocheJetzt = isoWoche(heute).montag;
@@ -93,20 +94,43 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
   }, [zeiten, akten]);
   const abrAkteObj = akten.get(abrAkte || abrechenbareAkten[0]?.akte?.id || "");
   const abrEintraege = abrAkteObj ? zeiten.filter((z) => z.akteId === abrAkteObj.id && z.abrechenbar && !z.abgerechnet) : [];
-  const abrPositionen = stundenPositionen(abrEintraege, users, user.stundensatz ?? STANDARD_STUNDENSATZ, abrAkteObj?.verguetungsvereinbarung?.stundensatz);
+  const vv = abrAkteObj?.verguetungsvereinbarung;
+  // Stundensatz dieser Abrechnung: vorbelegt mit dem vereinbarten Satz, sichtbar und je Abrechnung überschreibbar
+  const [satzEingabe, setSatzEingabe] = useState("");
+  useEffect(() => {
+    setSatzEingabe(vv?.stundensatz ? String(vv.stundensatz).replace(".", ",") : "");
+  }, [abrAkteObj?.id, vv?.stundensatz]);
+  const eingabeSatz = satzEingabe.trim() ? parseBetrag(satzEingabe) : undefined;
+  const satzWahl = satzFuerAbrechnung(abrAkteObj, eingabeSatz, user.stundensatz ?? STANDARD_STUNDENSATZ);
+  const abrPositionen = stundenPositionen(abrEintraege, users, user.stundensatz ?? STANDARD_STUNDENSATZ, vv?.stundensatz, { satz: satzWahl.satz, quelle: satzWahl.quelle, vereinbarungDatum: vv?.datum });
   const abrSummen = summen(abrPositionen);
   // Abrechnung nach Zeit nur mit Vergütungsvereinbarung in Textform (§ 3a Abs. 1 RVG) – sonst gelten die gesetzlichen Gebühren.
   const abrVereinbarung = abrAkteObj ? hatVerguetungsvereinbarung(abrAkteObj, dokumente) : false;
-  const vereinbarungUmschalten = (an: boolean) => {
-    if (!abrAkteObj) return;
-    useData.getState().patch("akten", abrAkteObj.id, { verguetungsvereinbarung: an ? { datum: heute, erfasstVon: user.id } : undefined });
+  // Vergütungsvereinbarung erfassen: Datum und vereinbarter Stundensatz (netto) sind Pflichtangaben
+  const [vvForm, setVvForm] = useState<{ datum: string; satz: string } | null>(null);
+  useEffect(() => setVvForm(null), [abrAkteObj?.id]);
+  const vvSpeichern = () => {
+    if (!abrAkteObj || !vvForm) return;
+    const satz = parseBetrag(vvForm.satz);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(vvForm.datum)) return toast("Bitte das Datum der Vereinbarung angeben", { text: "Pflichtangabe – Textform nach § 3a Abs. 1 RVG.", ton: "warnung" });
+    if (!(satz > 0)) return toast("Bitte den vereinbarten Stundensatz angeben", { text: "Netto in Euro, z. B. 240", ton: "warnung" });
+    const vorher = abrAkteObj.verguetungsvereinbarung;
+    useData.getState().patch("akten", abrAkteObj.id, { verguetungsvereinbarung: { datum: vvForm.datum, stundensatz: satz, erfasstVon: user.id } });
     useData.getState().log({
       akteur: "nutzer",
       userId: user.id,
       akteId: abrAkteObj.id,
-      text: `Vergütungsvereinbarung (§ 3a RVG) ${an ? "als vorliegend vermerkt" : "entfernt"} – ${abrAkteObj.aktenzeichen}`,
+      text: `Vergütungsvereinbarung (§ 3a RVG) ${vorher ? "geändert" : "erfasst"}: vom ${fmtDate(vvForm.datum)}, ${fmtEUR(satz)}/Std. netto${vorher?.stundensatz && vorher.stundensatz !== satz ? ` (vorher ${fmtEUR(vorher.stundensatz)}/Std.)` : ""} – ${abrAkteObj.aktenzeichen}`,
     });
+    setVvForm(null);
+    toast("Vergütungsvereinbarung gespeichert", { text: `${abrAkteObj.aktenzeichen} · ${fmtEUR(satz)}/Std. netto`, ton: "erfolg" });
   };
+  const vvEntfernen = () => {
+    if (!abrAkteObj) return;
+    useData.getState().patch("akten", abrAkteObj.id, { verguetungsvereinbarung: undefined });
+    useData.getState().log({ akteur: "nutzer", userId: user.id, akteId: abrAkteObj.id, text: `Vergütungsvereinbarung (§ 3a RVG) entfernt – ${abrAkteObj.aktenzeichen}` });
+  };
+  const erfassenAkte = akteId ? akten.get(akteId) : undefined;
 
   const erfassen = () => {
     const min = Math.round(Number(minuten.replace(",", ".")));
@@ -135,12 +159,12 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
 
   const abrechnen = () => {
     if (!abrAkteObj || !abrEintraege.length || !abrVereinbarung) return;
-    const [r] = erstelleRechnungen([{ akte: abrAkteObj, positionen: abrPositionen, summen: abrSummen, zeitIds: abrEintraege.map((z) => z.id) }], "PDF", "entwurf", user.id);
+    const [r] = erstelleRechnungen([{ akte: abrAkteObj, positionen: abrPositionen, summen: abrSummen, zeitIds: abrEintraege.map((z) => z.id) }], "auto", "entwurf", user.id);
     useData.getState().log({
       akteur: "nutzer",
       userId: user.id,
       akteId: abrAkteObj.id,
-      text: `Rechnungsentwurf aus ${fmtStunden(abrEintraege.reduce((s, z) => s + z.minuten, 0))} Std. erstellt (${r.nummer}) – ${abrAkteObj.aktenzeichen}`,
+      text: `Rechnungsentwurf aus ${fmtStunden(abrEintraege.reduce((s, z) => s + z.minuten, 0))} Std. erstellt (${r.nummer}) zu ${fmtEUR(satzWahl.satz)}/Std.${satzWahl.quelle === "vereinbarung" ? " lt. Vergütungsvereinbarung" : satzWahl.quelle === "abrechnung" ? " (abweichend für diese Abrechnung)" : " (kein vereinbarter Stundensatz hinterlegt)"} – ${abrAkteObj.aktenzeichen}`,
     });
     setAbrAkte("");
     toast("Rechnungsentwurf aus Zeiten erstellt", {
@@ -218,7 +242,7 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                   <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-[var(--line)] bg-[var(--surface-2)] px-4 py-3">
                     <div className="flex items-baseline gap-2">
                       <span className="title-md">KW {w.kw}</span>
-                      <span className="text-[12px] text-fg-3">
+                      <span className="text-[12.5px] text-fg-3">
                         {fmtDateShort(w.montag)} – {fmtDateShort(addDays(w.montag, 6))}
                         {w.montag === wocheJetzt && " · diese Woche"}
                       </span>
@@ -242,7 +266,7 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                           {fmtDateWd(tag)}
                           {(tag === heute || tag === addDays(heute, -1)) && ` · ${relDays(tag, heute)}`}
                         </span>
-                        <span className="num text-[11.5px] text-fg-4">{fmtDauer(eintraege.reduce((s, z) => s + z.minuten, 0))}</span>
+                        <span className="num text-[12.5px] text-fg-3">{fmtDauer(eintraege.reduce((s, z) => s + z.minuten, 0))}</span>
                       </div>
                       <ul className="pb-1">
                         <AnimatePresence initial={false}>
@@ -268,18 +292,18 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                                 <div className="flex items-center gap-3 px-4 py-2 transition-colors hover:bg-ink-softer">
                                   <Avatar initialen={u?.initialen ?? "?"} farbe={u?.farbe} size={30} title={u?.name} />
                                   <div className="min-w-0 flex-1">
-                                    <div className="truncate text-[13.5px] font-medium">{z.taetigkeit}</div>
-                                    <div className="flex min-w-0 items-baseline gap-2 text-[12px] text-fg-3">
+                                    <div className="break-words text-[13.5px] font-medium">{z.taetigkeit}</div>
+                                    <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-[12.5px] text-fg-3">
                                       <span className="mono shrink-0">{a?.aktenzeichen}</span>
-                                      <span className="truncate">{a?.titel}</span>
-                                      <span className="hidden shrink-0 text-fg-4 sm:inline">· {u?.name}</span>
+                                      <span className="min-w-0">{a?.titel}</span>
+                                      <span className="hidden shrink-0 sm:inline">· {u?.name}</span>
                                     </div>
                                     <div className="mt-1 sm:hidden">{status}</div>
                                   </div>
                                   <div className="hidden shrink-0 items-center gap-1.5 sm:flex">{status}</div>
                                   <div className="w-[76px] shrink-0 text-right">
                                     <div className="num text-[13.5px] font-semibold">{fmtDauer(z.minuten)}</div>
-                                    <div className={cn("num text-[11px]", z.abrechenbar ? "text-fg-3" : "text-fg-4 line-through")}>{fmtEUR(wert(z), { cents: false })}</div>
+                                    <div className={cn("num text-[12.5px]", z.abrechenbar ? "text-fg-3" : "text-fg-3 line-through")}>{fmtEUR(wert(z), { cents: false })}</div>
                                   </div>
                                 </div>
                               </motion.li>
@@ -295,12 +319,12 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
           })}
         </div>
 
-        <div className="order-1 grid grid-cols-1 gap-4 xl:sticky xl:top-24 xl:order-2">
+        <div className="order-1 grid grid-cols-1 gap-4 xl:order-2">
           <Card className={cn("overflow-hidden", timerStart && "ai-ring")}>
             <CardHeader icon={<Plus className="size-4" />} title="Zeit erfassen" subtitle="Dauer eintragen oder die Stoppuhr mitlaufen lassen." />
             <div className="mb-4 flex items-center gap-3 rounded-[18px] bg-ink-softer px-4 py-3">
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 text-[11.5px] font-medium text-fg-3">
+                <div className="flex items-center gap-2 text-[12.5px] font-medium text-fg-3">
                   {timerStart ? (
                     <>
                       <motion.span className="size-2 rounded-full bg-seal" animate={{ opacity: [1, 0.25, 1] }} transition={{ duration: 1.4, repeat: Infinity }} />
@@ -310,7 +334,7 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                     "Stoppuhr"
                   )}
                 </div>
-                <div className={cn("mt-0.5 text-[26px] font-semibold tracking-[-0.02em]", !timerStart && "text-fg-4")}>
+                <div className={cn("mt-0.5 text-[26px] font-semibold tracking-[-0.02em]", !timerStart && "text-fg-3")}>
                   {timerStart ? <Uhr start={timerStart} /> : <span className="mono num">00:00:00</span>}
                 </div>
               </div>
@@ -366,7 +390,11 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
               </Field>
               <div className="flex items-center gap-3">
                 <label htmlFor="ze-abr" className="flex-1 text-[13px]">
-                  Abrechenbar <span className="text-fg-3">· {fmtEUR(satzVon(user.id), { cents: false })}/Std.</span>
+                  Abrechenbar{" "}
+                  <span className="text-fg-3">
+                    · {fmtEUR(erfassenAkte?.verguetungsvereinbarung?.stundensatz ?? satzVon(user.id), { cents: false })}/Std.
+                    {erfassenAkte?.verguetungsvereinbarung?.stundensatz ? " lt. Vergütungsvereinbarung" : ""}
+                  </span>
                 </label>
                 <Switch id="ze-abr" checked={abrechenbar} onChange={setAbrechenbar} label="Abrechenbar" />
               </div>
@@ -394,40 +422,128 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                 <ul className="mt-3 grid grid-cols-1 gap-1.5">
                   {abrPositionen.map((p, i) => (
                     <li key={i} className="flex items-baseline justify-between gap-3 text-[12.5px]">
-                      <span className="min-w-0 truncate text-fg-2">
+                      <span className="min-w-0 text-fg-2">
                         <span className="num font-semibold text-fg">{fmtStunden((p.menge ?? 0) * 60)} Std.</span> ·{" "}
-                        {p.bezeichnung.replace(/^Tätigkeit /, "").replace(/ lt\. Vergütungsvereinbarung/, "")}
+                        {p.bezeichnung.replace(/^Tätigkeit /, "").replace(/ (lt\. Vergütungsvereinbarung( vom [\d.]+)?|nach Zeitaufwand)/, "")}
                       </span>
                       <span className="num shrink-0 font-medium">{fmtEUR(p.betrag)}</span>
                     </li>
                   ))}
                 </ul>
-                <div className="mt-3 flex items-baseline justify-between border-t border-[var(--line)] pt-3">
-                  <span className="text-[12.5px] text-fg-3">{abrEintraege.length} Einträge · brutto inkl. 19 % USt.</span>
-                  <span className="num text-[17px] font-semibold">{fmtEUR(abrSummen.brutto)}</span>
+                {/* Vergütungsvereinbarung (§ 3a RVG): Datum und vereinbarter Stundensatz */}
+                <div className="mt-3 rounded-[14px] bg-ink-softer p-3">
+                  <div className="flex items-start gap-2">
+                    <FileSignature className="mt-0.5 size-4 shrink-0 text-ink" />
+                    <div className="min-w-0 flex-1 text-[12.5px] leading-snug">
+                      <div className="font-semibold">Vergütungsvereinbarung · § 3a RVG, Textform</div>
+                      {vv ? (
+                        <div className="text-fg-2">
+                          vom {fmtDate(vv.datum)}
+                          {vv.stundensatz ? (
+                            <>
+                              {" "}· <span className="num font-medium text-fg">{fmtEUR(vv.stundensatz)}/Std.</span> netto
+                            </>
+                          ) : (
+                            <span className="text-amber"> · kein vereinbarter Stundensatz hinterlegt</span>
+                          )}
+                        </div>
+                      ) : abrVereinbarung ? (
+                        <div className="text-amber">In der E-Akte vorhanden – kein vereinbarter Stundensatz hinterlegt</div>
+                      ) : (
+                        <div className="text-fg-3">Noch nicht erfasst</div>
+                      )}
+                    </div>
+                    {!vvForm && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        icon={<PenLine className="size-4" />}
+                        onClick={() => setVvForm({ datum: vv?.datum ?? "", satz: vv?.stundensatz ? String(vv.stundensatz).replace(".", ",") : "" })}
+                      >
+                        {vv ? "Ändern" : "Erfassen"}
+                      </Button>
+                    )}
+                  </div>
+                  {vvForm && (
+                    <div className="mt-3 grid gap-2.5">
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <Field label="Datum der Vereinbarung" htmlFor="ze-vv-datum">
+                          <Input id="ze-vv-datum" type="date" max={heute} required aria-required="true" value={vvForm.datum} onChange={(e) => setVvForm({ ...vvForm, datum: e.target.value })} />
+                        </Field>
+                        <Field label="Vereinbarter Stundensatz (netto)" htmlFor="ze-vv-satz">
+                          <Input id="ze-vv-satz" inputMode="decimal" required aria-required="true" placeholder="z. B. 240" value={vvForm.satz} onChange={(e) => setVvForm({ ...vvForm, satz: e.target.value })} className="num" />
+                        </Field>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" variant="primary" onClick={vvSpeichern}>
+                          Vereinbarung speichern
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setVvForm(null)}>
+                          Abbrechen
+                        </Button>
+                        {vv && (
+                          <Button size="sm" variant="ghost" className="ml-auto !text-seal" onClick={() => { vvEntfernen(); setVvForm(null); }}>
+                            Entfernen
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className="mt-3 flex items-center gap-3">
-                  <label htmlFor="ze-vv" className="min-w-0 flex-1 text-[12.5px] leading-snug">
-                    Vergütungsvereinbarung liegt vor <span className="text-fg-3">· § 3a RVG, Textform</span>
-                  </label>
-                  <Switch id="ze-vv" checked={abrVereinbarung} onChange={vereinbarungUmschalten} label="Vergütungsvereinbarung liegt vor" />
-                </div>
-                {!abrVereinbarung && (
-                  <p className="mt-2 rounded-[12px] bg-amber-soft px-3 py-2 text-[12px] leading-snug text-fg-2">
-                    Nach Zeit abrechnen setzt eine Vergütungsvereinbarung in Textform voraus. Ohne Vereinbarung gelten die gesetzlichen Gebühren – dann über den RVG-Rechner.
+                {abrVereinbarung && (
+                  <Field
+                    label="Stundensatz dieser Abrechnung (netto)"
+                    htmlFor="ze-abr-satz"
+                    className="mt-3"
+                    hint={
+                      satzWahl.quelle === "vereinbarung"
+                        ? "Vorbelegt mit dem vereinbarten Satz – für diese Abrechnung änderbar."
+                        : satzWahl.quelle === "abrechnung"
+                          ? `Abweichend vom vereinbarten Satz${vv?.stundensatz ? ` (${fmtEUR(vv.stundensatz)})` : ""} – gilt nur für diese Rechnung.`
+                          : undefined
+                    }
+                  >
+                    <Input id="ze-abr-satz" inputMode="decimal" value={satzEingabe} onChange={(e) => setSatzEingabe(e.target.value)} placeholder={String(user.stundensatz ?? STANDARD_STUNDENSATZ)} className="num" />
+                  </Field>
+                )}
+                {abrVereinbarung && satzWahl.quelle === "person" && (
+                  <p className="mt-2 flex items-start gap-1.5 rounded-[12px] bg-amber-soft px-3 py-2 text-[12.5px] leading-snug text-fg-2">
+                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber" />
+                    <span>
+                      Kein vereinbarter Stundensatz hinterlegt – abgerechnet wird mit {fmtEUR(satzWahl.satz)}/Std. ohne den Zusatz „lt. Vergütungsvereinbarung“. Bitte den Satz der Vereinbarung erfassen.
+                    </span>
                   </p>
                 )}
-                <Button variant="secondary" className="mt-3 w-full" icon={<FilePlus2 className="size-4" />} onClick={abrechnen} disabled={!abrVereinbarung}>
+                <div className="mt-3 grid gap-1 border-t border-[var(--line)] pt-3 text-[12.5px]">
+                  <div className="flex justify-between">
+                    <span className="text-fg-3">Netto</span>
+                    <span className="num">{fmtEUR(abrSummen.netto)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-fg-3">19 % USt. (Nr. 7008 VV RVG)</span>
+                    <span className="num">{fmtEUR(abrSummen.ust)}</span>
+                  </div>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-fg-3">{abrEintraege.length} Einträge · brutto</span>
+                    <span className="num text-[17px] font-semibold">{fmtEUR(abrSummen.brutto)}</span>
+                  </div>
+                </div>
+                {!abrVereinbarung && (
+                  <p className="mt-2 rounded-[12px] bg-amber-soft px-3 py-2 text-[12.5px] leading-snug text-fg-2">
+                    Nach Zeit abrechnen setzt eine Vergütungsvereinbarung in Textform voraus (§ 3a Abs. 1 RVG). Ohne Vereinbarung gelten die gesetzlichen Gebühren – dann über den RVG-Rechner.
+                  </p>
+                )}
+                <Button variant="primary" className="mt-3 w-full" icon={<FilePlus2 className="size-4" />} onClick={abrechnen} disabled={!abrVereinbarung}>
                   Aus Zeiten abrechnen
                 </Button>
-                <p className="mt-2 text-center text-[11.5px] text-fg-4">Erstellt einen Rechnungsentwurf; die Zeiten werden als abgerechnet markiert und beim Löschen des Entwurfs wieder frei.</p>
+                <p className="mt-2 text-center text-[12.5px] text-fg-3">Erstellt einen Rechnungsentwurf mit Tätigkeitsnachweis; die Zeiten werden als abgerechnet markiert und beim Löschen des Entwurfs wieder frei.</p>
               </>
             )}
           </Card>
         </div>
       </div>
       {wochen.length > 0 && (
-        <p className="mt-4 text-[11.5px] text-fg-4">Erfasste Zeiten vom {fmtDate(wochen[wochen.length - 1].montag)} bis heute. Abrechenbarkeit per Tipp auf den Status umschalten.</p>
+        <p className="mt-4 text-[12.5px] text-fg-3">Erfasste Zeiten vom {fmtDate(wochen[wochen.length - 1].montag)} bis heute. Abrechenbarkeit per Tipp auf den Status umschalten.</p>
       )}
     </>
   );

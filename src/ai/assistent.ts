@@ -1,5 +1,5 @@
 // Apex Assistent: Support & Arbeits-Agent. Live mit Claude (Werkzeuge = Funktionen dieser App) oder offline per Absichtserkennung.
-import { berechneNachRegel, FRIST_REGELN, fristDringlichkeit } from "@/core/fristen";
+import { berechneNachRegel, FRIST_REGELN, fristDringlichkeit, gerichtsortDerAkte } from "@/core/fristen";
 import { FENSTER_TAGE, fristenImZeitraum, fristenLage, istKritisch, zaehltAlsFrist } from "@/core/fristenLage";
 import { aktenZahlen, briefingText, finanzZahlen, motorZahlen, posteingangZahlen, tagesbriefing, wochenbeginn, wochenende } from "@/core/kennzahlen";
 import { WERT_PRO_STUNDE } from "@/core/automationen";
@@ -7,11 +7,13 @@ import { berechneRvg, VV_KATALOG } from "@/core/rvg";
 import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
 import { search, normalize, tokenize } from "@/core/search";
 import { addDays, fmtDate, fmtDateWd, fmtEUR, fmtNum, nowLocal, relDays, today, uid } from "@/core/dates";
-import { WIKI, type WikiArtikel } from "@/content/wiki";
+import { istWerktag } from "@/core/feiertage";
+import { RUECKRUF_SIMULIERT, rueckrufZusage } from "@/core/rueckruf";
+import { WIKI, artikel, type WikiArtikel } from "@/content/wiki";
 import { NAV } from "@/app/nav";
 import { useData } from "@/store/data";
-import { ansprechBezeichnung, festeAnsprechperson } from "@/lib/rollen";
-import type { Akte, Ansprechpartner, Frist, ISODate, SessionInfo, FristTyp, TenantData } from "@/core/types";
+import { ansprechBezeichnung, festeAnsprechperson, foermlicherName, gruss } from "@/lib/rollen";
+import type { Akte, Ansprechpartner, Bundesland, Frist, ISODate, Notiz, SessionInfo, FristTyp, TenantData } from "@/core/types";
 import { DemoModus, llmAgent, verstaendlicheMeldung, type AgentTool, type LlmMessage } from "./llm";
 import { bewertePraezedenz, findePraezedenzfaelle } from "./kontext";
 
@@ -20,10 +22,44 @@ export interface AssistentLink {
   to: string;
 }
 
+/** Auswahlknopf bei mehreren Treffern („Öffne die Akte Müller“): ein Klick stellt die eindeutige Folgefrage. */
+export interface AuswahlKnopf {
+  label: string;
+  sub?: string;
+  frage: string;
+}
+
+export type VorschlagArt = "wiedervorlage" | "frist" | "termin" | "notfrist" | "notiz";
+
+/** Schreibende Aktion als Vorschlag – eingetragen wird erst nach „Eintragen“ in der Bestätigungskarte. */
+export interface SchreibVorschlag {
+  id: string;
+  art: VorschlagArt;
+  akteId: string;
+  aktenzeichen: string;
+  akteTitel: string;
+  /** Bezeichnung des Eintrags – bei Wiedervorlagen der Auftragstext („Zeugen Pohl benennen“) */
+  titel: string;
+  datum?: ISODate;
+  uhrzeit?: string;
+  /** Inhalt einer Notiz */
+  text?: string;
+  /** Wortlaut des Auftrags (für das Protokoll) */
+  auftrag: string;
+}
+
+/** Ergebnis von „Eintragen“ – Grundlage für „Rückgängig“. */
+export interface Eintragung {
+  col: "fristen" | "notizen";
+  id: string;
+}
+
 export interface AssistentAntwort {
   text: string;
   links: AssistentLink[];
   werkzeuge: string[];
+  auswahl?: AuswahlKnopf[];
+  vorschlag?: SchreibVorschlag;
 }
 
 export const WERKZEUG_LABEL: Record<string, string> = {
@@ -31,7 +67,9 @@ export const WERKZEUG_LABEL: Record<string, string> = {
   akte_details: "Akte gelesen",
   fristen_liste: "Fristenkalender geprüft",
   frist_berechnen: "Frist berechnet (§ 222 ZPO)",
-  frist_anlegen: "Im Fristenkalender eingetragen",
+  frist_anlegen: "Eintrag vorbereitet – wartet auf Ihre Bestätigung",
+  notiz_anlegen: "Notiz vorbereitet – wartet auf Ihre Bestätigung",
+  notfall_bea: "Notfallwissen beA-Störung",
   rvg_berechnen: "RVG berechnet",
   rechtsprechung_suchen: "Fall-Datenbank durchsucht",
   entscheidung_erlaeutern: "Entscheidung erläutert",
@@ -51,6 +89,8 @@ interface Kontext {
   nav: (to: string) => void;
   links: AssistentLink[];
   werkzeuge: string[];
+  auswahl?: AuswahlKnopf[];
+  vorschlag?: SchreibVorschlag;
 }
 
 function daten() {
@@ -69,6 +109,41 @@ function findeAkteNachAz(az: string): Akte | undefined {
   if (exakt) return exakt;
   if (/^\d{2,3}(\/\d{2})?$/.test(n)) return undefined; // ein unbekanntes Aktenzeichen nicht „ähnlich“ auflösen
   return search(d.akten, az, [{ get: (a) => a.aktenzeichen, weight: 4 }, { get: (a) => a.titel, weight: 3 }, { get: (a) => mandantName(d, a), weight: 2 }], 1)[0]?.item;
+}
+
+/** Füllwörter, die beim Erkennen einer Akte über den Namen nie zählen. */
+const KANDIDAT_STOP = new Set(tokenize(
+  "öffne oeffne zeig zeige mir die der das den dem akte akten sache mandat bitte geh gehe wechsle navigiere bring mich zu zum zur von für fuer lege leg trag trage eintragen erstelle setze setz an anlegen wiedervorlage frist fristen termin notiz erinnerung " +
+  "in tagen tage woche wochen morgen heute übermorgen uebermorgen drei zwei vier fünf sechs sieben zehn vierzehn einen eine einer und mit am bis wegen",
+));
+
+/**
+ * Alle Akten, die zu einem Namen bzw. Aktenzeichen im Text passen („Müller“ → 101/26, 12/26, 14/26). Ein Aktenzeichen ist
+ * eindeutig; sonst zählen Wörter aus Titel und Mandantenname (ganze Wörter bzw. Wortanfänge ab vier Zeichen).
+ */
+export function akteKandidaten(text: string): Akte[] {
+  const az = azAus(text);
+  if (az) {
+    const a = findeAkteNachAz(az);
+    if (a) return [a];
+  }
+  const d = daten();
+  const pool = d.akten.filter((a) => a.status !== "abgeschlossen");
+  const woerter = tokenize(text).filter((t) => t.length >= 3 && !KANDIDAT_STOP.has(t) && !AKTEN_STOP.has(t) && !/^\d+$/.test(t));
+  let kand: Akte[] | null = null;
+  for (const w of woerter) {
+    const hits = pool.filter((a) => tokenize(`${a.titel} ${mandantName(d, a) ?? ""}`).some((t) => t === w || (w.length >= 4 && t.startsWith(w))));
+    if (!hits.length) continue;
+    const enger: Akte[] = kand ? kand.filter((a) => hits.includes(a)) : hits;
+    kand = enger.length ? enger : kand;
+  }
+  return kand ?? [];
+}
+
+/** Auswahlknöpfe zu mehreren Treffern – Aktenzeichen, Titel, Mandant. */
+function auswahlFuer(akten: Akte[], frage: (a: Akte) => string): AuswahlKnopf[] {
+  const d = daten();
+  return akten.slice(0, 6).map((a) => ({ label: `${a.aktenzeichen} · ${a.titel}`, sub: mandantName(d, a) ? `Mandant: ${mandantName(d, a)}` : undefined, frage: frage(a) }));
 }
 
 /** Nächste offene Frist (Notfrist oder Frist) einer Akte – Wiedervorlagen, Vorfristen und Termine zählen nicht. */
@@ -451,33 +526,60 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
       execute: (i) => {
         t("frist_berechnen");
         const ereignis = String(i.ereignisDatum).slice(0, 10);
-        const r = berechneNachRegel(String(i.regel), ereignis, land);
         const akte = i.aktenzeichen ? findeAkteNachAz(String(i.aktenzeichen)) : undefined;
+        // Feiertage am Gerichtsort laut Akte (§ 222 Abs. 2 ZPO) – wie Fristenrechner und „Frist anlegen“; sonst Kanzleisitz
+        const gerichtsort = gerichtsortDerAkte(akte, daten().kontakte);
+        const r = berechneNachRegel(String(i.regel), ereignis, gerichtsort?.land ?? land, undefined, {
+          feiertagsOrt: gerichtsort ? `${gerichtsort.gericht} – laut Akte` : "Kanzleisitz",
+          kanzleiLand: land,
+        });
         ctx.links.push({ label: "Im Fristenrechner öffnen", to: fristenrechnerLink(r.regel.key, ereignis, akte?.id) });
-        return { frist: r.regel.titel, grundlage: r.regel.grundlage, fristende: fmtDateWd(r.ende), vorfrist: fmtDateWd(r.vorfrist), verschoben: r.verschoben, rechenweg: r.rechenweg, hinweise: r.warnungen, akte: akte ? `${akte.aktenzeichen} ${akte.titel}` : null };
+        return { frist: r.regel.titel, grundlage: r.regel.grundlage, fristende: fmtDateWd(r.ende), vorfrist: fmtDateWd(r.vorfrist), verschoben: r.verschoben, feiertageNach: r.feiertagsOrt, rechenweg: r.rechenweg, hinweise: r.warnungen, akte: akte ? `${akte.aktenzeichen} ${akte.titel}` : null };
       },
     },
     {
       name: "frist_anlegen",
-      description: "Trägt eine Frist, Wiedervorlage oder einen Termin in eine Akte ein. Nur aufrufen, wenn der Nutzer das ausdrücklich möchte.",
+      description:
+        "Bereitet eine Frist, Wiedervorlage oder einen Termin für eine Akte vor. Es wird NICHTS eingetragen: Die Person sieht eine Bestätigungskarte (Akte, Titel, Datum mit Wochentag) und trägt mit „Eintragen“ ein – danach gibt es „Rückgängig“. Als Titel den Auftragstext verwenden (z. B. „Zeugen Pohl benennen“), nicht nur „Wiedervorlage“. Nur aufrufen, wenn die Person das ausdrücklich möchte.",
       inputSchema: {
         type: "object",
-        properties: { aktenzeichen: { type: "string" }, titel: { type: "string" }, datum: { type: "string", description: "YYYY-MM-DD" }, typ: { type: "string", enum: ["frist", "wiedervorlage", "termin", "notfrist"] } },
+        properties: { aktenzeichen: { type: "string", description: "Aktenzeichen oder Name (Mandant/Titel)" }, titel: { type: "string" }, datum: { type: "string", description: "YYYY-MM-DD" }, typ: { type: "string", enum: ["frist", "wiedervorlage", "termin", "notfrist"] }, uhrzeit: { type: "string", description: "Optional HH:MM (Termine)" } },
         required: ["aktenzeichen", "titel", "datum"],
       },
       execute: (i) => {
-        const a = findeAkteNachAz(String(i.aktenzeichen ?? ""));
-        if (!a) throw new Error(`Eine Akte „${String(i.aktenzeichen ?? "")}“ gibt es in dieser Kanzlei nicht.`);
+        const roh = String(i.aktenzeichen ?? "");
+        const kandidaten = akteKandidaten(roh);
+        if (kandidaten.length > 1) {
+          ctx.auswahl = auswahlFuer(kandidaten, (a) => `${TYP_NAME[(String(i.typ ?? "wiedervorlage") as FristTyp)] ?? "Wiedervorlage"} für Akte ${a.aktenzeichen} am ${fmtDate(String(i.datum).slice(0, 10))}: ${String(i.titel)}`);
+          return { mehrdeutig: true, treffer: kandidaten.slice(0, 6).map((a) => `${a.aktenzeichen} ${a.titel}`), hinweis: "Mehrere Akten passen – die Person wählt per Knopf. Nichts vorbereitet." };
+        }
+        const a = kandidaten[0] ?? findeAkteNachAz(roh);
+        if (!a) throw new Error(`Eine Akte „${roh}“ gibt es in dieser Kanzlei nicht.`);
         t("frist_anlegen");
         const datum = String(i.datum).slice(0, 10);
-        const st = useData.getState();
-        st.upsert("fristen", {
-          id: uid("f"), akteId: a.id, titel: String(i.titel), typ: (String(i.typ ?? "wiedervorlage") as FristTyp), datum, status: "offen",
-          verantwortlichId: ctx.sitzung.user.id, quelle: "ki", createdAt: nowLocal(), notiz: "Vom Apex Assistenten angelegt",
-        });
-        st.log({ akteur: "ki", akteId: a.id, text: `Assistent: „${i.titel}“ für ${fmtDate(datum)} eingetragen – ${a.aktenzeichen}`, minutenGespart: 2 });
-        ctx.links.push({ label: `Fristen der Akte ${a.aktenzeichen}`, to: `/akten/${a.id}?tab=fristen` });
-        return { ok: true, akte: `${a.aktenzeichen} ${a.titel}`, titel: i.titel, datum: fmtDateWd(datum) };
+        const typ = (["frist", "wiedervorlage", "termin", "notfrist"].includes(String(i.typ)) ? String(i.typ) : "wiedervorlage") as VorschlagArt;
+        ctx.vorschlag = { id: uid("vs"), art: typ, akteId: a.id, aktenzeichen: a.aktenzeichen, akteTitel: a.titel, titel: String(i.titel).trim() || TYP_NAME[typ as FristTyp], datum, uhrzeit: i.uhrzeit ? String(i.uhrzeit).slice(0, 5) : undefined, auftrag: String(i.titel) };
+        const p = pruefeDatum(datum, land);
+        return { status: "zur_bestaetigung", hinweis: "Noch nicht eingetragen – die Person bestätigt mit „Eintragen“ in der Karte unter Ihrer Antwort.", akte: `${a.aktenzeichen} ${a.titel}`, titel: ctx.vorschlag.titel, datum: fmtDateWd(datum), werktag: p.werktag, vorschlagNaechsterWerktag: p.naechster ? fmtDateWd(p.naechster) : null };
+      },
+    },
+    {
+      name: "notiz_anlegen",
+      description: "Bereitet eine Notiz zu einer Akte vor. Es wird NICHTS gespeichert, bis die Person in der Bestätigungskarte „Eintragen“ wählt.",
+      inputSchema: { type: "object", properties: { aktenzeichen: { type: "string" }, text: { type: "string" } }, required: ["aktenzeichen", "text"] },
+      execute: (i) => {
+        const roh = String(i.aktenzeichen ?? "");
+        const kandidaten = akteKandidaten(roh);
+        if (kandidaten.length > 1) {
+          ctx.auswahl = auswahlFuer(kandidaten, (a) => `Notiz zu Akte ${a.aktenzeichen}: ${String(i.text)}`);
+          return { mehrdeutig: true, treffer: kandidaten.slice(0, 6).map((a) => `${a.aktenzeichen} ${a.titel}`) };
+        }
+        const a = kandidaten[0] ?? findeAkteNachAz(roh);
+        if (!a) throw new Error(`Eine Akte „${roh}“ gibt es in dieser Kanzlei nicht.`);
+        t("notiz_anlegen");
+        const text = String(i.text ?? "").trim();
+        ctx.vorschlag = { id: uid("vs"), art: "notiz", akteId: a.id, aktenzeichen: a.aktenzeichen, akteTitel: a.titel, titel: "Notiz", text, auftrag: text };
+        return { status: "zur_bestaetigung", akte: `${a.aktenzeichen} ${a.titel}`, text };
       },
     },
     {
@@ -560,7 +662,15 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
           ctx.nav(b.to);
           return { geoeffnet: b.label, beschreibung: b.beschreibung };
         }
-        const a = findeAkteNachAz(ziel.replace(/^(die\s+)?akte\s+/i, ""));
+        const name = ziel.replace(/^(die\s+)?akte\s+/i, "");
+        const kandidaten = akteKandidaten(name);
+        if (kandidaten.length > 1) {
+          // Mehrdeutig: nie still eine Akte öffnen – Auswahl anbieten
+          t("navigiere");
+          ctx.auswahl = auswahlFuer(kandidaten, (a) => `Öffne die Akte ${a.aktenzeichen}`);
+          return { mehrdeutig: true, suchbegriff: name, treffer: kandidaten.slice(0, 6).map((a) => `${a.aktenzeichen} ${a.titel}`), hinweis: "Mehrere Akten passen – die Person wählt per Knopf. Keine Akte geöffnet." };
+        }
+        const a = kandidaten[0] ?? findeAkteNachAz(name);
         if (a) {
           t("navigiere");
           ctx.nav(`/akten/${a.id}`);
@@ -597,8 +707,10 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
       inputSchema: { type: "object", properties: { thema: { type: "string" } }, required: ["thema"] },
       execute: (i) => {
         t("rueckruf_anfordern");
-        useData.getState().log({ akteur: "nutzer", userId: ctx.sitzung.user.id, text: `Rückruf bei ${ctx.sitzung.tenant.ansprechpartner.name} angefordert: ${String(i.thema)}` });
-        return { ok: true, ansprechpartner: ctx.sitzung.tenant.ansprechpartner.name, zusage: "Rückruf innerhalb von 30 Minuten während der Servicezeiten" };
+        const ap = ctx.sitzung.tenant.ansprechpartner;
+        const z = rueckrufZusage(new Date(), ap.verfuegbar, ctx.sitzung.tenant.bundesland);
+        useData.getState().log({ akteur: "nutzer", userId: ctx.sitzung.user.id, text: `Rückruf bei ${ap.name} angefordert (${z.text}) ${RUECKRUF_SIMULIERT}: ${String(i.thema)}` });
+        return { ok: true, ansprechpartner: ap.name, zusage: z.text, hinweis: `Im Prototyp simuliert – es ruft niemand an. Bitte immer „${RUECKRUF_SIMULIERT}“ dazusagen.` };
       },
     },
     {
@@ -714,7 +826,7 @@ export function wikiSuche(frage: string): WikiTreffer[] {
 
 export function systemPrompt(s: SessionInfo, voice: boolean): string {
   const ap = s.tenant.ansprechpartner;
-  return `Du bist der „Apex Assistent“, der integrierte KI-Assistent der Kanzlei-Software AnwaltApex. Stellst du dich vor, sag „Ich bin der Apex Assistent“. Du sprichst mit ${s.user.name} (${s.user.titel}) von ${s.tenant.name} in ${s.tenant.stadt}. Heute ist ${fmtDateWd(today())}.
+  return `Du bist der „Apex Assistent“, der integrierte KI-Assistent der Kanzlei-Software AnwaltApex. Stellst du dich vor, sag „Ich bin der Apex Assistent“. Du sprichst mit ${s.user.name} (${s.user.titel}) von ${s.tenant.name} in ${s.tenant.stadt}. Sprich die Person förmlich an – Sie-Form und „${foermlicherName(s.user)}“, nie mit Vornamen. Heute ist ${fmtDateWd(today())}.
 Du hilfst bei zwei Dingen: (1) Live-Support zur Bedienung von AnwaltApex (nutze dafür hilfe_artikel) und (2) Kanzleiarbeit mit den Daten der Kanzlei (Akten, Fristen, Posteingang, Finanzen, 38h-Motor, RVG, Rechtsprechung) über die Werkzeuge.
 Regeln:
 - Antworte auf Deutsch, knapp und freundlich, in 1–4 Sätzen oder einer kurzen Liste.${voice ? " Die Antwort wird vorgelesen: keine Tabellen, keine Markdown-Formatierung, Zahlen gut sprechbar." : " Leichtes Markdown (Fett, Listen) ist erlaubt."}
@@ -723,11 +835,156 @@ Regeln:
 - „Diese Woche“ ist die Kalenderwoche bis Sonntag (zeitraum 'kalenderwoche'); gleitende Fenster heißen „nächste 7 Tage“ (zeitraum 'woche') bzw. „letzte 7 Tage“. Fragt jemand nach Notfristen, nicht verlängerbaren oder kritischen Fristen, nutze nurKritisch und sag ehrlich, ob echte Notfristen darunter sind (z. B. ist die Klagefrist nach § 4 KSchG keine Notfrist im Sinne der ZPO, aber nicht verlängerbar).
 - Der Wert gesparter Zeit ist ein Rechenbeispiel mit internen Personalkosten – keine Umsatz- oder Erfolgsgarantie.
 - Zitiere Rechtsprechung nur aus rechtsprechung_suchen oder entscheidung_erlaeutern. Fragt der Nutzer, wie er eine bestimmte Entscheidung nutzen kann, rufe entscheidung_erlaeutern auf und gib eine Argumentationshilfe (Kernaussage, Bausteine, passende Akte) – keine bloße Trefferliste.
-- Ändere Daten (frist_anlegen) nur, wenn der Nutzer das ausdrücklich wünscht; bestätige danach, was du eingetragen hast.
+- Schreibende Aktionen (frist_anlegen, notiz_anlegen) legen nur einen Vorschlag vor – eingetragen wird erst, wenn die Person in der Karte „Eintragen“ wählt. Sag deshalb nie „eingetragen“, sondern „Bitte bestätigen Sie …“. Fällt das Datum auf ein Wochenende oder einen Feiertag, nenne den nächsten Werktag als Vorschlag.
+- Passen mehrere Akten (Werkzeug meldet „mehrdeutig“), öffne oder bearbeite keine davon: Sag, wie viele passen, und bitte um Auswahl – die Knöpfe erscheinen unter deiner Antwort.
 - Kurze Antworten wie „Ja“, „Gerne“ oder „Nein“ beziehen sich auf deine letzte Rückfrage – führe dann genau das Angebotene aus.
 - Findest du keine sichere Antwort (z. B. leere Wiki-Treffer), sag das ehrlich und frag nach, was genau gemeint ist.
 - Wenn du nicht weiterkommst oder der Nutzer einen Menschen möchte: biete die feste Ansprechperson an und nutze rueckruf_anfordern. Formuliere ohne Pronomen für die Ansprechperson: „${festeAnsprechperson(ap)}: ${ap.name}“ und wiederhole bei Bedarf den Namen.
-- Wenn der Nutzer einen Bereich sehen möchte, nutze navigiere.`;
+- Wenn der Nutzer einen Bereich sehen möchte, nutze navigiere.
+- Rückrufe sind im Prototyp simuliert: nenne die Zusage mit Uhrzeit aus rueckruf_anfordern und immer den Zusatz „${RUECKRUF_SIMULIERT}“.
+- Notfallwissen beA-Störung (verbindlich, bei Fragen nach gestörtem beA, Ersatzeinreichung oder technischer Unmöglichkeit – vor jeder Posteingangsabfrage):
+${beaWissen()}`;
+}
+
+/** Wissenskarte „beA-Störung – was tun?“ als Kontext für die Live-KI. */
+function beaWissen(): string {
+  const w = artikel("bea-stoerung");
+  if (!w) return "";
+  return [`  ${w.kurz}`, ...w.schritte.map((x) => `  • ${x.titel}: ${x.text}`)].join("\n");
+}
+
+// ───────────── beA-Störung: Gerichtsbarkeit erkennen und Notfallantwort geben ─────────────
+
+type Gerichtsbarkeit = "arbeit" | "zivil" | "verwaltung" | "sozial" | "finanz" | "straf";
+
+const GERICHTSBARKEIT: [Gerichtsbarkeit, RegExp][] = [
+  ["arbeit", /landesarbeitsgericht|arbeitsgericht|bundesarbeitsgericht|\blag\b|\barbg\b|\bbag\b|arbgg|arbeitsrecht/],
+  ["verwaltung", /verwaltungsgericht|verwaltungsgerichtshof|\bvg\b|\bovg\b|\bvgh\b|bverwg|vwgo/],
+  ["sozial", /sozialgericht|landessozialgericht|bundessozialgericht|\bsg\b|\blsg\b|\bbsg\b|\bsgg\b/],
+  ["finanz", /finanzgericht|bundesfinanzhof|\bfg\b|\bbfh\b|\bfgo\b/],
+  ["straf", /strafsache|strafgericht|strafkammer|staatsanwaltschaft|\bstpo\b|strafbefehl|revision in strafsachen/],
+  ["zivil", /oberlandesgericht|landgericht|amtsgericht|bundesgerichtshof|\bolg\b|\blg\b|\bag\b|\bbgh\b|\bzpo\b|zivil|familiengericht|kammergericht/],
+];
+
+const NORM: Record<Gerichtsbarkeit, { erlaubt: string; glaubhaft: string; gerichte: string }> = {
+  arbeit: { erlaubt: "§ 46g S. 3 ArbGG", glaubhaft: "§ 46g S. 4 ArbGG", gerichte: "Arbeitsgerichtsbarkeit (ArbG, LAG, BAG)" },
+  zivil: { erlaubt: "§ 130d S. 2 ZPO", glaubhaft: "§ 130d S. 3 ZPO", gerichte: "Zivilgerichte (AG, LG, OLG, BGH)" },
+  verwaltung: { erlaubt: "§ 55d S. 3 VwGO", glaubhaft: "§ 55d S. 4 VwGO", gerichte: "Verwaltungsgerichte (VG, OVG, BVerwG)" },
+  sozial: { erlaubt: "§ 65d S. 3 SGG", glaubhaft: "§ 65d S. 4 SGG", gerichte: "Sozialgerichte (SG, LSG, BSG)" },
+  finanz: { erlaubt: "§ 52d S. 3 FGO", glaubhaft: "§ 52d S. 4 FGO", gerichte: "Finanzgerichte (FG, BFH)" },
+  straf: { erlaubt: "§ 32d S. 3 StPO", glaubhaft: "§ 32d S. 4 StPO", gerichte: "Strafsachen" },
+};
+
+const NORM_KURZ: Record<Gerichtsbarkeit, string> = {
+  arbeit: "§ 46g S. 3, 4 ArbGG",
+  zivil: "§ 130d S. 2, 3 ZPO",
+  verwaltung: "§ 55d VwGO",
+  sozial: "§ 65d SGG",
+  finanz: "§ 52d FGO",
+  straf: "§ 32d StPO",
+};
+
+export function gerichtsbarkeitAus(text: string): Gerichtsbarkeit | undefined {
+  const t = normalize(text);
+  return GERICHTSBARKEIT.find(([, re]) => re.test(t))?.[0];
+}
+
+const BEA_STOERUNG = /\bbea\b[^.?!]*(gest(o|oe)rt|st(o|oe)rung|geht nicht|funktioniert nicht|ausgefallen|nicht erreichbar|nicht moeglich|down|streikt|haengt)|st(o|oe)rung[^.?!]*\bbea\b|ersatzeinreichung|technischen? (gruenden|unmoeglichkeit|stoerung)|technische[nr]? unmoeglichkeit|130d|46g/;
+
+export function istBeaStoerung(text: string): boolean {
+  return BEA_STOERUNG.test(normalize(text));
+}
+
+/** Notfallantwort zur beA-Störung – nach Gerichtsbarkeit, mit Normen, Ersatzeinreichung, Glaubhaftmachung und Dokumentation. */
+export function beaStoerungAntwort(g: Gerichtsbarkeit | undefined, ap: Ansprechpartner): string {
+  const gb = g ?? "zivil";
+  const n = NORM[gb];
+  const ort = (() => {
+    if (!g) return "";
+    if (g === "arbeit") return " beim Arbeitsgericht bzw. Landesarbeitsgericht";
+    if (g === "zivil") return " beim Zivilgericht (AG, LG, OLG, BGH)";
+    return ` – ${n.gerichte}`;
+  })();
+  const kopf = g
+    ? `**beA-Störung – Ersatzeinreichung${ort} (${NORM_KURZ[gb]}):**`
+    : "**beA-Störung – Ersatzeinreichung (Zivilgerichte § 130d S. 2, 3 ZPO, Arbeitsgerichte § 46g S. 3, 4 ArbGG):**";
+  const andere = g === "arbeit"
+    ? "Für Zivilgerichte (AG, LG, OLG, BGH) gilt dasselbe nach § 130d S. 2, 3 ZPO"
+    : g === "zivil"
+      ? "Für die Arbeitsgerichtsbarkeit (ArbG, LAG, BAG) gilt dasselbe nach § 46g S. 3, 4 ArbGG"
+      : g
+        ? "Für Zivilgerichte gilt dasselbe nach § 130d S. 2, 3 ZPO, für Arbeitsgerichte nach § 46g S. 3, 4 ArbGG"
+        : "Für welches Gericht gilt die Frist? Dann nenne ich die genaue Vorschrift";
+  return [
+    kopf,
+    liste([
+      `Ersatzeinreichung: Ist das beA vorübergehend aus technischen Gründen nicht nutzbar, bleibt die Einreichung nach den allgemeinen Vorschriften zulässig – per Telefax, auf Papier oder per Bote (${g ? n.erlaubt : "§ 130d S. 2 ZPO bzw. § 46g S. 3 ArbGG"}).`,
+      `Glaubhaftmachung: Die vorübergehende Unmöglichkeit bei der Ersatzeinreichung oder unverzüglich danach glaubhaft machen – mit anwaltlicher Versicherung und einer geschlossenen Schilderung der Abläufe (${g ? n.glaubhaft : "§ 130d S. 3 ZPO bzw. § 46g S. 4 ArbGG"}).`,
+      "Dokumentation: Störung sofort dokumentieren – Screenshot mit Uhrzeit, Fehlermeldung, Störungsmeldung der BRAK bzw. beA-Status, Uhrzeiten Ihrer Versuche.",
+      "Auf Anforderung des Gerichts das elektronische Dokument nachreichen.",
+      "Die Frist erst nach Sendebericht bzw. Eingangsbestätigung als erledigt markieren (Ausgangskontrolle).",
+      `${festeAnsprechperson(ap)} ${ap.name} anrufen: ${ap.telefon} (${ap.verfuegbar}) – prüft mit Ihnen den beA-Status.`,
+    ]),
+    `${andere}; entsprechend § 55d VwGO, § 65d SGG, § 52d FGO, § 32d StPO. Bitte im Einzelfall am Gesetzestext prüfen.`,
+  ].join("\n");
+}
+
+// ───────────── Bestätigung vor dem Schreiben, Rückgängig ─────────────
+
+/** Werktag? Sonst der nächste Werktag als Vorschlag (Wochenende, Feiertage des Bundeslands). */
+export function pruefeDatum(datum: ISODate, land: Bundesland): { werktag: boolean; naechster?: ISODate } {
+  if (istWerktag(datum, land)) return { werktag: true };
+  let d = datum;
+  for (let i = 0; i < 10 && !istWerktag(d, land); i++) d = addDays(d, 1);
+  return { werktag: false, naechster: d };
+}
+
+const ART_NAME: Record<VorschlagArt, string> = { wiedervorlage: "Wiedervorlage", frist: "Frist", termin: "Termin", notfrist: "Notfrist", notiz: "Notiz" };
+
+export function vorschlagArtName(v: Pick<SchreibVorschlag, "art">): string {
+  return ART_NAME[v.art];
+}
+
+/** Trägt einen bestätigten Vorschlag ein (über useData) und protokolliert – Grundlage für „Rückgängig“. */
+export function vorschlagEintragen(v: SchreibVorschlag, s: SessionInfo): Eintragung {
+  const st = useData.getState();
+  if (!st.data.akten.some((a) => a.id === v.akteId)) throw new Error(`Die Akte ${v.aktenzeichen} gibt es nicht mehr.`);
+  if (v.art === "notiz") {
+    const n: Notiz = { id: uid("n"), akteId: v.akteId, userId: s.user.id, text: `${v.text ?? v.titel}\n— Vom Apex Assistenten angelegt (bestätigt)`, zeit: nowLocal() };
+    st.upsert("notizen", n);
+    st.log({ akteur: "nutzer", userId: s.user.id, akteId: v.akteId, text: `Notiz über den Apex Assistenten hinzugefügt – ${v.aktenzeichen}` });
+    return { col: "notizen", id: n.id };
+  }
+  if (!v.datum || !/^\d{4}-\d{2}-\d{2}$/.test(v.datum)) throw new Error("Bitte geben Sie ein gültiges Datum an.");
+  const f: Frist = {
+    id: uid("f"), akteId: v.akteId, titel: v.titel, typ: v.art as FristTyp, datum: v.datum, uhrzeit: v.uhrzeit, status: "offen",
+    verantwortlichId: s.user.id, quelle: "ki", createdAt: nowLocal(), notiz: `Vom Apex Assistenten angelegt – Auftrag: „${v.auftrag}“`,
+  };
+  st.upsert("fristen", f);
+  st.log({ akteur: "nutzer", userId: s.user.id, akteId: v.akteId, text: `${ART_NAME[v.art]} „${v.titel}“ für ${fmtDateWd(v.datum)} eingetragen (über den Apex Assistenten, bestätigt) – ${v.aktenzeichen}` });
+  return { col: "fristen", id: f.id };
+}
+
+/** Nimmt einen über den Assistenten eingetragenen Eintrag wieder heraus und protokolliert das. */
+export function vorschlagZuruecknehmen(v: SchreibVorschlag, e: Eintragung, s: SessionInfo): boolean {
+  const st = useData.getState();
+  const da = (st.data[e.col] as { id: string }[]).some((x) => x.id === e.id);
+  if (!da) return false;
+  st.remove(e.col, e.id);
+  st.log({ akteur: "nutzer", userId: s.user.id, akteId: v.akteId, text: `Rückgängig: ${ART_NAME[v.art]} „${v.titel}“${v.datum ? ` (${fmtDateWd(v.datum)})` : ""} wieder entfernt – ${v.aktenzeichen}` });
+  return true;
+}
+
+/** Auftragstext aus der Bitte: nach einem Doppelpunkt, in Anführungszeichen oder nach „wegen/betreffend/zum Thema“. */
+export function auftragAus(text: string): string | undefined {
+  const t = text.trim().replace(/[.!?]+$/, "");
+  const zitat = t.match(/[„"»']([^“"«']{3,160})[“"«']/)?.[1];
+  if (zitat) return zitat.trim();
+  const nachDoppelpunkt = t.includes(":") ? t.slice(t.lastIndexOf(":") + 1).trim() : "";
+  if (nachDoppelpunkt.length >= 3 && !/^\d/.test(nachDoppelpunkt)) return nachDoppelpunkt;
+  const wegen = t.match(/\b(?:wegen|betreffend|betreff|zum thema|thema|mit dem (?:titel|text)|mit (?:titel|text)|zwecks)\s+(.{3,160})$/i)?.[1];
+  if (wegen) return wegen.replace(/\s+(an|eintragen|anlegen)$/i, "").trim();
+  return undefined;
 }
 
 // ───────────── Offline-Assistent (Demo-Modus) ─────────────
@@ -777,6 +1034,9 @@ function akteAusText(text: string): Akte | undefined {
     const a = findeAkteNachAz(az);
     if (a) return a;
   }
+  const kandidaten = akteKandidaten(text);
+  if (kandidaten.length === 1) return kandidaten[0];
+  if (kandidaten.length > 1) return undefined; // mehrdeutig – nie still eine Akte wählen
   const d = daten();
   const offen = d.akten.filter((a) => a.status !== "abgeschlossen");
   for (const tok of tokenize(text).filter((t) => t.length >= 4 && !AKTEN_STOP.has(t))) {
@@ -1035,8 +1295,8 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
   if (offeneRueckfrage === "rueckruf" && (ZUSTIMMUNG.test(kurz) || (/^(ja|gern|gerne|bitte|ok|okay|klar)\b/.test(kurz) && !/^(ja|bitte)? ?(nein|nicht)\b/.test(kurz)))) {
     const vorherFrage = verlauf.length >= 3 ? verlauf[verlauf.length - 3].content : "";
     await run("ansprechpartner");
-    await run("rueckruf_anfordern", { thema: vorherFrage || "Rückruf gewünscht" });
-    return `Erledigt: Ich habe einen Rückruf bei ${ap.name} angefordert – in der Regel meldet sich ${ap.name} innerhalb von 30 Minuten (${ap.verfuegbar}). Direkt erreichbar unter ${ap.telefon}.`;
+    const r = (await run("rueckruf_anfordern", { thema: vorherFrage || "Rückruf gewünscht" })) as { zusage: string };
+    return `Erledigt: Ich habe einen Rückruf bei ${ap.name} angefordert – ${r.zusage} (${ap.verfuegbar}). ${RUECKRUF_SIMULIERT} Direkt erreichbar unter ${ap.telefon}.`;
   }
   if (offeneRueckfrage === "rueckruf" && (ABLEHNUNG.test(kurz) || /^(nein|nee|lieber nicht)\b/.test(kurz))) {
     return `Alles klar, kein Rückruf. ${ap.name} ist jederzeit direkt erreichbar unter ${ap.telefon} oder ${ap.email} (${ap.verfuegbar}).`;
@@ -1054,7 +1314,7 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
   // ── Smalltalk ──
   const ohneGruss = frage.replace(new RegExp(GRUSS.source, "i"), "").trim();
   if (GRUSS.test(kurz) && !kurzform(ohneGruss)) {
-    return `Hallo! Ich bin der Apex Assistent. Ich prüfe Fristen, öffne Akten, berechne Fristen und RVG-Gebühren, nenne Zahlen aus Posteingang, Finanzen und 38h-Motor, finde Urteile oder erkläre die Bedienung. Womit fange ich an?`;
+    return `${gruss(ctx.sitzung.user)}! Ich bin der Apex Assistent. Ich prüfe Fristen, öffne Akten, berechne Fristen und RVG-Gebühren, nenne Zahlen aus Posteingang, Finanzen und 38h-Motor, finde Urteile oder erkläre die Bedienung. Womit fange ich an?`;
   }
   if (DANK.test(kurz)) return "Gern geschehen! Wenn noch etwas ist – einfach fragen.";
   if (ABSCHIED.test(kurz)) return "Bis bald! Ich bin jederzeit unten rechts für Sie da.";
@@ -1062,6 +1322,15 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
 
   const q = frage.toLowerCase();
   const bedienFrage = BEDIENFRAGE.test(q);
+
+  // ── Notfall beA-Störung – vor Posteingang und Bereichen; Folgefrage („Und beim OLG?“) aus dem Gesprächskontext ──
+  const imBeaGespraech = verlauf.slice(0, -1).some((m) => m.role === "assistant" && m.content.startsWith("**beA-Störung"));
+  const folgefrage = imBeaGespraech && !!gerichtsbarkeitAus(frage) && (/^(und|aber|was|wie|gilt|bei|beim|am|vor|zum|zur)\b/.test(kurz) || kurz.split(" ").length <= 8);
+  if (istBeaStoerung(frage) || folgefrage) {
+    if (!ctx.werkzeuge.includes("notfall_bea")) ctx.werkzeuge.push("notfall_bea");
+    ctx.links.push({ label: "beA-Status (Systemstatus)", to: "/hilfe#status" }, { label: "Wissenskarte beA-Störung", to: "/hilfe?wiki=bea-stoerung" });
+    return beaStoerungAntwort(gerichtsbarkeitAus(frage), ap);
+  }
 
   // ── Nur ein Bereichsname („Einstellungen“, „Bankabgleich“) → Bereich öffnen; danach Mensch / Ansprechpartner ──
   const bereichAllein = nurBereich(frage);
@@ -1072,8 +1341,8 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
   if (/ansprechpartner|ansprechperson|mensch|rückruf|rueckruf|hotline|anrufen|support|kontakt zu (euch|ihnen)/.test(q) || normalize(q).includes(normalize(ap.name))) {
     const a = (await run("ansprechpartner")) as { name: string; telefon: string; email: string; verfuegbar: string };
     if (/rückruf|rueckruf|ruf.*an\b|anrufen/.test(q)) {
-      await run("rueckruf_anfordern", { thema: frage });
-      return `Erledigt: Ich habe einen Rückruf bei ${a.name} angefordert – in der Regel meldet sich ${a.name} innerhalb von 30 Minuten (${a.verfuegbar}). Direkt erreichbar unter ${a.telefon}.`;
+      const r = (await run("rueckruf_anfordern", { thema: frage })) as { zusage: string };
+      return `Erledigt: Ich habe einen Rückruf bei ${a.name} angefordert – ${r.zusage} (${a.verfuegbar}). ${RUECKRUF_SIMULIERT} Direkt erreichbar unter ${a.telefon}.`;
     }
     return `${apText} – direkt erreichbar unter ${a.telefon} oder ${a.email} (${a.verfuegbar}), ohne Warteschleife. Soll ich einen Rückruf anfordern?`;
   }
@@ -1136,24 +1405,50 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
   if (regel && /(berechne|wann|bis wann|frist|endet|ablauf)/.test(q) && !/(lege|leg |trag|erstelle)/.test(q) && !/welche|wie viele|als n(ä|ae)chstes|anstehen|stehen.*\ban\b/.test(q)) {
     const datum = datumAus(q) ?? today();
     const akte = azAus(q) ? findeAkteNachAz(azAus(q)!) : undefined;
-    const r = (await run("frist_berechnen", { regel, ereignisDatum: datum, aktenzeichen: akte?.aktenzeichen })) as { frist: string; grundlage: string; fristende: string; vorfrist: string; verschoben: boolean; hinweise: string[] };
-    return `Die ${r.frist} (${r.grundlage}) endet am **${r.fristende}**, ausgehend vom ${fmtDate(datum)}.${r.verschoben ? " Das rechnerische Ende fiel auf ein Wochenende oder einen Feiertag – deshalb verschoben nach § 222 Abs. 2 ZPO." : ""} Vorfrist: ${r.vorfrist}. Den vollständigen Rechenweg sehen Sie im Fristenrechner.${r.hinweise.length ? ` Hinweis: ${r.hinweise[0]}` : ""}`;
+    const r = (await run("frist_berechnen", { regel, ereignisDatum: datum, aktenzeichen: akte?.aktenzeichen })) as { frist: string; grundlage: string; fristende: string; vorfrist: string; verschoben: boolean; feiertageNach?: string; hinweise: string[] };
+    const ort = r.feiertageNach && r.feiertageNach !== "Kanzleisitz" ? ` Feiertage nach dem Gerichtsort (${r.feiertageNach.replace(/ – laut Akte$/, "")}, laut Akte).` : "";
+    return `Die ${r.frist} (${r.grundlage}) endet am **${r.fristende}**, ausgehend vom ${fmtDate(datum)}.${r.verschoben ? " Das rechnerische Ende fiel auf ein Wochenende oder einen Feiertag – deshalb verschoben nach § 222 Abs. 2 ZPO." : ""}${ort} Vorfrist: ${r.vorfrist}. Den vollständigen Rechenweg sehen Sie im Fristenrechner.${r.hinweise.length ? ` Hinweis: ${r.hinweise[0]}` : ""}`;
   }
 
   // ── Frist / Wiedervorlage anlegen ──
-  if (/(lege|leg |trag|erstelle|setz).*(frist|wiedervorlage|termin|erinnerung)|(frist|wiedervorlage|termin).*(an|ein)legen/.test(q) && !/^wie\b/.test(q)) {
-    const akte = akteAusText(q);
-    const datum = datumAus(q);
+  // ── Notiz anlegen (Bestätigung vor dem Schreiben) ──
+  if (/(lege|leg |schreib|füge|fuege|erstelle|trag|notier|halte).*\bnotiz\b|\bnotiz\b.*(an|ein)legen|^notiz\b/.test(q) && !/^wie\b/.test(q)) {
+    const auftrag = auftragAus(frage);
+    const ohneAuftrag = auftrag ? frage.replace(auftrag, " ") : frage;
+    const kandidaten = akteKandidaten(ohneAuftrag);
+    if (kandidaten.length > 1) {
+      ctx.auswahl = auswahlFuer(kandidaten, (a) => `Notiz zu Akte ${a.aktenzeichen}: ${auftrag ?? ""}`.trim());
+      return `Zu Ihrer Angabe passen ${kandidaten.length} Akten. Zu welcher soll die Notiz?`;
+    }
+    const akte = kandidaten[0] ?? akteAusText(ohneAuftrag);
+    if (!akte) return `Für welche Akte soll ich das eintragen? Nennen Sie mir bitte das Aktenzeichen, z. B. „${beispielAz()}“.`;
+    if (!auftrag) return `Was soll in der Notiz zu ${akte.aktenzeichen} stehen? Schreiben Sie z. B. „Notiz zu Akte ${akte.aktenzeichen}: Mandant ruft Montag zurück“.`;
+    await run("notiz_anlegen", { aktenzeichen: akte.aktenzeichen, text: auftrag });
+    return `Bitte bestätigen Sie die Notiz zu ${akte.aktenzeichen} (${akte.titel}): „${auftrag}“. Gespeichert wird erst nach „Eintragen“.`;
+  }
+
+  // ── Frist / Wiedervorlage / Termin anlegen: erst Bestätigungskarte, dann eintragen, danach „Rückgängig“ ──
+  if (/(lege|leg |trag|erstelle|setz|erinnere).*(frist|wiedervorlage|termin|erinnerung)|(frist|wiedervorlage|termin).*(an|ein)legen|^erinnere mich/.test(q) && !/^wie\b/.test(q)) {
+    const auftrag = auftragAus(frage);
+    const ohneAuftrag = auftrag ? frage.replace(auftrag, " ") : frage;
+    const datum = datumAus(ohneAuftrag.toLowerCase());
+    const typ: VorschlagArt = /termin/.test(q) ? "termin" : /notfrist/.test(q) ? "notfrist" : /frist/.test(q) && !/wiedervorlage/.test(q) ? "frist" : "wiedervorlage";
+    const kandidaten = akteKandidaten(ohneAuftrag);
+    if (kandidaten.length > 1) {
+      ctx.auswahl = auswahlFuer(kandidaten, (a) => `${ART_NAME[typ]} für Akte ${a.aktenzeichen}${datum ? ` am ${fmtDate(datum)}` : ""}${auftrag ? `: ${auftrag}` : ""}`);
+      return `Zu Ihrer Angabe passen ${kandidaten.length} Akten. Für welche soll ich die ${ART_NAME[typ]} vorbereiten?`;
+    }
+    const akte = kandidaten[0] ?? akteAusText(ohneAuftrag);
     if (!akte) {
-      return azAus(q)
-        ? `Für welche Akte soll ich das eintragen? Eine Akte ${azAus(q)} habe ich in Ihrer Kanzlei nicht gefunden – nennen Sie mir bitte das Aktenzeichen, z. B. „${beispielAz()}“.`
+      return azAus(ohneAuftrag)
+        ? `Für welche Akte soll ich das eintragen? Eine Akte ${azAus(ohneAuftrag)} habe ich in Ihrer Kanzlei nicht gefunden – nennen Sie mir bitte das Aktenzeichen, z. B. „${beispielAz()}“.`
         : `Für welche Akte soll ich das eintragen? Nennen Sie mir bitte das Aktenzeichen, z. B. „${beispielAz()}“.`;
     }
     if (!datum) return "Zu welchem Datum? Sagen Sie z. B. „in drei Tagen“ oder „am 30.10.“.";
-    const typ = /termin/.test(q) ? "termin" : /frist/.test(q) && !/wiedervorlage/.test(q) ? "frist" : "wiedervorlage";
-    const titel = typ === "termin" ? "Termin" : typ === "frist" ? "Frist (manuell)" : "Wiedervorlage";
-    const r = (await run("frist_anlegen", { aktenzeichen: akte.aktenzeichen, titel, datum, typ })) as { akte: string; datum: string };
-    return `Erledigt: ${titel} für ${r.akte} am ${r.datum} eingetragen. Sie finden den Eintrag im Fristenkalender.`;
+    const titel = auftrag ?? (typ === "termin" ? "Termin" : typ === "frist" ? "Frist (manuell)" : typ === "notfrist" ? "Notfrist (manuell)" : "Wiedervorlage");
+    const r = (await run("frist_anlegen", { aktenzeichen: akte.aktenzeichen, titel, datum, typ })) as { akte: string; datum: string; werktag: boolean; vorschlagNaechsterWerktag: string | null };
+    const hinweis = !r.werktag && r.vorschlagNaechsterWerktag ? ` Achtung: ${r.datum} ist kein Werktag – Vorschlag: ${r.vorschlagNaechsterWerktag}.` : "";
+    return `Bitte bestätigen Sie: ${ART_NAME[typ]} „${titel}“ für ${r.akte} am ${r.datum}.${hinweis} Eingetragen wird erst nach „Eintragen“ – danach können Sie es rückgängig machen.`;
   }
 
   // ── Fristen auflisten ──
@@ -1190,7 +1485,8 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
   if (navMatch) {
     const ziel = navMatch[5].replace(/[?.!]+$/, "").replace(/^akte\s+/, "");
     try {
-      const r = (await run("navigiere", { ziel })) as { geoeffnet: string; titel?: string };
+      const r = (await run("navigiere", { ziel })) as { geoeffnet?: string; titel?: string; mehrdeutig?: boolean; treffer?: string[] };
+      if (r.mehrdeutig) return `Zu „${ziel.replace(/^akte\s+/i, "")}“ passen ${r.treffer?.length ?? 0} Akten. Welche soll ich öffnen?`;
       return r.titel ? `Ich habe die ${r.geoeffnet} (${r.titel}) für Sie geöffnet.` : `Ich habe „${r.geoeffnet}“ für Sie geöffnet.`;
     } catch {
       if (/akte/.test(q) || azAus(q)) {
@@ -1257,7 +1553,7 @@ export async function frageAssistent(opts: {
       onTool: (name) => opts.onTool?.(WERKZEUG_LABEL[name] ?? name),
       signal: opts.signal,
     });
-    return { text: text.trim() || "Erledigt.", links: dedupe(ctx.links), werkzeuge: ctx.werkzeuge.map((w) => WERKZEUG_LABEL[w] ?? w) };
+    return { text: text.trim() || "Erledigt.", links: dedupe(ctx.links), werkzeuge: ctx.werkzeuge.map((w) => WERKZEUG_LABEL[w] ?? w), auswahl: ctx.auswahl, vorschlag: ctx.vorschlag };
   } catch (e) {
     if (!(e instanceof DemoModus)) {
       if (opts.signal?.aborted) throw e;
@@ -1271,7 +1567,7 @@ export async function frageAssistent(opts: {
       text = `Das hat leider nicht geklappt: ${verstaendlicheMeldung(err)} Versuchen Sie es bitte noch einmal – oder ich verbinde Sie mit ${opts.sitzung.tenant.ansprechpartner.name}.`;
     }
     ctx.werkzeuge.forEach((w) => opts.onTool?.(WERKZEUG_LABEL[w] ?? w));
-    return { text, links: dedupe(ctx.links), werkzeuge: ctx.werkzeuge.map((w) => WERKZEUG_LABEL[w] ?? w) };
+    return { text, links: dedupe(ctx.links), werkzeuge: ctx.werkzeuge.map((w) => WERKZEUG_LABEL[w] ?? w), auswahl: ctx.auswahl, vorschlag: ctx.vorschlag };
   }
 }
 

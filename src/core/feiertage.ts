@@ -138,6 +138,10 @@ orte("SN", "Dresden, Leipzig, Chemnitz, Zwickau, Görlitz, Bautzen, Plauen");
 orte("ST", "Magdeburg, Halle, Dessau-Roßlau, Dessau, Stendal, Naumburg");
 orte("SH", "Kiel, Lübeck, Flensburg, Itzehoe, Schleswig, Neumünster");
 orte("TH", "Erfurt, Jena, Gera, Weimar, Meiningen, Mühlhausen, Suhl, Nordhausen, Gotha, Eisenach");
+// Landesnamen als Gerichtsbezeichnung („LAG Hessen“, „LAG Berlin-Brandenburg“, „LSG Niedersachsen-Bremen“, „OVG Nordrhein-Westfalen“)
+orte("BW", "Baden-Württemberg"); orte("BY", "Bayern"); orte("HE", "Hessen"); orte("MV", "Mecklenburg-Vorpommern");
+orte("NI", "Niedersachsen"); orte("NW", "Nordrhein-Westfalen, NRW"); orte("RP", "Rheinland-Pfalz"); orte("SL", "Saarland");
+orte("SN", "Sachsen"); orte("ST", "Sachsen-Anhalt"); orte("SH", "Schleswig-Holstein"); orte("TH", "Thüringen");
 
 /** Gerichte und Behörden ohne Ortsnamen bzw. mit Landesbezeichnung. */
 const NAMEN: [RegExp, Bundesland][] = [
@@ -147,15 +151,16 @@ const NAMEN: [RegExp, Bundesland][] = [
   [/\bBundesverwaltungsgerichts?\b/g, "SN"],
   [/\bBundessozialgerichts?\b/g, "HE"],
   [/\bBundesfinanzhofs?\b|\bBayerische[snmr]? (?:Polizeiverwaltungsamt|Obersten? Landesgericht|Verwaltungsgerichtshof|Landessozialgericht)/g, "BY"],
-  [/\bHessische[snmr]? (?:Verwaltungsgerichtshof|Landessozialgericht|Finanzgericht)/g, "HE"],
+  [/\bHessische[snmr]? (?:Verwaltungsgerichtshof|VGH|Landessozialgericht|LSG|Finanzgericht|Landesarbeitsgericht|LAG)\b/g, "HE"],
+  [/\bNiedersächsische[snmr]? (?:Oberverwaltungsgericht|OVG|Finanzgericht|Landesarbeitsgericht|LAG)\b/g, "NI"],
   [/\bHanseatische[snmr]? (?:Oberlandesgericht|OLG) (?:in )?Bremen|\bFreie Hansestadt Bremen/g, "HB"],
   [/\bHanseatische[snmr]? (?:Oberlandesgericht|OLG)|\bFreie und Hansestadt Hamburg/g, "HH"],
-  [/\bSchleswig-Holsteinische[snmr]? (?:Oberlandesgericht|OLG|Landessozialgericht|Finanzgericht)/g, "SH"],
+  [/\bSchleswig-Holsteinische[snmr]? (?:Oberlandesgericht|OLG|Landessozialgericht|LSG|Finanzgericht|Landesarbeitsgericht|LAG|Oberverwaltungsgericht|OVG)\b/g, "SH"],
   [/\bBrandenburgische[snmr]? (?:Oberlandesgericht|OLG)/g, "BB"],
-  [/\bThüringer (?:Oberlandesgericht|OLG|Landessozialgericht|Oberverwaltungsgericht|Finanzgericht)/g, "TH"],
+  [/\bThüringer (?:Oberlandesgericht|OLG|Landessozialgericht|LSG|Oberverwaltungsgericht|OVG|Finanzgericht|Landesarbeitsgericht|LAG)\b/g, "TH"],
   [/\bSaarländische[snmr]? (?:Oberlandesgericht|OLG)/g, "SL"],
   [/\bPfälzische[snmr]? (?:Oberlandesgericht|OLG)/g, "RP"],
-  [/\bSächsische[snmr]? (?:Oberverwaltungsgericht|Landesarbeitsgericht|Landessozialgericht|Finanzgericht)/g, "SN"],
+  [/\bSächsische[snmr]? (?:Oberverwaltungsgericht|OVG|Landesarbeitsgericht|LAG|Landessozialgericht|LSG|Finanzgericht)\b/g, "SN"],
 ];
 
 const GERICHT_RE =

@@ -6,9 +6,13 @@ import type { Aktivitaet, Automation } from "@/core/types";
 import { relTime } from "@/core/dates";
 import { Card, Chip } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { LIVE_MINUTEN } from "./shared";
 
-/** „Gerade erledigt": neueste Läufe von Automationen und KI – neue Einträge gleiten live hinein. */
-export function LiveFeed({ aktivitaeten, automationen, now, className }: { aktivitaeten: Aktivitaet[]; automationen: Automation[]; now: number; className?: string }) {
+/**
+ * „Zuletzt erledigt“: neueste Vorgänge von Automationen und KI. „Live“ erscheint nur, wenn der jüngste Eintrag jünger als
+ * 15 Minuten ist; mit Demo-Daten heißt die Karte „Zuletzt erledigt (simuliert)“.
+ */
+export function LiveFeed({ aktivitaeten, automationen, now, className, demo }: { aktivitaeten: Aktivitaet[]; automationen: Automation[]; now: number; className?: string; demo?: boolean }) {
   const nav = useNavigate();
   const namen = useMemo(() => new Map(automationen.map((a) => [a.key, a.name])), [automationen]);
   const eintraege = useMemo(
@@ -21,20 +25,24 @@ export function LiveFeed({ aktivitaeten, automationen, now, className }: { aktiv
     [aktivitaeten],
   );
 
+  const juengster = eintraege[0];
+  const live = !!juengster && now - zeitMs(juengster.zeit) < LIVE_MINUTEN * 60_000;
   return (
     <Card className={cn("flex flex-col", className)}>
       <div className="mb-3 flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          <div className="title-md">Gerade erledigt</div>
+          <div className="title-md">{demo ? "Zuletzt erledigt (simuliert)" : "Zuletzt erledigt"}</div>
           <div className="mt-0.5 text-[12.5px] text-fg-3">Was der Motor zuletzt für Sie übernommen hat.</div>
         </div>
-        <Chip tone="green" className="shrink-0">
-          <span className="relative flex size-1.5">
-            <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--green)] opacity-60 [animation-duration:1.8s]" />
-            <span className="relative inline-flex size-1.5 rounded-full bg-[var(--green)]" />
-          </span>
-          Live
-        </Chip>
+        {live && (
+          <Chip tone="ink" className="shrink-0" title={`Letzter Vorgang vor weniger als ${LIVE_MINUTEN} Minuten`}>
+            <span className="relative flex size-1.5">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--green)] opacity-60 [animation-duration:1.8s]" />
+              <span className="relative inline-flex size-1.5 rounded-full bg-[var(--green)]" />
+            </span>
+            Live
+          </Chip>
+        )}
       </div>
       <ul className="-mx-2 flex flex-col">
         <AnimatePresence initial={false}>
@@ -63,20 +71,26 @@ export function LiveFeed({ aktivitaeten, automationen, now, className }: { aktiv
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="line-clamp-2 text-[13px] leading-snug text-fg">{e.text}</span>
-                    <span className="mt-0.5 block truncate text-[11.5px] text-fg-4">
+                    <span className="mt-0.5 block truncate text-[12px] text-fg-3">
                       {relTime(e.zeit, now)}
                       {e.automationKey && namen.get(e.automationKey) ? ` · ${namen.get(e.automationKey)}` : ""}
                     </span>
                   </span>
                   {e.minutenGespart ? <span className="num mt-0.5 shrink-0 text-[12px] font-semibold text-green">+{e.minutenGespart} Min.</span> : null}
-                  {e.akteId && <ArrowUpRight className="mt-0.5 size-3.5 shrink-0 text-fg-4 opacity-0 transition-opacity group-hover:opacity-100" />}
+                  {e.akteId && <ArrowUpRight className="mt-0.5 size-3.5 shrink-0 text-fg-3 opacity-0 transition-opacity group-hover:opacity-100" />}
                 </button>
               </motion.li>
             );
           })}
         </AnimatePresence>
       </ul>
-      {eintraege.length === 0 && <p className="py-6 text-center text-[13px] text-fg-3">Noch keine Läufe. Aktivieren Sie eine Automation – der erste Lauf erscheint hier.</p>}
+      {eintraege.length === 0 && <p className="py-6 text-center text-[13px] text-fg-3">Noch nichts erledigt. Aktivieren Sie eine Automation – der erste Vorgang erscheint hier.</p>}
     </Card>
   );
+}
+
+/** Lokale Zeitangabe („2026-10-16T14:02:00“) in Millisekunden – wie `relTime`. */
+function zeitMs(zeit: string): number {
+  const t = new Date(zeit).getTime();
+  return Number.isFinite(t) ? t : 0;
 }

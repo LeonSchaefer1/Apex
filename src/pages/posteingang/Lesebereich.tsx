@@ -101,6 +101,8 @@ export function Lesebereich({
   const nachrichten = useCol("nachrichten");
   const [antworten, setAntworten] = useState(false);
   const akte = n.akteId ? akten.find((a) => a.id === n.akteId) : undefined;
+  // Reihenfolge beim Öffnen festhalten (nicht mitten in der Bearbeitung umsortieren): ohne Akte bzw. neu → KI-Karte zuerst
+  const kiZuerst = useMemo(() => !n.akteId || n.status === "neu", [n.id]);
   // Startet die Analyse der geöffneten Nachricht, gleitet der Desktop-Lesebereich zur KI-Karte –
   // die Analyse soll sichtbar ablaufen, nicht unterhalb des Nachrichtentexts.
   // Ist sie fertig, rückt die Karte mit dem Ergebnis (Akte, Fristen) nach oben.
@@ -153,11 +155,11 @@ export function Lesebereich({
             {istGerichtspost(n) ? <Landmark className="size-[18px]" /> : initialen(n.von)}
           </span>
           <div className="min-w-0 flex-1 basis-[200px]">
-            <div className="truncate text-[13.5px] font-semibold">
+            <div className="break-words text-[13.5px] font-semibold">
               {n.von}
               {n.vonAdresse && <span className="ml-1.5 font-normal text-fg-3">{n.kanal === "bea" ? `SAFE-ID ${n.vonAdresse}` : n.vonAdresse}</span>}
             </div>
-            <div className="num truncate text-[12px] text-fg-3">
+            <div className="num text-[12.5px] text-fg-3">
               an {n.an || tenant.kurzname} · {fmtDateWd(n.eingang.slice(0, 10))}, {fmtTime(n.eingang)} Uhr{new Date(n.eingang).getTime() <= Date.now() ? ` · ${relTime(n.eingang)}` : ""}
             </div>
           </div>
@@ -186,6 +188,12 @@ export function Lesebereich({
       </header>
 
       <div className="space-y-5 px-4 pb-8 pt-5 sm:px-6 xl:pb-24">
+        {/* Neue bzw. noch nicht zugeordnete Nachrichten: KI-Karte immer sofort sichtbar – „Akte zuordnen“ mit 1 Klick */}
+        {kiZuerst && (
+          <div id="ki-karte" className="scroll-mt-4">
+            <KiKarte n={n} ansicht={ansicht} schritt={schritt} fehler={fehler} onAnalyse={onAnalyse} />
+          </div>
+        )}
         <div className="whitespace-pre-line break-words text-[13.5px] leading-[1.65] text-fg-2">{n.text}</div>
 
         {n.anhaenge.length > 0 && (
@@ -203,8 +211,8 @@ export function Lesebereich({
                     <FileText className="size-3.5" />
                   </span>
                   <span className="min-w-0">
-                    <span className="block truncate text-[12.5px] font-medium">{a.name}</span>
-                    <span className="num block text-[11px] text-fg-3">{groesse(a.groesseKb)}</span>
+                    <span className="block break-all text-[12.5px] font-medium">{a.name}</span>
+                    <span className="num block text-[12.5px] text-fg-3">{groesse(a.groesseKb)}</span>
                   </span>
                 </span>
               ))}
@@ -212,9 +220,11 @@ export function Lesebereich({
           </div>
         )}
 
-        <div id="ki-karte" className="scroll-mt-4">
-          <KiKarte n={n} ansicht={ansicht} schritt={schritt} fehler={fehler} onAnalyse={onAnalyse} />
-        </div>
+        {!kiZuerst && (
+          <div id="ki-karte" className="scroll-mt-4">
+            <KiKarte n={n} ansicht={ansicht} schritt={schritt} fehler={fehler} onAnalyse={onAnalyse} />
+          </div>
+        )}
 
         {verlauf.length > 0 && (
           <div>
@@ -225,7 +235,7 @@ export function Lesebereich({
             <div className="space-y-2.5">
               {verlauf.map((m) => (
                 <motion.div key={m.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="ml-auto max-w-[92%] rounded-[18px] rounded-br-[6px] bg-ink-soft p-4">
-                  <div className="num mb-1.5 text-[11.5px] text-fg-3">
+                  <div className="num mb-1.5 text-[12.5px] text-fg-3">
                     {m.von} · {fmtTime(m.eingang)} Uhr · {m.kanal === "bea" ? "per beA" : "per E-Mail"} an {m.an}
                   </div>
                   <div className="whitespace-pre-line text-[13.5px] leading-relaxed text-fg">{m.text}</div>

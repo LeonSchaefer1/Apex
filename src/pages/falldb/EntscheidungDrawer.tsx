@@ -242,9 +242,9 @@ function Inhalt({ e, onOpen, onClose }: { e: Entscheidung; onOpen: (id: string) 
                   <GerichtSiegel e={x} groesse="sm" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[13.5px] font-medium">{x.titel}</span>
-                    <span className="mono block truncate text-[11.5px] text-fg-3">{zitat(x)}</span>
+                    <span className="mono block truncate text-[12.5px] text-fg-3">{zitat(x)}</span>
                   </span>
-                  <ChevronRight className="size-4 shrink-0 text-fg-4 transition-transform group-hover:translate-x-0.5" />
+                  <ChevronRight className="size-4 shrink-0 text-fg-3 transition-transform group-hover:translate-x-0.5" />
                 </button>
               </motion.li>
             ))}
@@ -267,7 +267,7 @@ function Inhalt({ e, onOpen, onClose }: { e: Entscheidung; onOpen: (id: string) 
           Mit dem Assistenten besprechen
         </Button>
       </div>
-      <p className="-mt-2 text-[11.5px] leading-snug text-fg-4">{RECHTSPRECHUNG_HINWEIS}</p>
+      <p className="-mt-2 text-[12.5px] leading-snug text-fg-3">{RECHTSPRECHUNG_HINWEIS}</p>
     </div>
   );
 }

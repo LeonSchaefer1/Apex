@@ -18,9 +18,8 @@ export interface SchnellLogin {
   titel: string;
   initialen: string;
   farbe: string;
+  /** Anbieterzugang (nur im Browser-Demo-Betrieb). */
   console?: boolean;
-  /** In der Apex Console angelegter Kundentest (keine fest eingebaute Beispielkanzlei). */
-  kundentest?: boolean;
 }
 
 export interface ConsoleKunde {
@@ -39,6 +38,8 @@ export interface NeuerKunde {
   schwerpunkte: Sachgebiet[];
   beispieldaten: boolean;
   testBis?: string;
+  /** Förmliche Anrede der Hauptnutzerin bzw. des Hauptnutzers („Sehr geehrte Frau …“); fehlt = keine Anrede. */
+  adminAnrede?: "Frau" | "Herr";
 }
 
 export interface NeuerKundeErgebnis {
@@ -52,6 +53,48 @@ export interface NeuerNutzer {
   email: string;
   rolle: Rolle;
   titel: string;
+  anrede?: "Frau" | "Herr";
+}
+
+/** Änderungen an einem Zugang der eigenen Kanzlei (Einstellungen → Team). `null` entfernt die Abwesenheit. */
+export interface TeamAenderung {
+  abwesenheit?: NonNullable<User["abwesenheit"]> | null;
+  deaktiviert?: boolean;
+  /** Zwei-Faktor-Anmeldung zurücksetzen (z. B. Telefon verloren) – die Person richtet sie danach neu ein. */
+  zweiFaktorZuruecksetzen?: boolean;
+}
+
+/** Zwei-Faktor-Anmeldung (TOTP) der angemeldeten Person. */
+export interface ZweiFaktorStatus {
+  aktiv: boolean;
+  /** Kanzlei verlangt Zwei-Faktor für alle (in Präsentationskanzleien nie erzwungen). */
+  pflicht: boolean;
+  eingerichtetAm?: string;
+  wiederherstellungUebrig?: number;
+  /** Einrichtung hier nicht möglich (z. B. öffentliche Präsentationskanzlei im Server-Betrieb) – mit Begründung. */
+  gesperrt?: string;
+}
+
+export interface ZweiFaktorEinrichtung {
+  /** Geheimer Schlüssel (Base32) zum Abtippen */
+  schluessel: string;
+  /** otpauth-URI zum Kopieren in die Authenticator-App */
+  uri: string;
+}
+
+export const SPERRE_MINUTEN = [5, 10, 15, 30] as const;
+export type SperreMinuten = (typeof SPERRE_MINUTEN)[number];
+export const SPERRE_STANDARD: SperreMinuten = 15;
+
+export interface KanzleiSicherheit {
+  zweiFaktorPflicht: boolean;
+  sperreMinuten: SperreMinuten;
+}
+
+/** Sicherheitseinstellung der Kanzlei mit Standardwerten. */
+export function kanzleiSicherheit(t: Pick<Tenant, "sicherheit"> | undefined): KanzleiSicherheit {
+  const m = t?.sicherheit?.sperreMinuten;
+  return { zweiFaktorPflicht: !!t?.sicherheit?.zweiFaktorPflicht, sperreMinuten: m && (SPERRE_MINUTEN as readonly number[]).includes(m) ? m : SPERRE_STANDARD };
 }
 
 /** Betriebsart der angemeldeten Kanzlei – vom Server bzw. Demo-Backend mit der Sitzung geliefert. */
@@ -62,6 +105,8 @@ export interface KanzleiBetrieb {
   beispieldaten: boolean;
   /** Server-Betrieb: Live-KI ist für diese Kanzlei freigegeben (z. B. per AI_DEMO_TENANTS=off für Präsentationskanzleien abgeschaltet). */
   kiLive?: boolean;
+  /** Die Kanzlei verlangt Zwei-Faktor, die Person hat sie noch nicht eingerichtet: erst einrichten, dann arbeiten. */
+  zweiFaktorFehlt?: boolean;
 }
 
 export type KanzleiSitzung = SessionInfo & { betrieb?: KanzleiBetrieb };
@@ -93,7 +138,31 @@ export interface KanzleiProfil {
   schwerpunkte: string[];
 }
 
-export const ROLLEN: readonly Rolle[] = ["partner", "anwalt", "refa", "admin"];
+export const ROLLEN: readonly Rolle[] = ["partner", "anwalt", "refa", "admin", "azubi"];
+
+/** Sammlungen, die Auszubildende weder lesen noch schreiben (Abrechnung, Aktenkonten, Fremdgeld) – gleiche Regel in Demo-Backend und Server. */
+export const AZUBI_GESPERRT: readonly CollectionKey[] = ["rechnungen", "buchungen", "transaktionen"];
+
+export const AZUBI_KEIN_ZUGRIFF = "Kein Zugriff für Ihre Rolle: Abrechnung, Aktenkonten und Fremdgeld sind Auszubildenden nicht freigegeben – bitte wenden Sie sich an Ihre Kanzleiverwaltung.";
+
+export function darfSammlung(rolle: Rolle | undefined, col: CollectionKey): boolean {
+  return rolle !== "azubi" || !AZUBI_GESPERRT.includes(col);
+}
+
+/** Abrechnung & Aktenkonten (Navigation, Route /abrechnung, Akten-Reiter „Aktenkonto“). */
+export function darfAbrechnung(rolle: Rolle | undefined): boolean {
+  return rolle !== "azubi";
+}
+
+/** eEB abgeben dürfen nur Berufsträger (Partner, Anwältinnen und Anwälte). */
+export function darfEebAbgeben(rolle: Rolle | undefined): boolean {
+  return rolle === "partner" || rolle === "anwalt";
+}
+
+/** Lizenznummer und Teamliste mit E-Mail-Adressen sehen nur Partner und Administration. */
+export function darfLizenzSehen(rolle: Rolle | undefined): boolean {
+  return rolle === "partner" || rolle === "admin";
+}
 
 export const BUNDESLAENDER: readonly Bundesland[] = ["BW", "BY", "BE", "BB", "HB", "HH", "HE", "MV", "NI", "NW", "RP", "SL", "SN", "ST", "SH", "TH"];
 
@@ -123,16 +192,64 @@ export class PasswortWechselNoetig extends Error {
 
 export const PASSWORT_MIN = 10;
 
-/** Mindestanforderung an ein selbst gewähltes Passwort (gleiche Regel im Demo-Backend und auf dem Server). */
+/** Mindestanforderung an ein selbst gewähltes Passwort (gleiche Regel im Demo-Backend und auf dem Server). Jede Meldung nennt Ursache und nächsten Schritt. */
 export function pruefeNeuesPasswort(neu: string, alt?: string): string | null {
-  if (neu.length < PASSWORT_MIN) return `Bitte mindestens ${PASSWORT_MIN} Zeichen verwenden.`;
-  if (!/[A-Za-zÄÖÜäöüß]/.test(neu) || !/\d/.test(neu)) return "Bitte Buchstaben und mindestens eine Ziffer verwenden.";
-  if (alt && neu === alt) return "Das neue Passwort muss sich vom Startpasswort unterscheiden.";
+  if (neu.length < PASSWORT_MIN) return `Das neue Passwort ist zu kurz (${neu.length} von mindestens ${PASSWORT_MIN} Zeichen). Bitte verlängern Sie es – z. B. mit einem weiteren Wort.`;
+  if (!/[A-Za-zÄÖÜäöüß]/.test(neu) || !/\d/.test(neu)) return "Das neue Passwort braucht Buchstaben und mindestens eine Ziffer. Bitte ergänzen Sie, was fehlt – z. B. eine Zahl am Ende.";
+  if (alt && neu === alt) return "Das neue Passwort ist identisch mit dem Startpasswort. Bitte wählen Sie ein anderes, nur Ihnen bekanntes Passwort.";
   return null;
 }
 
+/** Anmeldung braucht den zweiten Faktor: Passwort war richtig, jetzt folgt der Code aus der Authenticator-App. */
+export class ZweiFaktorNoetig extends Error {
+  readonly email: string;
+  /** Kurzlebige Kennung des Anmeldevorgangs (nur zusammen mit dem Code gültig). */
+  readonly vorgang: string;
+  constructor(email: string, vorgang: string) {
+    super("Bitte geben Sie den Code aus Ihrer Authenticator-App ein.");
+    this.name = "ZweiFaktorNoetig";
+    this.email = email;
+    this.vorgang = vorgang;
+  }
+}
+
+/** Gesperrter Zugang (vorübergehend deaktiviert) – gleiche Meldung in Demo-Backend und Server. */
+export const ZUGANG_DEAKTIVIERT = "Ihr Zugang ist deaktiviert – bitte wenden Sie sich an Ihre Kanzleiverwaltung (Partner oder Administration).";
+
+/** Falsche Zugangsdaten – ohne Hinweis darauf, ob es die E-Mail-Adresse gibt. */
+export const ANMELDUNG_FALSCH = "E-Mail-Adresse oder Passwort stimmen nicht. Bitte prüfen Sie Schreibweise sowie Groß- und Kleinschreibung – oder lassen Sie über „Passwort vergessen?“ ein neues Startpasswort vergeben.";
+
 /** Längstes zulässiges Passwort – längere Eingaben werden vor dem (teuren) Hashen abgewiesen. */
 export const PASSWORT_MAX = 256;
+
+const ISO_TAG = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Gleiche Regeln wie auf dem Server: Abwesenheit für sich selbst oder als Verwaltung; Deaktivieren und Zwei-Faktor-Rücksetzen nur durch die Verwaltung. */
+export function pruefeTeamAenderung(t: { users: User[] }, ich: User, ziel: User, a: TeamAenderung): void {
+  const verwalten = darfVerwalten(ich.rolle);
+  if (ziel.rolle === "partner" && ich.rolle !== "partner" && ziel.id !== ich.id) throw new Error("Partner-Zugänge können nur Partner verwalten.");
+  if (a.abwesenheit !== undefined) {
+    if (ziel.id !== ich.id && !verwalten) throw new Error("Die Abwesenheit anderer Personen tragen Partner und Administration ein – Ihre eigene können Sie selbst eintragen.");
+    const ab = a.abwesenheit;
+    if (ab) {
+      if (!ISO_TAG.test(ab.von) || !ISO_TAG.test(ab.bis)) throw new Error("Bitte geben Sie Beginn und Ende der Abwesenheit als Datum an.");
+      if (ab.bis < ab.von) throw new Error("Das Ende der Abwesenheit liegt vor dem Beginn. Bitte prüfen Sie die Daten.");
+      if (ab.vertretungId) {
+        const v = t.users.find((x) => x.id === ab.vertretungId);
+        if (!v || v.id === ziel.id) throw new Error("Bitte wählen Sie als Vertretung eine andere Person aus Ihrem Team.");
+        if (v.deaktiviert) throw new Error(`${v.name} ist deaktiviert und kann nicht vertreten. Bitte wählen Sie eine andere Vertretung.`);
+      }
+      if (ab.grund && ab.grund.length > 200) throw new Error("Der Grund ist zu lang (höchstens 200 Zeichen).");
+    }
+  }
+  if (a.deaktiviert !== undefined || a.zweiFaktorZuruecksetzen) {
+    if (!verwalten) throw new Error("Zugänge deaktivieren oder zurücksetzen dürfen Partner und Administration Ihrer Kanzlei.");
+    if (ziel.id === ich.id) throw new Error("Ihren eigenen Zugang können Sie nicht deaktivieren oder zurücksetzen.");
+    if (a.deaktiviert && ziel.rolle === "partner" && t.users.filter((x) => x.rolle === "partner" && !x.deaktiviert && x.id !== ziel.id).length < 1) {
+      throw new Error("Mindestens ein aktiver Partner-Zugang muss bestehen bleiben.");
+    }
+  }
+}
 
 export interface SchreibOptionen {
   /** Hintergrund- bzw. Systemschreibvorgang: zählt nicht als Änderung durch die Kanzlei (Demodaten werden weiter täglich neu erzeugt). */
@@ -161,10 +278,14 @@ export interface Backend {
   modus: "demo" | "server";
   info(): Promise<BackendInfo>;
   schnellLogins(): Promise<SchnellLogin[]>;
-  /** Wirft `PasswortWechselNoetig`, wenn zuerst ein eigenes Passwort festgelegt werden muss. */
+  /** Wirft `PasswortWechselNoetig`, wenn zuerst ein eigenes Passwort festgelegt werden muss, und `ZweiFaktorNoetig`, wenn der Code folgt. */
   login(email: string, passwort: string): Promise<Sitzung>;
-  /** Ersetzt das Startpasswort durch ein eigenes und meldet an. */
+  /** Zweiter Schritt der Anmeldung: Code aus der Authenticator-App (oder ein Wiederherstellungscode). */
+  zweiFaktorAnmelden(vorgang: string, code: string): Promise<Sitzung>;
+  /** Ersetzt das Startpasswort durch ein eigenes und meldet an (wirft `ZweiFaktorNoetig`, wenn die Person Zwei-Faktor nutzt). */
   passwortErsetzen(email: string, startPasswort: string, neuesPasswort: string): Promise<Sitzung>;
+  /** Wiederanmeldung nach der Sperre bei Inaktivität: prüft das Passwort der angemeldeten Person. */
+  entsperren(passwort: string): Promise<void>;
   me(): Promise<Sitzung | null>;
   logout(): Promise<void>;
   /**
@@ -180,12 +301,25 @@ export interface Backend {
   kanzlei: {
     /** Speichert das Kanzleiprofil dauerhaft (nur Partner und Administration). */
     profilSpeichern(p: KanzleiProfil): Promise<Tenant>;
+    /** Zwei-Faktor-Pflicht und Sperre bei Inaktivität (nur Partner und Administration). */
+    sicherheitSpeichern(s: KanzleiSicherheit): Promise<Tenant>;
+  };
+  zweiFaktor: {
+    status(): Promise<ZweiFaktorStatus>;
+    /** Neuen Schlüssel erzeugen – aktiv erst nach `bestaetigen` mit dem ersten Code. */
+    einrichten(): Promise<ZweiFaktorEinrichtung>;
+    /** Erster Code aus der App bestätigt die Einrichtung; liefert die Wiederherstellungscodes (nur jetzt sichtbar). */
+    bestaetigen(code: string): Promise<{ wiederherstellungscodes: string[] }>;
+    /** Abschalten mit aktuellem Code oder Wiederherstellungscode. */
+    deaktivieren(code: string): Promise<void>;
   };
   team: {
     add(input: NeuerNutzer): Promise<{ user: User; passwort: string }>;
     remove(id: string): Promise<void>;
     /** Vergibt ein neues Startpasswort – die Person legt bei der nächsten Anmeldung ein eigenes fest. */
     neuesPasswort(id: string): Promise<string>;
+    /** Abwesenheit & Vertretung, Deaktivieren/Reaktivieren, Zwei-Faktor zurücksetzen. */
+    aendern(id: string, a: TeamAenderung): Promise<User>;
   };
   console: {
     list(): Promise<ConsoleKunde[]>;

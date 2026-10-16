@@ -228,7 +228,10 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
       ki: { zusammenfassung: `${info.titel} – Entwurf (${erzeugt.quelle === "live" ? "Claude" : "Vorlage"})${offenePlatzhalter ? `, ${offenePlatzhalter} Platzhalter offen` : ""}` },
     };
     useData.getState().upsert("dokumente", dok);
-    useData.getState().log({ akteur: "ki", userId: user.id, akteId: a.id, text: `Entwurf „${dok.name}“ erstellt und in ${a.aktenzeichen} gespeichert`, minutenGespart: 20 });
+    // „KI gespart“ je Akte und Vorgangsart nur einmal: erneutes Speichern desselben Entwurfs zählt nicht noch einmal.
+    const marke = `(${info.titel})`;
+    const schonGezaehlt = useData.getState().data.aktivitaeten.some((x) => x.akteur === "ki" && x.akteId === a.id && (x.minutenGespart ?? 0) > 0 && x.text.includes(marke));
+    useData.getState().log({ akteur: "ki", userId: user.id, akteId: a.id, text: `Entwurf „${dok.name}“ ${marke} erstellt und in ${a.aktenzeichen} gespeichert`, minutenGespart: schonGezaehlt ? 0 : 20 });
     setGespeichert(dok.id);
     toast("Entwurf gespeichert", {
       text: `${dok.name} · Ordner „${info.ordner}“ in ${a.aktenzeichen}`,
@@ -316,7 +319,7 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
                   <span className={cn("relative grid size-8 shrink-0 place-items-center rounded-[10px] transition-colors", aktiv ? "bg-[var(--ink)] text-[var(--on-ink)]" : "bg-[var(--ink-softer)] text-fg-2")}>{ICONS[a.key]}</span>
                   <span className="relative min-w-0">
                     <span className="block text-[13px] font-semibold leading-tight">{a.titel}</span>
-                    <span className="block truncate text-[11.5px] text-fg-3">{a.kurz}</span>
+                    <span className="block truncate text-[12.5px] text-fg-3">{a.kurz}</span>
                   </span>
                 </button>
               );
@@ -355,7 +358,7 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
         <Button variant="ai" size="lg" className="mt-4 w-full" icon={<Wand2 className="size-4" />} onClick={() => void erstellen()} loading={status === "vorbereitung"} disabled={!akte || schreibt}>
           Entwurf erstellen
         </Button>
-        <p className="mt-2.5 text-center text-[11.5px] text-fg-4">{live ? "Claude formuliert live – Sie sehen jedes Wort entstehen." : "Demo-KI: Entwurf aus geprüften Vorlagen und den Daten der Akte."}</p>
+        <p className="mt-2.5 text-center text-[12.5px] text-fg-3">{live ? "Claude formuliert live – Sie sehen jedes Wort entstehen." : "Demo-KI: Entwurf aus geprüften Vorlagen und den Daten der Akte."}</p>
       </Card>
 
       {/* ───────── Vorschau ───────── */}
@@ -429,11 +432,11 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
                 {unbekannt.length} {unbekannt.length === 1 ? "Zitat" : "Zitate"} nicht in der Fall-Datenbank – im Text markiert
               </Chip>
             )}
-            <span className="text-[11.5px] text-fg-4">Entwurf – vor Versand anwaltlich prüfen.</span>
+            <span className="text-[12.5px] text-fg-3">Entwurf – vor Versand anwaltlich prüfen.</span>
           </motion.div>
         )}
 
-        <div ref={scrollRef} className="rounded-[10px] lg:max-h-[min(80vh,980px)] lg:overflow-y-auto lg:pb-2">
+        <div ref={scrollRef} tabIndex={0} role="region" aria-label="Vorschau des Entwurfs" className="rounded-[10px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--ink)] lg:max-h-[min(80vh,980px)] lg:overflow-y-auto lg:pb-2">
           <motion.article
             layout="position"
             className={cn("paper relative mx-auto max-w-[800px] px-5 py-7 sm:px-12 sm:py-11", schreibt && "ai-ring")}
@@ -466,9 +469,9 @@ function Briefkopf({ name, adresse, farbe, person, titel, email }: { name: strin
           <span className="h-5 w-1 rounded-full" style={{ background: farbe }} />
           <span className="truncate text-[15px] font-semibold tracking-[-0.01em]">{name}</span>
         </div>
-        <div className="mt-0.5 truncate pl-3 text-[11px] opacity-60">{adresse}</div>
+        <div className="mt-0.5 truncate pl-3 text-[12.5px] opacity-60">{adresse}</div>
       </div>
-      <div className="hidden shrink-0 text-right text-[11px] leading-snug opacity-60 sm:block">
+      <div className="hidden shrink-0 text-right text-[12.5px] leading-snug opacity-60 sm:block">
         <div className="font-medium">{person}</div>
         <div className="max-w-[220px] truncate">{titel}</div>
         <div>{email}</div>

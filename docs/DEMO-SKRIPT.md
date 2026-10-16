@@ -9,7 +9,7 @@
 
 **Zugang:**
 - Testzugang **Hartmann & Partner (Berlin)**: `julia.hartmann@hartmann-partner.de`, Passwort `Apex-Demo-2026`.
-- Auf der Anmeldeseite genügt ein Klick auf die Karte.
+- Auf der Anmeldeseite genügt ein Klick auf die Karte. Ein-Klick-Karten gibt es nur für die öffentlichen Präsentationskanzleien – Kundentestzugänge melden sich immer mit eigenem Passwort an.
 
 > Die Demodaten werden täglich relativ zu „heute“ erzeugt. Fristen, Posteingang und Termine sind deshalb immer aktuell.
 
@@ -19,7 +19,8 @@
 
 - „Ein Werkzeug. Volle Kontrolle.“: Akten, beA, Fristen, Abrechnung und KI in einer Oberfläche.
 - Vergleich mit klassischer Kanzleisoftware. Jeder Punkt stammt aus echten Kundenbewertungen am Markt: Updates, Hotline, Suche, Forderungskonto, Kosten, Umzug.
-- „Lifetime statt Abo“: einmal investieren, keine Monatsgebühren.
+- „Lifetime statt Abo“: einmal investieren, keine Monatsgebühren. Die Wartung ist optional (Richtwert 15 % des Lizenzpreises pro Jahr, erstes Jahr enthalten) – die Kostenkurve zeigt beide Linien.
+- „Testzugang anfordern“ zeigt das Anfrageformular und den Kontakt zur festen Ansprechpartnerin.
 
 ## 2 · Anmeldung & getrennte Kanzleien (30 Sek.)
 
@@ -29,9 +30,10 @@
 ## 3 · Cockpit (1,5 Min.)
 
 - **KI-Briefing** mit „Vorlesen“ anklicken. Der Tag in drei Sätzen.
-- Oben die schwarze **Apex Island** zeigen: „38h-Motor aktiv · … Std. gespart diese Woche“. Alle 40 bis 60 Sekunden zeigt sie live, was gerade automatisch erledigt wurde.
+- Oben die schwarze **Apex Island** zeigen: „38h-Motor · … Std. gespart“ mit der Plakette „Beispiel“ (Demowerte). Sie bleibt ruhig: Live-Meldungen höchstens alle 90 Sekunden, abschaltbar unter Einstellungen → Darstellung. Die Herleitung steht in der Motorkarte („So rechnen wir“).
 - Karten zeigen: Heute fällig, Posteingang, Finanzen, KI-Empfehlung.
-- Den grünen Status „Alle Dienste verbunden“ zeigen. Kunden erfahren sofort, ob beA und E-Mail laufen. Andere Anbieter melden nur kryptische Fehler.
+- Den Status „Simuliert verbunden“ in der Kopfleiste und die Zeile „beA ✓ · E-Mail ✓ · letzte Abfrage vor … Min. (simuliert)“ in der Posteingangskarte zeigen. Kunden erfahren sofort, ob beA und E-Mail laufen – im Prototyp ehrlich als simuliert gekennzeichnet.
+- Block **„Termine heute“** in „Heute & … fällig“ zeigen: Uhrzeit, Ort und Akte auf einen Blick.
 
 ## 4 · Posteingang mit KI-Fristenerkennung (3 Min.) – der stärkste Moment
 
@@ -43,6 +45,8 @@
 3. Den **Rechenweg** aufklappen: § 517 ZPO, § 188 BGB, Wochenende nach § 222 Abs. 2 ZPO.
    - Kernbotschaft: *„Die KI erkennt, der geprüfte Fristenrechner berechnet.“*
 4. „Fristen übernehmen“ klicken. Erst danach ist **„eEB abgeben“** freigeschaltet. Keine Zustellung geht ohne notierte Frist durch.
+   - Das eEB geben nur Anwältinnen und Anwälte ab. Sekretariat und Auszubildende sehen „Zur eEB-Abgabe vorlegen“; die Anwältin erhält eine Wiedervorlage für heute.
+   - Das Protokoll nennt Wer, Wann, Zustellungsdatum und den ersten Lesezeitpunkt.
 5. Optional die E-Mail von Thomas Weber öffnen. Die KI ordnet sie der Akte 142/26 zu und erkennt den Zeugenhinweis und die Meldepflicht bei der Arbeitsagentur.
 
 ## 5 · Akte 142/26 Weber ./. Kröger Logistik (3 Min.)
@@ -52,7 +56,8 @@
 2. **„E-Mail schreiben“** wählen und senden: Sie bleiben in der Akte.
 3. Reiter **KI-Fallanalyse** → „Fallanalyse starten“:
    - Die Pipeline läuft sichtbar.
-   - Erfolgsaussicht **78 %**.
+   - Einschätzung **„Gute Aussichten“** mit Begründung und Quellen an jedem Argument. Der KI-Schätzwert (78 %) steht nur unter „Wie entsteht die Einschätzung?“ – ausdrücklich keine Wahrscheinlichkeit.
+   - Die Deckungsanfrage an die Nordlicht Rechtsschutz AG liegt als Entwurf zur Freigabe vor (Reiter Beteiligte → „Freigeben und versenden“); danach meldet die Analyse „versandt am … von …“.
    - Präzedenzfall **BAG 2 AZR 541/09 („Emmely“)** mit Begründung.
    - Argumente dafür und dagegen, nächste Schritte.
    - **Entwurf der Kündigungsschutzklage** → „In E-Akte speichern“.
@@ -60,18 +65,20 @@
 
 ## 6 · Apex Assistent – der sprechende KI-Avatar (2 Min.)
 
-Unten rechts die Kugel antippen und das Mikrofon nutzen:
+Unten rechts die Kugel antippen (oder Strg+K → „Apex Assistent öffnen“) und das Mikrofon nutzen:
 
 - „**Welche Fristen laufen diese Woche ab?**“ Antwort per Sprache, mit Werkzeug-Chips („Fristenkalender geprüft“).
-- „**Lege eine Wiedervorlage für Akte 137 in drei Tagen an.**“ Der Eintrag erscheint sofort im Fristenkalender.
+- „**Lege eine Wiedervorlage für Akte 137 in drei Tagen an.**“ Der Assistent zeigt eine Bestätigungskarte (Akte, Titel, Datum mit Wochentag). Erst nach „Eintragen“ erscheint der Eintrag im Fristenkalender – mit „Rückgängig“ und dem Etikett „Durch Assistent angelegt“.
+- „**beA ist gestört, die Frist läuft heute ab – was tun?**“ Die Wissenskarte nennt Ersatzeinreichung und Glaubhaftmachung (§ 130d S. 2, 3 ZPO; § 46g S. 3, 4 ArbGG).
 - „**Wie funktioniert der Bankabgleich?**“ Support aus dem Wiki, mit Link direkt in den Bereich.
 - „**Ich brauche meine Ansprechpartnerin.**“ Lena Vogt mit Durchwahl und Rückruf auf Wunsch statt Hotline-Warteschleife.
 
 ## 7 · Abrechnung (2 Min.)
 
 - **RVG-Rechner**: 10.000 € mit 2300 + 3100 + 3104. Anrechnung, Pauschale und USt. kommen automatisch, ebenso die richtige Tabelle (2025/2021) nach Auftragsdatum.
-- **Sammelabrechnung**: mehrere Akten auf einmal abrechnen, auch als XRechnung.
-- **Bankabgleich** → „Abgleich starten“: Zahlungen werden automatisch gebucht, mit Sicherheitsgrad.
+- **Sammelabrechnung**: mehrere Akten auf einmal als Entwürfe anlegen, auch als XRechnung; RSV-Status je Akte sichtbar.
+- **Bankabgleich** → „Abgleich starten“: eindeutige Zahlungen werden gebucht, mit Sicherheitsgrad – jede Zuordnung lässt sich lösen. Die Zahlung eines Versicherers auf eine Akte wird als **Fremdgeld** erkannt; weitergeleitet wird nur über den Dialog mit Empfänger und IBAN (§ 43a Abs. 7 BRAO).
+- **Zinsrechner** (Strg+K → „Zinsrechner“): Betrag, Zeitraum, 5 oder 9 Prozentpunkte – mit Rechenweg je Basiszins-Abschnitt.
 - **Forderungskonto** für Akte 126/26 Berger ./. Lenz: taggenaue Zinsen, Verrechnung nach § 367 BGB (Kosten → Zinsen → Hauptforderung).
 
 ## 8 · Fall-Datenbank & Suche (1 Min.)
@@ -82,14 +89,16 @@ Unten rechts die Kugel antippen und das Mikrofon nutzen:
 ## 9 · Umzug (1 Min.)
 
 - „RA-MICRO“ wählen → „Beispiel-Export laden“.
-- Die Spalten werden automatisch zugeordnet, Dubletten erkannt, der Import läuft animiert. Die Fristen gehen zur Kontrolle.
+- Die Spalten werden automatisch zugeordnet, Dubletten erkannt (auch innerhalb der Datei), der Import läuft animiert. Die Fristen gehen zur Kontrolle.
+- Das **Umzugsprotokoll** hält jeden Lauf fest – „Rückgängig“ geht auch nach dem Neuladen und an jedem Arbeitsplatz.
 - Kernbotschaft: „Ihr Altsystem hält Sie nicht mehr fest.“
 
 ## 10 · Support, Lizenz, Vertrauen (1 Min.)
 
 - Hilfe & Support zeigen: persönliche Ansprechpartnerin, **Systemstatus**, **Geprüfte Updates** (Staging plus Regressionstests). Das antwortet direkt auf die häufigste Kritik am Markt.
 - Das **?** neben jedem Seitentitel öffnet das animierte Wiki genau dort, wo man arbeitet.
-- Einstellungen → Lizenz: **Lifetime-Lizenz**, keine Monatsgebühren.
+- Einstellungen → Lizenz: **Lifetime-Lizenz**, keine Monatsgebühren; Abschnitte „Wartung“ und „Übertragbarkeit & Escrow“ (Richtwert/Entwurf – verbindlich im Angebot).
+- Einstellungen → Datenschutz: Zwei-Faktor-Anmeldung, Sperre bei Inaktivität, Protokoll mit gekennzeichneten Beispieleinträgen, Muster für § 43e BRAO und Art. 28 DSGVO.
 
 ## 11 · Abschluss: Testzugang live anlegen (1 Min.)
 
@@ -103,11 +112,11 @@ Unten rechts die Kugel antippen und das Mikrofon nutzen:
 
 | Frage | Antwort |
 |---|---|
-| Wo liegen unsere Daten? | On-Premise oder in einer Private Cloud in Deutschland. Die KI läuft über den Kanzlei-Server, Mandantendaten werden nicht zu Trainingszwecken genutzt. |
+| Wo liegen unsere Daten? | In einem deutschen Rechenzentrum oder auf einem eigenen Server in der Kanzlei. Live-KI: Anthropic, PBC (USA) – der Kanzlei-Server sendet nur die nötigen Inhalte, ohne Nutzung zum Training (Art. 44 ff. DSGVO, § 43e Abs. 4 BRAO). Die Demo-KI arbeitet offline. Eine EU-Verarbeitung ist nur auf Wunsch über einen EU-Cloud-Zugang möglich – im Prototyp nicht eingerichtet. |
 | Was, wenn die KI irrt? | Fristen berechnet nie die KI. Jede KI-Frist geht in die Vier-Augen-Kontrolle. Quellen und Rechenweg sind immer sichtbar. |
 | Funktioniert das beA wirklich? | Im Prototyp ist die beA-Anbindung simuliert. Die produktive Anbindung über die BRAK-Schnittstelle ist Phase 3 der Umsetzung. |
-| Was kostet das? | Eine einmalige Lifetime-Lizenz nach Kanzleigröße, ohne Monatsgebühren. Wartung und Updates sind optional und transparent. |
-| Wie kommen wir aus der alten Software heraus? | Mit der One-Klick-Migration samt Vorschau und Dublettenprüfung. Ihre Ansprechpartnerin begleitet den Umzug. |
+| Was kostet das? | Eine einmalige Lifetime-Lizenz nach Kanzleigröße, ohne Monatsgebühren. Die Wartung ist optional: Richtwert 15 % des Lizenzpreises pro Jahr, das erste Jahr ist enthalten. Verbindlich ist das Angebot. |
+| Wie kommen wir aus der alten Software heraus? | Mit dem Umzug in fünf Schritten – mit Vorschau, Dublettenprüfung und Rückgängig. Ihre Ansprechpartnerin begleitet den Umzug. |
 
 ## Was im Prototyp simuliert ist
 

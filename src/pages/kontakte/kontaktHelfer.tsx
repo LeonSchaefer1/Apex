@@ -3,6 +3,9 @@ import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Building2, Check, Copy, Landmark, ShieldCheck, Scale } from "lucide-react";
 import type { Akte, Kontakt, KontaktRolle } from "@/core/types";
+import { telefonZiffern } from "@/core/kontaktpruefung";
+// Fachlogik liegt in src/core/kontaktpruefung.ts (mit Tests) – hier für bestehende Importe weitergereicht.
+export { aktenVonKontakt, DUBLETTE_GRUND, findeDublette, nameSchluessel, telefonZiffern, type BeteiligtenRolle, type Dublette } from "@/core/kontaktpruefung";
 import { useCol } from "@/store/data";
 import { toast } from "@/store/ui";
 import { Avatar, type Tone } from "@/components/ui";
@@ -106,22 +109,6 @@ export function CopyButton({ text, was, className }: { text: string; was: string
   );
 }
 
-export type BeteiligtenRolle = "Mandant" | "Gegner" | "Gegneranwalt" | "Gericht" | "Versicherung" | "Schuldner";
-
-/** Alle Akten, in denen ein Kontakt vorkommt – mit seiner Rolle in der jeweiligen Akte. */
-export function aktenVonKontakt(k: Kontakt, akten: Akte[]): { akte: Akte; rolle: BeteiligtenRolle }[] {
-  const out: { akte: Akte; rolle: BeteiligtenRolle }[] = [];
-  for (const a of akten) {
-    if (a.mandantId === k.id) out.push({ akte: a, rolle: "Mandant" });
-    else if (a.gegnerId === k.id) out.push({ akte: a, rolle: "Gegner" });
-    else if (a.forderung?.schuldnerId === k.id) out.push({ akte: a, rolle: "Schuldner" });
-    else if (a.gegneranwaltId === k.id) out.push({ akte: a, rolle: "Gegneranwalt" });
-    else if (a.gerichtId === k.id) out.push({ akte: a, rolle: "Gericht" });
-    else if (a.rsv?.versicherung && a.rsv.versicherung === k.name) out.push({ akte: a, rolle: "Versicherung" });
-  }
-  return out;
-}
-
 export interface Konflikt {
   alsMandant: Akte[];
   alsGegner: Akte[];
@@ -160,20 +147,6 @@ export function findeKontaktNachName(kontakte: Kontakt[], name: string): Kontakt
   const n = name.trim().toLowerCase();
   if (!n) return undefined;
   return kontakte.find((k) => k.name.trim().toLowerCase() === n);
-}
-
-/**
- * Telefonnummer auf Ziffern reduzieren und Ländervorwahl vereinheitlichen –
- * „+49 176 2214 8830“, „+49 (0)176 22148830“, „0049 176…“ und „0176 2214 8830“ ergeben „017622148830“.
- */
-export function telefonZiffern(s: string): string {
-  const t = s.replace(/\(0\)/g, "").trim();
-  let d = t.replace(/\D/g, "");
-  if (t.startsWith("+") || t.startsWith("00")) {
-    d = d.replace(/^00/, "");
-    if (d.startsWith("49")) d = `0${d.slice(2)}`;
-  }
-  return d;
 }
 
 /** Sieht die Suchanfrage wie (ein Teil) einer Telefonnummer aus? Mindestens drei Ziffern, sonst nur Trennzeichen. */

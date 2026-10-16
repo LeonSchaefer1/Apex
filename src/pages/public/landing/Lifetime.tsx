@@ -1,13 +1,18 @@
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowRight, BadgeCheck, Clock3, Infinity as InfinityIcon, Server, Wrench } from "lucide-react";
+import { ArrowRight, BadgeCheck, Check, Clock3, Infinity as InfinityIcon, Server, Wrench, X } from "lucide-react";
 import { Button } from "@/components/ui";
+import { ESCROW, LIZENZ_KENNZEICHNUNG, UEBERTRAGBARKEIT, WARTUNG, WARTUNG_SATZ } from "@/content/lizenz";
 import { Abschnitt, Kopf, Reveal } from "./basis";
+import { useAnfrage } from "./Anfrage";
 
 // Schematische Kurven (ohne Zahlen): kumulierte Kosten über fünf Jahre
 const abo = (t: number) => 0.15 + 1.0 * t + 0.1 * t * t;
 const LIFETIME = 2.6;
+/** Wartung (Richtwert 15 % des Lizenzpreises pro Jahr), das erste Jahr ist enthalten. */
+const WARTUNG_JAHR = LIFETIME * WARTUNG_SATZ;
+const lifetimeWartung = (t: number) => LIFETIME + WARTUNG_JAHR * Math.max(0, t - 1);
 const MAX_Y = 8.2;
 /** Geometrie in echten Pixeln der Containerbreite – Schrift bleibt auf jedem Gerät lesbar. */
 function geometrie(W: number) {
@@ -18,19 +23,19 @@ function geometrie(W: number) {
   const y = (v: number) => H - P.b - (v / MAX_Y) * (H - P.t - P.b);
   return { W, H, P, x, y, schmal };
 }
+/** Ausgleichspunkt inkl. Wartung: abo(t) = LIFETIME + w·(t − 1) für t ≥ 1 → 0,1t² + (1 − w)t + 0,15 − LIFETIME + w = 0 */
 const break_even = (() => {
-  // abo(t) = LIFETIME → 0.1t² + t + 0.15 − 2.6 = 0
-  const a = 0.1, b = 1, c = 0.15 - LIFETIME;
+  const a = 0.1, b = 1 - WARTUNG_JAHR, c = 0.15 - LIFETIME + WARTUNG_JAHR;
   return (-b + Math.sqrt(b * b - 4 * a * c)) / (2 * a);
 })();
 
-const TOOLTIP: Record<number, { abo: string; apex: string }> = {
-  0: { abo: "Einrichtung und erste Monatsgebühr", apex: "Einmalige Investition nach Kanzleigröße" },
-  1: { abo: "Zwölf Monatsgebühren bezahlt", apex: "Keine laufenden Lizenzgebühren" },
-  2: { abo: "Gebühren laufen weiter – Preiserhöhung möglich", apex: "Investition ist ausgeglichen" },
-  3: { abo: "Kosten steigen weiter", apex: "Sie sparen jeden Monat" },
-  4: { abo: "Kosten steigen weiter", apex: "Software gehört weiterhin Ihnen" },
-  5: { abo: "Nach fünf Jahren: höchste Gesamtkosten", apex: "Keine Abo-Falle, keine Anbieterbindung" },
+const TOOLTIP: Record<number, { abo: string; apex: string; wartung: string }> = {
+  0: { abo: "Einrichtung und erste Monatsgebühr", apex: "Einmalige Investition nach Kanzleigröße", wartung: "Wartung im ersten Jahr enthalten" },
+  1: { abo: "Zwölf Monatsgebühren bezahlt", apex: "Keine laufenden Lizenzgebühren", wartung: "Wartung im ersten Jahr enthalten" },
+  2: { abo: "Gebühren laufen weiter – Preiserhöhung möglich", apex: "Ohne Wartung: keine weiteren Kosten", wartung: "Mit Wartung: Richtwert 15 % des Lizenzpreises pro Jahr" },
+  3: { abo: "Kosten steigen weiter", apex: "Software und Daten bleiben nutzbar", wartung: "Investition inkl. Wartung ist ausgeglichen" },
+  4: { abo: "Kosten steigen weiter", apex: "Software gehört weiterhin Ihnen", wartung: "Wartung bleibt optional – Sie entscheiden jedes Jahr" },
+  5: { abo: "Nach fünf Jahren: höchste Gesamtkosten", apex: "Keine Abo-Falle, keine Anbieterbindung", wartung: "Auch mit Wartung deutlich unter dem Abo" },
 };
 
 export function Lifetime() {
@@ -48,21 +53,21 @@ export function Lifetime() {
                 <br /> <span className="text-fg-3">Für immer nutzen.</span>
               </>
             }
-            text="Klassische Kanzleisoftware kostet jeden Monat – und wird mit jeder Preiserhöhung teurer. AnwaltApex kaufen Sie einmal. Danach arbeitet die Software für Sie, nicht Ihre Kanzlei für die Software."
+            text="Klassische Kanzleisoftware kostet jeden Monat – und wird mit jeder Preiserhöhung teurer. AnwaltApex kaufen Sie einmal; die Wartung ist optional und im ersten Jahr enthalten. Danach arbeitet die Software für Sie, nicht Ihre Kanzlei für die Software."
           />
           <Reveal>
             <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {[
-                { i: <InfinityIcon className="size-4" />, t: "Lifetime-Lizenz", s: "Unbefristet nutzen, ohne Monatsgebühren" },
-                { i: <Server className="size-4" />, t: "Ihr Betrieb, Ihre Wahl", s: "On-Premise oder Private Cloud in Deutschland" },
-                { i: <Wrench className="size-4" />, t: "Wartung transparent", s: "Optional und klar geregelt" },
+                { i: <InfinityIcon className="size-4" />, t: "Lifetime-Lizenz", s: "Kauflizenz ohne Laufzeit, ohne Monatsgebühren" },
+                { i: <Server className="size-4" />, t: "Ihr Betrieb, Ihre Wahl", s: "Eigener Server in der Kanzlei oder deutsches Rechenzentrum" },
+                { i: <Wrench className="size-4" />, t: "Wartung transparent", s: "Richtwert 15 % des Lizenzpreises pro Jahr, erstes Jahr enthalten" },
                 { i: <BadgeCheck className="size-4" />, t: "Keine Anbieterbindung", s: "Ihre Daten bleiben exportierbar" },
               ].map((x) => (
                 <li key={x.t} className="glass-thin flex items-start gap-3 rounded-[18px] p-3.5">
                   <span className="relative z-[2] grid size-8 shrink-0 place-items-center rounded-[10px] bg-ink-soft text-ink">{x.i}</span>
                   <span className="relative z-[2]">
                     <span className="block text-[13.5px] font-semibold">{x.t}</span>
-                    <span className="block text-[12px] text-fg-3">{x.s}</span>
+                    <span className="block text-[13px] text-fg-3">{x.s}</span>
                   </span>
                 </li>
               ))}
@@ -73,12 +78,18 @@ export function Lifetime() {
               </span>
               <div className="min-w-0 flex-1 basis-[220px]">
                 <div className="text-[15px] font-semibold tracking-[-0.01em]">Einmalige Investition nach Kanzleigröße</div>
-                <div className="text-[13px] text-fg-3">Ihr persönliches Angebot erhalten Sie innerhalb von 24 Stunden.</div>
+                <div className="text-[13px] text-fg-3">Ihre Ansprechpartnerin meldet sich im Echtbetrieb innerhalb eines Werktags mit Ihrem Angebot.</div>
               </div>
-              <Button variant="primary" iconRight={<ArrowRight className="size-4" />} onClick={() => nav("/login")}>
-                Demo starten
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="secondary" onClick={() => useAnfrage.getState().oeffne("angebot")}>
+                  Angebot anfordern
+                </Button>
+                <Button variant="primary" iconRight={<ArrowRight className="size-4" />} onClick={() => nav("/login")}>
+                  Demo starten
+                </Button>
+              </div>
             </div>
+            <WartungKarte />
           </Reveal>
         </div>
         <Reveal delay={0.08} className="min-w-0">
@@ -105,10 +116,12 @@ function KostenKurve() {
     .map((t, i) => `${i ? "L" : "M"}${x(t).toFixed(1)},${y(abo(t)).toFixed(1)}`)
     .join(" ");
   const pfadApex = `M${x(0)},${y(0)} L${x(0)},${y(LIFETIME)} L${x(5)},${y(LIFETIME)}`;
+  const pfadWartung = `M${x(1)},${y(LIFETIME)} L${x(5)},${y(lifetimeWartung(5))}`;
+  // Vorteil gegenüber dem Abo – konservativ gerechnet inkl. Wartung
   const vorteil =
     Array.from({ length: 31 }, (_, i) => break_even + ((5 - break_even) * i) / 30)
       .map((t, i) => `${i ? "L" : "M"}${x(t).toFixed(1)},${y(abo(t)).toFixed(1)}`)
-      .join(" ") + ` L${x(5)},${y(LIFETIME)} L${x(break_even)},${y(LIFETIME)} Z`;
+      .join(" ") + ` L${x(5)},${y(lifetimeWartung(5))} L${x(break_even)},${y(lifetimeWartung(break_even))} Z`;
 
   const onMove = (e: PointerEvent<SVGSVGElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -122,11 +135,17 @@ function KostenKurve() {
     <figure className="sheet relative overflow-hidden rounded-[28px] p-5 sm:p-6">
       <figcaption className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <span className="title-md mr-auto">Kosten über fünf Jahre</span>
-        <span className="flex items-center gap-1.5 text-[12px] text-fg-2">
+        <span className="flex items-center gap-1.5 text-[12.5px] text-fg-2">
           <span className="h-[2px] w-4 rounded-full bg-fg-3" /> Abo-Modell
         </span>
-        <span className="flex items-center gap-1.5 text-[12px] text-fg-2">
-          <span className="h-[2px] w-4 rounded-full bg-ink" /> AnwaltApex Lifetime
+        <span className="flex items-center gap-1.5 text-[12.5px] text-fg-2">
+          <span className="h-[2px] w-4 rounded-full bg-ink" /> Lifetime ohne Wartung
+        </span>
+        <span className="flex items-center gap-1.5 text-[12.5px] text-fg-2">
+          <svg width="16" height="2" aria-hidden>
+            <line x1="0" y1="1" x2="16" y2="1" stroke="var(--ink)" strokeWidth="2" strokeDasharray="4 3" />
+          </svg>{" "}
+          Lifetime inkl. Wartung
         </span>
         <span className="chip chip-outline">schematisch</span>
       </figcaption>
@@ -137,7 +156,7 @@ function KostenKurve() {
           width={W}
           height={H}
           role="img"
-          aria-label="Schematischer Vergleich: Die kumulierten Kosten eines Abo-Modells steigen Jahr für Jahr, die Lifetime-Lizenz bleibt nach der einmaligen Investition flach."
+          aria-label="Schematischer Vergleich über fünf Jahre: Die kumulierten Kosten eines Abo-Modells steigen Jahr für Jahr. Die Lifetime-Lizenz ohne Wartung bleibt nach der einmaligen Investition flach; mit Wartung (Richtwert 15 % des Lizenzpreises pro Jahr ab dem zweiten Jahr) steigt sie leicht und bleibt deutlich unter dem Abo."
           onPointerMove={onMove}
           onPointerDown={onMove}
           onPointerLeave={() => setJahr(null)}
@@ -152,25 +171,25 @@ function KostenKurve() {
               {t === 0 ? "Start" : schmal ? `${t} J.` : `Jahr ${t}`}
             </text>
           ))}
-          <text x={P.l - 14} y={P.t + 4} fontSize={11} fill="var(--fg-4)" transform={`rotate(-90 ${P.l - 14} ${P.t + 4})`} textAnchor="end">
+          <text x={P.l - 14} y={P.t + 4} fontSize={12} fill="var(--fg-3)" transform={`rotate(-90 ${P.l - 14} ${P.t + 4})`} textAnchor="end">
             Kosten, kumuliert
           </text>
 
           {/* Vorteil */}
           <path d={vorteil} fill="var(--green-soft)" />
-          <text x={x(3.9)} y={(y(abo(3.9)) + y(LIFETIME)) / 2 + 4} textAnchor="middle" fontSize={12.5} fontWeight={600} fill="var(--green)">
+          <text x={x(3.9)} y={(y(abo(3.9)) + y(lifetimeWartung(3.9))) / 2 + 4} textAnchor="middle" fontSize={12.5} fontWeight={600} fill="var(--green)">
             Ihr Vorteil
           </text>
 
           {/* Linien */}
           <path d={pfadAbo} fill="none" stroke="var(--fg-3)" strokeWidth={2.25} strokeLinecap="round" strokeLinejoin="round" />
           <path d={pfadApex} fill="none" stroke="var(--ink)" strokeWidth={2.75} strokeLinecap="round" strokeLinejoin="round" />
+          <path d={pfadWartung} fill="none" stroke="var(--ink)" strokeWidth={2.25} strokeDasharray="6 5" strokeLinecap="round" />
 
-          {/* Ausgleichspunkt */}
-          <circle cx={x(break_even)} cy={y(LIFETIME)} r={5} fill="var(--surface)" stroke="var(--ink)" strokeWidth={2} />
-          <motion.circle cx={x(break_even)} cy={y(LIFETIME)} r={5} fill="none" stroke="var(--ink)" strokeWidth={1.5} initial={{ r: 5, opacity: 0.6 }} animate={{ r: [5, 14], opacity: [0.6, 0] }} transition={{ duration: 2.2, repeat: Infinity, ease: "easeOut" }} />
-          <text x={x(break_even) + 10} y={y(LIFETIME) + 20} textAnchor="start" fontSize={11.5} fill="var(--fg-2)" fontWeight={600}>
-            Investition ausgeglichen
+          {/* Ausgleichspunkt (inkl. Wartung) */}
+          <circle cx={x(break_even)} cy={y(lifetimeWartung(break_even))} r={5} fill="var(--surface)" stroke="var(--ink)" strokeWidth={2} />
+          <text x={x(break_even) + 8} y={y(LIFETIME) + 22} textAnchor="start" fontSize={12} fill="var(--fg-2)" fontWeight={600}>
+            Ausgeglichen inkl. Wartung
           </text>
 
           {/* Direktbeschriftung an den Linienenden */}
@@ -178,9 +197,13 @@ function KostenKurve() {
           <text x={x(5) + 10} y={y(abo(5)) + 4} fontSize={12.5} fontWeight={600} fill="var(--fg-2)">
             Abo-Modell
           </text>
+          <circle cx={x(5)} cy={y(lifetimeWartung(5))} r={4} fill="var(--ink)" stroke="var(--surface)" strokeWidth={2} />
+          <text x={x(5) + 10} y={y(lifetimeWartung(5)) + 4} fontSize={12.5} fontWeight={600} fill="var(--fg)">
+            mit Wartung
+          </text>
           <circle cx={x(5)} cy={y(LIFETIME)} r={4} fill="var(--ink)" stroke="var(--surface)" strokeWidth={2} />
-          <text x={x(5) + 10} y={y(LIFETIME) + 4} fontSize={12.5} fontWeight={600} fill="var(--fg)">
-            Lifetime
+          <text x={x(5) + 10} y={y(LIFETIME) + 8} fontSize={12.5} fontWeight={600} fill="var(--fg)">
+            ohne Wartung
           </text>
 
           {/* Fadenkreuz */}
@@ -189,6 +212,7 @@ function KostenKurve() {
               <line x1={x(jahr)} x2={x(jahr)} y1={P.t} y2={H - P.b} stroke="var(--fg-4)" strokeWidth={1} />
               <circle cx={x(jahr)} cy={y(abo(jahr))} r={5} fill="var(--fg-3)" stroke="var(--surface)" strokeWidth={2} />
               <circle cx={x(jahr)} cy={y(LIFETIME)} r={5} fill="var(--ink)" stroke="var(--surface)" strokeWidth={2} />
+              <circle cx={x(jahr)} cy={y(lifetimeWartung(jahr))} r={4} fill="var(--surface)" stroke="var(--ink)" strokeWidth={2} />
             </g>
           )}
           {/* große Trefferfläche */}
@@ -202,10 +226,10 @@ function KostenKurve() {
               animate={{ opacity: 1, y: 0, left: `${(x(jahr) / W) * 100}%` }}
               exit={{ opacity: 0 }}
               transition={{ type: "spring", stiffness: 520, damping: 38 }}
-              className="glass-strong pointer-events-none absolute top-0 z-10 w-[220px] -translate-x-1/2 rounded-[14px] p-3 text-[12px]"
+              className="glass-strong pointer-events-none absolute top-0 z-10 w-[230px] -translate-x-1/2 rounded-[14px] p-3 text-[12.5px]"
               style={{ marginLeft: jahr <= 1 ? 90 : jahr >= 4 ? -60 : 0 }}
             >
-              <div className="relative z-[2] mb-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-3">{jahr === 0 ? "Start" : `Jahr ${jahr}`}</div>
+              <div className="relative z-[2] mb-1.5 text-[12px] font-semibold uppercase tracking-[0.06em] text-fg-3">{jahr === 0 ? "Start" : `Jahr ${jahr}`}</div>
               <div className="relative z-[2] flex gap-2">
                 <span className="mt-1.5 h-[2px] w-3 shrink-0 rounded-full bg-fg-3" />
                 <span className="text-fg-2">{tip.abo}</span>
@@ -214,11 +238,54 @@ function KostenKurve() {
                 <span className="mt-1.5 h-[2px] w-3 shrink-0 rounded-full bg-ink" />
                 <span className="font-medium text-fg">{tip.apex}</span>
               </div>
+              <div className="relative z-[2] mt-1 flex gap-2">
+                <span className="mt-1.5 h-0 w-3 shrink-0 border-t-2 border-dashed border-[var(--ink)]" />
+                <span className="text-fg-2">{tip.wartung}</span>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
-      <p className="mt-2 text-[11.5px] leading-relaxed text-fg-4">Schematische Darstellung ohne Preisangaben. Der tatsächliche Verlauf hängt von Kanzleigröße, Modulen und dem bisherigen Abo ab.</p>
+      <p className="mt-2 text-[13px] leading-relaxed text-fg-2">
+        Schematische Darstellung ohne Preisangaben. „Lifetime inkl. Wartung“: Richtwert 15 % des Lizenzpreises pro Jahr ab dem zweiten Jahr (das erste Jahr ist enthalten). Der tatsächliche Verlauf hängt von Kanzleigröße, Modulen und dem bisherigen Abo ab. {LIZENZ_KENNZEICHNUNG}.
+      </p>
     </figure>
+  );
+}
+
+/** Wartung, Folgen ohne Wartung, Übertragbarkeit und Escrow – derselbe Wortlaut wie im Lizenz-Tab (src/content/lizenz.ts). */
+function WartungKarte() {
+  return (
+    <div className="sheet mt-4 rounded-[22px] p-4 sm:p-5">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h3 className="text-[15px] font-semibold tracking-[-0.01em]">{WARTUNG.titel}</h3>
+        <span className="text-[13px] text-fg-3">Richtwert 15 % des Lizenzpreises pro Jahr, das erste Jahr ist enthalten.</span>
+      </div>
+      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+        <ul className="grid gap-1.5 text-[13px] text-fg-2" aria-label="In der Wartung enthalten">
+          {WARTUNG.enthalten.map((x) => (
+            <li key={x} className="flex gap-2">
+              <Check className="mt-0.5 size-3.5 shrink-0 text-green" strokeWidth={3} />
+              {x}
+            </li>
+          ))}
+        </ul>
+        <ul className="grid gap-1.5 text-[13px] text-fg-2" aria-label="Ohne Wartung">
+          {WARTUNG.ohne.map((x, i) => (
+            <li key={x} className="flex gap-2">
+              {i === 0 ? <Check className="mt-0.5 size-3.5 shrink-0 text-green" strokeWidth={3} /> : <X className="mt-0.5 size-3.5 shrink-0 text-fg-3" strokeWidth={3} />}
+              <span>
+                {i === 0 && <span className="font-semibold">Ohne Wartung: </span>}
+                {x}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <p className="mt-3 border-t border-[var(--line)] pt-3 text-[13px] leading-relaxed text-fg-2">
+        {UEBERTRAGBARKEIT}. {ESCROW}.
+      </p>
+      <p className="mt-2 text-[13px] text-fg-3">{LIZENZ_KENNZEICHNUNG}.</p>
+    </div>
   );
 }

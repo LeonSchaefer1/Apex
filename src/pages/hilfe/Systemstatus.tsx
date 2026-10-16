@@ -77,7 +77,7 @@ export function Systemstatus() {
               Zuletzt geprüft vor <GeprueftZaehler /> Sek. · nächste Prüfung automatisch
             </div>
           </div>
-          <span className="w-full text-[11.5px] text-fg-3 sm:w-auto">Messwerte im Demo-Betrieb simuliert</span>
+          <span className="w-full text-[12.5px] text-fg-3 sm:w-auto">Messwerte im Prototyp simuliert</span>
         </div>
         <ul className="divide-y divide-[var(--line)]">
           {dienste.map((d, i) => (
@@ -111,7 +111,7 @@ function DienstZeile({ d, index, messung }: { d: Dienst; index: number; messung:
         </div>
       </div>
       <div className="min-w-0">
-        <div className="mb-1.5 flex items-baseline justify-between gap-3 text-[11.5px] text-fg-4">
+        <div className="mb-1.5 flex items-baseline justify-between gap-3 text-[12.5px] text-fg-3">
           <span>
             {d.latenz || d.latenzText ? (
               <>
@@ -125,7 +125,7 @@ function DienstZeile({ d, index, messung }: { d: Dienst; index: number; messung:
           <span className="num">{fmtNum(verfuegbarkeit, 2)} % in 90 Tagen</span>
         </div>
         <UptimeStreifen name={d.name} vorfallTage={d.vorfall?.tageZurueck} heute={heute} />
-        <div className="mt-1 flex justify-between text-[10.5px] text-fg-4">
+        <div className="mt-1 flex justify-between text-[12px] text-fg-3">
           <span>
             <span className="sm:hidden">vor 45 Tagen</span>
             <span className="hidden sm:inline">vor 90 Tagen</span>

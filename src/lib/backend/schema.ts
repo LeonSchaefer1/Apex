@@ -3,7 +3,7 @@
 // darf neue optionale Felder ergänzen, ohne dass der Server angepasst werden muss.
 import type { CollectionKey } from "@/core/types";
 
-type Art = "text" | "zahl" | "wahr" | "liste" | "datum" | "zeit";
+type Art = "text" | "zahl" | "wahr" | "liste" | "datum" | "zeit" | "objekt";
 
 const PFLICHT: Record<CollectionKey, [string, Art][]> = {
   kontakte: [["name", "text"], ["typ", "text"]],
@@ -18,6 +18,7 @@ const PFLICHT: Record<CollectionKey, [string, Art][]> = {
   automationen: [["key", "text"], ["name", "text"], ["aktiv", "wahr"]],
   aktivitaeten: [["zeit", "zeit"], ["text", "text"], ["akteur", "text"]],
   notizen: [["text", "text"], ["zeit", "zeit"]],
+  umzugLaeufe: [["datum", "zeit"], ["system", "text"], ["undo", "objekt"]],
 };
 
 function passt(v: unknown, art: Art): boolean {
@@ -34,6 +35,8 @@ function passt(v: unknown, art: Art): boolean {
       return typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v);
     case "zeit":
       return typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v);
+    case "objekt":
+      return !!v && typeof v === "object" && !Array.isArray(v);
   }
 }
 

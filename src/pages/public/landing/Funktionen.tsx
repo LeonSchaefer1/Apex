@@ -5,6 +5,7 @@ import { AiChip, Chip } from "@/components/ui";
 import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
 import { AUTOMATION_DEFS } from "@/core/automationen";
 import { cn } from "@/lib/cn";
+import { STANDARD_ANSPRECHPARTNER } from "@/core/seed/kunde";
 import { Abschnitt, Kopf, Reveal, useReduzierteBewegung } from "./basis";
 
 const SUCHEN: { q: string; g: string; w: string[] }[] = [
@@ -54,7 +55,7 @@ export function Funktionen() {
             <br /> <span className="text-fg-3">In einer Oberfläche.</span>
           </>
         }
-        text="Akten, beA und E-Mail, Fristen, Dokumente, RVG-Abrechnung, Forderungen und Zeiten – verbunden durch eine KI, die mitdenkt, und einen Motor, der Routine von selbst erledigt."
+        text="Akten, beA und E-Mail, Fristen, Dokumente, RVG-Abrechnung, Forderungen und Zeiten – verbunden durch eine KI, die mitdenkt, und einen Motor, der Routine vorbereitet und erledigt, was die Kanzlei nicht verlässt."
       />
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-6">
         <Kachel className="md:col-span-2 lg:col-span-4" i={0}>
@@ -69,12 +70,12 @@ export function Funktionen() {
         </Kachel>
 
         <Kachel className="lg:col-span-2" i={1}>
-          <KachelKopf icon={<Zap />} titel="Der 38h-Motor" text="Automatisierung im Hintergrund: Standard-Schriftsätze, Vorfristen und Mandanten-Updates laufen von selbst – mit dem Ziel von Ø 38 Stunden weniger Routinearbeit pro Woche und Kanzlei. Fristen legt der Motor zur Vier-Augen-Kontrolle vor." />
+          <KachelKopf icon={<Zap />} titel="Der 38h-Motor" text="Routine im Hintergrund: Standard-Schriftsätze (z. B. Kostenfestsetzungsantrag) bereitet der 38h-Motor vor – zur Prüfung und Unterschrift. Vorfristen setzt er intern, Mandanteninformationen gehen erst nach Ihrer Freigabe hinaus. Ziel: Ø 38 Stunden weniger Routinearbeit pro Woche und Kanzlei. Fristen legt der Motor zur Vier-Augen-Kontrolle vor." />
           <MotorTicker />
         </Kachel>
 
         <Kachel className="lg:col-span-2" i={2}>
-          <KachelKopf icon={<InfinityIcon />} titel="Lifetime Ownership" text="Kaufen statt mieten: Sie investieren einmal und erhalten eine unbefristete Lizenz – ohne Abo-Falle und ohne versteckte Monatsgebühren. Ihre Kanzlei-Software gehört Ihnen." />
+          <KachelKopf icon={<InfinityIcon />} titel="Lifetime-Lizenz (Kauflizenz ohne Laufzeit)" text="Kaufen statt mieten: Sie investieren einmal und erhalten eine unbefristete Lizenz – ohne Abo-Falle und ohne Monatsgebühren. Die Wartung ist optional (Richtwert 15 % des Lizenzpreises pro Jahr, das erste Jahr ist enthalten). Ihre Kanzlei-Software gehört Ihnen." />
           <div className="relative z-[1] mt-auto grid grid-cols-2 gap-2 pt-6 text-[12.5px]">
             <div className="rounded-[16px] bg-[var(--ink-softer)] p-3">
               <div className="text-fg-3">Abo-Modell</div>
@@ -98,26 +99,26 @@ export function Funktionen() {
         </Kachel>
 
         <Kachel className="lg:col-span-2" i={3}>
-          <KachelKopf icon={<ArrowRightLeft />} titel="Umzug mit einem Klick" text="Akten, Kontakte und Fristen aus Ihrer bisherigen Software ziehen mit einem Klick um – mit Vorschau, Dublettenprüfung, Plausibilitätsprüfung der Fristen und Vier-Augen-Kontrolle." />
+          <KachelKopf icon={<ArrowRightLeft />} titel="Umzug in fünf Schritten – mit Vorschau und Rückgängig" text="Akten, Kontakte und Fristen aus Ihrer bisherigen Software ziehen vollständig um – mit Vorschau, Dublettenprüfung, Plausibilitätsprüfung der Fristen, Vier-Augen-Kontrolle und Rückgängig je Lauf." />
           <UmzugCheck />
         </Kachel>
 
         <Kachel className="lg:col-span-2" i={4}>
-          <KachelKopf icon={<LifeBuoy />} titel="Support, der wirklich hilft" text="Animiertes Wiki und Schnellhilfe direkt in der Software – plus ein fester Ansprechpartner mit direkter Durchwahl statt Hotline-Warteschleife." />
+          <KachelKopf icon={<LifeBuoy />} titel="Persönliche Hilfe, die wirklich hilft" text="Animiertes Wiki und Schnellhilfe direkt in der Software – plus eine feste Ansprechpartnerin mit direkter Durchwahl statt Telefon-Warteschleife." />
           <div className="relative z-[1] mt-auto grid gap-2 pt-6">
             <div className="flex items-center gap-3 rounded-[16px] bg-[var(--ink-softer)] p-3">
               <PlayCircle className="size-5 shrink-0 text-ink" />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[13px] font-semibold">Eine Berufungsfrist berechnen</div>
-                <div className="text-[11.5px] text-fg-3">Schnellhilfe · 30 Sek.</div>
+                <div className="text-[12.5px] text-fg-3">Schnellhilfe · 30 Sek.</div>
               </div>
               <BookOpenText className="size-4 text-fg-4" />
             </div>
             <div className="flex items-center gap-3 rounded-[16px] bg-[var(--ink-softer)] p-3">
               <Headphones className="size-5 shrink-0 text-green" />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-semibold">Ihr fester Ansprechpartner</div>
-                <div className="text-[11.5px] text-fg-3">Direkte Durchwahl · Mo–Fr 7:30–19 Uhr</div>
+                <div className="truncate text-[13px] font-semibold">Ihre feste Ansprechpartnerin</div>
+                <div className="text-[12.5px] text-fg-3">Direkte Durchwahl · {STANDARD_ANSPRECHPARTNER.verfuegbar}</div>
               </div>
             </div>
           </div>
@@ -165,11 +166,11 @@ function SucheDemo() {
           <motion.span className="ml-px inline-block h-4 w-[1.5px] translate-y-[3px] bg-ink" animate={{ opacity: [1, 0, 1] }} transition={{ duration: 1, repeat: Infinity }} />
         </span>
       </div>
-      <div className="mt-3 flex items-center justify-between px-1 text-[11.5px] text-fg-3">
+      <div className="mt-3 flex items-center justify-between px-1 text-[12.5px] text-fg-3">
         <span>{fertig ? `${ergebnisse[idx].length} passende Entscheidungen` : "Suche läuft …"}</span>
         <span className="hidden gap-1 sm:flex">
           {GERICHTE.map((g) => (
-            <span key={g} className="rounded-[6px] bg-[var(--surface)] px-1.5 py-0.5 text-[10px] font-semibold text-fg-3 shadow-[inset_0_0_0_1px_var(--line)]">
+            <span key={g} className="rounded-[6px] bg-[var(--surface)] px-1.5 py-0.5 text-[12px] font-semibold text-fg-3 shadow-[inset_0_0_0_1px_var(--line)]">
               {g}
             </span>
           ))}
@@ -187,12 +188,12 @@ function SucheDemo() {
                 transition={{ type: "spring", stiffness: 460, damping: 34, delay: k * 0.07 }}
                 className="rounded-[14px] bg-[var(--surface)] p-2.5 shadow-[inset_0_0_0_1px_var(--line)]"
               >
-                <div className="flex items-center gap-2 text-[11.5px]">
-                  <Chip tone="ink" className="!h-[19px] !px-1.5 !text-[10px]">
+                <div className="flex items-center gap-2 text-[12.5px]">
+                  <Chip tone="ink" className="!h-[22px] !px-2 !text-[12px]">
                     {e.gericht}
                   </Chip>
                   <span className="mono font-medium text-fg-2">{e.az}</span>
-                  <span className="ml-auto flex items-center gap-1.5 text-fg-4">
+                  <span className="ml-auto flex items-center gap-1.5 text-fg-3">
                     <span className="h-1 w-10 overflow-hidden rounded-full bg-[var(--line)]">
                       <span className="block h-full rounded-full bg-ink" style={{ width: `${Math.min(100, 45 + score * 12)}%` }} />
                     </span>
@@ -200,7 +201,7 @@ function SucheDemo() {
                   </span>
                 </div>
                 <div className="mt-1 truncate text-[13px] font-semibold">{e.titel}</div>
-                <div className="line-clamp-1 text-[11.5px] text-fg-3">{e.leitsatz}</div>
+                <div className="line-clamp-1 text-[12.5px] text-fg-3">{e.leitsatz}</div>
               </motion.li>
             ))}
         </AnimatePresence>
@@ -240,7 +241,9 @@ function MotorTicker() {
                 <Check className="size-3.5" />
               </span>
               <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">{a.name}</span>
-              <span className="num shrink-0 text-[11.5px] font-semibold text-green">+{a.minutenProLauf} Min.</span>
+              <span className="num shrink-0 text-[12.5px] font-semibold text-green" title={a.vorgang}>
+                +{a.minutenProLauf} Min.
+              </span>
             </motion.li>
           ))}
         </AnimatePresence>
@@ -257,8 +260,8 @@ function UmzugCheck() {
   const [n, setN] = useState(punkte.length);
   useEffect(() => {
     if (!sichtbar || reduce) return;
-    let k = 0;
-    setN(0);
+    let k = 1;
+    setN(1);
     const t = setInterval(() => {
       k++;
       setN(k);
@@ -268,9 +271,11 @@ function UmzugCheck() {
   }, [sichtbar, reduce, punkte.length]);
   return (
     <div ref={ref} className="relative z-[1] mt-auto pt-6">
-      <div className="mb-2.5 flex items-center justify-between text-[11.5px] text-fg-3">
+      <div className="mb-2.5 flex items-center justify-between text-[12.5px] text-fg-3">
         <span>Umzug aus Ihrer bisherigen Software</span>
-        <span className="num font-semibold text-fg-2">{Math.round((n / punkte.length) * 100)} %</span>
+        <span className="num font-semibold text-fg-2">
+          {n} von {punkte.length} geprüft
+        </span>
       </div>
       <div className="bar mb-3">
         <span style={{ width: `${(n / punkte.length) * 100}%` }} />
@@ -293,7 +298,7 @@ function UmzugCheck() {
   );
 }
 
-/** Apex Assistent als KI-Avatar: lebendige Glaskugel mit Gesprächsauszug (Inhalte passen zu den Beispieldaten an jedem Tag). */
+/** Apex Assistent als Sprachassistent: lebendige Glaskugel mit Gesprächsauszug (Inhalte passen zu den Beispieldaten an jedem Tag). */
 function AvatarDemo() {
   const ref = useRef<HTMLDivElement>(null);
   const sichtbar = useInView(ref, { amount: 0.4 });
@@ -303,8 +308,8 @@ function AvatarDemo() {
         <Orb aktiv={sichtbar} />
         <div className="min-w-0">
           <AiChip>Per Sprache oder Text</AiChip>
-          <h3 className="mt-3 text-[21px] font-semibold leading-tight tracking-[-0.025em]">Apex Assistent – Ihr KI-Avatar für Live-Support</h3>
-          <p className="mt-2 max-w-[44ch] text-[14.5px] leading-relaxed text-fg-2">Sprechen Sie einfach los: Der Assistent versteht gesprochene Fragen, kennt die Software und Ihre Akten – und antwortet sofort. Wenn es knifflig wird, verbindet er Sie mit Ihrem festen Ansprechpartner.</p>
+          <h3 className="mt-3 text-[21px] font-semibold leading-tight tracking-[-0.025em]">Apex Assistent – Ihr Sprachassistent für persönliche Hilfe</h3>
+          <p className="mt-2 max-w-[44ch] text-[14.5px] leading-relaxed text-fg-2">Sprechen Sie einfach los: Der Assistent versteht gesprochene Fragen, kennt die Software und Ihre Akten – und antwortet sofort. Was er einträgt, bestätigen Sie vorher. Wenn es knifflig wird, verbindet er Sie mit Ihrer festen Ansprechpartnerin.</p>
         </div>
       </div>
       <div className="grid gap-2.5">
@@ -325,7 +330,7 @@ function Blase({ rolle, children }: { rolle: "sie" | "apex"; children: ReactNode
   return (
     <div className={cn("max-w-[92%] rounded-[20px] px-4 py-3 text-[13.5px] leading-relaxed", rolle === "sie" ? "ml-auto rounded-br-[6px] bg-ink text-[var(--on-ink)]" : "ai-ring rounded-bl-[6px] bg-[var(--surface)] text-fg-2")}>
       {rolle === "apex" && (
-        <span className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold">
+        <span className="mb-1 flex items-center gap-1.5 text-[12px] font-semibold">
           <Sparkles className="size-3 text-violet" />
           <span className="ai-text">Apex Assistent</span>
         </span>

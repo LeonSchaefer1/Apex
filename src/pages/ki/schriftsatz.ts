@@ -165,7 +165,9 @@ export function entwurfOffline(art: SchriftsatzArt, ton: Ton, hinweise: string, 
           ? `Ihre Rechtsschutzversicherung (${akte.rsv.versicherung}) hat die Kostendeckung erteilt${akte.rsv.selbstbeteiligung ? `; die vereinbarte Selbstbeteiligung beträgt ${fmtEUR(akte.rsv.selbstbeteiligung)}` : ""}.`
           : akte.rsv.deckung === "abgelehnt"
             ? `Ihre Rechtsschutzversicherung (${akte.rsv.versicherung}) hat die Deckung abgelehnt. [Weiteres Vorgehen zur Deckung besprechen]`
-            : `Die Deckungszusage Ihrer Rechtsschutzversicherung (${akte.rsv.versicherung}) haben wir angefragt; wir informieren Sie, sobald sie vorliegt.`
+            : akte.rsv.deckung === "offen"
+              ? `Die Deckungszusage Ihrer Rechtsschutzversicherung (${akte.rsv.versicherung}) fragen wir an; wir informieren Sie, sobald sie vorliegt.`
+              : `Die Deckungszusage Ihrer Rechtsschutzversicherung (${akte.rsv.versicherung}) haben wir angefragt; wir informieren Sie, sobald sie vorliegt.`
         : "";
       return [
         anschrift(mandant, "Mandantschaft"),
@@ -442,7 +444,7 @@ export function entwurfOffline(art: SchriftsatzArt, ton: Ton, hinweise: string, 
           ? ["", "**Wichtiger Hinweis nach § 12a Abs. 1 S. 2 ArbGG:** Im arbeitsgerichtlichen Urteilsverfahren erster Instanz trägt jede Partei ihre Anwaltskosten selbst – auch im Fall des Obsiegens; eine Kostenerstattung findet nicht statt (§ 12a Abs. 1 S. 1 ArbGG)."]
           : []),
         ...(akte.rsv
-          ? ["", `Ihre Rechtsschutzversicherung (${akte.rsv.versicherung}) ${akte.rsv.deckung === "erteilt" ? "hat die Deckung erteilt" : "ist angefragt"}${akte.rsv.selbstbeteiligung ? `; Ihre Selbstbeteiligung beträgt ${fmtEUR(akte.rsv.selbstbeteiligung)}` : ""}.`]
+          ? ["", `Ihre Rechtsschutzversicherung (${akte.rsv.versicherung}) ${akte.rsv.deckung === "erteilt" ? "hat die Deckung erteilt" : akte.rsv.deckung === "offen" ? "wird um Deckung gebeten" : "ist angefragt"}${akte.rsv.selbstbeteiligung ? `; Ihre Selbstbeteiligung beträgt ${fmtEUR(akte.rsv.selbstbeteiligung)}` : ""}.`]
           : []),
         hinweisAbsatz,
         "Die Angaben sind eine unverbindliche Schätzung auf Grundlage des derzeitigen Sachstands.",

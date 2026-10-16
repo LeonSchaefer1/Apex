@@ -1,5 +1,5 @@
 // Reiter „RVG-Rechner“: Wertgebühren nach § 13 RVG mit automatischer Tabellenwahl (§ 60 RVG), Anrechnung und Auslagen.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Calculator, CalendarDays, ChevronDown, FilePlus2, Info, Minus, Plus, Table2, Users } from "lucide-react";
 import { AnimatedNumber, Button, Card, CardHeader, Checkbox, Chip, Field, Input, Select, Switch } from "@/components/ui";
@@ -19,6 +19,31 @@ const PRUEFWERTE = [500, 1000, 5000, 10000, 50000];
 const STANDARD_AN = new Set(["2300", "3100", "3104"]);
 
 type PosState = Record<string, { an: boolean; satz: number }>;
+
+/** Einigungsgebühren im passenden Abschnitt: 1000 außergerichtlich, 1003 gerichtlich (nach 3100/3104). */
+const ANZEIGE_PHASE: Record<string, VVPosition["phase"]> = { "1000": "Außergerichtlich", "1003": "Gerichtlich" };
+const anzeigePhase = (p: VVPosition) => ANZEIGE_PHASE[p.nr] ?? p.phase;
+
+/** Eingaben des Rechners bleiben je Sitzung erhalten (sessionStorage) – auch über ein Neuladen. */
+const SPEICHER = "apex.rvg.eingaben";
+interface Eingaben {
+  wertText: string;
+  auftrag: string;
+  pos: PosState;
+  auftraggeber: number;
+  anrechnung: boolean;
+  pauschale: boolean;
+  ust: boolean;
+  akteId: string;
+}
+function ladeEingaben(): Partial<Eingaben> {
+  try {
+    const e = JSON.parse(sessionStorage.getItem(SPEICHER) ?? "{}") as Partial<Eingaben>;
+    return e && typeof e === "object" ? e : {};
+  } catch {
+    return {};
+  }
+}
 
 function SatzRegler({ p, satz, onChange }: { p: VVPosition; satz: number; onChange: (v: number) => void }) {
   const [min, max] = p.rahmen!;
@@ -50,14 +75,25 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
   const akten = useCol("akten");
   const { user } = useKanzlei();
   const oeffne = useAbrechnungUI((s) => s.oeffneRechnung);
-  const [wertText, setWertText] = useState("10.000");
-  const [auftrag, setAuftrag] = useState(today());
-  const [pos, setPos] = useState<PosState>(() => Object.fromEntries(VV_KATALOG.map((p) => [p.nr, { an: STANDARD_AN.has(p.nr), satz: p.satz }])));
-  const [auftraggeber, setAuftraggeber] = useState(1);
-  const [anrechnung, setAnrechnung] = useState(true);
-  const [pauschale, setPauschale] = useState(true);
-  const [ust, setUst] = useState(true);
-  const [akteId, setAkteId] = useState("");
+  const [gespeichert] = useState(ladeEingaben);
+  const [wertText, setWertText] = useState(gespeichert.wertText ?? "10.000");
+  const [auftrag, setAuftrag] = useState(gespeichert.auftrag ?? today());
+  const [pos, setPos] = useState<PosState>(() => ({
+    ...Object.fromEntries(VV_KATALOG.map((p) => [p.nr, { an: STANDARD_AN.has(p.nr), satz: p.satz }])),
+    ...Object.fromEntries(Object.entries(gespeichert.pos ?? {}).filter(([nr]) => VV_KATALOG.some((p) => p.nr === nr))),
+  }));
+  const [auftraggeber, setAuftraggeber] = useState(gespeichert.auftraggeber ?? 1);
+  const [anrechnung, setAnrechnung] = useState(gespeichert.anrechnung ?? true);
+  const [pauschale, setPauschale] = useState(gespeichert.pauschale ?? true);
+  const [ust, setUst] = useState(gespeichert.ust ?? true);
+  const [akteId, setAkteId] = useState(gespeichert.akteId ?? "");
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(SPEICHER, JSON.stringify({ wertText, auftrag, pos, auftraggeber, anrechnung, pauschale, ust, akteId } satisfies Eingaben));
+    } catch {
+      /* Speicher nicht verfügbar – Eingaben gelten dann nur bis zum Neuladen */
+    }
+  }, [wertText, auftrag, pos, auftraggeber, anrechnung, pauschale, ust, akteId]);
   const [tabelleOffen, setTabelleOffen] = useState(false);
 
   const wert = parseBetrag(wertText);
@@ -92,7 +128,7 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
   const alsRechnung = () => {
     if (!akte || !hatPositionen) return;
     const positionen = rvgRechnungsPositionen(erg.angelegenheiten);
-    const [r] = erstelleRechnungen([{ akte, positionen, summen: { netto: erg.netto, ust: erg.ust, brutto: erg.brutto } }], "PDF", "entwurf", user.id);
+    const [r] = erstelleRechnungen([{ akte, positionen, summen: { netto: erg.netto, ust: erg.ust, brutto: erg.brutto } }], "auto", "entwurf", user.id);
     toast("Rechnungsentwurf erstellt", {
       text: `${r.nummer} · ${akte.aktenzeichen} · ${fmtEUR(r.brutto)}`,
       ton: "erfolg",
@@ -142,7 +178,7 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
             </Field>
             <Field label="Auftrag erteilt am" htmlFor="rvg-auftrag">
               <div className="relative">
-                <CalendarDays className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-fg-4" />
+                <CalendarDays className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-fg-3" />
                 <Input id="rvg-auftrag" type="date" value={auftrag} onChange={(e) => setAuftrag(e.target.value)} className="!h-11 !pl-10" />
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -159,7 +195,7 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
                     </Chip>
                   </motion.span>
                 </AnimatePresence>
-                <span className="text-[11.5px] text-fg-3">{fassung === "2025" ? "für Aufträge ab 01.06.2025" : "für Aufträge bis 31.05.2025 (Übergangsrecht)"}</span>
+                <span className="text-[12.5px] text-fg-3">{fassung === "2025" ? "für Aufträge ab 01.06.2025" : "für Aufträge bis 31.05.2025 (Übergangsrecht)"}</span>
               </div>
             </Field>
           </div>
@@ -188,7 +224,7 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
           <CardHeader icon={<FilePlus2 className="size-4" />} title="Gebührentatbestände" subtitle="Wählen Sie die angefallenen Gebühren; Rahmengebühren stellen Sie innerhalb des Rahmens ein." />
           <div className="grid grid-cols-1 gap-5">
             {PHASEN.map((ph) => {
-              const liste = VV_KATALOG.filter((p) => p.phase === ph && p.nr !== "1008");
+              const liste = VV_KATALOG.filter((p) => anzeigePhase(p) === ph && p.nr !== "1008");
               return (
                 <div key={ph}>
                   <div className="eyebrow mb-1.5">{ph}</div>
@@ -204,14 +240,14 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
                             <div className="min-w-0 flex-1 basis-[160px]">
                               <div className="text-[13.5px] font-medium">{p.titel}</div>
                               {p.rahmen && (
-                                <div className="text-[11.5px] text-fg-3">
+                                <div className="text-[12.5px] text-fg-3">
                                   Rahmen {fmtSatz(p.rahmen[0])} – {fmtSatz(p.rahmen[1])}
                                   {p.hinweis ? ` · ${p.hinweis}` : ""}
                                 </div>
                               )}
                             </div>
                             {p.rahmen ? <SatzRegler p={p} satz={s.satz} onChange={(v) => setSatz(p.nr, v)} /> : <span className="num text-[13px] font-semibold text-fg-2">{fmtSatz(s.satz)}</span>}
-                            <span className={cn("num w-[92px] shrink-0 text-right text-[13px]", s.an ? "font-semibold" : "text-fg-4")}>{fmtEUR(gebuehr(Math.max(0, wert), s.satz, fassung))}</span>
+                            <span className={cn("num w-[92px] shrink-0 text-right text-[13px]", s.an ? "font-semibold" : "text-fg-3")}>{fmtEUR(gebuehr(Math.max(0, wert), s.satz, fassung))}</span>
                           </div>
                           <AnimatePresence initial={false}>
                             {ueberSchwelle && s.an && (
@@ -231,7 +267,7 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
                         <span className="mono w-10 shrink-0 text-[12.5px] font-semibold text-fg-2">1008</span>
                         <div className="min-w-0 flex-1 basis-[160px]">
                           <div className="text-[13.5px] font-medium">Anzahl Auftraggeber</div>
-                          <div className="text-[11.5px] text-fg-3">Erhöht die Geschäfts- bzw. Verfahrensgebühr jeder Angelegenheit um 0,3 je weiterem Auftraggeber, höchstens 2,0</div>
+                          <div className="text-[12.5px] text-fg-3">Erhöht die Geschäfts- bzw. Verfahrensgebühr jeder Angelegenheit um 0,3 je weiterem Auftraggeber, höchstens 2,0</div>
                         </div>
                         <div className="flex items-center gap-1 rounded-full bg-[var(--ink-softer)] p-0.5 shadow-[inset_0_0_0_1px_var(--line)]">
                           <button type="button" className="icon-btn !size-7" aria-label="Weniger Auftraggeber" disabled={auftraggeber <= 1} onClick={() => setAuftraggeber((n) => Math.max(1, n - 1))}>
@@ -242,7 +278,7 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
                             <Plus className="size-3.5" />
                           </button>
                         </div>
-                        <span className={cn("num w-[92px] shrink-0 text-right text-[13px]", erhoehung > 0 ? "font-semibold" : "text-fg-4")}>+{fmtSatz(erhoehung)}</span>
+                        <span className={cn("num w-[92px] shrink-0 text-right text-[13px]", erhoehung > 0 ? "font-semibold" : "text-fg-3")}>+{fmtSatz(erhoehung)}</span>
                       </li>
                     )}
                   </ul>
@@ -320,7 +356,7 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
                             <tr key={w} className={cn(ist && "bg-ink-softer")}>
                               <td className="num font-medium">
                                 {fmtEUR(w, { cents: w % 1 !== 0 })}
-                                {ist && <span className="ml-2 text-[11px] font-normal text-ink">Ihre Eingabe</span>}
+                                {ist && <span className="ml-2 text-[12.5px] font-normal text-ink">Ihre Eingabe</span>}
                               </td>
                               <td className={cn("num text-right", fassung === "2025" && "font-semibold")}>{fmtEUR(neu)}</td>
                               <td className={cn("num text-right", fassung === "2021" && "font-semibold")}>{fmtEUR(alt)}</td>
@@ -330,7 +366,7 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
                         })}
                     </tbody>
                   </table>
-                  <p className="mt-2 text-[11.5px] text-fg-4">
+                  <p className="mt-2 text-[12.5px] text-fg-3">
                     Rundung auf volle Cent (§ 2 Abs. 2 S. 2 RVG). Stand der Tabellen: {RVG_TABELLE.stand}; {RVG_TABELLE_2021.stand}.
                   </p>
                 </div>
@@ -414,7 +450,7 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
             <Button variant="primary" className="mt-3 w-full" icon={<FilePlus2 className="size-4" />} disabled={!akte || !hatPositionen} onClick={alsRechnung}>
               Als Rechnung für Akte erstellen
             </Button>
-            <p className="mt-2 text-center text-[11.5px] text-fg-4">Wird als Entwurf angelegt – Sie prüfen und stellen die Rechnung anschließend.</p>
+            <p className="mt-2 text-center text-[12.5px] text-fg-3">Wird als Entwurf angelegt – Sie prüfen und stellen die Rechnung anschließend.</p>
           </div>
         </Card>
       </div>
@@ -434,13 +470,13 @@ function ErgebnisZeile({ z, hinweis, kurz }: { z: RvgZeile; hinweis?: string; ku
       transition={{ type: "spring", stiffness: 480, damping: 36 }}
       className="flex items-baseline gap-2 py-1.5 text-[13px]"
     >
-      <span className={cn("mono w-[58px] shrink-0 text-[11.5px]", z.anrechnung ? "text-amber" : "text-fg-3")}>
+      <span className={cn("mono w-[58px] shrink-0 text-[12.5px]", z.anrechnung ? "text-amber" : "text-fg-3")}>
         {z.anrechnung ? (z.nr.startsWith("Vorb.") ? "Vorb. 3" : z.nr) : z.nr}
-        {z.erhoehung ? <span className="block text-[10.5px] leading-tight">+ 1008</span> : null}
+        {z.erhoehung ? <span className="block text-[12.5px] leading-tight">+ 1008</span> : null}
       </span>
       <span className={cn("min-w-0 flex-1 truncate", z.nr === "7002" && "text-fg-2")} title={z.erhoehung ? `${z.titel}, erhöht nach Nr. 1008 VV RVG um ${fmtSatz(z.erhoehung)}` : z.titel}>
         {titel}
-        {z.erhoehung ? <span className="block truncate text-[11.5px] text-fg-3">erhöht um {fmtSatz(z.erhoehung)}</span> : null}
+        {z.erhoehung ? <span className="block truncate text-[12.5px] text-fg-3">erhöht um {fmtSatz(z.erhoehung)}</span> : null}
       </span>
       <span className="num shrink-0 text-[12px] text-fg-3">{hinweis ?? fmtSatz(Math.abs(z.satz))}</span>
       <span className={cn("num w-[88px] shrink-0 text-right font-medium", z.betrag < 0 && "text-amber")}>{fmtEUR(z.betrag)}</span>
@@ -450,7 +486,7 @@ function ErgebnisZeile({ z, hinweis, kurz }: { z: RvgZeile; hinweis?: string; ku
 
 function Zeile({ k, v, stark, leise }: { k: string; v: number; stark?: boolean; leise?: boolean }) {
   return (
-    <div className={cn("flex items-baseline justify-between gap-3", leise && "text-fg-4", stark && "font-semibold")}>
+    <div className={cn("flex items-baseline justify-between gap-3", leise && "text-fg-3", stark && "font-semibold")}>
       <span className={cn("min-w-0", !stark && !leise && "text-fg-2")}>{k}</span>
       <AnimatedNumber value={v} format={(n) => fmtEUR(n)} />
     </div>

@@ -1,12 +1,13 @@
 import { useNavigate } from "react-router";
 import { motion } from "motion/react";
-import { ArrowRight, BookOpen, CalendarClock, Check, Headset, Infinity as InfinityIcon, RefreshCw, Server, ShieldCheck, Truck } from "lucide-react";
+import { ArrowRight, BookOpen, CalendarClock, Check, Handshake, Headset, Infinity as InfinityIcon, RefreshCw, Server, ShieldCheck, Truck, Wrench, X } from "lucide-react";
 import { diffDays, fmtDate, fmtDateLong, today } from "@/core/dates";
 import { useKanzlei } from "@/store/session";
 import { Button, Chip } from "@/components/ui";
 import { CopyButton } from "@/pages/hilfe/kopieren";
 import { cn } from "@/lib/cn";
 import { festeAnsprechperson } from "@/lib/rollen";
+import { ESCROW, LIZENZ_KENNZEICHNUNG, UEBERTRAGBARKEIT, WARTUNG } from "@/content/lizenz";
 import { Abschnitt } from "./teile";
 
 export function LizenzTab() {
@@ -22,10 +23,10 @@ export function LizenzTab() {
   const ap = tenant.ansprechpartner;
 
   const inklusive = [
-    { icon: <RefreshCw className="size-4" />, t: "Alle Updates", s: "vorab in einer Testumgebung geprüft, Zeitpunkt bestimmen Sie" },
+    { icon: <RefreshCw className="size-4" />, t: "Updates im Rahmen der Wartung", s: "im ersten Jahr enthalten, danach mit der optionalen Wartung – vorab geprüft, Zeitpunkt bestimmen Sie" },
     { icon: <Headset className="size-4" />, t: festeAnsprechperson(ap, { ohneIhr: true }), s: `${ap.name} · ${ap.verfuegbar}` },
     { icon: <BookOpen className="size-4" />, t: "Animiertes Wiki & Schnellhilfe", s: "in jeder Ansicht, plus Apex Assistent" },
-    { icon: <Truck className="size-4" />, t: "Umzug mit einem Klick", s: `aus Ihrer bisherigen Software – begleitet von ${ap.name}` },
+    { icon: <Truck className="size-4" />, t: "Umzug in fünf Schritten – mit Vorschau und Rückgängig", s: `aus Ihrer bisherigen Software – begleitet von ${ap.name}` },
     { icon: <Server className="size-4" />, t: "Betrieb nach Wahl", s: "Auf Ihrem eigenen Server oder in einem deutschen Rechenzentrum" },
   ];
 
@@ -50,7 +51,7 @@ export function LizenzTab() {
               <p className="mt-1 text-[13.5px] text-fg-2">
                 {test
                   ? `In der Testphase sind alle Funktionen freigeschaltet. ${testBis ? "Danach" : "Wenn Sie überzeugt sind,"} erwerben Sie die Lifetime-Lizenz – einmal investiert, dauerhaft genutzt.`
-                  : "Einmal investiert, dauerhaft genutzt – keine Monatsgebühren, keine Preiserhöhungen."}
+                  : "Einmal investiert, dauerhaft genutzt – keine Monatsgebühren. Die Wartung ist optional; das erste Jahr ist enthalten."}
               </p>
             </div>
           </div>
@@ -129,7 +130,7 @@ export function LizenzTab() {
       </div>
 
       <div className="flex min-w-0 flex-col gap-4">
-        <Abschnitt titel="Was enthalten ist" text="Ohne Zusatzpakete und ohne laufende Gebühren." icon={<ShieldCheck className="size-[18px]" />}>
+        <Abschnitt titel="Was enthalten ist" text="Ohne Zusatzpakete. Laufende Kosten entstehen nur, wenn Sie nach dem ersten Jahr die Wartung nutzen." icon={<ShieldCheck className="size-[18px]" />}>
           <ul className="grid grid-cols-1 gap-3">
             {inklusive.map((x, i) => (
               <motion.li key={x.t} initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.05 + i * 0.04, type: "spring", stiffness: 420, damping: 34 }} className="flex gap-3">
@@ -141,6 +142,40 @@ export function LizenzTab() {
               </motion.li>
             ))}
           </ul>
+        </Abschnitt>
+        <Abschnitt titel="Wartung" text={WARTUNG.kurz} icon={<Wrench className="size-[18px]" />} aktion={<Chip tone="outline">Richtwert</Chip>}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="min-w-0">
+              <h3 className="text-[13.5px] font-semibold">Enthalten</h3>
+              <ul className="mt-1.5 grid gap-1.5 text-[13px] text-fg-2">
+                {WARTUNG.enthalten.map((x) => (
+                  <li key={x} className="flex gap-2">
+                    <Check className="mt-0.5 size-3.5 shrink-0 text-green" strokeWidth={3} />
+                    {x}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-[13.5px] font-semibold">Ohne Wartung</h3>
+              <ul className="mt-1.5 grid gap-1.5 text-[13px] text-fg-2">
+                {WARTUNG.ohne.map((x, i) => (
+                  <li key={x} className="flex gap-2">
+                    {i === 0 ? <Check className="mt-0.5 size-3.5 shrink-0 text-green" strokeWidth={3} /> : <X className="mt-0.5 size-3.5 shrink-0 text-fg-3" strokeWidth={3} />}
+                    {x.charAt(0).toUpperCase() + x.slice(1)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          <p className="mt-3 text-[12.5px] text-fg-3">{LIZENZ_KENNZEICHNUNG}.</p>
+        </Abschnitt>
+        <Abschnitt titel="Übertragbarkeit & Escrow" text="Was mit der Lizenz bei Übergabe oder im Ernstfall geschieht." icon={<Handshake className="size-[18px]" />}>
+          <ul className="grid gap-2.5 text-[13px] leading-relaxed text-fg-2">
+            <li className="rounded-[14px] bg-[var(--surface-2)] px-3.5 py-2.5 ring-1 ring-[var(--line)]">{UEBERTRAGBARKEIT}.</li>
+            <li className="rounded-[14px] bg-[var(--surface-2)] px-3.5 py-2.5 ring-1 ring-[var(--line)]">{ESCROW}.</li>
+          </ul>
+          <p className="mt-3 text-[12.5px] text-fg-3">{LIZENZ_KENNZEICHNUNG}.</p>
         </Abschnitt>
         <div className="sheet flex flex-wrap items-center gap-3 rounded-[22px] p-5">
           <div className="min-w-0 flex-1 basis-[220px]">
@@ -159,7 +194,7 @@ export function LizenzTab() {
 function Kachel({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
   return (
     <div className={cn("min-w-0 rounded-[16px] bg-[var(--surface)]/60 px-3.5 py-3 ring-1 ring-[var(--line)]", className)}>
-      <dt className="text-[11.5px] text-fg-3">{label}</dt>
+      <dt className="text-[12.5px] text-fg-3">{label}</dt>
       <dd className="mt-0.5 truncate text-[14.5px] font-semibold">{children}</dd>
     </div>
   );

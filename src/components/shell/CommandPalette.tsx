@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { Command } from "cmdk";
 import { AnimatePresence, motion } from "motion/react";
-import { FolderOpen, FileText, User, CalendarClock, Inbox, Library, Sparkles, Plus, Calculator, CornerDownLeft, Zap, Landmark, Receipt, Scale, Timer, UsersRound, Palette, X } from "lucide-react";
+import { FolderOpen, FileText, User, CalendarClock, CalendarPlus, Inbox, Keyboard, Library, Sparkles, Plus, Calculator, CornerDownLeft, Zap, Landmark, Percent, Receipt, Scale, Timer, UsersRound, Palette, X } from "lucide-react";
 import { useUI } from "@/store/ui";
 import { useData } from "@/store/data";
-import { NAV } from "@/app/nav";
+import { useSession } from "@/store/session";
+import { bereichErlaubt, navFuer } from "@/app/nav";
+import { darfVerwalten, istConsole } from "@/lib/backend";
+import type { Rolle } from "@/core/types";
+import { akteAusPfad } from "./Tastenkuerzel";
 import { search, snippet } from "@/core/search";
 import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
 import { fmtDate } from "@/core/dates";
@@ -20,6 +24,10 @@ interface Ziel {
   icon: ReactNode;
   /** zusätzliche Suchbegriffe (Synonyme) */
   stichworte?: string;
+  /** Tastaturkürzel außerhalb der Suche (z. B. „W“) */
+  kuerzel?: string;
+  /** statt Navigation: Aktion im Rahmen (Dialog, Übersicht) */
+  aktion?: "wiedervorlage" | "kuerzel" | "assistent";
 }
 
 /** Schnellaktionen – die KI-Fallanalyse startet direkt für die zuletzt bearbeitete offene Akte. */
@@ -27,43 +35,71 @@ function schnellaktionen(akten: Akte[]): Ziel[] {
   const zuletzt = akten.filter((a) => a.status === "offen").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
   return [
     { to: "/akten?neu=1", label: "Neue Akte anlegen", sub: "Mandatsaufnahme mit automatischer Vollmacht & Deckungsanfrage", icon: <Plus />, stichworte: "Mandat Mandatsaufnahme" },
-    { to: "/fristen?rechner=1", label: "Frist berechnen", sub: "Fristenrechner nach § 222 ZPO mit Feiertagen Ihres Bundeslands", icon: <Calculator />, stichworte: "Fristenrechner Rechner" },
+    { to: "#wiedervorlage", aktion: "wiedervorlage", label: "Wiedervorlage anlegen", sub: "Akte, Datum, Titel – in einer Akte für diese Akte", icon: <CalendarPlus />, kuerzel: "W", stichworte: "Wiedervorlage WV Erinnerung" },
+    { to: "/fristen?rechner=1", label: "Frist berechnen", sub: "Fristenrechner nach § 222 ZPO mit Feiertagen Ihres Bundeslands", icon: <Calculator />, kuerzel: "F", stichworte: "Fristenrechner Rechner" },
     { to: "/abrechnung?tab=rvg", label: "RVG-Gebühren berechnen", sub: "Gebührentabelle 2025 inkl. Anrechnung und Auslagen", icon: <Calculator />, stichworte: "RVG-Rechner Gebührenrechner" },
+    { to: "/abrechnung?tab=zinsen", label: "Zinsrechner", sub: "Verzugszinsen nach § 288 BGB mit Basiszins", icon: <Percent />, stichworte: "Zinsen Verzugszinsen Basiszins Zinsrechner" },
     zuletzt
       ? { to: `/ki?akte=${encodeURIComponent(zuletzt.id)}&start=1`, label: "KI-Fallanalyse starten", sub: `Zuletzt bearbeitet: ${zuletzt.aktenzeichen} · ${zuletzt.titel}`, icon: <Sparkles />, stichworte: "Erfolgsaussicht Präzedenzfälle Analyse" }
       : { to: "/ki", label: "Apex KI öffnen – Fallanalyse", sub: "Akte wählen – Erfolgsaussicht, Präzedenzfälle, nächste Schritte", icon: <Sparkles />, stichworte: "Erfolgsaussicht Präzedenzfälle Analyse" },
     { to: "/automatisierung", label: "38h-Motor öffnen", sub: "Automationen, Protokoll und gesparte Zeit der letzten 7 Tage", icon: <Zap />, stichworte: "Automatisierung Automationen" },
+    { to: "#assistent", aktion: "assistent", label: "Apex Assistent öffnen", sub: "Fragen, suchen, Wiedervorlagen vorschlagen – per Text oder Sprache", icon: <Sparkles className="text-violet" />, stichworte: "Assistent Kugel Sprache KI fragen" },
+    { to: "#kuerzel", aktion: "kuerzel", label: "Tastaturkürzel", sub: "Alle Kürzel auf einen Blick", icon: <Keyboard />, kuerzel: "?", stichworte: "Shortcuts Tasten Kürzel" },
   ];
+}
+
+/** Nur Ziele, die die Rolle öffnen darf (Auszubildende: keine Abrechnung, kein Zinsrechner, kein RVG, kein Bankabgleich). */
+function erlaubt(z: Ziel, rolle: Rolle | undefined): boolean {
+  if (z.to.startsWith("#")) return true;
+  return bereichErlaubt(z.to.split("?")[0], rolle);
 }
 
 /** Reiter, die nur bei passender Suche erscheinen („Bankabgleich", „Team" …). */
 const UNTERBEREICHE: Ziel[] = [
   { to: "/abrechnung?tab=rechnungen", label: "Rechnungen", sub: "Abrechnung · alle Rechnungen mit Zahlungsstatus", icon: <Receipt /> },
   { to: "/abrechnung?tab=bank", label: "Bankabgleich", sub: "Abrechnung · Kontoumsätze automatisch zuordnen", icon: <Landmark />, stichworte: "Bank Kontoumsätze Zahlungen" },
-  { to: "/abrechnung?tab=forderung", label: "Forderungskonto", sub: "Abrechnung · Hauptforderung, Zinsen und Kosten", icon: <Scale />, stichworte: "Verzugszinsen Zinsen" },
+  { to: "/abrechnung?tab=forderung", label: "Forderungskonto", sub: "Abrechnung · Hauptforderung, Zinsen und Kosten", icon: <Scale />, stichworte: "Forderung Kosten" },
   { to: "/abrechnung?tab=zeit", label: "Zeiterfassung", sub: "Abrechnung · Stoppuhr und Zeiteinträge", icon: <Timer />, stichworte: "Zeiten Stoppuhr" },
   { to: "/einstellungen?tab=team", label: "Team & Zugänge", sub: "Einstellungen · Personen einladen und verwalten", icon: <UsersRound />, stichworte: "Benutzer Nutzer Mitarbeiter" },
-  { to: "/einstellungen?tab=darstellung", label: "Darstellung", sub: "Einstellungen · Hell, Dunkel und Dichte", icon: <Palette />, stichworte: "Dunkelmodus Hellmodus Theme" },
+  { to: "/einstellungen?tab=darstellung", label: "Darstellung", sub: "Einstellungen · Hell, Dunkel, Schriftgröße, Assistent-Kugel", icon: <Palette />, stichworte: "Dunkelmodus Hellmodus Theme Schriftgröße Schrift größer Kugel Live-Meldungen" },
+  { to: "/einstellungen?tab=datenschutz", label: "Anmeldung & Sicherheit", sub: "Einstellungen · Zwei-Faktor-Anmeldung, Sperre, Protokoll", icon: <Scale />, stichworte: "Zwei-Faktor 2FA MFA Authenticator Sperre Protokoll Datenschutz Löschkonzept AVV" },
 ];
 
-const BEREICHE: Ziel[] = NAV.map((n) => {
-  const Icon = n.icon;
-  return { to: n.to, label: n.label, sub: n.beschreibung, icon: <Icon />, stichworte: n.kurz };
-});
+function bereicheFuer(rolle: Rolle | undefined): Ziel[] {
+  return navFuer(rolle).map((n) => {
+    const Icon = n.icon;
+    return { to: n.to, label: n.label, sub: n.beschreibung, icon: <Icon />, stichworte: n.kurz };
+  });
+}
 
 
 /** Globale Suche (⌘K / Strg+K): Volltext über Akten, Dokumente (OCR), Kontakte, Fristen, Posteingang und Rechtsprechung – lokal, ohne Wartezeit. */
 export function CommandPalette() {
   const { paletteOffen, setPalette, oeffneAssistent } = useUI();
   const nav = useNavigate();
+  const loc = useLocation();
   const data = useData((s) => s.data);
+  const sitzung = useSession((s) => s.sitzung);
+  const kanzlei = sitzung && !istConsole(sitzung) ? sitzung : null;
+  const rolle = kanzlei?.user.rolle;
+  const verwalten = !!rolle && darfVerwalten(rolle);
   const [q, setQ] = useState("");
-  const aktionen = useMemo(() => schnellaktionen(data.akten), [data.akten]);
+  const aktionen = useMemo(() => schnellaktionen(data.akten).filter((z) => erlaubt(z, rolle)), [data.akten, rolle]);
+  const bereiche = useMemo(() => bereicheFuer(rolle), [rolle]);
+  const unterbereiche = useMemo(
+    () =>
+      UNTERBEREICHE.filter((z) => erlaubt(z, rolle)).map((z) =>
+        z.to === "/einstellungen?tab=team" && !verwalten ? { ...z, label: "Ihr Zugang", sub: "Einstellungen · Profil, Lizenztyp, Abwesenheit" } : z,
+      ),
+    [rolle, verwalten],
+  );
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
+        // gesperrter Bildschirm: keine Suche über verborgenen Inhalten
+        if (useSession.getState().gesperrt) return;
         setPalette(!useUI.getState().paletteOffen);
       }
     };
@@ -127,7 +163,7 @@ export function CommandPalette() {
     ], 4);
     // Bereiche, Schnellaktionen und Reiter („Fristen", „Abrechnung", „38h-Motor", „Bankabgleich" …)
     const gesehen = new Set<string>();
-    const ziele = search([...BEREICHE, ...aktionen, ...UNTERBEREICHE], q, [
+    const ziele = search([...bereiche, ...aktionen, ...unterbereiche], q, [
       { get: (z) => z.label, weight: 5 },
       { get: (z) => z.stichworte, weight: 3 },
       { get: (z) => z.sub, weight: 1 },
@@ -143,17 +179,25 @@ export function CommandPalette() {
     const zieleZuerst = ziele.length > 0 && search([ziele[0].item], q, [{ get: (z) => `${z.label} ${z.stichworte ?? ""}`, weight: 1 }]).length > 0;
     const total = ziele.length + akten.length + dokumente.length + kontakte.length + fristen.length + nachrichten.length + urteile.length;
     return { ziele, zieleZuerst, akten, dokumente, kontakte, fristen, nachrichten, urteile, total, ms: performance.now() - t0 };
-  }, [q, data, aktionen]);
+  }, [q, data, aktionen, bereiche, unterbereiche]);
 
   const go = (path: string) => {
     setPalette(false);
     nav(path);
   };
+  const waehle = (z: Ziel) => {
+    if (!z.aktion) return go(z.to);
+    setPalette(false);
+    const ui = useUI.getState();
+    if (z.aktion === "wiedervorlage") ui.setWiedervorlage({ akteId: akteAusPfad(loc.pathname) });
+    else if (z.aktion === "kuerzel") ui.setKuerzel(true);
+    else oeffneAssistent();
+  };
 
   const zielGruppe = res && res.ziele.length > 0 && (
     <Command.Group heading="Bereiche & Aktionen">
       {res.ziele.map(({ item: z }) => (
-        <Item key={z.to} icon={z.icon} onSelect={() => go(z.to)} title={<Highlight text={z.label} q={q} />} sub={z.sub} />
+        <Item key={z.to} icon={z.icon} onSelect={() => waehle(z)} title={<Highlight text={z.label} q={q} />} sub={z.sub} kuerzel={z.kuerzel} />
       ))}
     </Command.Group>
   );
@@ -187,7 +231,7 @@ export function CommandPalette() {
                   className="h-14 flex-1 bg-transparent text-[15.5px] outline-none placeholder:text-fg-4"
                 />
                 {res && (
-                  <span className="num shrink-0 text-[11.5px] text-fg-4">
+                  <span className="num shrink-0 text-[12.5px] text-fg-3">
                     {res.total} Treffer<span className="hidden sm:inline"> · {res.ms < 1 ? "<1" : Math.round(res.ms)} ms</span>
                   </span>
                 )}
@@ -196,16 +240,16 @@ export function CommandPalette() {
                   <X className="size-[18px] sm:hidden" />
                 </button>
               </div>
-              <Command.List className="min-h-0 flex-1 overflow-y-auto p-2 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pb-1.5 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.08em] [&_[cmdk-group-heading]]:text-fg-3">
+              <Command.List className="min-h-0 flex-1 overflow-y-auto p-2 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pb-1.5 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:text-[12.5px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.06em] [&_[cmdk-group-heading]]:text-fg-3">
                 {!res && (
                   <>
                     <Command.Group heading="Schnellaktionen">
                       {aktionen.map((z) => (
-                        <Item key={z.to} icon={z.icon} onSelect={() => go(z.to)} title={z.label} sub={z.sub} />
+                        <Item key={z.to} icon={z.icon} onSelect={() => waehle(z)} title={z.label} sub={z.sub} kuerzel={z.kuerzel} />
                       ))}
                     </Command.Group>
                     <Command.Group heading="Bereiche">
-                      {BEREICHE.map((z) => (
+                      {bereiche.map((z) => (
                         <Item key={z.to} icon={z.icon} onSelect={() => go(z.to)} title={z.label} sub={z.sub} />
                       ))}
                     </Command.Group>
@@ -269,7 +313,7 @@ export function CommandPalette() {
                   </Command.Group>
                 )}
               </Command.List>
-              <div className="flex items-center gap-4 border-t border-[var(--line)] px-5 py-2.5 text-[11.5px] text-fg-4">
+              <div className="flex items-center gap-4 border-t border-[var(--line)] px-5 py-2.5 text-[12.5px] text-fg-3">
                 {/* Tastaturhinweise nur dort, wo es eine Tastatur gibt */}
                 <span className="hidden items-center gap-1.5 sm:flex"><span className="kbd">↑</span><span className="kbd">↓</span> auswählen</span>
                 <span className="hidden items-center gap-1.5 sm:flex"><span className="kbd"><CornerDownLeft className="size-3" /></span> öffnen</span>
@@ -283,7 +327,7 @@ export function CommandPalette() {
   );
 }
 
-function Item({ icon, title, sub, meta, onSelect }: { icon: React.ReactNode; title: React.ReactNode; sub?: React.ReactNode; meta?: React.ReactNode; onSelect: () => void }) {
+function Item({ icon, title, sub, meta, kuerzel, onSelect }: { icon: React.ReactNode; title: React.ReactNode; sub?: React.ReactNode; meta?: React.ReactNode; kuerzel?: string; onSelect: () => void }) {
   return (
     <Command.Item
       onSelect={onSelect}
@@ -292,9 +336,15 @@ function Item({ icon, title, sub, meta, onSelect }: { icon: React.ReactNode; tit
       <span className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-[var(--ink-softer)] text-fg-2 [&>svg]:size-4">{icon}</span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13.5px] font-medium">{title}</span>
-        {sub && <span className="block truncate text-[12px] text-fg-3">{sub}</span>}
+        {sub && <span className="block truncate text-[12.5px] text-fg-3">{sub}</span>}
       </span>
-      {meta && <span className="hidden max-w-[180px] shrink-0 truncate text-[11px] text-fg-4 sm:block">{meta}</span>}
+      {meta && <span className="hidden max-w-[180px] shrink-0 truncate text-[12.5px] text-fg-3 sm:block">{meta}</span>}
+      {kuerzel && (
+        <span className="hidden shrink-0 items-center gap-1 sm:inline-flex">
+          <span className="sr-only">Tastaturkürzel</span>
+          <span className="kbd">{kuerzel}</span>
+        </span>
+      )}
     </Command.Item>
   );
 }

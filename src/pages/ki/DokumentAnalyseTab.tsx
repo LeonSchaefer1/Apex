@@ -1,18 +1,19 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import {
   AlertTriangle, BadgeCheck, Calculator, CalendarClock, ChevronDown, CircleCheck, FileScan, FileSearch, FileText, FileUp, FolderOpen, FolderSearch, Gavel, Inbox,
-  ListChecks, Mail, RotateCcw, ScanText, Sparkles, Stamp, Tags,
+  ListChecks, Mail, RotateCcw, ScanText, ShieldAlert, Sparkles, Stamp, Tags, X,
 } from "lucide-react";
-import { analysiereDokument, beispielDokumente, type DokAnalyse, type FristVorschlag } from "@/ai/dokumentAnalyse";
+import { analysiereDokument, ausschlussfristTitel, ausschlussfristVorschlag, beispielDokumente, dauerText, type Ausschlussklausel, type DokAnalyse, type FristVorschlag } from "@/ai/dokumentAnalyse";
 import { useAiStatus } from "@/ai/status";
 import { useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
-import { fmtDateWd, fmtNum, nowLocal, relDays, today, uid } from "@/core/dates";
+import { fmtDate, fmtDateWd, fmtNum, nowLocal, relDays, today, uid } from "@/core/dates";
 import { fristArtZu, fristDringlichkeit } from "@/core/fristen";
-import type { Frist } from "@/core/types";
+import type { Akte, Dokument, Frist } from "@/core/types";
+import { legeFristAn } from "@/pages/fristen/logik";
 import { AiChip, Button, Card, Chip, Field, Input, ProgressRing, Select, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { KiSchritte, usePipeline, type KiSchritt } from "./KiSchritte";
@@ -29,8 +30,16 @@ const SICHER_AB = 0.8;
 
 const BEISPIEL_ICONS = [<Gavel key="g" className="size-4" />, <Stamp key="s" className="size-4" />, <Mail key="m" className="size-4" />];
 
+/** Kurzer Fingerabdruck eines Textes – damit dieselbe Analyse „KI gespart“ nur einmal erhöht. */
+function fingerabdruck(t: string): string {
+  let h = 0;
+  const n = t.replace(/\s+/g, " ").trim();
+  for (let i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
 /** Dokument-Analyse: Schreiben einfügen → Typ, Akte, Fristen (berechnet vom Fristenrechner), Termin und nächste Schritte. */
-export function DokumentAnalyseTab({ akteParam }: { akteParam?: string }) {
+export function DokumentAnalyseTab({ akteParam, dokParam }: { akteParam?: string; dokParam?: string }) {
   const nav = useNavigate();
   const { tenant, user } = useKanzlei();
   const data = useData((s) => s.data);
@@ -51,6 +60,10 @@ export function DokumentAnalyseTab({ akteParam }: { akteParam?: string }) {
   const [uebernommen, setUebernommen] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const { aktiv, lauf, zuruecksetzen } = usePipeline(SCHRITTE.length, 480);
+  /** Dokument aus der E-Akte, dessen Text analysiert wird (Akte steht damit fest). */
+  const [ausAkte, setAusAkte] = useState<{ akteId: string; dokId: string } | null>(null);
+  const [wahlOffen, setWahlOffen] = useState(false);
+  const [wahlAkte, setWahlAkte] = useState(akteParam ?? "");
 
   const offene = useMemo(() => data.akten.filter((a) => a.status === "offen").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)), [data.akten]);
   const erkannteAkte = analyse?.akteId ? data.akten.find((a) => a.id === analyse.akteId) : undefined;
@@ -98,17 +111,27 @@ export function DokumentAnalyseTab({ akteParam }: { akteParam?: string }) {
     r.readAsText(f, "utf-8");
   };
 
-  const analysieren = async () => {
-    if (text.trim().length < 20) return;
+  const analysieren = async (eingabe?: { text: string; betreff?: string; von?: string; quelle?: { akteId: string; dokId: string } | null }) => {
+    const t = eingabe?.text ?? text;
+    const b = eingabe ? (eingabe.betreff ?? "") : betreff;
+    const v = eingabe ? (eingabe.von ?? "") : von;
+    const quelleDok = eingabe ? (eingabe.quelle ?? null) : ausAkte;
+    if (t.trim().length < 20) return;
     setFehler(null);
     setAnalyse(null);
     setUebernommen(null);
     setLaeuft(true);
     try {
-      const res = await lauf(() => analysiereDokument({ text, betreff: betreff || undefined, von: von || undefined, eingang: today() }, data, tenant.bundesland));
+      const daten = useData.getState().data;
+      let res = await lauf(() => analysiereDokument({ text: t, betreff: b || undefined, von: v || undefined, eingang: today() }, daten, tenant.bundesland));
+      // Aus der E-Akte geladen: Die Akte steht fest – keine Zuordnung raten.
+      if (quelleDok) res = { ...res, akteId: quelleDok.akteId, akteSicherheit: 1, akteGrund: "Dokument aus der E-Akte" };
       setAnalyse(res);
-      setZielAkte(res.akteId ?? (akteParam && offene.some((a) => a.id === akteParam) ? akteParam : undefined) ?? standardAkte(data.akten)?.id ?? offene[0]?.id ?? "");
-      useData.getState().log({ akteur: "ki", userId: user.id, akteId: res.akteId, text: `Dokument analysiert: ${res.typ}${res.fristen.length ? ` – ${res.fristen.length} Frist(en) erkannt` : ""}`, minutenGespart: 4 });
+      setZielAkte(res.akteId ?? (akteParam && offene.some((a) => a.id === akteParam) ? akteParam : undefined) ?? standardAkte(daten.akten)?.id ?? offene[0]?.id ?? "");
+      // „KI gespart“ zählt je Dokument nur bei der ersten Analyse – erneutes Analysieren desselben Texts erhöht die Zahl nicht.
+      const logText = `Dokument analysiert: ${res.typ} – „${b || t.trim().slice(0, 48)}${!b && t.trim().length > 48 ? "…" : ""}“ (#${fingerabdruck(t)})`;
+      const schonGezaehlt = daten.aktivitaeten.some((a) => a.akteur === "ki" && a.text === logText && (a.minutenGespart ?? 0) > 0);
+      useData.getState().log({ akteur: "ki", userId: user.id, akteId: res.akteId, text: logText, minutenGespart: schonGezaehlt ? 0 : 4 });
     } catch (e) {
       zuruecksetzen();
       setFehler(e instanceof Error ? e.message : "Die Analyse ist fehlgeschlagen.");
@@ -191,9 +214,47 @@ export function DokumentAnalyseTab({ akteParam }: { akteParam?: string }) {
     setVon("");
     setBeispielAktiv(null);
     setAutoFelder(false);
+    setAusAkte(null);
     zuruecksetzen();
     setTimeout(() => textRef.current?.focus(), 60);
   };
+
+  /** „Vorschlag verwerfen“: Es wird nichts gespeichert – Akte, Fristen und Dokumente bleiben unverändert. */
+  const verwerfen = () => {
+    setAnalyse(null);
+    setUebernommen(null);
+    zuruecksetzen();
+    toast("Vorschlag verworfen", { text: "Nichts gespeichert – Akte, Fristen und Dokumente sind unverändert.", ton: "info" });
+  };
+
+  /** Dokument aus der E-Akte laden und sofort analysieren. */
+  const ladeAusAkte = (d: Dokument) => {
+    setText(d.inhalt);
+    setBetreff(d.name);
+    setVon("");
+    setBeispielAktiv(null);
+    setAutoFelder(true);
+    setAusAkte({ akteId: d.akteId, dokId: d.id });
+    setWahlOffen(false);
+    void analysieren({ text: d.inhalt, betreff: d.name, von: "", quelle: { akteId: d.akteId, dokId: d.id } });
+  };
+
+  // Deep-Link aus dem Dokumentbetrachter der Akte: /ki?tab=dokument&akte=<id>&dok=<dokId>
+  const geladen = useRef<string | null>(null);
+  useEffect(() => {
+    if (!dokParam || geladen.current === dokParam) return;
+    const d = useData.getState().data.dokumente.find((x) => x.id === dokParam);
+    if (!d) return;
+    geladen.current = dokParam;
+    ladeAusAkte(d);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dokParam]);
+
+  const wahlAkteObj = data.akten.find((a) => a.id === (wahlAkte || standardAkte(data.akten)?.id));
+  const wahlDokumente = useMemo(
+    () => (wahlAkteObj ? data.dokumente.filter((d) => d.akteId === wahlAkteObj.id && d.inhalt.trim().length >= 20).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : []),
+    [data.dokumente, wahlAkteObj],
+  );
 
   const kannUebernehmen = !!analyse && (analyse.fristen.length > 0 || !!analyse.termin);
 
@@ -227,10 +288,59 @@ export function DokumentAnalyseTab({ akteParam }: { akteParam?: string }) {
               <span className={cn("grid size-8 shrink-0 place-items-center rounded-[10px]", beispielAktiv === i ? "bg-[var(--ink)] text-[var(--on-ink)]" : "bg-ink-soft text-ink")}>{BEISPIEL_ICONS[i] ?? <FileText className="size-4" />}</span>
               <span className="min-w-0">
                 <span className="block truncate text-[12.5px] font-semibold leading-tight sm:whitespace-normal">{b.titel}</span>
-                <span className="block truncate text-[11.5px] text-fg-3">{b.von}</span>
+                <span className="block truncate text-[12.5px] text-fg-3">{b.von}</span>
               </span>
             </button>
           ))}
+        </div>
+
+        <div className="mt-3">
+          <Button variant="secondary" size="sm" icon={<FolderOpen className="size-4" />} aria-expanded={wahlOffen} onClick={() => setWahlOffen((o) => !o)}>
+            Aus Akte wählen
+          </Button>
+          {ausAkte && (
+            <span className="ml-2 inline-flex items-center gap-1.5 text-[12.5px] text-fg-2">
+              <FileText className="size-3.5 text-fg-3" />
+              aus der E-Akte {data.akten.find((a) => a.id === ausAkte.akteId)?.aktenzeichen}
+            </span>
+          )}
+          <AnimatePresence initial={false}>
+            {wahlOffen && (
+              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }} className="overflow-hidden">
+                <div className="mt-3 grid gap-2 rounded-[16px] p-3 ring-1 ring-[var(--line)]">
+                  <Field label="Akte" htmlFor="dok-wahl-akte">
+                    <Select id="dok-wahl-akte" value={wahlAkteObj?.id ?? ""} onChange={(e) => setWahlAkte(e.target.value)}>
+                      {offene.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.aktenzeichen} · {a.titel}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <div className="label !mb-0">Dokument der E-Akte – ein Klick analysiert</div>
+                  {wahlDokumente.length ? (
+                    <ul className="grid max-h-[240px] gap-1 overflow-y-auto pr-1">
+                      {wahlDokumente.map((d) => (
+                        <li key={d.id}>
+                          <button type="button" onClick={() => ladeAusAkte(d)} className="flex w-full min-w-0 items-start gap-2 rounded-[12px] px-2.5 py-2 text-left transition-colors hover:bg-[var(--ink-softer)]">
+                            <FileText className="mt-0.5 size-4 shrink-0 text-fg-3" />
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-[13px] font-medium leading-snug">{d.name}</span>
+                              <span className="block text-[12.5px] text-fg-3">
+                                {d.ordner} · {fmtDate(d.createdAt.slice(0, 10))}
+                              </span>
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-[12.5px] text-fg-3">In dieser Akte liegt kein Dokument mit Text.</p>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -247,7 +357,10 @@ export function DokumentAnalyseTab({ akteParam }: { akteParam?: string }) {
             ref={textRef}
             rows={9}
             value={text}
-            onChange={(e) => textAendern(e.target.value)}
+            onChange={(e) => {
+              textAendern(e.target.value);
+              setAusAkte(null);
+            }}
             placeholder="Fügen Sie hier den Text eines Schreibens ein – z. B. eine gerichtliche Verfügung, ein Urteil, eine Kündigung oder eine Mandanten-E-Mail."
             className="text-[13.5px]"
           />
@@ -261,9 +374,9 @@ export function DokumentAnalyseTab({ akteParam }: { akteParam?: string }) {
           <Button variant="secondary" icon={<FileUp className="size-4" />} onClick={() => fileRef.current?.click()}>
             Textdatei laden
           </Button>
-          <span className="num ml-auto text-[11.5px] text-fg-4">{fmtNum(text.length)} Zeichen</span>
+          <span className="num ml-auto text-[12.5px] text-fg-3">{fmtNum(text.length)} Zeichen</span>
         </div>
-        <p className="mt-3 text-[11.5px] leading-snug text-fg-4">
+        <p className="mt-3 text-[12.5px] leading-snug text-fg-3">
           {live ? "Claude liest das Schreiben über Ihren gesicherten Zugang; Akte und Fristen werden anschließend nach festen Regeln geprüft und vom Fristenrechner berechnet." : "Die Demo-KI analysiert regelbasiert und vollständig lokal – der Text verlässt Ihren Browser nicht."}
         </p>
       </Card>
@@ -290,7 +403,9 @@ export function DokumentAnalyseTab({ akteParam }: { akteParam?: string }) {
           ) : analyse ? (
             <motion.div key="ergebnis" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="grid gap-3">
               <Ergebnis
+                key={analyse.zusammenfassung + analyse.typ}
                 analyse={analyse}
+                onVerwerfen={verwerfen}
                 erkannteAkte={erkannteAkte}
                 sicherZugeordnet={sicherZugeordnet}
                 offene={offene}
@@ -353,9 +468,10 @@ export function DokumentAnalyseTab({ akteParam }: { akteParam?: string }) {
 }
 
 function Ergebnis({
-  analyse, erkannteAkte, sicherZugeordnet, offene, zielAkte, setZielAkte, kannUebernehmen, uebernommen, onUebernehmen, onNeu, onAkte,
+  analyse, erkannteAkte, sicherZugeordnet, offene, zielAkte, setZielAkte, kannUebernehmen, uebernommen, onUebernehmen, onNeu, onAkte, onVerwerfen,
 }: {
   analyse: DokAnalyse;
+  onVerwerfen: () => void;
   erkannteAkte?: { id: string; aktenzeichen: string; titel: string };
   sicherZugeordnet: boolean;
   offene: { id: string; aktenzeichen: string; titel: string }[];
@@ -405,12 +521,12 @@ function Ergebnis({
                 <span className="num text-[11px] font-semibold">{sicherheit}</span>
               </ProgressRing>
               <div className="min-w-0 flex-1">
-                <div className="text-[11.5px] text-fg-3">Akte zugeordnet · {sicherheit} % sicher</div>
+                <div className="text-[12.5px] text-fg-3">Akte zugeordnet · {sicherheit} % sicher</div>
                 <button type="button" onClick={() => onAkte(erkannteAkte.id)} className="block max-w-full truncate text-left text-[14px] font-semibold hover:underline">
                   <span className="mono mr-1.5 text-fg-3">{erkannteAkte.aktenzeichen}</span>
                   {erkannteAkte.titel}
                 </button>
-                {analyse.akteGrund && <div className="truncate text-[12px] text-fg-3">Erkannt über: {analyse.akteGrund}</div>}
+                {analyse.akteGrund && <div className="text-[12.5px] text-fg-3">Erkannt über: {analyse.akteGrund}</div>}
               </div>
               <FolderOpen className="size-5 shrink-0 text-green" />
             </div>
@@ -448,6 +564,13 @@ function Ergebnis({
         </Card>
       </motion.div>
 
+      {/* Vertragliche Ausschlussfrist: Fälligkeit erfragen, Ende berechnet der Fristenrechner */}
+      {analyse.ausschlussfrist && (
+        <motion.div {...stagger(2)}>
+          <AusschlussfristKarte klausel={analyse.ausschlussfrist} akteId={sicherZugeordnet && erkannteAkte ? erkannteAkte.id : zielAkte} onAkte={onAkte} />
+        </motion.div>
+      )}
+
       {/* Fristen */}
       {analyse.fristen.length > 0 && (
         <motion.div {...stagger(2)} className="grid gap-2.5">
@@ -465,7 +588,7 @@ function Ergebnis({
               <CalendarClock className="size-5" />
             </span>
             <div className="min-w-0 flex-1">
-              <div className="text-[11.5px] text-fg-3">Termin erkannt</div>
+              <div className="text-[12.5px] text-fg-3">Termin erkannt</div>
               <div className="text-[14px] font-semibold">{analyse.termin.titel}</div>
               <div className="text-[12.5px] text-fg-2">
                 {fmtDateWd(analyse.termin.datum)}
@@ -495,6 +618,16 @@ function Ergebnis({
         </Card>
       </motion.div>
 
+      {/* Verwerfen – ändert nichts */}
+      {!uebernommen && (
+        <motion.div {...stagger(6)} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-1">
+          <Button variant="ghost" size="sm" icon={<X className="size-4" />} onClick={onVerwerfen}>
+            Vorschlag verwerfen
+          </Button>
+          <span className="min-w-0 flex-1 basis-[220px] text-[12.5px] leading-snug text-fg-3">Es wird nichts gespeichert – Akte, Fristen und Dokumente bleiben unverändert.</span>
+        </motion.div>
+      )}
+
       {/* Übernehmen */}
       {kannUebernehmen && (
         <motion.div {...stagger(5)} className="flex flex-wrap items-center gap-2 rounded-[20px] bg-[var(--ink-softer)] p-3">
@@ -523,14 +656,132 @@ function Ergebnis({
   );
 }
 
-function FristKarte({ f }: { f: FristVorschlag }) {
+/**
+ * Ausschlussfrist aus einem Vertrag: Die Fälligkeit wird erfragt (nie erfunden), das Fristende berechnet der
+ * Fristenrechner. Übernahme als Frist (Vier-Augen-Kontrolle offen) oder als Wiedervorlage.
+ */
+function AusschlussfristKarte({ klausel, akteId, onAkte }: { klausel: Ausschlussklausel; akteId: string; onAkte: (id: string) => void }) {
+  const { tenant, user } = useKanzlei();
+  const akten = useData((s) => s.data.akten);
+  const akte: Akte | undefined = akten.find((a) => a.id === akteId);
+  const [faellig, setFaellig] = useState("");
+  const [anspruch, setAnspruch] = useState("");
+  const [angelegt, setAngelegt] = useState<{ art: "frist" | "wiedervorlage"; ids: string[] } | null>(null);
+  const gueltig = /^\d{4}-\d{2}-\d{2}$/.test(faellig);
+  const vorschlag = useMemo(
+    () => (gueltig ? ausschlussfristVorschlag(klausel, faellig, tenant.bundesland, { kanzleiLand: tenant.bundesland, anspruch: anspruch.trim() || undefined }) : null),
+    [gueltig, klausel, faellig, tenant.bundesland, anspruch],
+  );
+
+  const anlegen = (art: "frist" | "wiedervorlage") => {
+    if (!vorschlag || !akte) return;
+    const verantwortlich = akte.bearbeiterId || user.id;
+    const notiz = `Von der KI im ${klausel.quelle} erkannt (${klausel.zitat.slice(0, 120)}${klausel.zitat.length > 120 ? "…" : ""}); Fälligkeit ${fmtDate(faellig)} von ${user.name} eingegeben, berechnet vom Fristenrechner.`;
+    let ids: string[];
+    if (art === "frist") {
+      // Frist ohne Kontrollvermerk → erscheint in der Vier-Augen-Kontrolle
+      const r = legeFristAn({
+        akteId: akte.id, titel: vorschlag.titel, typ: "frist", datum: vorschlag.ende, vorfrist: vorschlag.vorfrist, regelKey: vorschlag.regelKey, grundlage: vorschlag.grundlage,
+        ereignisDatum: faellig, rechenweg: vorschlag.rechenweg, quelle: "ki", verantwortlichId: verantwortlich, vorfristVerantwortlichId: akte.sachbearbeiterId ?? verantwortlich, notiz,
+      });
+      ids = [r.frist.id, ...(r.vorfrist ? [r.vorfrist.id] : [])];
+    } else {
+      const r = legeFristAn({
+        akteId: akte.id, titel: `Wiedervorlage: Ausschlussfrist läuft am ${fmtDate(vorschlag.ende)} ab – Ansprüche geltend machen`, typ: "wiedervorlage", datum: vorschlag.vorfrist,
+        grundlage: vorschlag.grundlage, ereignisDatum: faellig, rechenweg: vorschlag.rechenweg, quelle: "ki", verantwortlichId: verantwortlich, notiz,
+      });
+      ids = [r.frist.id];
+    }
+    useData.getState().log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Ausschlussfrist aus ${klausel.quelle} als ${art === "frist" ? "Frist" : "Wiedervorlage"} übernommen: ${fmtDate(art === "frist" ? vorschlag.ende : vorschlag.vorfrist)} (Fälligkeit ${fmtDate(faellig)})` });
+    setAngelegt({ art, ids });
+    toast(art === "frist" ? "Ausschlussfrist eingetragen" : "Wiedervorlage eingetragen", {
+      text: `${akte.aktenzeichen} · ${fmtDateWd(art === "frist" ? vorschlag.ende : vorschlag.vorfrist)}${art === "frist" ? " · Vier-Augen-Kontrolle offen" : ""}`,
+      ton: "erfolg",
+      aktion: {
+        label: "Rückgängig",
+        onClick: () => {
+          ids.forEach((id) => useData.getState().remove("fristen", id));
+          useData.getState().log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Übernahme der Ausschlussfrist in ${akte.aktenzeichen} rückgängig gemacht` });
+          setAngelegt(null);
+        },
+      },
+    });
+  };
+
+  return (
+    <Card className="!p-0 ring-1 ring-inset ring-[color-mix(in_oklab,var(--seal)_28%,transparent)]">
+      <div className="flex items-start gap-3 p-4">
+        <div className="grid size-10 shrink-0 place-items-center rounded-[12px] bg-seal-soft text-seal">
+          <ShieldAlert className="size-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h3 className="text-[14.5px] font-semibold leading-snug">{ausschlussfristTitel(klausel)}</h3>
+          <p className="mt-1 text-[12.5px] leading-relaxed text-fg-2">
+            Vertragliche Ausschlussfrist – Anspruchsverlust bei Versäumung. Das Fristende hängt von der Fälligkeit des jeweiligen Anspruchs ab: Bitte die Fälligkeit eingeben – AnwaltApex erfindet kein Datum.
+          </p>
+          <blockquote className="mt-2 rounded-[12px] bg-[var(--ink-softer)] px-3 py-2 text-[12.5px] italic leading-relaxed text-fg-2">„{klausel.zitat.replace(/[„“]/g, "")}“</blockquote>
+          {klausel.zweiteStufe && (
+            <div className="mt-2 flex items-start gap-2 rounded-[12px] bg-amber-soft px-3 py-2 text-[12.5px] text-amber">
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+              <span>
+                Zweite Stufe: gerichtliche Geltendmachung binnen {dauerText(klausel.zweiteStufe.dauer, klausel.zweiteStufe.einheit)} nach {klausel.zweiteStufe.beginn} – bei Eingang der Ablehnung gesondert notieren.
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="grid gap-3 border-t border-[var(--line)] p-4 sm:grid-cols-2">
+        <Field label="Fälligkeit des Anspruchs" htmlFor="af-faellig" hint="Pflichtangabe – z. B. Fälligkeit des Septemberlohns">
+          <Input id="af-faellig" type="date" value={faellig} onChange={(e) => setFaellig(e.target.value)} required aria-required="true" />
+        </Field>
+        <Field label="Anspruch (optional)" htmlFor="af-anspruch">
+          <Input id="af-anspruch" value={anspruch} onChange={(e) => setAnspruch(e.target.value)} placeholder="z. B. Überstundenvergütung 09/2026" />
+        </Field>
+      </div>
+      {vorschlag ? (
+        <div className="border-t border-[var(--line)] px-4 pb-4">
+          <FristKarte f={vorschlag} eingebettet />
+          {angelegt ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="flex items-center gap-2 text-[13px] font-medium text-green">
+                <BadgeCheck className="size-5" />
+                {angelegt.art === "frist" ? "Als Frist übernommen – Vier-Augen-Kontrolle ausstehend" : "Als Wiedervorlage übernommen"}
+              </span>
+              {akte && (
+                <Button size="sm" variant="secondary" className="ml-auto" onClick={() => onAkte(akte.id)}>
+                  Akte öffnen
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Button variant="primary" icon={<CalendarClock className="size-4" />} onClick={() => anlegen("frist")} disabled={!akte}>
+                Als Frist übernehmen
+              </Button>
+              <Button variant="secondary" icon={<CalendarClock className="size-4" />} onClick={() => anlegen("wiedervorlage")} disabled={!akte}>
+                Als Wiedervorlage
+              </Button>
+              <span className="text-[12.5px] text-fg-3">
+                {akte ? `in ${akte.aktenzeichen} · Frist mit Vier-Augen-Kontrolle, Wiedervorlage am ${fmtDate(vorschlag.vorfrist)}` : "Bitte zuerst eine Akte wählen"}
+              </span>
+            </div>
+          )}
+        </div>
+      ) : (
+        <p className="border-t border-[var(--line)] px-4 py-3 text-[12.5px] text-fg-3">Noch keine Berechnung – ohne Fälligkeit gibt es kein Fristende.</p>
+      )}
+    </Card>
+  );
+}
+
+function FristKarte({ f, eingebettet }: { f: FristVorschlag; eingebettet?: boolean }) {
   const [offen, setOffen] = useState(false);
   const d = fristDringlichkeit(f.ende, today());
   const art = fristArtZu(f);
   const notfrist = f.typ === "notfrist";
   const kritisch = !!art?.kritisch;
   return (
-    <Card className="!p-0">
+    <Card className={cn("!p-0", eingebettet && "mt-3 !shadow-none ring-1 ring-[var(--line)]")}>
       <div className="flex flex-wrap items-start gap-3 p-4">
         <div className={cn("grid size-10 shrink-0 place-items-center rounded-[12px]", kritisch ? "bg-seal-soft text-seal" : "bg-amber-soft text-amber")}>
           <CalendarClock className="size-5" />
@@ -549,9 +800,9 @@ function FristKarte({ f }: { f: FristVorschlag }) {
           <div className="mt-0.5 text-[12px] text-fg-3">{f.grundlage}</div>
         </div>
         <div className="basis-full pl-[52px] sm:basis-auto sm:pl-0 sm:text-right">
-          <div className="text-[11px] text-fg-3">Fristende</div>
+          <div className="text-[12.5px] text-fg-3">Fristende</div>
           <div className={cn("num text-[16px] font-semibold tracking-[-0.01em]", d === "kritisch" || d === "ueberfaellig" ? "text-seal" : "text-fg")}>{fmtDateWd(f.ende)}</div>
-          <div className="text-[11.5px] text-fg-3">
+          <div className="text-[12.5px] text-fg-3">
             {relDays(f.ende)} · Vorfrist {fmtDateWd(f.vorfrist)}
           </div>
         </div>

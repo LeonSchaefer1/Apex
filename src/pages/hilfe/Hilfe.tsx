@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useLocation } from "react-router";
+import { useLocation, useSearchParams } from "react-router";
 import { motion, useReducedMotion } from "motion/react";
 import { MessageCircleQuestion, Mic, Sparkles } from "lucide-react";
 import { useKanzlei } from "@/store/session";
@@ -16,6 +16,13 @@ const BEISPIELE = ["Wie berechne ich eine Berufungsfrist?", "Wie lade ich eine K
 export default function Hilfe() {
   const { tenant } = useKanzlei();
   const loc = useLocation();
+  const [params] = useSearchParams();
+
+  // Direktlink auf einen Wiki-Artikel (z. B. vom Assistenten: /hilfe?wiki=bea-stoerung) öffnet die Schnellhilfe
+  useEffect(() => {
+    const w = params.get("wiki");
+    if (w) useUI.getState().zeigeHilfe(w);
+  }, [params]);
 
   // Sprung zum Systemstatus (z. B. aus der Kopfleiste „Alle Dienste verbunden")
   useEffect(() => {
@@ -78,7 +85,7 @@ function AssistentKarte() {
             key={b}
             type="button"
             onClick={() => oeffne(b)}
-            className="flex items-center gap-2 rounded-[12px] bg-[var(--ink-softer)] px-3 py-2 text-left text-[12.5px] text-fg-2 transition-colors hover:bg-[var(--ink-soft)] hover:text-fg"
+            className="flex items-center gap-2 rounded-[12px] bg-[var(--ink-softer)] px-3 py-2 text-left text-[13px] text-fg-2 transition-colors hover:bg-[var(--ink-soft)] hover:text-fg"
           >
             <MessageCircleQuestion className="size-3.5 shrink-0 text-violet" />
             <span className="min-w-0 truncate">{b}</span>
@@ -89,7 +96,7 @@ function AssistentKarte() {
         <Button variant="ai" icon={<Sparkles className="size-4" />} onClick={() => oeffne()}>
           Assistent öffnen
         </Button>
-        <span className="flex items-center gap-1 text-[12px] text-fg-3">
+        <span className="flex items-center gap-1 text-[13px] text-fg-3">
           <Mic className="size-3.5" /> auch per Sprache
         </span>
       </div>

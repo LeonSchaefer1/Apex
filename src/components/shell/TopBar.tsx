@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { Bell, Search, Sun, Moon, MonitorSmartphone, LogOut, Settings, LifeBuoy, Building2, Sparkles, Zap, User as UserIcon } from "lucide-react";
+import { Bell, Search, Sun, Moon, MonitorSmartphone, LogOut, Settings, LifeBuoy, Building2, Sparkles, Zap, User as UserIcon, Keyboard } from "lucide-react";
 import { navFor } from "@/app/nav";
 import { useUI, type ThemeWahl } from "@/store/ui";
 import { useKanzlei, useSession } from "@/store/session";
@@ -11,6 +11,25 @@ import { AppIcon } from "@/components/Logo";
 import { ApexIsland } from "./ApexIsland";
 import { cn } from "@/lib/cn";
 import { useAiStatus } from "@/ai/status";
+import { rollenLabel } from "@/lib/rollen";
+
+/** Im Prototyp sind beA, E-Mail und Bank simuliert – einheitlicher Wortlaut mit Posteingang, Bankabgleich und Systemstatus. */
+import { SIMULIERT_STATUS } from "@/lib/betriebsstatus";
+export { SIMULIERT_STATUS };
+
+/** Kopfleiste wird deckend, sobald Inhalt darunter durchläuft (kein Text schimmert durch). */
+function useGescrollt(): boolean {
+  const [gescrollt, setGescrollt] = useState(false);
+  useEffect(() => {
+    const el = document.getElementById("haupt-scroll");
+    if (!el) return;
+    const pruefe = () => setGescrollt(el.scrollTop > 4);
+    pruefe();
+    el.addEventListener("scroll", pruefe, { passive: true });
+    return () => el.removeEventListener("scroll", pruefe);
+  }, []);
+  return gescrollt;
+}
 
 const THEME_ICON: Record<ThemeWahl, React.ReactNode> = {
   system: <MonitorSmartphone className="size-[18px]" />,
@@ -22,7 +41,8 @@ export function TopBar() {
   const loc = useLocation();
   const nav = useNavigate();
   const item = navFor(loc.pathname);
-  const { theme, setTheme, setPalette } = useUI();
+  const { theme, setTheme, setPalette, setKuerzel } = useUI();
+  const gescrollt = useGescrollt();
   const { user, tenant } = useKanzlei();
   const logout = useSession((s) => s.logout);
   const clear = useData((s) => s.clear);
@@ -54,8 +74,8 @@ export function TopBar() {
   };
 
   return (
-    <header className="sticky top-0 z-40 px-3 pt-[max(12px,env(safe-area-inset-top))] md:px-5">
-      <div className="glass flex h-14 items-center gap-2 rounded-[22px] pl-3 pr-2 md:pl-4">
+    <header className={cn("kopfleiste sticky top-0 z-40 px-3 pt-[max(12px,env(safe-area-inset-top))] md:px-5", gescrollt && "kopfleiste-gescrollt")}>
+      <div className={cn("glass flex h-14 items-center gap-2 rounded-[22px] pl-3 pr-2 md:pl-4", gescrollt && "glass-deckend")}>
         {/* Mobil: App-Icon + Seitentitel */}
         <div className="flex min-w-0 items-center gap-2.5 md:hidden">
           <AppIcon size={30} />
@@ -88,15 +108,13 @@ export function TopBar() {
         <button
           type="button"
           onClick={() => nav("/hilfe#status")}
-          className="hidden h-8 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium text-fg-3 hover:bg-ink-softer xl:inline-flex"
-          title="Systemstatus: beA, E-Mail, Bank und KI – alle Dienste verbunden"
+          className="hidden h-8 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-medium text-fg-3 hover:bg-ink-softer xl:inline-flex"
+          title={`Systemstatus öffnen – ${SIMULIERT_STATUS}`}
+          aria-label={`Systemstatus: simuliert verbunden – ${SIMULIERT_STATUS}. Systemstatus öffnen`}
         >
-          <span className="relative flex size-2">
-            <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--green)] opacity-50 [animation-duration:2.4s]" />
-            <span className="relative inline-flex size-2 rounded-full bg-[var(--green)]" />
-          </span>
-          <span className="2xl:hidden">Verbunden</span>
-          <span className="hidden 2xl:inline">Alle Dienste verbunden</span>
+          <span className="relative inline-flex size-2 rounded-full bg-[var(--amber)]" aria-hidden />
+          <span className="2xl:hidden">Simuliert verbunden</span>
+          <span className="hidden 2xl:inline">{SIMULIERT_STATUS}</span>
         </button>
 
         <Menu
@@ -119,7 +137,7 @@ export function TopBar() {
               label: (
                 <span className="block max-w-[280px]">
                   <span className="line-clamp-2 text-[13px] leading-snug">{m.text}</span>
-                  <span className="text-[11px] text-fg-4">
+                  <span className="text-[12.5px] text-fg-3">
                     {relTime(m.zeit)}
                     {m.minutenGespart ? ` · ${m.minutenGespart} Min. gespart` : ""}
                   </span>
@@ -141,18 +159,20 @@ export function TopBar() {
           trigger={({ toggle }) => (
             <button type="button" onClick={toggle} className="ml-0.5 flex shrink-0 items-center gap-2 rounded-full p-0.5 pr-0.5 transition-colors hover:bg-ink-softer xl:pr-3" aria-label="Benutzermenü">
               <Avatar initialen={user.initialen} farbe={user.farbe} size={34} />
-              <span className="hidden text-left leading-tight xl:block">
+              <span className="kopf-optional hidden text-left leading-tight xl:block">
                 <span className="block max-w-[150px] truncate text-[13px] font-semibold">{user.name}</span>
-                <span className={cn("block text-[11px]", ai.quelle === "demo" ? "text-fg-3" : "text-green")}>{ai.label}</span>
+                <span className={cn("block text-[12.5px]", ai.quelle === "demo" ? "text-fg-3" : "text-green")}>{ai.label}</span>
               </span>
             </button>
           )}
           items={[
-            { label: <span className="block"><span className="block font-semibold">{user.name}</span><span className="text-[12px] text-fg-3">{user.titel}</span></span>, icon: <UserIcon />, onClick: () => nav("/einstellungen") },
+            { label: <span className="block"><span className="block font-semibold">{user.name}</span><span className="text-[12.5px] text-fg-3">{rollenLabel(user)}</span></span>, icon: <UserIcon />, onClick: () => nav("/einstellungen?tab=team") },
             { label: tenant.name, icon: <Building2 />, onClick: () => nav("/einstellungen") },
             "sep",
             { label: "Einstellungen", icon: <Settings />, onClick: () => nav("/einstellungen") },
             { label: "Hilfe & Support", icon: <LifeBuoy />, onClick: () => nav("/hilfe") },
+            { label: "Apex Assistent öffnen", icon: <Sparkles />, onClick: () => useUI.getState().oeffneAssistent() },
+            { label: "Tastaturkürzel (?)", icon: <Keyboard />, onClick: () => setKuerzel(true) },
             { label: `Darstellung: ${theme === "system" ? "System" : theme === "light" ? "Hell" : "Dunkel"}`, icon: THEME_ICON[theme], onClick: () => setTheme(naechstesTheme) },
             "sep",
             {

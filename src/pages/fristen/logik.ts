@@ -1,8 +1,8 @@
 // Gemeinsame Fristen-Helfer für Fristenkalender und Posteingang (Anlegen, Erledigen, Vier-Augen-Kontrolle, Darstellung).
-import { addDays, addMonthsBGB, fromISO, nowLocal, today, uid, weekday } from "@/core/dates";
+import { addDays, addMonthsBGB, fmtDate, fmtTime, fromISO, nowLocal, today, uid, weekday } from "@/core/dates";
 import type { Einheit } from "@/core/fristen";
 import { useData } from "@/store/data";
-import type { Frist, FristTyp, ID, ISODate } from "@/core/types";
+import type { Frist, FristTyp, ID, ISODate, Nachricht, User } from "@/core/types";
 import type { Tone } from "@/components/ui";
 
 export interface TypMeta {
@@ -183,23 +183,76 @@ export function vorfristenZu(f: Frist, alle: Frist[]): Frist[] {
   return alle.filter((x) => x.typ === "vorfrist" && x.akteId === f.akteId && (x.bezugId ? x.bezugId === f.id : x.titel === `Vorfrist: ${f.titel}`));
 }
 
-/** Erledigt eine Frist (inkl. offener Vorfrist) und protokolliert es. */
-export function erledigeFrist(f: Frist, userId: ID): void {
+/** Vom Apex Assistenten angelegt (Notiz-Präfix) – Etikett „Durch Assistent angelegt“ statt „Von KI erkannt“. */
+export const ASSISTENT_PRAEFIX = "Vom Apex Assistenten angelegt";
+export function durchAssistent(f: Pick<Frist, "notiz">): boolean {
+  return !!f.notiz?.startsWith(ASSISTENT_PRAEFIX);
+}
+
+// ───────────────────────── Ausgangskontrolle: Erledigen nur mit Nachweis oder Grund ─────────────────────────
+
+export type Nachweis = NonNullable<Frist["erledigtNachweis"]>;
+
+export const NACHWEIS_ART: Record<Nachweis["art"], string> = {
+  bea: "beA-Versand",
+  fax: "Telefax (Sendebericht)",
+  bote: "Bote",
+  post: "Post",
+  persoenlich: "persönlich übergeben",
+  gestrichen: "gestrichen/gegenstandslos",
+  sonstiges: "sonstiger Nachweis",
+};
+
+/** Notfristen und Fristen brauchen beim Erledigen einen Nachweis (Ausgangskontrolle) – Wiedervorlagen, Vorfristen und Termine nicht. */
+export function erfordertNachweis(f: Pick<Frist, "typ">): boolean {
+  return f.typ === "notfrist" || f.typ === "frist";
+}
+
+/** „versandt – Nachweis: beA 16:42 Uhr (Dr. Hartmann)“, „gestrichen – weil …“, „erledigt – ohne Nachweis“ */
+export function nachweisText(f: Frist, team: User[], nachrichten: Nachricht[] = []): string {
+  const n = f.erledigtNachweis;
+  const wer = team.find((u) => u.id === f.erledigtVon)?.name;
+  const zeit = f.erledigtAm ? `${fmtTime(f.erledigtAm)} Uhr` : "";
+  if (!n) return `erledigt – ohne Nachweis${wer ? ` (${wer})` : ""}`;
+  if (n.art === "gestrichen") return `gestrichen – ${n.text ?? "ohne Grund"}${wer ? ` (${wer})` : ""}`;
+  const msg = n.nachrichtId ? nachrichten.find((m) => m.id === n.nachrichtId) : undefined;
+  const wann = msg ? `${fmtTime(msg.eingang)} Uhr` : zeit;
+  const art = n.art === "bea" ? "beA" : NACHWEIS_ART[n.art];
+  return `versandt – Nachweis: ${art}${wann ? ` ${wann}` : ""}${n.text ? ` · ${n.text}` : ""}${wer ? ` (${wer})` : ""}`;
+}
+
+/** Erledigt eine Frist (inkl. offener Vorfrist) und protokolliert es – bei Notfristen und Fristen mit Nachweis bzw. Grund. */
+export function erledigeFrist(f: Frist, userId: ID, nachweis?: Nachweis): void {
   const { patch, log, data } = useData.getState();
   const jetzt = nowLocal();
-  patch("fristen", f.id, { status: "erledigt", erledigtAm: jetzt, erledigtVon: userId });
+  patch("fristen", f.id, { status: "erledigt", erledigtAm: jetzt, erledigtVon: userId, ...(nachweis ? { erledigtNachweis: nachweis } : {}) });
   for (const v of vorfristenZu(f, data.fristen)) if (v.status === "offen") patch("fristen", v.id, { status: "erledigt", erledigtAm: jetzt, erledigtVon: userId });
-  log({ akteur: "nutzer", userId, akteId: f.akteId, text: `${TYP_META[f.typ].label} „${f.titel}“ als erledigt markiert` });
+  const was = nachweis
+    ? nachweis.art === "gestrichen"
+      ? ` gestrichen – Grund: ${nachweis.text ?? "–"}`
+      : ` als erledigt markiert – gewahrt per ${NACHWEIS_ART[nachweis.art]}${nachweis.nachrichtId ? ` (${data.nachrichten.find((m) => m.id === nachweis.nachrichtId)?.betreff ?? "beA-Nachricht"})` : ""}${nachweis.text ? `: ${nachweis.text}` : ""}`
+    : " als erledigt markiert";
+  const kontrolle = nachweis?.kontrolleOffenBestaetigt ? " · Vier-Augen-Kontrolle stand noch aus – trotzdem erledigt (bestätigt)" : "";
+  log({ akteur: "nutzer", userId, akteId: f.akteId, text: `${TYP_META[f.typ].label} „${f.titel}“ (${fmtDate(f.datum)})${was}${kontrolle}` });
+}
+
+/** Streicht einen Eintrag (Frist oder Wiedervorlage) mit Pflichtgrund – protokolliert. */
+export function streicheFrist(f: Frist, userId: ID, grund: string, kontrolleOffenBestaetigt?: boolean): void {
+  erledigeFrist(f, userId, { art: "gestrichen", text: grund.trim(), ...(kontrolleOffenBestaetigt ? { kontrolleOffenBestaetigt: true } : {}) });
 }
 
 /**
  * Macht „Erledigt“ rückgängig – inklusive Vorfrist: Eine noch bevorstehende Vorfrist wird immer mit geöffnet
  * (die Erinnerung darf nicht verloren gehen), eine vergangene nur, wenn sie zusammen mit der Frist erledigt wurde.
  */
-export function oeffneFristWieder(f: Frist, heute: ISODate = today()): void {
-  const { patch, data } = useData.getState();
-  const zeitpunkt = data.fristen.find((x) => x.id === f.id)?.erledigtAm;
-  patch("fristen", f.id, { status: "offen", erledigtAm: undefined, erledigtVon: undefined });
+export function oeffneFristWieder(f: Frist, heute: ISODate = today(), userId?: ID): void {
+  const { patch, data, log } = useData.getState();
+  const aktuell = data.fristen.find((x) => x.id === f.id);
+  const zeitpunkt = aktuell?.erledigtAm;
+  const vorher = aktuell?.erledigtNachweis;
+  patch("fristen", f.id, { status: "offen", erledigtAm: undefined, erledigtVon: undefined, erledigtNachweis: undefined });
+  // Wiederöffnen wird protokolliert (Ausgangskontrolle nachvollziehbar)
+  log({ akteur: "nutzer", userId, akteId: f.akteId, text: `${TYP_META[f.typ].label} „${f.titel}“ (${fmtDate(f.datum)}) wieder geöffnet${vorher ? ` – vorheriger Nachweis: ${NACHWEIS_ART[vorher.art]}${vorher.text ? ` (${vorher.text})` : ""}` : ""}` });
   for (const v of vorfristenZu(f, data.fristen)) {
     if (v.status !== "erledigt") continue;
     if (v.datum >= heute || (zeitpunkt && v.erledigtAm === zeitpunkt)) patch("fristen", v.id, { status: "offen", erledigtAm: undefined, erledigtVon: undefined });

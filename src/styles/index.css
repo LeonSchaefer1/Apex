@@ -40,9 +40,10 @@
   --surface-2: #f6f8fc;
   --fg: #0b1020; /* Robe */
   --fg-2: #39415a;
-  /* Kontrast (WCAG AA ≥ 4,5:1 auf Weiß, surface-2 und Arbeitsgrund): fg-3 ≈ 6,9:1, fg-4 ≈ 5,3:1 auf Weiß */
-  --fg-3: #525a72;
-  --fg-4: #636b82;
+  /* Kontrast (WCAG AA ≥ 4,5:1 auch auf dünnstem Glas über dem blauen Arbeitsgrund-Licht): fg-3 ≥ 5,6:1, fg-4 ≥ 4,9:1;
+     auf Weiß fg-3 ≈ 8,0:1, fg-4 ≈ 7,1:1 */
+  --fg-3: #4a5268;
+  --fg-4: #535b70;
   --line: rgba(16, 24, 48, 0.08);
   --line-strong: rgba(16, 24, 48, 0.15);
 
@@ -67,6 +68,10 @@
   --on-green: #ffffff; /* Schrift/Icons auf vollflächigem --green */
   --violet: #6d4bd8;
   --violet-soft: rgba(109, 75, 216, 0.1);
+  /* Schrift in Statuschips auf der zarten Tönung (≥ 4,5:1 auch über Glas): dunkler als die Signalfarbe */
+  --seal-text: #b01e2f;
+  --amber-text: #8a4f00;
+  --green-text: #0b6b47;
 
   /* KI-Schimmer (Iridescence) */
   --ai-1: #3d5cff;
@@ -118,8 +123,8 @@
     --surface-2: #121729;
     --fg: #f1f3fa;
     --fg-2: #bcc3d7;
-    --fg-3: #9aa2b9;
-    --fg-4: #8088a3;
+    --fg-3: #a3abc1;
+    --fg-4: #9098b0;
     --line: rgba(255, 255, 255, 0.075);
     --line-strong: rgba(255, 255, 255, 0.14);
     --ink: #5c7bff;
@@ -139,6 +144,9 @@
     --on-green: #04130c;
     --violet: #a78bfa;
     --violet-soft: rgba(167, 139, 250, 0.15);
+    --seal-text: #ff5a68;
+    --amber-text: #ffb547;
+    --green-text: #3ed79a;
     --glass: rgba(24, 29, 48, 0.5);
     --glass-strong: rgba(26, 31, 52, 0.76);
     --glass-thin: rgba(26, 31, 52, 0.32);
@@ -166,8 +174,8 @@
   --surface-2: #121729;
   --fg: #f1f3fa;
   --fg-2: #bcc3d7;
-  --fg-3: #9aa2b9;
-  --fg-4: #8088a3;
+  --fg-3: #a3abc1;
+  --fg-4: #9098b0;
   --line: rgba(255, 255, 255, 0.075);
   --line-strong: rgba(255, 255, 255, 0.14);
   --ink: #5c7bff;
@@ -187,6 +195,9 @@
   --on-green: #04130c;
   --violet: #a78bfa;
   --violet-soft: rgba(167, 139, 250, 0.15);
+  --seal-text: #ff5a68;
+  --amber-text: #ffb547;
+  --green-text: #3ed79a;
   --glass: rgba(24, 29, 48, 0.5);
   --glass-strong: rgba(26, 31, 52, 0.76);
   --glass-thin: rgba(26, 31, 52, 0.32);
@@ -399,6 +410,73 @@
   background: var(--glass-thin);
   -webkit-backdrop-filter: blur(14px) saturate(170%);
   backdrop-filter: blur(14px) saturate(170%);
+}
+/* Kopfleiste beim Scrollen: deckend (≥ 97 %), damit kein Inhalt durch Such- und Kopfleiste schimmert; der Rand darüber
+   bekommt einen ruhigen Verlauf aus dem Arbeitsgrund. */
+.glass-deckend {
+  background: linear-gradient(160deg, var(--glass-sheen) 0%, transparent 42%), color-mix(in oklab, var(--surface) 97%, transparent);
+}
+.kopfleiste::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 -10px 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s var(--ease-out);
+  background: linear-gradient(to bottom, var(--bg) 0%, color-mix(in oklab, var(--bg) 92%, transparent) 70%, transparent 100%);
+}
+.kopfleiste-gescrollt::before {
+  opacity: 1;
+}
+/* Tastaturfokus scrollt nie unter die Assistent-Kugel bzw. die Tab-Leiste (WCAG 2.4.11) */
+.haupt-scroll {
+  scroll-padding-top: 84px;
+  scroll-padding-bottom: 110px;
+}
+@media (max-width: 767px) {
+  .haupt-scroll {
+    scroll-padding-bottom: 96px;
+  }
+}
+/* Schriftgröße (Einstellungen → Darstellung): die Oberfläche nutzt px-Größen – zoom skaliert alles gleichmäßig */
+:root[data-schrift="112"] {
+  zoom: 1.12;
+}
+:root[data-schrift="125"] {
+  zoom: 1.25;
+}
+/* Mit größerer Schrift greifen die Breakpoints weiter auf die echte Fensterbreite – optionale Kopfleisten-Teile weichen. */
+@media (max-width: 1439px) {
+  :root[data-schrift="112"] .kopf-optional {
+    display: none !important;
+  }
+}
+@media (max-width: 1679px) {
+  :root[data-schrift="125"] .kopf-optional {
+    display: none !important;
+  }
+}
+/* Schmale Telefone mit großer Schrift: Tab-Leiste nur mit Symbolen (Text bleibt für Screenreader erhalten). */
+@media (max-width: 480px) {
+  :root[data-schrift="125"] .tab-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+@media (max-width: 380px) {
+  :root[data-schrift="112"] .tab-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 /* Popover-Menüs liegen meist in einem Glas-Container (Kopfleiste, Karten). Dort kann ihr backdrop-filter den
    Seiteninhalt nicht weichzeichnen – Chromium zeigt ihn bei jedem teiltransparenten Hintergrund sogar scharf durch.
@@ -719,7 +797,8 @@ select.field {
   height: 22px;
   padding-inline: 8px;
   border-radius: 999px;
-  font-size: 11.5px;
+  /* Mindestgröße für Status- und Metaangaben (A-08): 12 px */
+  font-size: 12px;
   font-weight: 560;
   white-space: nowrap;
   background: var(--ink-softer);
@@ -731,15 +810,15 @@ select.field {
 }
 .chip-seal {
   background: var(--seal-soft);
-  color: var(--seal);
+  color: var(--seal-text);
 }
 .chip-amber {
   background: var(--amber-soft);
-  color: var(--amber);
+  color: var(--amber-text);
 }
 .chip-green {
   background: var(--green-soft);
-  color: var(--green);
+  color: var(--green-text);
 }
 .chip-violet {
   background: var(--violet-soft);
@@ -760,12 +839,12 @@ select.field {
 .kbd {
   display: inline-grid;
   place-items: center;
-  min-width: 20px;
-  height: 20px;
+  min-width: 22px;
+  height: 22px;
   padding-inline: 5px;
   border-radius: 6px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12.5px;
   color: var(--fg-3);
   background: var(--ink-softer);
   box-shadow: 0 0 0 1px var(--line) inset;
@@ -780,9 +859,9 @@ select.field {
   font-variant-numeric: tabular-nums;
 }
 .eyebrow {
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 620;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--fg-3);
 }

@@ -84,7 +84,7 @@ export function KiStatusKarte() {
                   </Chip>
                 )}
                 {live && (
-                  <span className="mono inline-flex items-center gap-1 text-[11.5px] text-fg-3">
+                  <span className="mono inline-flex items-center gap-1 text-[12.5px] text-fg-3">
                     <Cpu className="size-3.5" />
                     {modell ?? "Claude"}
                   </span>
@@ -117,7 +117,17 @@ export function KiStatusKarte() {
         <div className="grid gap-3">
           <div className="grid grid-cols-3 gap-2">
             <Kennzahl icon={<Zap className="size-3.5" />} label="KI-Vorgänge" sub="letzte 7 Tage" wert={<AnimatedNumber value={kennzahlen.vorgaenge} />} />
-            <Kennzahl icon={<Clock className="size-3.5" />} label="KI gespart" sub="letzte 7 Tage" wert={<AnimatedNumber value={kennzahlen.stunden} format={(n) => `${fmtNum(n, 1)} Std.`} />} />
+            <Kennzahl
+              icon={<Clock className="size-3.5" />}
+              label="KI gespart"
+              sub={
+                <Chip tone="amber" className="!h-5 !px-1.5" title="Beispielwerte aus den Demodaten – im Echtbetrieb zählt AnwaltApex Ihre eigenen Vorgänge">
+                  Beispielwerte
+                </Chip>
+              }
+              title="So rechnen wir: je Vorgangsart fester Minutenwert, je Akte und Vorgang nur einmal gezählt (letzte 7 Tage)"
+              wert={<AnimatedNumber value={kennzahlen.stunden} format={(n) => `${fmtNum(n, 1)} Std.`} />}
+            />
             <Kennzahl
               icon={<UserCheck className="size-3.5" />}
               label="Geprüft"
@@ -131,11 +141,17 @@ export function KiStatusKarte() {
               wert={
                 <span className="num">
                   <AnimatedNumber value={kennzahlen.kontrolliert} />
-                  <span className="text-fg-4">/{kennzahlen.kiFristen}</span>
+                  <span className="text-fg-3">/{kennzahlen.kiFristen}</span>
                 </span>
               }
             />
           </div>
+          <p className="flex max-w-[440px] items-start gap-1.5 text-[12.5px] leading-snug text-fg-3">
+            <Clock className="mt-0.5 size-3.5 shrink-0" />
+            <span>
+              <span className="font-medium text-fg-2">So rechnen wir:</span> je Vorgangsart fester Minutenwert, je Akte und Vorgang nur einmal gezählt · letzte 7 Tage.
+            </span>
+          </p>
           {liveMoeglich && (
             <label className="flex items-center justify-between gap-3 rounded-[14px] bg-[var(--ink-softer)] px-3 py-2 text-[12.5px] text-fg-2">
               <span>{DEMO_KI_NAME} verwenden</span>
@@ -151,15 +167,15 @@ export function KiStatusKarte() {
 function Kennzahl({ icon, label, sub, wert, to, title }: { icon: React.ReactNode; label: string; sub: React.ReactNode; wert: React.ReactNode; to?: string; title?: string }) {
   const inhalt = (
     <>
-      <div className="flex items-center gap-1.5 text-[11.5px] font-medium text-fg-3">
+      <div className="flex items-center gap-1.5 text-[12.5px] font-medium text-fg-3">
         <span className="hidden text-violet min-[400px]:inline">{icon}</span>
-        <span className="truncate">{label}</span>
+        <span className="min-w-0 break-words">{label}</span>
       </div>
       <div className="mt-1 text-[20px] font-semibold leading-none tracking-[-0.02em]">{wert}</div>
-      <div className="mt-1 truncate text-[10.5px] text-fg-4">{sub}</div>
+      <div className="mt-1 text-[12.5px] leading-snug text-fg-3">{sub}</div>
     </>
   );
-  const klasse = "block min-w-0 rounded-[16px] bg-[var(--surface)]/70 px-3 py-2.5 ring-1 ring-[var(--line)] lg:w-[132px]";
+  const klasse = "block min-w-0 rounded-[16px] bg-[var(--surface)]/70 px-3 py-2.5 ring-1 ring-[var(--line)] lg:w-[140px]";
   return to ? (
     <Link to={to} title={title} className={cn(klasse, "transition-colors hover:bg-ink-softer hover:ring-[var(--line-strong)]")}>
       {inhalt}

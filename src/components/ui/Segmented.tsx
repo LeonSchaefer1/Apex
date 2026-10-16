@@ -9,11 +9,22 @@ export interface SegOption<T extends string> {
   count?: number;
 }
 
-/** Segmentierte Auswahl mit gleitendem Glas-Indikator. */
-export function Segmented<T extends string>({ options, value, onChange, size = "md", className, full }: { options: SegOption<T>[]; value: T; onChange: (v: T) => void; size?: "sm" | "md"; className?: string; full?: boolean }) {
+/**
+ * Segmentierte Auswahl mit gleitendem Glas-Indikator. `wrap`: Segmente brechen bei schmalen Breiten (360 px) in eine
+ * zweite Zeile um, statt seitlich zu scrollen bzw. abgeschnitten zu werden.
+ */
+export function Segmented<T extends string>({ options, value, onChange, size = "md", className, full, wrap }: { options: SegOption<T>[]; value: T; onChange: (v: T) => void; size?: "sm" | "md"; className?: string; full?: boolean; wrap?: boolean }) {
   const id = useId();
   return (
-    <div role="tablist" className={cn("relative inline-flex max-w-full items-center gap-0.5 overflow-x-auto rounded-full bg-[var(--ink-softer)] p-1 no-scrollbar shadow-[inset_0_0_0_1px_var(--line)]", full && "flex w-full", className)}>
+    <div
+      role="tablist"
+      className={cn(
+        "relative inline-flex max-w-full items-center gap-0.5 bg-[var(--ink-softer)] p-1 shadow-[inset_0_0_0_1px_var(--line)]",
+        wrap ? "flex-wrap rounded-[18px]" : "overflow-x-auto rounded-full no-scrollbar",
+        full && "flex w-full",
+        className,
+      )}
+    >
       {options.map((o) => {
         const active = o.value === value;
         return (
@@ -25,7 +36,8 @@ export function Segmented<T extends string>({ options, value, onChange, size = "
             onClick={() => onChange(o.value)}
             className={cn(
               "relative z-0 inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full font-medium transition-colors",
-              size === "sm" ? "h-7 px-3 text-[12px]" : "h-8 px-3.5 text-[13px]",
+              // Trefferfläche mindestens 24 × 24 px (WCAG 2.5.8), auch bei kurzen Beschriftungen
+              size === "sm" ? "h-7 min-w-7 px-3 text-[12.5px]" : "h-8 min-w-8 px-3.5 text-[13px]",
               full && "flex-1",
               active ? "text-fg" : "text-fg-3 hover:text-fg-2",
             )}
@@ -39,7 +51,7 @@ export function Segmented<T extends string>({ options, value, onChange, size = "
             )}
             {o.icon}
             {o.label}
-            {o.count !== undefined && <span className={cn("num rounded-full px-1.5 text-[10.5px]", active ? "bg-ink-soft text-ink" : "bg-[var(--line)] text-fg-3")}>{o.count}</span>}
+            {o.count !== undefined && <span className={cn("num rounded-full px-1.5 text-[12px]", active ? "bg-ink-soft text-ink" : "bg-[var(--line)] text-fg-3")}>{o.count}</span>}
           </button>
         );
       })}

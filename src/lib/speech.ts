@@ -39,8 +39,13 @@ function eingebettet(): boolean {
   }
 }
 
-/** Ohne Lebenszeichen (onstart/onaudiostart) gilt die Spracheingabe als nicht verfügbar – z. B. in einer Sandbox ohne Mikrofon. */
-const WACHHUND_MS = 4000;
+/**
+ * Ohne Lebenszeichen des Mikrofons (onaudiostart bzw. erkannte Sprache) gilt die Spracheingabe nach 3 s als nicht verfügbar –
+ * z. B. ohne Mikrofon oder ohne Freigabe. „onstart“ allein zählt nicht: Der Dienst startet auch ohne Mikrofon.
+ */
+const WACHHUND_MS = 3000;
+/** Einheitliche Meldung ohne Mikrofon bzw. Freigabe – mit nächstem Schritt. */
+export const KEIN_MIKROFON = "Kein Mikrofon gefunden oder Zugriff verweigert. Bitte tippen Sie Ihre Frage – oder erlauben Sie das Mikrofon in der Adressleiste.";
 /** Steht die Browser-Abfrage zur Mikrofonfreigabe noch aus, bekommt die Nutzerin mehr Zeit zum Bestätigen. */
 const WACHHUND_ABFRAGE_MS = 10000;
 const NICHT_VERFUEGBAR = "Spracheingabe ist in dieser Ansicht nicht verfügbar – bitte tippen Sie Ihre Frage.";
@@ -90,7 +95,7 @@ export function hoeren(cb: { onInterim: (t: string) => void; onFinal: (t: string
     cb.onFehler(msg, true);
     ende();
   };
-  const wachhundStellen = (ms: number, msg = NICHT_VERFUEGBAR) => {
+  const wachhundStellen = (ms: number, msg = KEIN_MIKROFON) => {
     clearTimeout(wachhund);
     wachhund = setTimeout(() => {
       if (gestartet || beendet) return;
@@ -104,7 +109,7 @@ export function hoeren(cb: { onInterim: (t: string) => void; onFinal: (t: string
     clearTimeout(wachhund);
   };
 
-  rec.onstart = lebt;
+  rec.onstart = () => {};
   rec.onaudiostart = lebt;
   rec.onresult = (e) => {
     lebt();
@@ -119,16 +124,12 @@ export function hoeren(cb: { onInterim: (t: string) => void; onFinal: (t: string
   rec.onerror = (e) => {
     if (beendet) return;
     if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-      sperren(
-        e.error === "service-not-allowed" || eingebettet()
-          ? NICHT_VERFUEGBAR
-          : "Mikrofon nicht freigegeben – bitte tippen Sie Ihre Frage. Den Zugriff können Sie in den Browser-Einstellungen erlauben.",
-      );
+      sperren(e.error === "service-not-allowed" || eingebettet() ? NICHT_VERFUEGBAR : KEIN_MIKROFON);
       return;
     }
     const map: Record<string, string> = {
-      "no-speech": "Ich habe nichts gehört – bitte noch einmal versuchen.",
-      "audio-capture": "Kein Mikrofon gefunden – bitte tippen Sie Ihre Frage.",
+      "no-speech": "Ich habe nichts gehört – bitte noch einmal sprechen oder die Frage tippen.",
+      "audio-capture": KEIN_MIKROFON,
       network: "Die Spracherkennung ist gerade nicht erreichbar – bitte tippen Sie Ihre Frage.",
     };
     if (e.error !== "aborted") cb.onFehler(map[e.error] ?? "Spracheingabe fehlgeschlagen.");
@@ -140,7 +141,7 @@ export function hoeren(cb: { onInterim: (t: string) => void; onFinal: (t: string
   try {
     rec.start();
   } catch {
-    cb.onFehler("Spracheingabe konnte nicht gestartet werden.");
+    cb.onFehler("Die Spracheingabe konnte nicht gestartet werden. Bitte tippen Sie Ihre Frage.");
     ende();
     return () => {};
   }
@@ -152,8 +153,14 @@ export function hoeren(cb: { onInterim: (t: string) => void; onFinal: (t: string
       ?.query({ name: "microphone" as PermissionName })
       .then((p) => {
         if (beendet || gestartet) return;
-        if (p.state === "denied") sperren(eingebettet() ? NICHT_VERFUEGBAR : "Mikrofon blockiert – bitte tippen Sie Ihre Frage. Den Zugriff können Sie in den Browser-Einstellungen erlauben.");
-        else if (p.state === "prompt") wachhundStellen(WACHHUND_ABFRAGE_MS, "Keine Mikrofonfreigabe erhalten – bitte tippen Sie Ihre Frage oder versuchen Sie es erneut.");
+        if (p.state === "denied") sperren(eingebettet() ? NICHT_VERFUEGBAR : KEIN_MIKROFON);
+        else if (p.state === "prompt") {
+          // Freigabe-Abfrage offen: nach 3 s den Hinweis zeigen, aber noch bis 10 s auf die Freigabe warten
+          wachhundStellen(WACHHUND_ABFRAGE_MS);
+          setTimeout(() => {
+            if (!beendet && !gestartet) cb.onFehler(KEIN_MIKROFON);
+          }, WACHHUND_MS);
+        }
       })
       .catch(() => {});
   } catch {

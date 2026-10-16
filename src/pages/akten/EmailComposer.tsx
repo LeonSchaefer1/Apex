@@ -11,6 +11,26 @@ import { Button, Chip, Drawer, Field, Input, Select, Switch, Textarea } from "@/
 import { cn } from "@/lib/cn";
 import { KontaktAvatar } from "@/pages/kontakte/kontaktHelfer";
 import { beruehreAkte, useKontaktMap } from "./helfer";
+import { DiktatKnopf } from "./Diktat";
+
+/** Betreff nach Empfängerrolle: Mandant „Ihre Angelegenheit …“, Gericht/Gegenanwalt/Versicherung mit „Ihr Zeichen/Unser Zeichen“. */
+export function betreffFuer(rolle: string | undefined, akte: Akte): string {
+  const kurz = akte.titel.replace(/\s*\([^)]*\)\s*/g, " ").trim();
+  switch (rolle) {
+    case "Mandant":
+      return `Ihre Angelegenheit ${kurz} – unser Zeichen ${akte.aktenzeichen}`;
+    case "Gericht":
+      return akte.gerichtsAz ? `Ihr Zeichen ${akte.gerichtsAz} / Unser Zeichen ${akte.aktenzeichen} – ${kurz}` : `Unser Zeichen ${akte.aktenzeichen} – ${kurz}`;
+    case "Gegneranwalt":
+      return `Ihr Zeichen/Unser Zeichen ${akte.aktenzeichen} – ${kurz}`;
+    case "Versicherung": {
+      const ihr = akte.rsv?.schadennummer ?? akte.rsv?.versicherungsnummer;
+      return `${ihr ? `Ihr Zeichen ${ihr} / ` : ""}Unser Zeichen ${akte.aktenzeichen} – ${kurz}`;
+    }
+    default:
+      return `Unser Zeichen ${akte.aktenzeichen} – ${kurz}`;
+  }
+}
 
 function anrede(k?: Kontakt): string {
   if (!k) return "Sehr geehrte Damen und Herren,";
@@ -60,7 +80,7 @@ export function EmailComposer({ akte, open, onClose, onGesendet }: { akte: Akte;
     const m = kontakte.get(akte.mandantId);
     setKontaktId(m?.id);
     setAn(m?.email ?? "");
-    setBetreff(`Ihr Zeichen/Unser Zeichen ${akte.aktenzeichen} – ${akte.titel}`);
+    setBetreff(betreffFuer("Mandant", akte));
     setText(brief(m));
     setBea(false);
     setAnhaenge([]);
@@ -68,8 +88,12 @@ export function EmailComposer({ akte, open, onClose, onGesendet }: { akte: Akte;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, akte.id]);
 
+  const rolleVon = (id?: string) => empfaenger.find((e) => e.k.id === id)?.rolle;
   const waehle = (k: Kontakt, alsBea = bea) => {
     const vorher = kontakte.get(kontaktId ?? "");
+    // Betreff passend zur Empfängerrolle – nur, solange er nicht von Hand geändert wurde
+    const alt = betreffFuer(rolleVon(kontaktId), akte);
+    setBetreff((b) => (b === alt || !b.trim() ? betreffFuer(rolleVon(k.id), akte) : b));
     setKontaktId(k.id);
     setAn(alsBea ? k.safeId ?? k.name : k.email ?? "");
     // Anrede austauschen, wenn der Text noch mit der alten Anrede beginnt
@@ -101,13 +125,13 @@ export function EmailComposer({ akte, open, onClose, onGesendet }: { akte: Akte;
       const anhangDoks = doks.filter((d) => anhaenge.includes(d.id));
       const n: Nachricht = {
         id: uid("n"), kanal, richtung: "aus", von: user.name, vonAdresse: user.email, an: gewaehlt?.name ?? an.trim(), betreff: betreff.trim(), text: text.trim(),
-        eingang: jetzt, akteId: akte.id, anhaenge: anhangDoks.map((d) => ({ name: `${d.name}.${d.format}`, groesseKb: d.groesseKb })), status: "erledigt", zugeordnet: true,
+        eingang: jetzt, akteId: akte.id, anhaenge: anhangDoks.map((d) => ({ name: `${d.name} (Version ${d.version}).${d.format}`, groesseKb: d.groesseKb })), status: "erledigt", zugeordnet: true,
       };
       st.upsert("nachrichten", n);
       const dok: Dokument = {
         id: uid("d"), akteId: akte.id, name: betreff.trim(), art: bea ? "bea" : "email", ordner: "Korrespondenz", format: "eml",
         groesseKb: Math.max(2, Math.round(text.length / 900) + anhangDoks.reduce((s, d) => s + d.groesseKb, 0)), seiten: 1,
-        inhalt: `Von: ${user.name} <${user.email}>\nAn: ${gewaehlt?.name ?? ""} <${an.trim()}>\nBetreff: ${betreff.trim()}\nGesendet: ${new Date().toLocaleString("de-DE")}${bea ? "\nÜbermittlungsweg: beA (sicherer Übermittlungsweg nach § 130a Abs. 4 ZPO)" : ""}${anhangDoks.length ? `\nAnlagen: ${anhangDoks.map((d) => d.name).join(", ")}` : ""}\n\n${text.trim()}`,
+        inhalt: `Von: ${user.name} <${user.email}>\nAn: ${gewaehlt?.name ?? ""} <${an.trim()}>\nBetreff: ${betreff.trim()}\nGesendet: ${new Date().toLocaleString("de-DE")}${bea ? "\nÜbermittlungsweg: beA (sicherer Übermittlungsweg nach § 130a Abs. 4 ZPO)" : ""}${anhangDoks.length ? `\nAnlagen: ${anhangDoks.map((d) => `${d.name} (Version ${d.version})`).join(", ")}` : ""}\n\n${text.trim()}`,
         quelle: bea ? "bea" : "email", autorId: user.id, version: 1, createdAt: jetzt,
       };
       st.upsert("dokumente", dok);
@@ -149,7 +173,7 @@ export function EmailComposer({ akte, open, onClose, onGesendet }: { akte: Akte;
             </span>
             <div className="min-w-0 flex-1">
               <div className="text-[13.5px] font-semibold">Als beA-Nachricht senden</div>
-              <div className="text-[12px] text-fg-3">Sicherer Übermittlungsweg an {beaZiele.map((e) => e.rolle).join(" oder ")}</div>
+              <div className="text-[12.5px] text-fg-3">Sicherer Übermittlungsweg an {beaZiele.map((e) => e.rolle).join(" oder ")}</div>
             </div>
             <Switch id="mail-bea" checked={bea} onChange={setzeBea} label="Als beA-Nachricht senden" />
           </div>
@@ -175,8 +199,8 @@ export function EmailComposer({ akte, open, onClose, onGesendet }: { akte: Akte;
                 >
                   {aktiv && <motion.span layoutId="mail-empf" transition={{ type: "spring", stiffness: 520, damping: 38 }} className="absolute inset-0 rounded-full bg-[var(--surface)] shadow-[0_0_0_1.5px_var(--ink)]" />}
                   <KontaktAvatar k={k} size={26} className="relative" />
-                  <span className="relative max-w-[180px] truncate">{k.name}</span>
-                  <span className="relative text-[11px] text-fg-4">{rolle}</span>
+                  <span className="relative max-w-[220px] truncate" title={k.name}>{k.name}</span>
+                  <span className="relative text-[12px] text-fg-3">{rolle}</span>
                 </button>
               );
             })}
@@ -185,7 +209,7 @@ export function EmailComposer({ akte, open, onClose, onGesendet }: { akte: Akte;
 
         <Field label={bea ? "An (beA SAFE-ID)" : "An"} htmlFor="mail-an" hint={!emailOk && an ? <span className="text-seal">Bitte eine gültige E-Mail-Adresse eingeben.</span> : undefined}>
           <div className="relative">
-            <AtSign className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-fg-4" />
+            <AtSign className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-fg-3" />
             <Input id="mail-an" value={an} onChange={(e) => setAn(e.target.value)} className={cn("!pl-10", bea && "mono text-[13px]")} placeholder={bea ? "DE.Justiz…" : "name@beispiel.de"} />
           </div>
         </Field>
@@ -194,6 +218,19 @@ export function EmailComposer({ akte, open, onClose, onGesendet }: { akte: Akte;
         </Field>
         <Field label="Nachricht" htmlFor="mail-text">
           <Textarea id="mail-text" rows={12} value={text} onChange={(e) => setText(e.target.value)} className="leading-relaxed" />
+          <div className="mt-1.5">
+            <DiktatKnopf
+              onText={(t) =>
+                setText((v) => {
+                  // Diktat vor der Grußformel einfügen
+                  const i = v.indexOf("Mit freundlichen Grüßen");
+                  if (i < 0) return v.trim() ? `${v.trimEnd()} ${t}` : t;
+                  const vor = v.slice(0, i).trimEnd();
+                  return `${vor}${vor.endsWith(",") ? "\n\n" : " "}${t}\n\n${v.slice(i)}`;
+                })
+              }
+            />
+          </div>
         </Field>
 
         <div>
@@ -210,7 +247,7 @@ export function EmailComposer({ akte, open, onClose, onGesendet }: { akte: Akte;
                 <option value="">Dokument anhängen …</option>
                 {doks.filter((d) => !anhaenge.includes(d.id)).map((d) => (
                   <option key={d.id} value={d.id}>
-                    {d.name}
+                    {d.name} (Version {d.version})
                   </option>
                 ))}
               </Select>
@@ -224,7 +261,9 @@ export function EmailComposer({ akte, open, onClose, onGesendet }: { akte: Akte;
                 return (
                   <motion.span key={id} layout initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}>
                     <Chip tone="ink" icon={<Paperclip className="size-3" />}>
-                      <span className="max-w-[200px] truncate">{d.name}</span>
+                      <span className="max-w-[240px] truncate" title={`${d.name} (Version ${d.version})`}>
+                        {d.name} · Version {d.version}
+                      </span>
                       <button type="button" aria-label={`${d.name} entfernen`} onClick={() => setAnhaenge((a) => a.filter((x) => x !== id))} className="-mr-1 grid grid-cols-1 size-4 place-items-center rounded-full hover:bg-ink-soft">
                         <X className="size-3" />
                       </button>
@@ -233,7 +272,7 @@ export function EmailComposer({ akte, open, onClose, onGesendet }: { akte: Akte;
                 );
               })}
             </AnimatePresence>
-            {anhaenge.length === 0 && <span className="text-[12.5px] text-fg-4">Keine Anlagen.</span>}
+            {anhaenge.length === 0 && <span className="text-[12.5px] text-fg-3">Keine Anlagen.</span>}
           </div>
         </div>
       </div>

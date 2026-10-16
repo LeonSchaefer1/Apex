@@ -4,6 +4,7 @@ import { Check, FolderOpen, Gauge } from "lucide-react";
 import type { Akte } from "@/core/types";
 import { search } from "@/core/search";
 import { relTime } from "@/core/dates";
+import { stufeWort } from "@/core/einschaetzung";
 import { useData } from "@/store/data";
 import { FallanalysePanel } from "@/components/ki/FallanalysePanel";
 import { Card, Chip, Empty, SearchField } from "@/components/ui";
@@ -125,17 +126,17 @@ export function FallanalyseTab({ akteId, onAkte, autoStart, onAutoStart }: { akt
                           <Check className="size-3" strokeWidth={3} />
                         </span>
                       ) : (
-                        <Chip className="!h-5 !text-[10.5px]">{a.sachgebiet}</Chip>
+                        <Chip className="!h-5">{a.sachgebiet}</Chip>
                       )}
                     </span>
                   </span>
                   <span className="line-clamp-2 text-[13.5px] font-semibold leading-snug tracking-[-0.01em]">{a.titel}</span>
-                  <span className="mt-auto flex items-center gap-2 text-[11.5px] text-fg-3">
-                    <span className="min-w-0 flex-1 truncate">{a.phase}{mandantName(a) ? ` · ${mandantName(a)}` : ""}</span>
+                  <span className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] text-fg-3">
+                    <span className="min-w-0 flex-1 basis-[120px]">{a.phase}{mandantName(a) ? ` · ${mandantName(a)}` : ""}</span>
                     {a.kiAnalyse && (
-                      <span className="inline-flex shrink-0 items-center gap-1 text-violet" title={`Letzte KI-Analyse ${relTime(a.kiAnalyse.erstelltAm)}`}>
+                      <span className="inline-flex shrink-0 items-center gap-1 text-violet" title={`Letzte KI-Analyse ${relTime(a.kiAnalyse.erstelltAm)} – Einschätzung, keine Prozentangabe`}>
                         <Gauge className="size-3.5" />
-                        <span className="num">{a.kiAnalyse.prozent} %</span>
+                        <span>{stufeWort(a.kiAnalyse.stufe, a.kiAnalyse.prozent)}</span>
                       </span>
                     )}
                   </span>
@@ -147,7 +148,7 @@ export function FallanalyseTab({ akteId, onAkte, autoStart, onAutoStart }: { akt
           <p className="rounded-[14px] bg-[var(--ink-softer)] px-4 py-3 text-[13px] text-fg-3">Keine offene Akte passt zu „{q}“.</p>
         )}
         {liste.gesamt > MAX_KARTEN && (
-          <p className="mt-3 text-[12px] text-fg-4">
+          <p className="mt-3 text-[12.5px] text-fg-3">
             {liste.top.length} von {liste.gesamt} Akten – mit der Suche finden Sie jede weitere.
           </p>
         )}

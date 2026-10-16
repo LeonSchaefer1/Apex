@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
-import { Building2, CircleHelp, Copy, FlaskConical, FolderOpen, KeyRound, LogOut, Moon, Plus, RefreshCw, ShieldCheck, Sun, MonitorSmartphone, Users } from "lucide-react";
-import { AnimatedNumber, Button, Chip, Drawer, Empty, Modal, PageHeader, SearchField, Segmented, Stat, confirmDialog } from "@/components/ui";
+import { Building2, CircleHelp, FileClock, FlaskConical, FolderOpen, KeyRound, LogOut, Moon, Plus, RefreshCw, ShieldCheck, Sun, MonitorSmartphone, Users } from "lucide-react";
+import { Button, Chip, Drawer, Empty, Modal, PageHeader, SearchField, Segmented, Stat, confirmDialog } from "@/components/ui";
 import { AppIcon } from "@/components/Logo";
 import { WikiPlayer } from "@/components/wiki/WikiPlayer";
 import { artikel } from "@/content/wiki";
@@ -13,9 +13,13 @@ import { getBackend, getInfo, istConsole, type ConsoleKunde } from "@/lib/backen
 import { today } from "@/core/dates";
 import type { Tenant, User } from "@/core/types";
 import { DEMO_PASSWORT } from "@/core/seed/tenants";
+import { fmtNum } from "@/core/dates";
 import { KundenKarte, type KartenAktionen } from "./KundenKarte";
-import { NeuerZugang } from "./NeuerZugang";
-import { anmeldeZeile, kopieren } from "./helfer";
+import { NeuerZugang, ZugangsDaten } from "./NeuerZugang";
+import { einladungsText, kopieren } from "./helfer";
+
+/** Offenlegung gegenüber der Kanzlei – steht in Bestätigung und Ergebnis jeder Passwortvergabe durch AnwaltApex. */
+const PROTOKOLL_SATZ = "Die Kanzlei sieht diesen Vorgang in ihrem Protokoll (Einstellungen → Datenschutz). Die Person muss bei der nächsten Anmeldung ein eigenes Passwort festlegen.";
 
 type Filter = "alle" | "test" | "aktiv" | "pausiert";
 
@@ -30,7 +34,7 @@ export default function ConsolePage() {
   const [filter, setFilter] = useState<Filter>("alle");
   const [neu, setNeu] = useState(false);
   const [beschaeftigt, setBeschaeftigt] = useState<string | null>(null);
-  const [pw, setPw] = useState<{ user: User; tenant: Tenant; passwort: string } | null>(null);
+  const [pw, setPw] = useState<{ user: User; tenant: Tenant; passwort: string; hauptnutzer: boolean } | null>(null);
   const info = getInfo();
 
   const laden = useCallback(async () => {
@@ -105,7 +109,7 @@ export default function ConsolePage() {
       void (async () => {
         const ok = await confirmDialog({
           titel: `Daten von ${k.tenant.kurzname} zurücksetzen?`,
-          text: "Alle Akten, Fristen, Nachrichten und Buchungen dieser Kanzlei werden verworfen. Beim nächsten Login entsteht ein frischer Datenbestand. Die Zugänge bleiben bestehen.",
+          text: "Alle Akten, Fristen, Nachrichten und Buchungen dieser Kanzlei werden verworfen. Beim nächsten Login entsteht ein frischer Datenbestand. Die Zugänge bleiben bestehen. Die Kanzlei sieht diesen Vorgang in ihrem Protokoll (Einstellungen → Datenschutz).",
           bestaetigen: "Daten zurücksetzen",
           gefahr: true,
         });
@@ -128,15 +132,15 @@ export default function ConsolePage() {
     passwort: (k, u) =>
       void (async () => {
         const ok = await confirmDialog({
-          titel: `Neues Passwort für ${u.name}?`,
-          text: "Das bisherige Passwort wird sofort ungültig. Das neue Passwort sehen Sie nur einmal – geben Sie es direkt weiter.",
-          bestaetigen: "Neues Passwort erzeugen",
+          titel: `Neues Startpasswort für ${u.name}?`,
+          text: `Das bisherige Passwort wird sofort ungültig. Das neue Startpasswort sehen Sie nur einmal – geben Sie es getrennt weiter (telefonisch oder per SMS). ${PROTOKOLL_SATZ}`,
+          bestaetigen: "Neues Startpasswort erzeugen",
         });
         if (!ok) return;
         setBeschaeftigt(k.tenant.id);
         try {
           const passwort = await getBackend().console.neuesPasswort(u.id);
-          setPw({ user: u, tenant: k.tenant, passwort });
+          setPw({ user: u, tenant: k.tenant, passwort, hauptnutzer: k.users[0]?.id === u.id });
         } catch (e) {
           toast("Passwort konnte nicht erzeugt werden", { text: e instanceof Error ? e.message : String(e), ton: "fehler" });
         } finally {
@@ -147,13 +151,14 @@ export default function ConsolePage() {
       void (async () => {
         const ok = await confirmDialog({
           titel: `Standardpasswort für ${u.name} wiederherstellen?`,
-          text: `Ein zuvor vergebenes Passwort wird ungültig. Danach gilt wieder das öffentliche Demo-Passwort ${DEMO_PASSWORT} – auch für die Schnellanmeldung.`,
+          text: `Nur für Präsentationskanzleien: Ein zuvor vergebenes Passwort und eine eingerichtete Zwei-Faktor-Anmeldung werden ungültig. Danach gilt wieder das öffentliche Demo-Passwort ${DEMO_PASSWORT} – auch für die Schnellanmeldung. Die Kanzlei sieht diesen Vorgang in ihrem Protokoll (Einstellungen → Datenschutz).`,
           bestaetigen: "Standardpasswort wiederherstellen",
         });
         if (!ok) return;
         if (!(await mitSperre(k.tenant.id, () => getBackend().console.standardPasswort(u.id)))) return;
         toast("Standardpasswort wiederhergestellt", { text: `${u.name} meldet sich wieder mit ${DEMO_PASSWORT} an.`, ton: "erfolg" });
       })(),
+    einladung: (k, u) => void kopieren(einladungsText({ tenant: k.tenant, user: u, hauptnutzer: k.users[0]?.id === u.id, beispieldaten: k.stats.akten > 0 ? true : undefined }), "Einladung"),
   };
 
   const abmelden = async () => {
@@ -185,16 +190,16 @@ export default function ConsolePage() {
             }
           />
 
-          {/* Kennzahlen */}
-          <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {/* Kennzahlen – aus derselben Liste wie die Karten; vor dem Laden „–“ statt vorläufiger Werte */}
+          <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-busy={!kunden}>
             {[
-              { label: "Kanzleien", wert: kpi.kunden, icon: <Building2 className="size-4" />, ton: "ink" as const, sub: `${kpi.aktiv} aktiv · ${kpi.pausiert} pausiert` },
+              { label: "Kanzleien", wert: kpi.kunden, icon: <Building2 className="size-4" />, ton: "ink" as const, sub: kunden ? `${kpi.aktiv} aktiv · ${kpi.pausiert} pausiert` : "wird geladen …" },
               { label: "Aktive Tests", wert: kpi.tests, icon: <FlaskConical className="size-4" />, ton: "violet" as const, sub: "Testzugang läuft" },
               { label: "Nutzer gesamt", wert: kpi.nutzer, icon: <Users className="size-4" />, ton: "green" as const, sub: "über alle Kanzleien" },
               { label: "Akten gesamt", wert: kpi.akten, icon: <FolderOpen className="size-4" />, ton: "amber" as const, sub: "streng getrennt" },
             ].map((x, i) => (
               <motion.div key={x.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", stiffness: 420, damping: 34, delay: 0.05 + i * 0.04 }}>
-                <Stat label={x.label} icon={x.icon} tone={x.ton} value={kunden ? <AnimatedNumber value={x.wert} /> : <span className="shimmer inline-block h-7 w-12 rounded-[8px]" />} sub={x.sub} />
+                <Stat label={x.label} icon={x.icon} tone={x.ton} value={kunden ? <span className="num">{fmtNum(x.wert)}</span> : <span className="text-fg-4" aria-label="wird geladen">–</span>} sub={x.sub} />
               </motion.div>
             ))}
           </div>
@@ -286,7 +291,7 @@ function ConsoleKopf({ name, email, onAbmelden }: { name: string; email: string;
         <AppIcon size={32} />
         <div className="min-w-0 leading-tight">
           <div className="truncate text-[15px] font-semibold tracking-[-0.02em]">Apex Console</div>
-          <div className="hidden truncate text-[11.5px] text-fg-3 sm:block">{name}</div>
+          <div className="hidden truncate text-[12.5px] text-fg-3 sm:block">{name}</div>
         </div>
         <Chip tone="violet" className="hidden sm:inline-flex">
           Anbieter-Bereich
@@ -305,12 +310,12 @@ function ConsoleKopf({ name, email, onAbmelden }: { name: string; email: string;
   );
 }
 
-function PasswortDialog({ daten, onClose }: { daten: { user: User; tenant: Tenant; passwort: string } | null; onClose: () => void }) {
+function PasswortDialog({ daten, onClose }: { daten: { user: User; tenant: Tenant; passwort: string; hauptnutzer: boolean } | null; onClose: () => void }) {
   return (
     <Modal
       open={!!daten}
       onClose={onClose}
-      size="sm"
+      size="md"
       icon={<KeyRound className="size-5" />}
       title="Neues Startpasswort erzeugt"
       subtitle={daten ? `${daten.user.name} · ${daten.tenant.kurzname}` : undefined}
@@ -321,28 +326,14 @@ function PasswortDialog({ daten, onClose }: { daten: { user: User; tenant: Tenan
       }
     >
       {daten && (
-        <div className="grid gap-3">
-          <div className="flex items-center gap-3 rounded-[16px] bg-[var(--ink-softer)] p-3.5 shadow-[inset_0_0_0_1px_var(--line)]">
-            <span className="mono min-w-0 flex-1 select-all truncate text-[18px] font-semibold tracking-[0.02em]">{daten.passwort}</span>
-            <Button size="sm" variant="secondary" icon={<Copy className="size-3.5" />} onClick={() => void kopieren(daten.passwort, "Passwort")}>
-              Kopieren
-            </Button>
-          </div>
-          <div className="grid gap-1 text-[13px] text-fg-2">
-            <div>
-              Anmeldung mit <span className="mono text-fg">{daten.user.email}</span>
-            </div>
-            <div className="text-fg-3">Das bisherige Passwort ist ab sofort ungültig. Bei der nächsten Anmeldung legt {daten.user.name} ein eigenes Passwort fest. Dieses Startpasswort wird nicht noch einmal angezeigt.</div>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="justify-self-start"
-            icon={<Copy className="size-3.5" />}
-            onClick={() => void kopieren(`Ihre neuen Zugangsdaten für AnwaltApex\n\n${anmeldeZeile()}\nE-Mail: ${daten.user.email}\nPasswort: ${daten.passwort}\nBei der nächsten Anmeldung legen Sie ein eigenes Passwort fest.`, "Zugangsdaten")}
-          >
-            Zugangsdaten als Text kopieren
-          </Button>
+        <div className="grid gap-4">
+          <p className="flex items-start gap-2 rounded-[14px] bg-[var(--ink-softer)] px-3.5 py-2.5 text-[13px] leading-relaxed text-fg-2 ring-1 ring-[var(--line)]">
+            <FileClock className="mt-0.5 size-4 shrink-0 text-ink" />
+            <span>
+              Das bisherige Passwort ist ab sofort ungültig. {PROTOKOLL_SATZ} Dieses Startpasswort wird nicht noch einmal angezeigt.
+            </span>
+          </p>
+          <ZugangsDaten user={daten.user} passwort={daten.passwort} text={einladungsText({ tenant: daten.tenant, user: daten.user, hauptnutzer: daten.hauptnutzer, neuesPasswort: true })} />
         </div>
       )}
     </Modal>

@@ -1,6 +1,7 @@
 // Fristenrechner – deterministisch und mit Rechenweg. Die Berechnungsnormen folgen der Verfahrensordnung:
 // ZPO/ArbGG: § 222 ZPO i. V. m. §§ 187, 188 BGB · StPO: §§ 42, 43 StPO · OWiG: § 46 Abs. 1 OWiG i. V. m. §§ 42, 43 StPO ·
-// VwGO: § 57 Abs. 2 VwGO i. V. m. § 222 ZPO · KSchG und materielles Recht: §§ 187, 188, 193 BGB.
+// VwGO: § 57 Abs. 2 VwGO i. V. m. § 222 ZPO · FamFG: § 16 Abs. 2 FamFG i. V. m. § 222 ZPO ·
+// KSchG, materielles Recht und vertraglich vereinbarte Fristen: §§ 187, 188, 193 BGB.
 // Grundsatz von AnwaltApex: Die KI ERKENNT Fristen in Dokumenten, BERECHNET werden sie ausschließlich hier.
 import { addDays, addMonthsBGB, diffDays, fmtDate, fmtDateWd, wochentagName } from "./dates";
 import { bundeslandAusGericht, bundeslandAusOrt, bundeslandName, feiertagAm, istWerktag } from "./feiertage";
@@ -9,7 +10,7 @@ import type { Akte, Bundesland, FristTyp, ISODate, Kontakt } from "./types";
 export type Einheit = "tage" | "wochen" | "monate" | "jahresende";
 
 /** Verfahrensordnung einer Frist – bestimmt Berechnungsnormen und Rechtsbehelfe bei Versäumnis. */
-export type Verfahren = "ZPO" | "ArbGG" | "KSchG" | "StPO" | "OWiG" | "VwGO" | "BGB";
+export type Verfahren = "ZPO" | "ArbGG" | "KSchG" | "StPO" | "OWiG" | "VwGO" | "FamFG" | "BGB";
 
 export interface FristRegel {
   key: string;
@@ -20,8 +21,14 @@ export interface FristRegel {
   /** „notfrist“ nur für Fristen, die das Gesetz ausdrücklich so nennt (§ 224 Abs. 1 S. 2 ZPO) – sonst „frist“. */
   typ: FristTyp;
   ereignis: string; // "Zustellung des Urteils"
-  gebiet: "Zivilprozess" | "Arbeitsrecht" | "Strafrecht" | "Verwaltungsrecht" | "Materielles Recht" | "Mahnverfahren";
+  gebiet: "Zivilprozess" | "Arbeitsrecht" | "Familienrecht" | "Strafrecht" | "Verwaltungsrecht" | "Materielles Recht" | "Mahnverfahren" | "Vertraglich vereinbart";
   verfahren: Verfahren;
+  /** Die Dauer ergibt sich nicht aus dem Gesetz, sondern aus Verfügung, Vertrag oder Vergleich – sie muss eingegeben werden (kein stiller Standardwert). */
+  dauerPflicht?: boolean;
+  /** Fristende als festes Datum: „pflicht“ = nur Datum (vereinbarte Frist), „moeglich“ = Datum oder Dauer (z. B. Widerrufsfrist im Vergleich). */
+  festesDatum?: "pflicht" | "moeglich";
+  /** Eigene Kurzform für Chips und Tooltips (sonst aus Typ und Verfahrensordnung). */
+  kurz?: string;
   /** Gesetzliche Frist, die nicht verlängert werden kann, ohne Notfrist zu sein (z. B. § 4 KSchG, StPO, OWiG, VwGO). */
   unverlaengerbar?: boolean;
   /** Rechtsfolge und Rechtsbehelf bei Versäumnis (Wiedereinsetzung, nachträgliche Zulassung …). */
@@ -157,9 +164,58 @@ export const FRIST_REGELN: FristRegel[] = [
     stichworte: ["verjährung", "195", "199"],
   },
   {
-    key: "frei_tage", titel: "Frei bestimmte Frist (Tage)", grundlage: "§§ 187, 188 BGB, § 222 ZPO", dauer: 10, einheit: "tage", typ: "frist", verfahren: "ZPO",
+    key: "beschwerde_famfg", titel: "Beschwerdefrist (FamFG)", grundlage: "§ 63 Abs. 1 FamFG", dauer: 1, einheit: "monate", typ: "frist", verfahren: "FamFG", unverlaengerbar: true,
+    ereignis: "Schriftliche Bekanntgabe des Beschlusses (§ 63 Abs. 3 S. 1 FamFG)", gebiet: "Familienrecht", vorfristTage: 7,
+    versaeumnis: "Bei Versäumnis: Wiedereinsetzung in den vorigen Stand (§§ 17 ff. FamFG) – Antrag binnen zwei Wochen nach Wegfall des Hindernisses, die versäumte Handlung zugleich nachholen (§ 18 Abs. 1, 3 FamFG). In Familienstreitsachen gelten §§ 233 ff. ZPO (§ 117 Abs. 5 FamFG).",
+    hinweis: "Nicht verlängerbar. Kann der Beschluss nicht schriftlich bekanntgegeben werden, beginnt die Frist spätestens mit Ablauf von fünf Monaten nach Erlass (§ 63 Abs. 3 S. 2 FamFG). Einlegung beim Ausgangsgericht (§ 64 Abs. 1 FamFG).",
+    stichworte: ["famfg", "familie", "familiensache", "familienrecht", "beschwerde", "endentscheidung", "beschluss", "63 famfg"],
+  },
+  {
+    key: "beschwerde_famfg_kurz", titel: "Beschwerdefrist – Zwischen- und Nebenentscheidungen (FamFG)", grundlage: "§ 63 Abs. 2 FamFG", dauer: 2, einheit: "wochen", typ: "frist", verfahren: "FamFG", unverlaengerbar: true,
+    ereignis: "Schriftliche Bekanntgabe des Beschlusses (§ 63 Abs. 3 S. 1 FamFG)", gebiet: "Familienrecht", vorfristTage: 4,
+    versaeumnis: "Bei Versäumnis: Wiedereinsetzung in den vorigen Stand (§§ 17 ff. FamFG) – Antrag binnen zwei Wochen nach Wegfall des Hindernisses (§ 18 Abs. 1 FamFG).",
+    hinweis: "Zwei Wochen gelten nach § 63 Abs. 2 FamFG für einstweilige Anordnungen (Nr. 1) und Genehmigungen eines Rechtsgeschäfts (Nr. 2); Zwischen- und Nebenentscheidungen mit sofortiger Beschwerde (§§ 567–572 ZPO) ebenfalls binnen zwei Wochen. Nicht verlängerbar.",
+    stichworte: ["famfg", "familie", "familiensache", "beschwerde", "einstweilige anordnung", "zwischenentscheidung", "nebenentscheidung", "63 famfg"],
+  },
+  {
+    key: "beschwerdebegruendung_famfg", titel: "Beschwerdebegründung in Familienstreitsachen", grundlage: "§ 117 Abs. 1 S. 3 FamFG", dauer: 2, einheit: "monate", typ: "frist", verfahren: "FamFG",
+    ereignis: "Schriftliche Bekanntgabe des Beschlusses", gebiet: "Familienrecht", vorfristTage: 14,
+    versaeumnis: "Bei Versäumnis: Wiedereinsetzung möglich (§ 117 Abs. 5 FamFG i. V. m. §§ 233, 234 Abs. 1 S. 2 ZPO) – Antragsfrist ein Monat. Verlängerungsantrag vor Fristablauf stellen.",
+    hinweis: "Keine Notfrist: verlängerbar nach § 117 Abs. 1 S. 4 FamFG i. V. m. § 520 Abs. 2 S. 2, 3 ZPO. Beginn spätestens mit Ablauf von fünf Monaten nach Erlass des Beschlusses (§ 117 Abs. 1 S. 3 FamFG).",
+    stichworte: ["famfg", "familie", "familienstreitsache", "beschwerdebegründung", "begründung", "117 famfg"],
+  },
+  {
+    key: "widerruf_vergleich", titel: "Widerrufsfrist (Vergleich)", grundlage: "Gerichtlicher Vergleich mit Widerrufsvorbehalt", dauer: 2, einheit: "wochen", typ: "frist", verfahren: "BGB", unverlaengerbar: true,
+    dauerPflicht: true, festesDatum: "moeglich",
+    ereignis: "Verkündung bzw. Zustellung des Protokolls (laut Vergleich)", gebiet: "Zivilprozess", vorfristTage: 3,
+    versaeumnis: "Bei Versäumnis wird der Vergleich wirksam – vertragliche Frist, keine Wiedereinsetzung.",
+    hinweis: "Dauer bzw. Datum, Adressat (Gericht oder Gegenseite) und Form des Widerrufs laut Vergleich – keine Verlängerung ohne Zustimmung der Gegenseite.",
+    kurz: "Widerrufsfrist laut Vergleich – keine Verlängerung ohne Zustimmung der Gegenseite, keine Wiedereinsetzung",
+    stichworte: ["vergleich", "widerruf", "widerrufsvorbehalt", "prozessvergleich", "794"],
+  },
+  {
+    key: "vereinbart_datum", titel: "Vereinbarte Frist (festes Datum)", grundlage: "Vereinbarung der Parteien", dauer: 0, einheit: "tage", typ: "frist", verfahren: "BGB",
+    festesDatum: "pflicht",
+    ereignis: "Vereinbarung bzw. Eingang des Schreibens", gebiet: "Vertraglich vereinbart", vorfristTage: 7,
+    versaeumnis: "Folgen der Versäumnis laut Vereinbarung prüfen.",
+    hinweis: "Das vereinbarte Datum wird übernommen. Fällt es auf einen Samstag, Sonntag oder Feiertag, tritt an seine Stelle der nächste Werktag (§ 193 BGB) – vorsorglich gilt das genannte Datum.",
+    stichworte: ["vereinbart", "vereinbarung", "festes datum", "datum", "absprache"],
+  },
+  {
+    key: "ausschlussfrist_vertrag", titel: "Vertragliche Ausschlussfrist", grundlage: "Ausschlussklausel im Vertrag", dauer: 3, einheit: "monate", typ: "frist", verfahren: "BGB", unverlaengerbar: true,
+    dauerPflicht: true,
+    ereignis: "Fälligkeit des Anspruchs", gebiet: "Vertraglich vereinbart", vorfristTage: 14,
+    versaeumnis: "Anspruchsverlust bei Versäumung: Der Anspruch verfällt – keine Wiedereinsetzung, keine nachträgliche Heilung.",
+    hinweis: "Vertragliche Ausschlussfrist – Anspruchsverlust bei Versäumung. Form der Geltendmachung und eine zweite Stufe (gerichtliche Geltendmachung) laut Vertrag prüfen. In vorformulierten Verträgen sind kürzere Fristen als drei Monate je Stufe regelmäßig unwirksam (§ 307 BGB) – vorsorglich trotzdem wahren. Ansprüche auf den Mindestlohn erfasst die Klausel nicht (§ 3 S. 1 MiLoG).",
+    kurz: "Vertragliche Ausschlussfrist – Anspruchsverlust bei Versäumung",
+    stichworte: ["ausschlussfrist", "verfallfrist", "verfallklausel", "arbeitsvertrag", "vertrag", "fälligkeit", "geltendmachung"],
+  },
+  {
+    key: "frei_tage", titel: "Frei bestimmte Frist", grundlage: "§§ 187, 188 BGB, § 222 ZPO", dauer: 10, einheit: "tage", typ: "frist", verfahren: "ZPO",
+    dauerPflicht: true,
     ereignis: "Fristauslösendes Ereignis", gebiet: "Zivilprozess", vorfristTage: 3,
-    versaeumnis: "Richterliche Fristen sind auf Antrag verlängerbar, wenn erhebliche Gründe glaubhaft gemacht sind (§ 224 Abs. 2 ZPO).", stichworte: ["tage"],
+    versaeumnis: "Richterliche Fristen sind auf Antrag verlängerbar, wenn erhebliche Gründe glaubhaft gemacht sind (§ 224 Abs. 2 ZPO).",
+    hinweis: "Dauer laut Verfügung bzw. Schreiben eingeben – Tage, Wochen oder Monate.", stichworte: ["tage", "wochen", "frei", "richterlich", "gerichtlich gesetzt", "verfügung"],
   },
 ];
 
@@ -197,19 +253,48 @@ export function fristArt(r: FristRegel): FristArt {
       StPO: "Nicht verlängerbar; bei Versäumnis Wiedereinsetzung (§§ 44, 45 StPO)",
       OWiG: "Nicht verlängerbar; bei Versäumnis Wiedereinsetzung (§ 52 OWiG i. V. m. §§ 44, 45 StPO)",
       VwGO: "Nicht verlängerbar; bei Versäumnis Wiedereinsetzung (§ 60 VwGO)",
+      FamFG: "Nicht verlängerbar; bei Versäumnis Wiedereinsetzung (§§ 17 ff. FamFG)",
       ZPO: "Nicht verlängerbar",
       ArbGG: "Nicht verlängerbar",
       BGB: "Nicht verlängerbar",
     };
+    const vertraglich = r.key === "ausschlussfrist_vertrag" || r.key === "widerruf_vergleich";
     return {
       label: "Frist",
       kritisch: true,
-      art: r.verfahren === "KSchG" ? "Keine Notfrist im Sinne der ZPO, aber nicht verlängerbar." : `Gesetzliche Frist (${r.verfahren}) – nicht verlängerbar.`,
+      art: r.verfahren === "KSchG"
+        ? "Keine Notfrist im Sinne der ZPO, aber nicht verlängerbar."
+        : vertraglich
+          ? `Vertraglich vereinbarte Frist – nicht einseitig verlängerbar.`
+          : `Gesetzliche Frist (${r.verfahren}) – nicht verlängerbar.`,
       versaeumnis: r.versaeumnis,
-      kurz: kurz[r.verfahren],
+      kurz: r.kurz ?? kurz[r.verfahren],
     };
   }
-  return { label: "Frist", kritisch: false, art: "", versaeumnis: r.versaeumnis, kurz: r.hinweis ?? r.versaeumnis };
+  return { label: "Frist", kritisch: false, art: "", versaeumnis: r.versaeumnis, kurz: r.kurz ?? r.hinweis ?? r.versaeumnis };
+}
+
+/**
+ * Normen zur Berechnung einer Fristart – für Hinweise wie „der Tag des Ereignisses zählt nicht mit (…)“.
+ * KSchG: „§ 4 S. 1 KSchG; §§ 187 Abs. 1, 188 Abs. 2, 193 BGB“ · ZPO: „§ 222 Abs. 1 ZPO i. V. m. §§ 187 Abs. 1, 188 Abs. 2 BGB“ …
+ */
+export function berechnungsNormen(r: Pick<FristRegel, "verfahren" | "einheit" | "grundlage" | "key">): string {
+  switch (r.verfahren) {
+    case "KSchG":
+      return `${r.grundlage}; §§ 187 Abs. 1, 188 Abs. 2, 193 BGB`;
+    case "StPO":
+      return r.einheit === "tage" ? "§ 42 StPO" : "§ 43 Abs. 1 StPO";
+    case "OWiG":
+      return `§ 46 Abs. 1 OWiG i. V. m. ${r.einheit === "tage" ? "§ 42 StPO" : "§ 43 Abs. 1 StPO"}`;
+    case "VwGO":
+      return "§ 57 Abs. 2 VwGO i. V. m. § 222 Abs. 1 ZPO, § 187 Abs. 1 BGB";
+    case "FamFG":
+      return "§ 16 Abs. 2 FamFG i. V. m. § 222 Abs. 1 ZPO, §§ 187 Abs. 1, 188 Abs. 2 BGB";
+    case "BGB":
+      return r.einheit === "jahresende" ? "§§ 195, 199 Abs. 1 BGB" : "§§ 187 Abs. 1, 188 Abs. 2, 193 BGB";
+    default:
+      return "§ 222 Abs. 1 ZPO i. V. m. §§ 187 Abs. 1, 188 Abs. 2 BGB";
+  }
 }
 
 /** Fristart zu einem gespeicherten Eintrag (über `regelKey`); ohne Regel nur nach Typ. */
@@ -230,6 +315,8 @@ export interface FristErgebnis {
   verschiebungsNorm: string;
   /** Bundesland, dessen Feiertage verwendet wurden */
   land: Bundesland;
+  /** Woher das Bundesland stammt, z. B. „Hessisches LAG“, „Ort der Handlung: Bundesgerichtshof (Karlsruhe)“ oder „Kanzleisitz“ */
+  feiertagsOrt: string;
   warnungen: string[];
 }
 
@@ -247,6 +334,7 @@ const NORMEN: Record<Verfahren, Normen> = {
   ArbGG: { beginn: BGB_BEGINN("§ 222 Abs. 1 ZPO i. V. m. § 187 Abs. 1 BGB"), ende: "§ 188 Abs. 2 BGB", monatsletzter: "§ 188 Abs. 3 BGB", verschiebung: "§ 222 Abs. 2 ZPO" },
   KSchG: { beginn: BGB_BEGINN("§ 187 Abs. 1 BGB"), ende: "§ 188 Abs. 2 BGB", monatsletzter: "§ 188 Abs. 3 BGB", verschiebung: "§ 193 BGB, § 222 Abs. 2 ZPO" },
   VwGO: { beginn: BGB_BEGINN("§ 57 Abs. 2 VwGO, § 222 Abs. 1 ZPO i. V. m. § 187 Abs. 1 BGB"), ende: "§ 188 Abs. 2 BGB", monatsletzter: "§ 188 Abs. 3 BGB", verschiebung: "§ 57 Abs. 2 VwGO i. V. m. § 222 Abs. 2 ZPO" },
+  FamFG: { beginn: BGB_BEGINN("§ 16 Abs. 2 FamFG, § 222 Abs. 1 ZPO i. V. m. § 187 Abs. 1 BGB"), ende: "§ 188 Abs. 2 BGB", monatsletzter: "§ 188 Abs. 3 BGB", verschiebung: "§ 16 Abs. 2 FamFG i. V. m. § 222 Abs. 2 ZPO" },
   BGB: { beginn: BGB_BEGINN("§ 187 Abs. 1 BGB"), ende: "§ 188 Abs. 2 BGB", monatsletzter: "§ 188 Abs. 3 BGB", verschiebung: "§ 193 BGB" },
   StPO: {
     beginn: (e) => `Der Ereignistag zählt nicht mit (${e === "tage" ? "§ 42 StPO" : "§ 43 Abs. 1 StPO"})`,
@@ -270,6 +358,32 @@ function regionalWarnung(ende: ISODate, land: Bundesland, norm: string): string 
   const tf = feiertagAm(ende, land);
   if (!tf?.teilweise) return undefined;
   return `${tf.name.replace(/ \(regional\)$/, "")} ist nur in Teilen von ${bundeslandName(land)} Feiertag – AnwaltApex verlängert vorsorglich nicht. Gilt er am Ort des Gerichts, endet die Frist rechtlich erst am nächsten Werktag (${norm}); der frühere Termin bleibt die sichere Seite.`;
+}
+
+/** Grund, warum ein Tag kein Werktag ist: Feiertagsname (mit Land) oder Samstag/Sonntag. */
+function keinWerktagGrund(datum: ISODate, land: Bundesland): string {
+  const f = feiertagAm(datum, land);
+  const wd = new Date(datum + "T00:00:00Z").getUTCDay();
+  if (f && !f.teilweise) return `${f.name} (${bundeslandName(land)})`;
+  return wd === 6 ? "Samstag" : "Sonntag";
+}
+
+/** Pflichtzeile im Rechenweg: Welche Feiertage wurden geprüft? – immer, auch ohne Verschiebung (ohne Normzitat). */
+function feiertagsZeile(land: Bundesland, ort: string): string {
+  return `Feiertage am Gerichtsort geprüft: ${bundeslandName(land)} (${ort})`;
+}
+
+/**
+ * Feiertag am Kanzleisitz, der am Gerichtsort nicht gilt – dort verlängert er die Frist nicht.
+ * „01.11.2027 Allerheiligen – in Nordrhein-Westfalen Feiertag, in Hessen (Gerichtsort) nicht – keine Verschiebung“
+ */
+function kanzleisitzZeile(ende: ISODate, land: Bundesland, kanzleiLand: Bundesland | undefined, ortArt: string): string | undefined {
+  if (!kanzleiLand || kanzleiLand === land) return undefined;
+  const k = feiertagAm(ende, kanzleiLand);
+  if (!k || k.teilweise) return undefined;
+  const g = feiertagAm(ende, land);
+  if (g && !g.teilweise) return undefined;
+  return `${fmtDate(ende)} ${k.name} – in ${bundeslandName(kanzleiLand)} Feiertag, in ${bundeslandName(land)} (${ortArt}) nicht – keine Verschiebung`;
 }
 
 function vorfristVon(ende: ISODate, tage: number, land: Bundesland): ISODate {
@@ -299,10 +413,15 @@ export function berechneFrist(params: {
   grundlage?: string;
   /** Verfahrensordnung für die Berechnungsnormen (Standard: ZPO). */
   verfahren?: Verfahren;
-  /** Woher die Feiertage stammen (z. B. „Gerichtsort laut Schreiben: Landgericht München I“) – erscheint im Rechenweg. */
+  /** Woher die Feiertage stammen (z. B. „Landgericht München I – laut Schreiben“); ohne Angabe: „Kanzleisitz“. Erscheint immer im Rechenweg. */
   feiertagsOrt?: string;
+  /** Bundesland des Kanzleisitzes – ein Feiertag nur dort verlängert nicht; der Rechenweg weist darauf hin. */
+  kanzleiLand?: Bundesland;
+  /** „Ort der Handlung“ statt „Gerichtsort“ (z. B. Revision beim BGH). */
+  ortArt?: string;
 }): FristErgebnis {
   const { ereignis, dauer, einheit, land } = params;
+  const feiertagsOrt = params.feiertagsOrt ?? "Kanzleisitz";
   const n = NORMEN[params.verfahren ?? "ZPO"];
   const rechenweg: string[] = [];
   const warnungen: string[] = [];
@@ -323,26 +442,33 @@ export function berechneFrist(params: {
     const r = addMonthsBGB(ereignis, dauer);
     roh = r.date;
     rechenweg.push(n.beginn(einheit));
-    rechenweg.push(`${dauerText}: Ende am Tag mit derselben Zahl – ${n.ende} → ${fmtDateWd(roh)}`);
-    if (r.gekappt) rechenweg.push(`Diesen Tag gibt es im Zielmonat nicht → Monatsletzter (${n.monatsletzter})`);
+    if (r.gekappt) {
+      // „rechnerisch 29.02.2027 – diesen Tag gibt es nicht → Monatsletzter 28.02.2027 (§ 188 Abs. 3 BGB)“
+      const rechnerisch = `${ereignis.slice(8, 10)}.${roh.slice(5, 7)}.${roh.slice(0, 4)}`;
+      rechenweg.push(`${dauerText}: Ende am Tag mit derselben Zahl (${n.ende}) – rechnerisch ${rechnerisch} – diesen Tag gibt es nicht → Monatsletzter ${fmtDateWd(roh)} (${n.monatsletzter})`);
+    } else {
+      rechenweg.push(`${dauerText}: Ende am Tag mit derselben Zahl – ${n.ende} → ${fmtDateWd(roh)}`);
+    }
   } else {
     const year = Number(ereignis.slice(0, 4));
     roh = `${year + dauer}-12-31`;
     rechenweg.push(`Beginn mit Schluss des Jahres ${year} (§ 199 Abs. 1 BGB), Dauer ${dauer} Jahre${params.grundlage ? ` (${params.grundlage})` : ""} → ${fmtDateWd(roh)}`);
   }
-  if (params.feiertagsOrt) rechenweg.push(`Feiertage: ${bundeslandName(land)} – ${params.feiertagsOrt}`);
+  rechenweg.push(feiertagsZeile(land, feiertagsOrt));
 
   let ende = roh;
   let verschoben = false;
   let guard = 0;
+  const freieTage: string[] = [];
   while (!istWerktag(ende, land) && guard++ < 10) {
-    const f = feiertagAm(ende, land);
-    const wd = new Date(ende + "T00:00:00Z").getUTCDay();
-    const grund = f && !f.teilweise ? f.name : wd === 6 ? "Samstag" : "Sonntag";
-    rechenweg.push(`${fmtDate(ende)} ist ${grund} (${bundeslandName(land)}) → Verschiebung auf den nächsten Werktag`);
+    freieTage.push(`${fmtDateWd(ende)} ist ${keinWerktagGrund(ende, land)}`);
     ende = addDays(ende, 1);
     verschoben = true;
   }
+  // „So, 28.02.2027 ist Sonntag → nächster Werktag Mo, 01.03.2027“
+  if (verschoben) rechenweg.push(`${freieTage.join(", ")} → nächster Werktag ${fmtDateWd(ende)}`);
+  const kanzlei = kanzleisitzZeile(ende, land, params.kanzleiLand, params.ortArt ?? "Gerichtsort");
+  if (kanzlei) rechenweg.push(kanzlei);
   if (verschoben) rechenweg.push(`Fristende nach ${n.verschiebung}: ${fmtDateWd(ende)}, 24:00 Uhr`);
   else rechenweg.push(`Fristende fällt auf einen Werktag – keine Verschiebung: ${fmtDateWd(ende)}, 24:00 Uhr`);
 
@@ -353,7 +479,19 @@ export function berechneFrist(params: {
   const vorfrist = vorfristVon(ende, vt, land);
   rechenweg.push(`Vorfrist ${vt} Tage vorher, auf Werktag gelegt: ${fmtDateWd(vorfrist)}`);
 
-  return { ende, rohesEnde: roh, vorfrist, rechenweg, verschoben, verschiebungsNorm: n.verschiebung, land, warnungen };
+  return { ende, rohesEnde: roh, vorfrist, rechenweg, verschoben, verschiebungsNorm: n.verschiebung, land, feiertagsOrt, warnungen };
+}
+
+export interface RegelOptionen {
+  ereignisLabel?: string;
+  /** Gericht bzw. Herkunft des Bundeslands (z. B. „Hessisches LAG“, „Landgericht Berlin II – laut Akte“); ohne Angabe „Kanzleisitz“. */
+  feiertagsOrt?: string;
+  /** Bundesland des Kanzleisitzes – für den Hinweis auf Feiertage, die nur dort gelten. */
+  kanzleiLand?: Bundesland;
+  /** Abweichende Einheit zur eingegebenen Dauer (frei bestimmte Fristen, Widerrufs- und Ausschlussfristen). */
+  einheit?: Exclude<Einheit, "jahresende">;
+  /** Festes Fristende laut Vergleich bzw. Vereinbarung (nur bei Regeln mit `festesDatum`). */
+  festesEnde?: ISODate;
 }
 
 export function berechneNachRegel(
@@ -361,15 +499,29 @@ export function berechneNachRegel(
   ereignis: ISODate,
   land: Bundesland,
   dauerOverride?: number,
-  opts: { ereignisLabel?: string; feiertagsOrt?: string } = {},
+  opts: RegelOptionen = {},
 ): FristErgebnis & { regel: FristRegel } {
-  const r = regel(key) ?? FRIST_REGELN[FRIST_REGELN.length - 1];
+  const r = regel(key) ?? regel("frei_tage")!;
   // Feste Stelle der Handlung (z. B. BGH Karlsruhe) geht dem Gerichtsort laut Schreiben bzw. Kanzleisitz vor.
   const ort = r.handlungsort && r.handlungsort.land !== land ? r.handlungsort : undefined;
+  if (r.festesDatum && opts.festesEnde) {
+    const res = berechneFestesEnde({
+      ende: opts.festesEnde,
+      ereignis,
+      land,
+      ereignisLabel: opts.ereignisLabel ?? r.ereignis,
+      quelle: r.key === "widerruf_vergleich" ? "Vergleich" : "Vereinbarung",
+      vorfristTage: r.vorfristTage,
+      verschiebungsNorm: r.verfahren === "BGB" ? "§ 193 BGB" : NORMEN[r.verfahren].verschiebung,
+      feiertagsOrt: opts.feiertagsOrt,
+      kanzleiLand: opts.kanzleiLand,
+    });
+    return { ...res, regel: r };
+  }
   const res = berechneFrist({
     ereignis,
     dauer: dauerOverride ?? r.dauer,
-    einheit: r.einheit,
+    einheit: opts.einheit && r.einheit !== "jahresende" ? opts.einheit : r.einheit,
     land: ort?.land ?? land,
     vorfristTage: r.vorfristTage,
     ereignisLabel: opts.ereignisLabel ?? r.ereignis,
@@ -377,6 +529,8 @@ export function berechneNachRegel(
     grundlage: r.key === "frei_tage" ? undefined : r.grundlage,
     verfahren: r.verfahren,
     feiertagsOrt: ort ? `Ort der Handlung: ${ort.ort}` : opts.feiertagsOrt,
+    ortArt: ort ? "Ort der Handlung" : undefined,
+    kanzleiLand: opts.kanzleiLand,
   });
   return { ...res, regel: r };
 }
@@ -386,12 +540,26 @@ export function berechneNachRegel(
  * Fällt es auf Wochenende/Feiertag, endet die Frist nach § 222 Abs. 2 ZPO erst am nächsten Werktag – AnwaltApex
  * notiert vorsorglich das genannte Datum und weist darauf hin.
  */
-export function berechneFestesEnde(params: { ende: ISODate; ereignis: ISODate; land: Bundesland; ereignisLabel?: string; quelle?: string; vorfristTage?: number }): FristErgebnis {
+export function berechneFestesEnde(params: {
+  ende: ISODate;
+  ereignis: ISODate;
+  land: Bundesland;
+  ereignisLabel?: string;
+  quelle?: string;
+  vorfristTage?: number;
+  /** Norm für Wochenende/Feiertag – Standard § 222 Abs. 2 ZPO (gerichtliche Frist); vereinbarte Fristen: § 193 BGB. */
+  verschiebungsNorm?: string;
+  feiertagsOrt?: string;
+  kanzleiLand?: Bundesland;
+}): FristErgebnis {
   const { ende, ereignis, land } = params;
+  const norm = params.verschiebungsNorm ?? "§ 222 Abs. 2 ZPO";
+  const feiertagsOrt = params.feiertagsOrt ?? "Kanzleisitz";
   const rechenweg: string[] = [];
   const warnungen: string[] = [];
   rechenweg.push(`${params.ereignisLabel ?? "Eingang des Schreibens"}: ${fmtDateWd(ereignis)}`);
   rechenweg.push(`Fristende laut ${params.quelle ?? "Schreiben"} (festes Datum): ${fmtDateWd(ende)}`);
+  rechenweg.push(feiertagsZeile(land, feiertagsOrt));
   let naechster = ende;
   let guard = 0;
   while (!istWerktag(naechster, land) && guard++ < 10) naechster = addDays(naechster, 1);
@@ -399,11 +567,13 @@ export function berechneFestesEnde(params: { ende: ISODate; ereignis: ISODate; l
     const f = feiertagAm(ende, land);
     const wd = new Date(ende + "T00:00:00Z").getUTCDay();
     const grund = f && !f.teilweise ? f.name : wd === 6 ? "Samstag" : "Sonntag";
-    rechenweg.push(`${fmtDate(ende)} ist ${grund} (${bundeslandName(land)}) – nach § 222 Abs. 2 ZPO endet die Frist erst am ${fmtDateWd(naechster)}; vorsorglich gilt das genannte Datum`);
-    warnungen.push(`Das genannte Datum ist ein ${grund}. Rechtlich endet die Frist erst am ${fmtDateWd(naechster)} (§ 222 Abs. 2 ZPO) – AnwaltApex notiert vorsorglich den ${fmtDate(ende)}.`);
+    rechenweg.push(`${fmtDate(ende)} ist ${grund}${f && !f.teilweise ? ` (${bundeslandName(land)})` : ""} – nach ${norm} endet die Frist erst am ${fmtDateWd(naechster)}; vorsorglich gilt das genannte Datum`);
+    warnungen.push(`Das genannte Datum ist ein ${grund}. Rechtlich endet die Frist erst am ${fmtDateWd(naechster)} (${norm}) – AnwaltApex notiert vorsorglich den ${fmtDate(ende)}.`);
   } else {
+    const kanzlei = kanzleisitzZeile(ende, land, params.kanzleiLand, "Gerichtsort");
+    if (kanzlei) rechenweg.push(kanzlei);
     rechenweg.push(`${fmtDate(ende)} ist ein Werktag – keine Verschiebung: ${fmtDateWd(ende)}, 24:00 Uhr`);
-    const regional = regionalWarnung(ende, land, "§ 222 Abs. 2 ZPO");
+    const regional = regionalWarnung(ende, land, norm);
     if (regional) warnungen.push(regional);
   }
   const spanne = diffDays(ereignis, ende);
@@ -411,7 +581,7 @@ export function berechneFestesEnde(params: { ende: ISODate; ereignis: ISODate; l
   let vorfrist = vorfristVon(ende, vt, land);
   if (vorfrist < ereignis) vorfrist = ereignis;
   rechenweg.push(`Vorfrist ${vt} ${vt === 1 ? "Tag" : "Tage"} vorher, auf Werktag gelegt: ${fmtDateWd(vorfrist)}`);
-  return { ende, rohesEnde: ende, vorfrist, rechenweg, verschoben: false, verschiebungsNorm: "§ 222 Abs. 2 ZPO", land, warnungen };
+  return { ende, rohesEnde: ende, vorfrist, rechenweg, verschoben: false, verschiebungsNorm: norm, land, feiertagsOrt, warnungen };
 }
 
 /** Gerichtsort einer Akte (über das hinterlegte Gericht) – für die Feiertage nach § 222 Abs. 2 ZPO. */

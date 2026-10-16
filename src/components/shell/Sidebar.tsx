@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router";
 import { motion } from "motion/react";
 import { CalendarClock, PanelLeftClose, PanelLeftOpen, Infinity as InfinityIcon } from "lucide-react";
-import { NAV, navFor } from "@/app/nav";
+import { navFor, navFuer } from "@/app/nav";
 import { useUI } from "@/store/ui";
 import { useKanzlei } from "@/store/session";
 import { cn } from "@/lib/cn";
@@ -41,7 +41,9 @@ function useScrollVerlauf() {
 
 export function Sidebar() {
   const { sidebarKompakt, toggleSidebar } = useUI();
-  const { tenant } = useKanzlei();
+  const { tenant, user } = useKanzlei();
+  const nav = navFuer(user.rolle);
+  const darfLizenz = user.rolle === "partner" || user.rolle === "admin";
   const loc = useLocation();
   const active = navFor(loc.pathname)?.to;
   const badges = useBadges();
@@ -62,7 +64,7 @@ export function Sidebar() {
         {!kompakt && (
           <div className="min-w-0 flex-1 leading-tight">
             <Wordmark size={16} />
-            <div className="truncate text-[11.5px] text-fg-3" title={tenant.name}>
+            <div className="truncate text-[12.5px] text-fg-3" title={tenant.name}>
               {tenant.kurzname}
             </div>
           </div>
@@ -80,9 +82,9 @@ export function Sidebar() {
         <div>
         {GRUPPEN.map((g) => (
           <div key={g} className="mb-2 [@media(max-height:760px)]:mb-1">
-            {!kompakt && g !== "Arbeiten" && <div className="eyebrow px-3 pb-1 pt-3 !text-[10px] [@media(max-height:760px)]:pt-2">{g === "Service" ? "" : g}</div>}
+            {!kompakt && g !== "Arbeiten" && <div className="eyebrow px-3 pb-1 pt-3 !text-[12px] [@media(max-height:760px)]:pt-2">{g === "Service" ? "" : g}</div>}
             {kompakt && g !== "Arbeiten" && <div className="mx-auto my-2 h-px w-8 bg-[var(--line)] [@media(max-height:760px)]:my-1.5" />}
-            {NAV.filter((n) => n.gruppe === g).map((n) => {
+            {nav.filter((n) => n.gruppe === g).map((n) => {
               const isActive = active === n.to;
               const badge = badges[n.to];
               return (
@@ -106,12 +108,12 @@ export function Sidebar() {
                   <span className={cn("relative transition-transform duration-300 ease-[var(--spring)] group-hover:scale-110", isActive ? "text-ink" : "text-fg-3 group-hover:text-fg-2")}>
                     <n.icon className="size-[18px]" strokeWidth={isActive ? 2.2 : 1.9} />
                     {kompakt && badge?.anzahl ? (
-                      <span className={cn("absolute -right-2 -top-1.5 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[9.5px] font-bold text-white", badge.ton === "seal" ? "bg-seal" : "bg-ink")}>{badge.anzahl}</span>
+                      <span className={cn("absolute -right-2 -top-1.5 grid h-[19px] min-w-[19px] place-items-center rounded-full px-1 text-[12px] font-bold leading-none text-white", badge.ton === "seal" ? "bg-seal" : "bg-ink")}>{badge.anzahl}</span>
                     ) : null}
                   </span>
                   {!kompakt && <span className="flex-1 truncate">{n.label}</span>}
                   {!kompakt && badge?.anzahl ? (
-                    <span className={cn("num grid h-5 min-w-5 place-items-center rounded-full px-1.5 text-[11px] font-semibold", badge.ton === "seal" ? "bg-seal text-white" : badge.ton === "ai" ? "ai-fill text-white" : "bg-ink-soft text-ink")}>
+                    <span className={cn("num grid h-5 min-w-5 place-items-center rounded-full px-1.5 text-[12px] font-semibold", badge.ton === "seal" ? "bg-seal text-white" : badge.ton === "ai" ? "ai-fill text-white" : "bg-ink-soft text-ink")}>
                       {badge.anzahl}
                     </span>
                   ) : null}
@@ -125,7 +127,7 @@ export function Sidebar() {
 
       <div className={cn("px-3 pb-3", kompakt && "px-2")}>
         {!kompakt && (
-          <NavLink to="/einstellungen?tab=lizenz" className="mb-2 block rounded-[16px] bg-ink-softer p-3 text-[12px] leading-snug transition-colors hover:bg-ink-soft [@media(max-height:820px)]:hidden">
+          <NavLink to={darfLizenz ? "/einstellungen?tab=lizenz" : "/einstellungen?tab=team"} className="mb-2 block rounded-[16px] bg-ink-softer p-3 text-[12.5px] leading-snug transition-colors hover:bg-ink-soft [@media(max-height:820px)]:hidden">
             {tenant.status === "test" ? (
               <>
                 <div className="flex items-center gap-1.5 font-semibold text-fg">

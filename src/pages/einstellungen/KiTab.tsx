@@ -8,6 +8,7 @@ import { toast } from "@/store/ui";
 import { AiChip, Chip, Switch } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { FLOW_CSS } from "@/pages/motor/shared";
+import { VERARBEITUNGSORT } from "@/content/datenschutz";
 import { Abschnitt, Zeile } from "./teile";
 
 const QUELLE_TEXT = { server: "Claude (Anthropic-API) über Ihren Kanzlei-Server", artefakt: "Claude (Anthropic) über die Vorschau-Laufzeit", demo: "Arbeitet nach festen Regeln vollständig in Ihrem Browser" } as const;
@@ -87,6 +88,7 @@ export function KiTab() {
                 ? "Vorschau-Betrieb: Anfragen gehen über die Vorschau-Laufzeit an Claude (Anthropic) – ohne Kanzlei-Server. Arbeiten Sie hier nur mit Beispieldaten."
                 : `Demo-Betrieb: Die ${DEMO_KI_NAME} arbeitet vollständig in Ihrem Browser – es werden keine Inhalte an einen KI-Anbieter übertragen.`}
           </p>
+          <Verarbeitungsort live={live} />
           <div className="mt-3 rounded-[14px] bg-[var(--ink-softer)] px-3.5 py-3 text-[12.5px] leading-relaxed text-fg-2">
             <span className="font-semibold text-fg">Vor dem Live-Betrieb:</span> Anthropic verarbeitet Mandatsinhalte als Dienstleister. Erforderlich sind ein Vertrag nach § 43e BRAO (Verschwiegenheit, Zugriff nur soweit nötig) und eine Auftragsverarbeitung nach
             Art. 28 DSGVO; bei Verarbeitung außerhalb der EU zusätzlich § 43e Abs. 4 BRAO und Art. 44 ff. DSGVO. Die Anbindung sendet nur aufgabenbezogene Inhalte und ist so eingerichtet, dass sie nicht zu Trainingszwecken verwendet werden –
@@ -130,7 +132,7 @@ function Datenfluss({ live, quelle }: { live: boolean; quelle: "server" | "artef
               <span className={cn("grid size-10 shrink-0 place-items-center rounded-[12px]", i === 2 ? "bg-violet-soft text-violet" : "bg-ink-soft text-ink")}>{k.icon}</span>
               <span className="min-w-0">
                 <span className="block text-[13px] font-semibold">{k.t}</span>
-                <span className="block text-[11.5px] leading-snug text-fg-3">{k.s}</span>
+                <span className="block text-[12.5px] leading-snug text-fg-3">{k.s}</span>
               </span>
             </div>
             {i < knoten.length - 1 && (
@@ -146,5 +148,32 @@ function Datenfluss({ live, quelle }: { live: boolean; quelle: "server" | "artef
         );
       })}
     </div>
+  );
+}
+
+/** „Verarbeitungsort“ – gleichlautend mit der Landing-FAQ „Wo liegen unsere Daten?“ (src/content/datenschutz.ts). Der aktuelle Modus ist markiert. */
+function Verarbeitungsort({ live }: { live: boolean }) {
+  const zeilen = [
+    { key: "live", text: VERARBEITUNGSORT.live, aktiv: live },
+    { key: "demo", text: VERARBEITUNGSORT.demo, aktiv: !live },
+  ];
+  return (
+    <section aria-labelledby="ki-verarbeitungsort" className="mt-4 rounded-[16px] p-3.5 ring-1 ring-[var(--line)]">
+      <h3 id="ki-verarbeitungsort" className="text-[13.5px] font-semibold">
+        {VERARBEITUNGSORT.titel}
+      </h3>
+      <ul className="mt-2 grid gap-2">
+        {zeilen.map((z) => (
+          <li key={z.key} className={cn("flex items-start gap-2.5 rounded-[12px] px-3 py-2 text-[13px] leading-relaxed", z.aktiv ? "bg-ink-soft text-fg" : "text-fg-2")}>
+            <span className={cn("mt-[7px] size-2 shrink-0 rounded-full", z.aktiv ? "bg-ink" : "bg-[var(--fg-4)]")} aria-hidden />
+            <span className="min-w-0">
+              {z.text}
+              {z.aktiv && <span className="ml-1.5 inline-block rounded-full bg-[var(--surface)] px-2 py-px text-[12.5px] font-semibold text-ink ring-1 ring-[var(--line)]">aktueller Modus</span>}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 px-3 text-[12.5px] leading-relaxed text-fg-3">{VERARBEITUNGSORT.eu}</p>
+    </section>
   );
 }

@@ -81,7 +81,7 @@ export function MonatsAnsicht({
         <Card padded={false} className="overflow-hidden p-1.5 sm:p-2">
           <div className="grid grid-cols-7 pb-1">
             {WT.map((w, i) => (
-              <div key={w} className={cn("py-1.5 text-center text-[11px] font-semibold uppercase tracking-[0.06em]", i >= 5 ? "text-fg-4" : "text-fg-3")}>
+              <div key={w} className={cn("py-1.5 text-center text-[12px] font-semibold uppercase tracking-[0.06em]", i >= 5 ? "text-fg-3" : "text-fg-3")}>
                 {w}
               </div>
             ))}
@@ -113,17 +113,17 @@ export function MonatsAnsicht({
                   <div className="flex items-center gap-1">
                     <span className={cn("num grid size-6 place-items-center rounded-full text-[12.5px] font-semibold", istHeute ? "bg-ink text-on-ink" : frei ? "text-fg-3" : "text-fg")}>{Number(t.slice(8, 10))}</span>
                     {notfrist && <ShieldAlert className="size-3 text-seal" aria-hidden />}
-                    {items.length > 0 && <span className="num ml-auto hidden text-[10.5px] font-semibold text-fg-3 sm:inline">{items.length}</span>}
+                    {items.length > 0 && <span className="num ml-auto hidden text-[12px] font-semibold text-fg-3 sm:inline">{items.length}</span>}
                   </div>
-                  {ft && <div className={cn("mt-0.5 hidden truncate text-[10px] font-semibold sm:block", ft.teilweise ? "text-amber" : "text-fg-2")}>{ft.name}</div>}
+                  {ft && <div className={cn("mt-0.5 hidden truncate text-[12px] font-semibold sm:block", ft.teilweise ? "text-amber" : "text-fg-2")}>{ft.name}</div>}
                   {/* Pillen (breit) */}
                   <div className="mt-1 hidden space-y-1 xl:block">
                     {items.slice(0, 3).map((f) => (
-                      <div key={f.id} className={cn("truncate rounded-[6px] px-1.5 py-0.5 text-[10.5px] font-semibold", TYP_META[f.typ].pill, f.status === "erledigt" && "line-through opacity-50")}>
+                      <div key={f.id} className={cn("truncate rounded-[6px] px-1.5 py-0.5 text-[12px] font-semibold", TYP_META[f.typ].pill, f.status === "erledigt" && "line-through opacity-50")}>
                         {f.titel.replace(/^Vorfrist: /, "")}
                       </div>
                     ))}
-                    {items.length > 3 && <div className="px-1.5 text-[10.5px] font-medium text-fg-3">+{items.length - 3} weitere</div>}
+                    {items.length > 3 && <div className="px-1.5 text-[12px] font-medium text-fg-3">+{items.length - 3} weitere</div>}
                   </div>
                   {/* Punkte (schmal) */}
                   {items.length > 0 && (
@@ -138,7 +138,7 @@ export function MonatsAnsicht({
             })}
           </motion.div>
         </Card>
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-[11.5px] text-fg-3">
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-[12px] text-fg-3">
           {(["notfrist", "frist", "vorfrist", "wiedervorlage", "termin"] as const).map((t) => (
             <span key={t} className="inline-flex items-center gap-1.5">
               <span className={cn("size-2 rounded-full", TYP_META[t].dot)} />
@@ -198,7 +198,7 @@ export function MonatsAnsicht({
                 })
               ) : (
                 <motion.div key="leer" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center px-4 py-10 text-center">
-                  <CalendarCheck2 className="size-6 text-fg-4" />
+                  <CalendarCheck2 className="size-6 text-fg-3" />
                   <div className="mt-2 text-[13px] font-medium text-fg-2">Keine Einträge</div>
                   <div className="mt-0.5 text-[12px] text-fg-3">An diesem Tag läuft keine Frist ab.</div>
                 </motion.div>

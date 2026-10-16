@@ -185,7 +185,7 @@ export function beruehreAkte(id: string) {
 export function PhasenBalken({ phase, className }: { phase: AktenPhase; className?: string }) {
   const idx = PHASEN.indexOf(phase);
   return (
-    <div className={cn("flex gap-[3px]", className)} aria-label={`Phase ${idx + 1} von ${PHASEN.length}: ${phase}`}>
+    <div className={cn("flex gap-[3px]", className)} role="img" aria-label={`Phase ${idx + 1} von ${PHASEN.length}: ${phase}`}>
       {PHASEN.slice(0, -1).map((p, i) => (
         <span key={p} className={cn("h-[3px] flex-1 rounded-full", i <= idx ? (phase === "Abgeschlossen" ? "bg-green" : "bg-ink") : "bg-[var(--line-strong)]")} />
       ))}

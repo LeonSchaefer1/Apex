@@ -1,11 +1,11 @@
 // Kopf der Akte: Aktenzeichen, Titel, Status-Chips, Beteiligte, Aktionen und Phasen-Leiste.
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { motion } from "motion/react";
-import { Archive, CalendarPlus, Check, CircleDot, CircleHelp, Copy, FolderOpen, Globe, Lock, Mail, MoreHorizontal, PauseCircle, PlayCircle, Sparkles } from "lucide-react";
+import { Archive, CalendarPlus, Check, ChevronDown, CircleDot, CircleHelp, Copy, Eye, FolderOpen, Globe, Lock, Mail, MoreHorizontal, PauseCircle, PlayCircle, Sparkles } from "lucide-react";
 import type { Akte, AktenPhase, Frist } from "@/core/types";
 import { istKritisch, zaehltAlsFrist } from "@/core/fristenLage";
-import { fmtDate, fmtEUR, nowLocal, today } from "@/core/dates";
+import { fmtDate, fmtDateWd, fmtEUR, nowLocal, today } from "@/core/dates";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast, useUI } from "@/store/ui";
@@ -13,6 +13,15 @@ import { Avatar, Button, Card, Chip, IconButton, Menu, confirmDialog } from "@/c
 import { cn } from "@/lib/cn";
 import { KontaktAvatar, kopiere } from "@/pages/kontakte/kontaktHelfer";
 import { DECKUNG_INFO, PHASEN, PRIO_INFO, SACHGEBIET_ICON, STATUS_INFO, SachgebietChip, useKontaktMap, useTeam } from "./helfer";
+import { useMandantenportal } from "./Mandantenportal";
+
+/** Nächster offener Termin einer Akte (Datum, Uhrzeit, Gericht/Saal) */
+export function naechsterTermin(akteId: string, fristen: Frist[]): Frist | undefined {
+  const heute = today();
+  return fristen
+    .filter((f) => f.akteId === akteId && f.typ === "termin" && f.status === "offen" && f.datum >= heute)
+    .sort((a, b) => a.datum.localeCompare(b.datum) || (a.uhrzeit ?? "").localeCompare(b.uhrzeit ?? ""))[0];
+}
 
 export interface OffeneEintraege {
   /** Notfristen und Fristen (`zaehltAlsFrist`) */
@@ -71,6 +80,9 @@ export async function akteAbschliessen(akte: Akte, userId: string) {
 
 export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail: () => void; onFrist: () => void; onKi: () => void }) {
   const kontakte = useKontaktMap();
+  const fristen = useCol("fristen");
+  const termin = naechsterTermin(akte.id, fristen);
+  const portalAktionen = useMandantenportal(akte);
   const { byId } = useTeam();
   const { user } = useKanzlei();
   const mandant = kontakte.get(akte.mandantId);
@@ -87,12 +99,8 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
     st.log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Status geändert: ${STATUS_INFO[status].label} – ${akte.aktenzeichen}` });
     toast(status === "ruhend" ? "Akte ruht" : "Akte wieder offen", { ton: "erfolg" });
   };
-  const portal = () => {
-    const an = !akte.mandantenportal;
-    useData.getState().patch("akten", akte.id, { mandantenportal: an, updatedAt: nowLocal() });
-    useData.getState().log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Mandantenportal ${an ? "freigeschaltet" : "gesperrt"} – ${akte.aktenzeichen}` });
-    toast(an ? "Mandantenportal freigeschaltet" : "Mandantenportal gesperrt", { ton: "erfolg", text: an ? `${mandant?.name ?? "Der Mandant"} sieht jetzt den Stand der Sache.` : "Der Mandant hat keinen Zugriff mehr." });
-  };
+  // Freischalten nur nach Rückfrage (Empfängeradresse, was sichtbar ist), Sperren sofort – beides protokolliert
+  const portal = () => (akte.mandantenportal ? portalAktionen.sperren() : portalAktionen.freischalten());
 
   return (
     <Card padded={false}>
@@ -110,7 +118,7 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
                 className="group mono inline-flex h-8 items-center gap-1.5 rounded-full bg-ink-softer px-3 text-[13.5px] font-semibold text-fg shadow-[inset_0_0_0_1px_var(--line)] transition-colors hover:bg-ink-soft"
               >
                 {akte.aktenzeichen}
-                <Copy className="size-3 text-fg-4 transition-colors group-hover:text-ink" />
+                <Copy className="size-3 text-fg-3 transition-colors group-hover:text-ink" />
               </button>
               <span className="text-[12.5px] text-fg-3">angelegt am {fmtDate(akte.createdAt.slice(0, 10))}</span>
             </div>
@@ -142,7 +150,8 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
                     : { label: "Akte wieder öffnen", icon: <FolderOpen />, onClick: () => setzeStatus("offen") },
                 ...(akte.status !== "abgeschlossen" ? [{ label: "Akte abschließen …", icon: <Archive />, onClick: () => void akteAbschliessen(akte, user.id) }] : []),
                 "sep" as const,
-                { label: akte.mandantenportal ? "Mandantenportal sperren" : "Mandantenportal freischalten", icon: akte.mandantenportal ? <Lock /> : <Globe />, onClick: portal },
+                { label: akte.mandantenportal ? "Mandantenportal sperren" : "Mandantenportal freischalten …", icon: akte.mandantenportal ? <Lock /> : <Globe />, onClick: portal },
+                { label: "Als Mandant ansehen", icon: <Eye />, onClick: portalAktionen.ansehen },
                 { label: "Aktenzeichen kopieren", icon: <Copy />, onClick: () => void kopiere(akte.aktenzeichen, "Aktenzeichen") },
               ]}
             />
@@ -187,12 +196,12 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
           </div>
         </div>
 
-        <dl className="mt-5 grid grid-cols-2 gap-x-5 gap-y-4 border-t border-[var(--line)] pt-5 lg:grid-cols-3 xl:grid-cols-5">
+        <dl className="mt-5 grid grid-cols-2 gap-x-5 gap-y-4 border-t border-[var(--line)] pt-5 lg:grid-cols-4">
           <Fakt label="Mandant">
             {mandant ? (
-              <Link to={`/kontakte?id=${mandant.id}`} title={mandant.name} className="group flex min-w-0 items-center gap-2">
+              <Link to={`/kontakte?id=${mandant.id}`} className="group flex min-h-11 min-w-0 items-center gap-2 sm:min-h-0">
                 <KontaktAvatar k={mandant} size={24} />
-                <span className="truncate font-medium group-hover:text-ink">{mandant.name}</span>
+                <span className="min-w-0 break-words font-medium group-hover:text-ink">{mandant.name}</span>
               </Link>
             ) : (
               "–"
@@ -200,30 +209,49 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
           </Fakt>
           <Fakt label="Gegner" sub={gegneranwalt ? `vertreten durch ${gegneranwalt.name}` : undefined}>
             {gegner ? (
-              <Link to={`/kontakte?id=${gegner.id}`} title={gegner.name} className="truncate font-medium hover:text-ink">
+              <Link to={`/kontakte?id=${gegner.id}`} className="flex min-h-11 min-w-0 items-center break-words font-medium hover:text-ink sm:min-h-0">
                 {gegner.name}
               </Link>
             ) : (
               <span className="text-fg-3">nicht erfasst</span>
             )}
           </Fakt>
-          <Fakt label="Gericht" sub={akte.gerichtsAz ? <span className="mono">Az. {akte.gerichtsAz}</span> : undefined}>
+          <Fakt label="Gericht">
             {gericht ? (
-              <Link to={`/kontakte?id=${gericht.id}`} title={gericht.name} className="truncate font-medium hover:text-ink">
+              <Link to={`/kontakte?id=${gericht.id}`} className="flex min-h-11 min-w-0 items-center break-words font-medium hover:text-ink sm:min-h-0">
                 {gericht.name}
               </Link>
             ) : (
               <span className="text-fg-3">noch kein Verfahren</span>
             )}
           </Fakt>
+          <Fakt label="Gerichtl. Az.">
+            {akte.gerichtsAz ? (
+              <button type="button" onClick={() => void kopiere(akte.gerichtsAz!, "Gerichtliches Aktenzeichen")} title="Gerichtliches Aktenzeichen kopieren" className="mono flex min-h-11 items-center break-all text-left font-medium hover:text-ink sm:min-h-0">
+                {akte.gerichtsAz}
+              </button>
+            ) : (
+              <span className="text-fg-3">–</span>
+            )}
+          </Fakt>
+          <Fakt label="Nächster Termin" sub={termin ? [termin.titel, termin.ort].filter(Boolean).join(" · ") : undefined}>
+            {termin ? (
+              <span className="num font-medium">
+                {fmtDateWd(termin.datum)}
+                {termin.uhrzeit ? `, ${termin.uhrzeit} Uhr` : ""}
+              </span>
+            ) : (
+              <span className="text-fg-3">kein Termin</span>
+            )}
+          </Fakt>
           <Fakt label="Gegenstandswert" sub={akte.forderung ? `Hauptforderung ${fmtEUR(akte.forderung.hauptforderung)}` : akte.rsv ? `${akte.rsv.versicherung}` : undefined}>
             <span className="num text-[15px] font-semibold">{akte.gegenstandswert ? fmtEUR(akte.gegenstandswert) : "–"}</span>
           </Fakt>
-          <Fakt label="Bearbeitung" sub={sb ? `Sachbearbeitung: ${sb.name}` : undefined} className="col-span-2 lg:col-span-1">
+          <Fakt label="Bearbeitung" sub={sb ? `Sachbearbeitung: ${sb.name}` : undefined}>
             {ra ? (
               <span className="flex min-w-0 items-center gap-2">
                 <Avatar initialen={ra.initialen} farbe={ra.farbe} size={24} />
-                <span className="truncate font-medium">{ra.name}</span>
+                <span className="min-w-0 break-words font-medium">{ra.name}</span>
               </span>
             ) : (
               "–"
@@ -232,6 +260,7 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
         </dl>
       </div>
       <PhasenLeiste akte={akte} />
+      {portalAktionen.dialoge}
     </Card>
   );
 }
@@ -239,18 +268,39 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
 function Fakt({ label, sub, children, className }: { label: string; sub?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
     <div className={cn("min-w-0", className)}>
-      <dt className="eyebrow !text-[10.5px]">{label}</dt>
+      <dt className="eyebrow">{label}</dt>
       <dd className="mt-1.5 min-w-0 text-[13.5px]">
         <div className="flex min-w-0 items-center">{children}</div>
-        {sub && <div className="mt-0.5 truncate text-[12px] text-fg-3">{sub}</div>}
+        {sub && <div className="mt-0.5 break-words text-[12.5px] text-fg-3">{sub}</div>}
       </dd>
     </div>
   );
 }
 
 /** Verfahrensstand als klickbare Schrittfolge mit gleitender Markierung. */
+const VERFAHRENSSTAND_KEY = "apex.akte.verfahrensstand";
+function leseOffen(): boolean {
+  try {
+    return localStorage.getItem(VERFAHRENSSTAND_KEY) !== "zu";
+  } catch {
+    return true;
+  }
+}
+
 function PhasenLeiste({ akte }: { akte: Akte }) {
   const { user } = useKanzlei();
+  // Einklappbar – der Zustand bleibt je Gerät erhalten
+  const [offen, setOffen] = useState(leseOffen);
+  const umschalten = () => {
+    setOffen((o) => {
+      try {
+        localStorage.setItem(VERFAHRENSSTAND_KEY, o ? "zu" : "auf");
+      } catch {
+        /* optional */
+      }
+      return !o;
+    });
+  };
   const fristen = useCol("fristen");
   const idx = PHASEN.indexOf(akte.phase);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -262,7 +312,7 @@ function PhasenLeiste({ akte }: { akte: Akte }) {
     const el = aktivRef.current;
     if (!c || !el || c.scrollWidth <= c.clientWidth) return;
     c.scrollTo({ left: el.offsetLeft - c.clientWidth / 2 + el.clientWidth / 2, behavior: "smooth" });
-  }, [idx]);
+  }, [idx, offen]);
 
   const setze = async (p: AktenPhase) => {
     if (p === akte.phase) return;
@@ -278,14 +328,23 @@ function PhasenLeiste({ akte }: { akte: Akte }) {
   };
 
   return (
-    <div className="rounded-b-[22px] border-t border-[var(--line)] bg-[color-mix(in_oklab,var(--ink-softer)_70%,transparent)] px-2 pb-2 pt-3 sm:px-4">
-      <div className="flex items-center justify-between gap-3 px-3">
-        <span className="eyebrow !text-[10.5px]">Verfahrensstand</span>
-        <span className="hidden text-[11.5px] text-fg-4 sm:inline">Zum Ändern auf eine Phase klicken</span>
+    <div className={cn("rounded-b-[22px] border-t border-[var(--line)] bg-[color-mix(in_oklab,var(--ink-softer)_70%,transparent)] px-2 sm:px-4", offen ? "pb-2 pt-1.5" : "py-1.5")}>
+      <div className="flex items-center justify-between gap-3 px-1 sm:px-3">
+        <button type="button" onClick={umschalten} aria-expanded={offen} className="flex min-h-11 min-w-0 items-center gap-2 rounded-full pr-2 text-left sm:min-h-9">
+          <ChevronDown className={cn("size-4 shrink-0 text-fg-3 transition-transform duration-300", !offen && "-rotate-90")} />
+          <span className="eyebrow">Verfahrensstand</span>
+          {!offen && (
+            <span className="min-w-0 text-[12.5px] font-medium text-fg-2">
+              Phase {idx + 1} von {PHASEN.length}: {akte.phase}
+            </span>
+          )}
+        </button>
+        {offen && <span className="hidden text-[12.5px] text-fg-3 sm:inline">Zum Ändern auf eine Phase klicken</span>}
       </div>
+      {offen && (
       <div ref={scrollRef} className="no-scrollbar overflow-x-auto">
-        <ol className="relative flex min-w-[700px] pt-1">
-          <div className="pointer-events-none absolute top-[24px] h-[2px] rounded-full bg-[var(--line-strong)]" style={{ left: `${100 / 14}%`, right: `${100 / 14}%` }}>
+        <div className="relative min-w-[700px] pt-1">
+          <div className="pointer-events-none absolute top-[24px] h-[2px] rounded-full bg-[var(--line-strong)]" style={{ left: `${100 / 14}%`, right: `${100 / 14}%` }} aria-hidden>
             <motion.div
               className={cn("h-full rounded-full", fertig ? "bg-green" : "bg-ink")}
               initial={false}
@@ -293,6 +352,8 @@ function PhasenLeiste({ akte }: { akte: Akte }) {
               transition={{ type: "spring", stiffness: 260, damping: 32 }}
             />
           </div>
+        {/* Nur li als direkte Kinder der Liste (Fortschrittslinie liegt außerhalb) */}
+        <ol className="relative flex" aria-label={`Verfahrensstand: Phase ${idx + 1} von ${PHASEN.length}, ${akte.phase}`}>
           {PHASEN.map((p, i) => {
             const aktiv = i === idx;
             const erledigt = i < idx || fertig;
@@ -315,18 +376,20 @@ function PhasenLeiste({ akte }: { akte: Akte }) {
                   <span
                     className={cn(
                       "relative grid size-[24px] place-items-center rounded-full transition-all duration-300",
-                      aktiv ? (fertig ? "bg-green text-surface" : "bg-ink text-on-ink shadow-[0_0_0_5px_var(--ink-soft)]") : erledigt ? (fertig ? "bg-green text-surface" : "bg-ink text-on-ink") : "bg-[var(--surface)] text-fg-4 shadow-[inset_0_0_0_1.5px_var(--line-strong)] group-hover:shadow-[inset_0_0_0_1.5px_var(--ink)]",
+                      aktiv ? (fertig ? "bg-green text-surface" : "bg-ink text-on-ink shadow-[0_0_0_5px_var(--ink-soft)]") : erledigt ? (fertig ? "bg-green text-surface" : "bg-ink text-on-ink") : "bg-[var(--surface)] text-fg-3 shadow-[inset_0_0_0_1.5px_var(--line-strong)] group-hover:shadow-[inset_0_0_0_1.5px_var(--ink)]",
                     )}
                   >
-                    {erledigt || (aktiv && fertig) ? <Check className="size-3.5" strokeWidth={3} /> : aktiv ? <span className="size-2 rounded-full bg-on-ink" /> : <span className="num text-[10px] font-semibold">{i + 1}</span>}
+                    {erledigt || (aktiv && fertig) ? <Check className="size-3.5" strokeWidth={3} /> : aktiv ? <span className="size-2 rounded-full bg-on-ink" /> : <span className="num text-[12.5px] font-semibold">{i + 1}</span>}
                   </span>
-                  <span className={cn("relative whitespace-nowrap text-[11.5px] font-medium transition-colors", aktiv ? "text-fg" : erledigt ? "text-fg-2" : "text-fg-3 group-hover:text-fg-2")}>{p}</span>
+                  <span className={cn("relative whitespace-nowrap text-[12.5px] font-medium transition-colors", aktiv ? "text-fg" : erledigt ? "text-fg-2" : "text-fg-3 group-hover:text-fg-2")}>{p}</span>
                 </button>
               </li>
             );
           })}
         </ol>
+        </div>
       </div>
+      )}
     </div>
   );
 }

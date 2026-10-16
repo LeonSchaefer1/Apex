@@ -39,7 +39,7 @@ export function DokIcon({ d, size = 38 }: { d: Dokument; size?: number }) {
   return (
     <span className="relative inline-grid shrink-0 place-items-center rounded-[11px] bg-ink-soft text-ink" style={{ width: size, height: size }}>
       <Icon className="size-[18px]" strokeWidth={1.8} />
-      <span className="absolute -bottom-1 -right-1 rounded-[5px] bg-[var(--surface)] px-1 text-[8.5px] font-bold uppercase leading-[13px] tracking-[0.04em] text-fg-3 shadow-[0_0_0_1px_var(--line)]">{d.format}</span>
+      <span className="absolute -bottom-1 -right-1 rounded-[5px] bg-[var(--surface)] px-1 text-[9px] font-bold uppercase leading-[13px] tracking-[0.04em] text-fg-3 shadow-[0_0_0_1px_var(--line)]" aria-hidden>{d.format}</span>
     </span>
   );
 }
@@ -75,6 +75,8 @@ export function TabDokumente({ akte }: { akte: Akte }) {
   const [dateiDrag, setDateiDrag] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const klickTimer = useRef<number | undefined>(undefined);
+  // Umschalt-Klick wählt einen Bereich: zuletzt angeklicktes Dokument als Anker
+  const anker = useRef<string | null>(null);
   // Erster Klick auf einen Dokumentnamen: öffnet die Vorschau verzögert – ein Doppelklick benennt stattdessen um
   const ersterKlick = useRef<{ id: string; zeit: number; vorher: string | null; geoeffnet: boolean } | null>(null);
 
@@ -156,31 +158,48 @@ export function TabDokumente({ akte }: { akte: Akte }) {
     };
   }, []);
 
+  /** Verschieben – mit Verlaufseintrag und „Rückgängig“ (alte Ordner je Dokument werden wiederhergestellt). */
   const verschiebe = (ids: string[], ziel: Ordner) => {
     const st = useData.getState();
-    let n = 0;
+    const vorher: { id: string; ordner: Ordner }[] = [];
     for (const id of ids) {
       const d = doks.find((x) => x.id === id);
       if (d && d.ordner !== ziel) {
+        vorher.push({ id, ordner: d.ordner });
         st.patch("dokumente", id, { ordner: ziel });
-        n++;
       }
     }
     setAuswahl(new Set());
+    anker.current = null;
+    const n = vorher.length;
     if (!n) {
       toast(`Bereits im Ordner „${ziel}“`, { ton: "info" });
       return;
     }
+    const was = n === 1 ? `Dokument „${doks.find((d) => d.id === vorher[0].id)?.name}“ nach „${ziel}“ verschoben` : `${n} Dokumente nach „${ziel}“ verschoben`;
+    st.log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `${was} – ${akte.aktenzeichen}` });
     beruehreAkte(akte.id);
-    toast(n === 1 ? `Nach „${ziel}“ verschoben` : `${n} Dokumente nach „${ziel}“ verschoben`, { ton: "erfolg" });
+    toast(n === 1 ? `Nach „${ziel}“ verschoben` : `${n} Dokumente nach „${ziel}“ verschoben`, {
+      ton: "erfolg",
+      aktion: {
+        label: "Rückgängig",
+        onClick: () => {
+          const s2 = useData.getState();
+          for (const v of vorher) s2.patch("dokumente", v.id, { ordner: v.ordner });
+          s2.log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Verschieben rückgängig gemacht (${n} ${n === 1 ? "Dokument" : "Dokumente"} zurück) – ${akte.aktenzeichen}` });
+        },
+      },
+    });
   };
 
+  /** Löschen – mit Verlaufseintrag und „Rückgängig“ (die gelöschten Dokumente werden vollständig wiederhergestellt). */
   const loesche = async (ids: string[]) => {
-    const namen = doks.filter((d) => ids.includes(d.id)).map((d) => d.name);
+    const weg = doks.filter((d) => ids.includes(d.id));
+    const namen = weg.map((d) => d.name);
     const ok = await confirmDialog({
       titel: ids.length === 1 ? `„${namen[0]}“ löschen?` : `${ids.length} Dokumente löschen?`,
-      text: "Die Dokumente werden aus der E-Akte entfernt. Dieser Schritt kann nicht rückgängig gemacht werden.",
-      bestaetigen: "Endgültig löschen",
+      text: "Die Dokumente werden aus der E-Akte entfernt. Direkt danach können Sie das Löschen über „Rückgängig“ zurücknehmen; der Vorgang steht im Verlauf der Akte.",
+      bestaetigen: "Löschen",
       gefahr: true,
     });
     if (!ok) return;
@@ -190,16 +209,39 @@ export function TabDokumente({ akte }: { akte: Akte }) {
     beruehreAkte(akte.id);
     setAuswahl(new Set());
     if (dokId && ids.includes(dokId)) oeffne(null);
-    toast(ids.length === 1 ? "Dokument gelöscht" : `${ids.length} Dokumente gelöscht`, { ton: "erfolg" });
+    toast(ids.length === 1 ? "Dokument gelöscht" : `${ids.length} Dokumente gelöscht`, {
+      ton: "erfolg",
+      aktion: {
+        label: "Rückgängig",
+        onClick: () => {
+          const s2 = useData.getState();
+          for (const d of weg) s2.upsert("dokumente", d);
+          s2.log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Löschen rückgängig gemacht: ${weg.length === 1 ? `„${namen[0]}“` : `${weg.length} Dokumente`} wiederhergestellt – ${akte.aktenzeichen}` });
+        },
+      },
+    });
   };
 
+  /** Umbenennen – mit Verlaufseintrag und „Rückgängig“. */
   const benenneUm = (d: Dokument, name: string) => {
     setUmbenennen(null);
     const n = name.trim();
     if (!n || n === d.name) return;
+    const alt = d.name;
     useData.getState().patch("dokumente", d.id, { name: n });
+    useData.getState().log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Dokument „${alt}“ umbenannt in „${n}“ – ${akte.aktenzeichen}` });
     beruehreAkte(akte.id);
-    toast("Umbenannt", { ton: "erfolg", text: n });
+    toast("Umbenannt", {
+      ton: "erfolg",
+      text: n,
+      aktion: {
+        label: "Rückgängig",
+        onClick: () => {
+          useData.getState().patch("dokumente", d.id, { name: alt });
+          useData.getState().log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Umbenennen rückgängig gemacht: „${n}“ heißt wieder „${alt}“ – ${akte.aktenzeichen}` });
+        },
+      },
+    });
   };
 
   const ladeHoch = async (files: FileList | File[], zielOrdner?: Ordner) => {
@@ -289,13 +331,27 @@ export function TabDokumente({ akte }: { akte: Akte }) {
 
   const alleGewaehlt = sichtbar.length > 0 && sichtbar.every((d) => auswahl.has(d.id));
   const einige = auswahl.size > 0 && !alleGewaehlt;
-  const toggle = (id: string) =>
+  /** Auswahl umschalten; mit gedrückter Umschalttaste wird der Bereich seit dem letzten Klick ausgewählt. */
+  const toggle = (id: string, bereich = false) => {
+    const a = anker.current;
+    if (bereich && a && a !== id) {
+      const i1 = sichtbar.findIndex((d) => d.id === a);
+      const i2 = sichtbar.findIndex((d) => d.id === id);
+      if (i1 >= 0 && i2 >= 0) {
+        const [von, bis] = i1 < i2 ? [i1, i2] : [i2, i1];
+        setAuswahl((prev) => new Set([...prev, ...sichtbar.slice(von, bis + 1).map((d) => d.id)]));
+        anker.current = id;
+        return;
+      }
+    }
+    anker.current = id;
     setAuswahl((prev) => {
       const n = new Set(prev);
       if (n.has(id)) n.delete(id);
       else n.add(id);
       return n;
     });
+  };
 
   const ordnerListe: { key: Ordner | "alle"; label: string; Icon: typeof Files }[] = [{ key: "alle", label: "Alle Dokumente", Icon: Files }, ...ORDNER.map((o) => ({ key: o, label: o, Icon: ORDNER_ICON[o] }))];
 
@@ -304,7 +360,7 @@ export function TabDokumente({ akte }: { akte: Akte }) {
       {/* Ordner */}
       <div className="min-w-0">
         <Card padded={false} className="p-2 md:sticky md:top-[84px]">
-          <div className="eyebrow hidden px-3 pb-1.5 pt-2 !text-[10.5px] md:block">Ordner</div>
+          <div className="eyebrow hidden px-3 pb-1.5 pt-2 md:block">Ordner</div>
           <ul className="no-scrollbar flex gap-1 overflow-x-auto md:grid md:grid-cols-1 md:gap-0.5 md:overflow-visible">
             {ordnerListe.map(({ key, label, Icon }) => {
               const aktiv = !q.trim() && ordner === key;
@@ -329,13 +385,13 @@ export function TabDokumente({ akte }: { akte: Akte }) {
                     )}
                     <Icon className={cn("relative size-4 shrink-0", aktiv || ziel ? "text-ink" : "text-fg-3")} />
                     <span className="relative flex-1 truncate">{label}</span>
-                    <span className={cn("num relative rounded-full px-1.5 text-[11px]", aktiv ? "bg-ink-soft text-ink" : "text-fg-4")}>{zaehler[key] ?? 0}</span>
+                    <span className={cn("num relative rounded-full px-1.5 text-[12px]", aktiv ? "bg-ink-soft text-ink" : "text-fg-3")}>{zaehler[key] ?? 0}</span>
                   </button>
                 </li>
               );
             })}
           </ul>
-          <p className="hidden px-3 pb-2 pt-3 text-[11.5px] leading-snug text-fg-4 md:block">Dokumente auf einen Ordner ziehen, um sie zu verschieben. Doppelklick auf einen Namen benennt um.</p>
+          <p className="hidden px-3 pb-2 pt-3 text-[12.5px] leading-snug text-fg-3 md:block">Dokumente auf einen Ordner ziehen, um sie zu verschieben. Doppelklick auf einen Namen benennt um.</p>
         </Card>
       </div>
 
@@ -371,18 +427,18 @@ export function TabDokumente({ akte }: { akte: Akte }) {
             <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6, transition: { duration: 0.12 } }} transition={{ type: "spring", stiffness: 520, damping: 36 }} className="relative z-10 border-b border-[var(--line)] bg-ink-softer">
               <div className="flex flex-wrap items-center gap-2 px-4 py-2 text-[13px]">
                 <span className="num font-semibold">{auswahl.size} ausgewählt</span>
-                <Menu
-                  align="start"
-                  trigger={({ toggle: t }) => (
-                    <Button size="sm" variant="secondary" icon={<FolderInput className="size-4" />} onClick={t}>
-                      Verschieben nach …
+                {/* Zielordner direkt als Knöpfe – ohne Zwischenmenü */}
+                <span className="inline-flex items-center gap-1 text-fg-3">
+                  <FolderInput className="size-4" /> Verschieben nach:
+                </span>
+                {ORDNER.map((o) => {
+                  const I = ORDNER_ICON[o];
+                  return (
+                    <Button key={o} size="sm" variant="secondary" icon={<I className="size-4" />} onClick={() => verschiebe([...auswahl], o)}>
+                      {o}
                     </Button>
-                  )}
-                  items={ORDNER.map((o) => {
-                    const I = ORDNER_ICON[o];
-                    return { label: o, icon: <I />, onClick: () => verschiebe([...auswahl], o) };
-                  })}
-                />
+                  );
+                })}
                 <Button size="sm" variant="ghost" icon={<Trash2 className="size-4" />} onClick={() => void loesche([...auswahl])} className="!text-seal">
                   Löschen
                 </Button>
@@ -395,7 +451,7 @@ export function TabDokumente({ akte }: { akte: Akte }) {
         </AnimatePresence>
 
         {sichtbar.length > 0 && (
-          <div className="flex items-center gap-3 px-4 pb-1 pt-3 text-[12px] text-fg-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-1 pt-3 text-[12.5px] text-fg-3">
             <Checkbox
               checked={alleGewaehlt}
               indeterminate={einige}
@@ -413,6 +469,7 @@ export function TabDokumente({ akte }: { akte: Akte }) {
                 </>
               )}
             </span>
+            <span className="text-[12.5px] text-fg-3">Tipp: Umschalt-Klick wählt einen Bereich</span>
           </div>
         )}
 
@@ -457,7 +514,19 @@ export function TabDokumente({ akte }: { akte: Akte }) {
                         dokId === d.id && !gewaehlt && "bg-ink-softer",
                       )}
                     >
-                      <Checkbox checked={gewaehlt} onChange={() => toggle(d.id)} label={`${d.name} auswählen`} />
+                      <span
+                        onClickCapture={(e) => {
+                          // Umschalt-Klick: Bereich seit dem letzten Klick auswählen
+                          if (e.shiftKey) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toggle(d.id, true);
+                          }
+                        }}
+                        className="contents"
+                      >
+                        <Checkbox checked={gewaehlt} onChange={() => toggle(d.id)} label={`${d.name} auswählen`} />
+                      </span>
                       <DokIcon d={d} />
                       <div className="min-w-0 flex-1">
                         {benennt ? (
@@ -479,7 +548,7 @@ export function TabDokumente({ akte }: { akte: Akte }) {
                           />
                         ) : (
                           <div
-                            className="truncate text-[13.5px] font-medium"
+                            className="break-words text-[13.5px] font-medium"
                             title="Doppelklick zum Umbenennen"
                             onClick={(e) => {
                               e.stopPropagation();
@@ -494,7 +563,7 @@ export function TabDokumente({ akte }: { akte: Akte }) {
                             <Highlight text={d.name} q={q} />
                           </div>
                         )}
-                        <div className="mt-0.5 truncate text-[12px] text-fg-3">
+                        <div className="mt-0.5 text-[12.5px] text-fg-3">
                           {DOK_ART_LABEL[d.art]} · {fmtDate(d.createdAt.slice(0, 10))}
                           {d.seiten ? ` · ${d.seiten} ${d.seiten === 1 ? "Seite" : "Seiten"}` : ""} · {fmtKb(d.groesseKb)}
                           {d.version > 1 ? ` · Version ${d.version}` : ""}
@@ -519,6 +588,12 @@ export function TabDokumente({ akte }: { akte: Akte }) {
                         items={[
                           { label: "Vorschau öffnen", icon: <FileText />, onClick: () => oeffne(d.id) },
                           { label: "Umbenennen", icon: <PenLine />, onClick: () => setUmbenennen(d.id) },
+                          "sep",
+                          // „Verschieben nach …“ auch im Einzelmenü
+                          ...ORDNER.filter((o) => o !== d.ordner).map((o) => {
+                            const I = ORDNER_ICON[o];
+                            return { label: `Verschieben nach „${o}“`, icon: <I />, onClick: () => verschiebe([d.id], o) };
+                          }),
                           "sep",
                           { label: "Löschen", icon: <Trash2 />, danger: true, onClick: () => void loesche([d.id]) },
                         ]}

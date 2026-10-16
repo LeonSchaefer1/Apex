@@ -3,6 +3,8 @@ import { toast } from "@/store/ui";
 import { DEMO_TENANTS } from "@/core/seed/tenants";
 import { diffDays, fmtDate, today } from "@/core/dates";
 import type { Bundesland, Sachgebiet, Tenant, User } from "@/core/types";
+import { bundeslandAusOrt } from "@/core/feiertage";
+import { ansprechBezeichnung, briefAnrede, hauptnutzerBegriff, rollenLabel } from "@/lib/rollen";
 
 export const SACHGEBIETE: Sachgebiet[] = ["Arbeitsrecht", "Mietrecht", "Verkehrsrecht", "Familienrecht", "Erbrecht", "Strafrecht", "Forderungseinzug", "Vertragsrecht", "Baurecht", "Verwaltungsrecht"];
 
@@ -12,16 +14,9 @@ export const DEMO_IDS = new Set(DEMO_TENANTS.map((t) => t.tenant.id));
 /** Zugänge der eingebauten Beispielkanzleien – ihr Passwort lässt sich auf das öffentliche Demo-Passwort zurücksetzen. */
 export const DEMO_NUTZER_IDS = new Set(DEMO_TENANTS.flatMap((t) => t.users.map((u) => u.id)));
 
-const STADT_LAND: Record<string, Bundesland> = {
-  berlin: "BE", potsdam: "BB", hamburg: "HH", bremen: "HB", bremerhaven: "HB", münchen: "BY", muenchen: "BY", nürnberg: "BY", nuernberg: "BY", augsburg: "BY", regensburg: "BY", würzburg: "BY",
-  stuttgart: "BW", karlsruhe: "BW", mannheim: "BW", freiburg: "BW", heidelberg: "BW", ulm: "BW", köln: "NW", koeln: "NW", düsseldorf: "NW", duesseldorf: "NW", dortmund: "NW", essen: "NW",
-  bonn: "NW", münster: "NW", bielefeld: "NW", aachen: "NW", duisburg: "NW", bochum: "NW", wuppertal: "NW", frankfurt: "HE", "frankfurt am main": "HE", wiesbaden: "HE", kassel: "HE", darmstadt: "HE",
-  hannover: "NI", braunschweig: "NI", oldenburg: "NI", osnabrück: "NI", göttingen: "NI", leipzig: "SN", dresden: "SN", chemnitz: "SN", erfurt: "TH", jena: "TH", weimar: "TH", magdeburg: "ST", halle: "ST",
-  rostock: "MV", schwerin: "MV", kiel: "SH", lübeck: "SH", flensburg: "SH", mainz: "RP", koblenz: "RP", trier: "RP", ludwigshafen: "RP", saarbrücken: "SL", saarbruecken: "SL",
-};
-
+/** Bundesland zur Stadt – über die Ortsliste des Fristenrechners (src/core/feiertage.ts), z. B. „Paderborn“ → NW. Unbekannt → undefined. */
 export function landFuerStadt(stadt: string): Bundesland | undefined {
-  return STADT_LAND[stadt.trim().toLowerCase()];
+  return stadt.trim() ? bundeslandAusOrt(stadt) : undefined;
 }
 
 export async function kopieren(text: string, was = "Text") {
@@ -75,25 +70,35 @@ export function anmeldeZeile(): string {
   return url ? `Anmeldung: ${url}` : LOGIN_URL_HINWEIS;
 }
 
-export function einladungsText(p: { tenant: Tenant; admin: User; passwort: string; beispieldaten: boolean }) {
-  const { tenant, admin, passwort } = p;
+/**
+ * Vollständige Einladung (beim Anlegen, nach einem neuen Startpasswort und auf jeder Kundenkarte gleich): Anmeldeadresse,
+ * E-Mail, Ansprechpartnerin mit Durchwahl, Testende – aber kein Passwort. Das Startpasswort geht getrennt (Telefon/SMS).
+ */
+export function einladungsText(p: { tenant: Tenant; user: User; hauptnutzer?: boolean; beispieldaten?: boolean; neuesPasswort?: boolean }) {
+  const { tenant, user } = p;
   const ap = tenant.ansprechpartner;
+  const bez = ansprechBezeichnung(ap);
+  const ihre = bez === "Ansprechpartnerin" ? "Ihre feste Ansprechpartnerin" : "Ihren festen Ansprechpartner";
+  const rolle = rollenLabel(user) + (p.hauptnutzer ? ` (${hauptnutzerBegriff(user)} der Kanzlei)` : "");
   return [
-    "Betreff: Ihr Testzugang zu AnwaltApex",
+    p.neuesPasswort ? "Betreff: Ihr Zugang zu AnwaltApex – neues Startpasswort" : "Betreff: Ihr Testzugang zu AnwaltApex",
     "",
-    `Guten Tag ${admin.name},`,
+    briefAnrede(user),
     "",
-    `vielen Dank für Ihr Interesse an AnwaltApex. Ihr persönlicher Testzugang für ${tenant.name} ist eingerichtet${p.beispieldaten ? " – mit Beispielakten, damit Sie Fristen, Posteingang, KI-Fallanalyse und 38h-Motor sofort erleben können" : ""}.`,
+    p.neuesPasswort
+      ? `für Ihren Zugang zu AnwaltApex (${tenant.name}) wurde ein neues Startpasswort vergeben. Das bisherige Passwort ist nicht mehr gültig.`
+      : `vielen Dank für Ihr Interesse an AnwaltApex. Ihr persönlicher Testzugang für ${tenant.name} ist eingerichtet${p.beispieldaten ? " – mit Beispielakten, damit Sie Fristen, Posteingang, KI-Fallanalyse und 38h-Motor sofort ausprobieren können" : ""}.`,
     "",
     anmeldeZeile(),
-    `E-Mail: ${admin.email}`,
-    `Passwort: ${passwort}`,
+    `E-Mail: ${user.email}`,
+    `Ihre Rolle: ${rolle}`,
+    "Ihr Startpasswort erhalten Sie getrennt – telefonisch oder per SMS.",
     "Bei der ersten Anmeldung legen Sie ein eigenes Passwort fest.",
     "",
-    tenant.testBis ? `Ihr Testzugang ist bis zum ${fmtDate(tenant.testBis)} freigeschaltet.` : "Ihr Testzugang ist ab sofort freigeschaltet.",
+    tenant.status === "test" && tenant.testBis ? `Ihr Testzugang ist bis zum ${fmtDate(tenant.testBis)} freigeschaltet.` : tenant.status === "test" ? "Ihr Testzugang ist ab sofort und ohne festes Enddatum freigeschaltet." : "Ihr Zugang ist ab sofort freigeschaltet.",
     "Die Daten Ihrer Kanzlei sind strikt von allen anderen Kanzleien getrennt – nur Ihr Team hat Zugriff.",
     "",
-    `Bei Fragen erreichen Sie ${ap.rolle.replace(/^Ihr fester /, "Ihren festen ").replace(/^Ihr persönlicher /, "Ihren persönlichen ")} ${ap.name} direkt unter ${ap.telefon} oder ${ap.email} (${ap.verfuegbar}).`,
+    `Bei Fragen erreichen Sie ${ihre} ${ap.name} direkt unter ${ap.telefon} oder ${ap.email} (${ap.verfuegbar}).`,
     "",
     "Mit freundlichen Grüßen",
     "Ihr AnwaltApex-Team",

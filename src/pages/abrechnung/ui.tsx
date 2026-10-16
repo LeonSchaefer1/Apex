@@ -57,7 +57,7 @@ export function Betrag({ n, className, vorzeichen }: { n: number; className?: st
 }
 
 export function AkteLabel({ akte, className }: { akte?: Akte; className?: string }) {
-  if (!akte) return <span className="text-fg-4">–</span>;
+  if (!akte) return <span className="text-fg-3">–</span>;
   return (
     <span className={cn("flex min-w-0 items-baseline gap-2", className)}>
       <span className="mono shrink-0 text-[12px] text-fg-3">{akte.aktenzeichen}</span>
@@ -67,13 +67,16 @@ export function AkteLabel({ akte, className }: { akte?: Akte; className?: string
 }
 
 /** Kopf eines Reiters: klarer Name, ein Satz Erklärung, optionale Aktionen. */
-export function TabKopf({ titel, text, aktionen, icon }: { titel: string; text: string; aktionen?: ReactNode; icon?: ReactNode }) {
+export function TabKopf({ titel, text, aktionen, icon, plakette }: { titel: string; text: string; aktionen?: ReactNode; icon?: ReactNode; plakette?: ReactNode }) {
   return (
     <div className="mb-5 flex flex-wrap items-end gap-x-6 gap-y-3">
       <div className="flex min-w-0 flex-1 basis-[300px] items-start gap-3">
         {icon && <div className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">{icon}</div>}
         <div className="min-w-0">
-          <h2 className="title-lg">{titel}</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="title-lg">{titel}</h2>
+            {plakette}
+          </div>
           <p className="mt-1 text-[13px] leading-relaxed text-fg-3">{text}</p>
         </div>
       </div>
@@ -139,10 +142,10 @@ export function Briefkopf({ tenant, absenderZeile = true }: { tenant: Tenant; ab
           </span>
           <div className="min-w-0">
             <div className="truncate text-[15px] font-semibold leading-tight tracking-[-0.01em]">{tenant.name}</div>
-            <div className="mt-0.5 truncate text-[10.5px] tracking-[0.04em] opacity-55">{tenant.schwerpunkte.join(" · ")}</div>
+            <div className="mt-0.5 truncate text-[12.5px] tracking-[0.04em] opacity-55">{tenant.schwerpunkte.join(" · ")}</div>
           </div>
         </div>
-        <div className="hidden shrink-0 text-right text-[11px] leading-snug opacity-60 sm:block">
+        <div className="hidden shrink-0 text-right text-[12.5px] leading-snug opacity-60 sm:block">
           {strasse}
           <br />
           {ort}
@@ -150,7 +153,7 @@ export function Briefkopf({ tenant, absenderZeile = true }: { tenant: Tenant; ab
       </div>
       <div className="mt-4 h-[2px] rounded-full" style={{ background: `linear-gradient(90deg, ${tenant.farbe}, transparent)` }} />
       {absenderZeile && (
-        <div className="mt-6 truncate text-[9.5px] underline decoration-black/20 underline-offset-2 opacity-60">
+        <div className="mt-6 truncate text-[12.5px] underline decoration-black/20 underline-offset-2 opacity-60">
           {tenant.name} · {strasse} · {ort}
         </div>
       )}
@@ -177,7 +180,7 @@ export function Anschrift({ k }: { k?: Kontakt }) {
 /** Schlüssel-Wert-Zeile im Infoblock eines Papiers. */
 export function InfoZeile({ k, v, mono }: { k: string; v: ReactNode; mono?: boolean }) {
   return (
-    <div className="flex justify-between gap-4 text-[11.5px] leading-[1.7]">
+    <div className="flex justify-between gap-4 text-[12.5px] leading-[1.7]">
       <span className="opacity-55">{k}</span>
       <span className={cn("text-right font-medium", mono && "mono")}>{v}</span>
     </div>

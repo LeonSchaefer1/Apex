@@ -18,7 +18,7 @@ export function systemName(k: QuellSystem | null | undefined): string {
   return SYSTEME.find((s) => s.key === k)?.name ?? "Altsystem";
 }
 
-export type ZielFeld = "aktenzeichen" | "titel" | "mandant" | "gegner" | "sachgebiet" | "gegenstandswert" | "angelegt" | "fristDatum" | "fristTitel";
+export type ZielFeld = "aktenzeichen" | "titel" | "mandant" | "gegner" | "sachgebiet" | "gegenstandswert" | "angelegt" | "fristDatum" | "fristTitel" | "status" | "abgeschlossen";
 
 export const ZIELFELDER: { key: ZielFeld; label: string; kurz: string }[] = [
   { key: "aktenzeichen", label: "Aktenzeichen", kurz: "Az." },
@@ -30,6 +30,8 @@ export const ZIELFELDER: { key: ZielFeld; label: string; kurz: string }[] = [
   { key: "angelegt", label: "Angelegt am", kurz: "Angelegt" },
   { key: "fristDatum", label: "Fristdatum", kurz: "Frist" },
   { key: "fristTitel", label: "Fristart / Bezeichnung", kurz: "Fristart" },
+  { key: "status", label: "Status (offen, ruhend, abgeschlossen)", kurz: "Status" },
+  { key: "abgeschlossen", label: "Abgeschlossen am", kurz: "Abgeschlossen" },
 ];
 
 export function zielLabel(z: ZielFeld): string {
@@ -46,6 +48,8 @@ const SYNONYME: Record<ZielFeld, string[]> = {
   angelegt: ["anlagedatum", "angelegt", "angelegtam", "anlage", "datumanlage", "erstellt", "erstelltam", "eroeffnet", "eroeffnetam", "beginn"],
   fristDatum: ["naechstefrist", "frist", "fristdatum", "fristende", "fristablauf", "wiedervorlage", "wiedervorlagefrist", "wvdatum", "faelligam"],
   fristTitel: ["fristart", "fristbezeichnung", "fristgrund", "artderfrist", "fristtyp", "fristbeschreibung", "fristtext", "wvgrund"],
+  status: ["status", "aktenstatus", "zustand", "aktenzustand", "statusakte", "bearbeitungsstand"],
+  abgeschlossen: ["abgeschlossenam", "abgelegtam", "erledigtam", "ablagedatum", "abschlussdatum", "beendetam", "archiviertam", "abgeschlossen"],
 };
 
 export function normKopf(s: string): string {
@@ -236,6 +240,32 @@ export function normName(s: string): string {
 
 export type DublettenAktion = "skip" | "overwrite";
 
+/** Dublette innerhalb der Datei: zusammenführen (Standard), beide behalten oder die spätere Zeile überspringen. */
+export type DateiDublettenAktion = "merge" | "keep" | "skip";
+
+/** Umfang der Übernahme: nur offene Akten, offene + abgeschlossene der letzten 6 Jahre (§ 50 BRAO) oder alle (ältere als Archiv). */
+export type Umfang = "offen" | "sechsJahre" | "alle";
+
+/** Status des Altsystems → offen, ruhend oder abgeschlossen („abgelegt“, „erledigt“, „archiviert“ = abgeschlossen). */
+export function statusAus(roh: string): Akte["status"] | undefined {
+  const t = normWorte(roh);
+  if (!t) return undefined;
+  if (/abgelegt|erledigt|abgeschlossen|archiv|beendet|geschlossen|abgerechnet und abgelegt|\bablage\b/.test(t)) return "abgeschlossen";
+  if (/ruh|pausiert|ausgesetzt|unterbrochen|schwebend/.test(t)) return "ruhend";
+  if (/offen|laufend|aktiv|in bearbeitung|bearbeitung|neu/.test(t)) return "offen";
+  return undefined;
+}
+
+/** Stichtag für den Umfang „letzte 6 Jahre“: Abschlussdatum, sonst Anlagedatum (vorsichtige Schätzung). */
+export function imUmfang(z: Pick<MigZeile, "status" | "abgeschlossenAm" | "angelegt">, umfang: Umfang, heute: ISODate = today()): boolean {
+  if (z.status !== "abgeschlossen" || umfang === "alle") return true;
+  if (umfang === "offen") return false;
+  const bezug = z.abgeschlossenAm ?? z.angelegt;
+  if (!bezug) return true;
+  // Aufbewahrung sechs Jahre nach Ablauf des Kalenderjahres (§ 50 Abs. 1 BRAO): Abschlussjahr + 6 ≥ laufendes Jahr
+  return Number(bezug.slice(0, 4)) + 6 >= Number(heute.slice(0, 4));
+}
+
 export interface MigZeile {
   nr: number; // Zeile in der Datei (ab 2, Kopfzeile = 1)
   quellAz: string;
@@ -256,7 +286,13 @@ export interface MigZeile {
   sachgebietErkannt: boolean;
   sachgebietHinweis?: string;
   roh: [string, string][];
+  /** Status laut Altsystem (Standard: offen) */
+  status: Akte["status"];
+  statusRoh: string;
+  abgeschlossenAm?: ISODate;
   dublette?: { akteId: string; az: string; titel: string; grund: "Aktenzeichen" | "Bezeichnung" | "Aktenzeichen und Bezeichnung" };
+  /** Dublette innerhalb der Datei: gleiche Bezeichnung, gleicher Mandant und Gegner wie eine frühere Zeile */
+  dateiDublette?: { nr: number; az: string; gleicheFrist: boolean };
   fehler?: string; // Zeile wird nicht übernommen
   hinweis?: string; // Zeile wird übernommen, Teilwert fehlt
 }
@@ -270,7 +306,7 @@ export function baueZeilen(csv: CsvErgebnis, zuordnung: (ZielFeld | null)[], akt
   };
   const nachAz = new Map(akten.map((a) => [a.aktenzeichen.trim().toLowerCase(), a]));
   const nachTitel = new Map(akten.map((a) => [normName(a.titel), a]));
-  return csv.zeilen.map((row, i) => {
+  const zeilen = csv.zeilen.map((row, i) => {
     const quellAz = get(row, "aktenzeichen");
     const mandant = personName(get(row, "mandant"));
     const gegner = personName(get(row, "gegner"));
@@ -283,6 +319,9 @@ export function baueZeilen(csv: CsvErgebnis, zuordnung: (ZielFeld | null)[], akt
     const fristTitel = get(row, "fristTitel");
     const fristTyp = fristTypAus(fristTitel, sg);
     const fristDatum = parseDatum(get(row, "fristDatum"));
+    const statusRoh = get(row, "status");
+    const status = statusAus(statusRoh) ?? "offen";
+    const abgeschlossenAm = status === "abgeschlossen" ? parseDatum(get(row, "abgeschlossen")) : undefined;
     const z: MigZeile = {
       nr: i + 2,
       quellAz,
@@ -300,7 +339,11 @@ export function baueZeilen(csv: CsvErgebnis, zuordnung: (ZielFeld | null)[], akt
       sachgebietErkannt: sgTreffer.erkannt && !sgTreffer.hinweis,
       sachgebietHinweis: sgTreffer.hinweis,
       roh: csv.kopf.map((h, k) => [h, row[k] ?? ""] as [string, string]),
+      status,
+      statusRoh,
+      ...(abgeschlossenAm ? { abgeschlossenAm } : {}),
     };
+    if (statusRoh && !statusAus(statusRoh)) z.hinweis = `Status „${statusRoh}“ nicht erkannt – als offen übernommen.`;
     if (!titel && !quellAz) z.fehler = "Weder Aktenzeichen noch Bezeichnung – Zeile wird übersprungen.";
     const fristRoh = get(row, "fristDatum");
     if (fristRoh && !z.fristDatum) z.hinweis = `Fristdatum „${fristRoh}“ nicht lesbar – Frist bitte manuell eintragen.`;
@@ -317,4 +360,25 @@ export function baueZeilen(csv: CsvErgebnis, zuordnung: (ZielFeld | null)[], akt
     }
     return z;
   });
+  return markiereDateiDubletten(zeilen);
+}
+
+/**
+ * Dubletten innerhalb der Datei: gleiche (normalisierte) Bezeichnung, gleicher Mandant und Gegner wie eine frühere Zeile –
+ * z. B. „12/26“ und „14/26 Müller ./. Böhm Maschinenbau“. `gleicheFrist`, wenn auch Fristdatum und Fristart übereinstimmen.
+ */
+export function markiereDateiDubletten(zeilen: MigZeile[]): MigZeile[] {
+  const erste = new Map<string, MigZeile>();
+  for (const z of zeilen) {
+    if (z.fehler) continue;
+    const key = [normName(z.titel), normName(z.mandant), normName(z.gegner)].join("|");
+    if (!normName(z.titel) && !normName(z.mandant)) continue;
+    const vorher = erste.get(key);
+    if (!vorher) {
+      erste.set(key, z);
+      continue;
+    }
+    z.dateiDublette = { nr: vorher.nr, az: vorher.quellAz, gleicheFrist: !!z.fristDatum && z.fristDatum === vorher.fristDatum && normName(z.fristTitel) === normName(vorher.fristTitel) };
+  }
+  return zeilen;
 }

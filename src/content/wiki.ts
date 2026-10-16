@@ -67,12 +67,24 @@ export const WIKI: WikiArtikel[] = [
     tipps: ["Fällt eine Schnittstelle aus, sehen Sie das sofort im Systemstatus – inklusive automatischer Wiederverbindung."],
   },
   {
+    key: "bea-stoerung", titel: "beA-Störung – was tun?", kategorie: "Posteingang", dauer: "1 Min.", pfad: "/hilfe#status",
+    kurz: "Ist das beA vorübergehend technisch nicht nutzbar, bleibt die Einreichung nach den allgemeinen Vorschriften zulässig (Telefax, Papier, Bote) – Zivilgerichte § 130d S. 2, 3 ZPO, Arbeitsgerichte § 46g S. 3, 4 ArbGG. Die Unmöglichkeit glaubhaft machen und die Störung dokumentieren.",
+    stichworte: ["beA gestört", "beA Störung", "beA geht nicht", "beA ausgefallen", "beA nicht erreichbar", "Ersatzeinreichung", "technische Unmöglichkeit", "130d ZPO", "46g ArbGG", "Notfall"],
+    schritte: [
+      { titel: "Störung dokumentieren", text: "Sofort festhalten: Screenshot mit Uhrzeit, Fehlermeldung, Störungsmeldung der BRAK bzw. beA-Status, Uhrzeiten der Versuche. Das ist die Grundlage der Glaubhaftmachung.", visual: "status" },
+      { titel: "Ersatzeinreichung", text: "Bei vorübergehender technischer Unmöglichkeit nach den allgemeinen Vorschriften einreichen: Telefax, Papier oder Bote. Zivilgerichte (AG, LG, OLG, BGH): § 130d S. 2 ZPO; Arbeitsgerichte (ArbG, LAG, BAG): § 46g S. 3 ArbGG; entsprechend § 55d VwGO, § 65d SGG, § 52d FGO, § 32d StPO.", visual: "eeb" },
+      { titel: "Glaubhaft machen", text: "Die vorübergehende Unmöglichkeit bei der Ersatzeinreichung oder unverzüglich danach glaubhaft machen – mit anwaltlicher Versicherung und geschlossener Schilderung der Abläufe (§ 130d S. 3 ZPO, § 46g S. 4 ArbGG). Auf Anforderung des Gerichts das elektronische Dokument nachreichen.", visual: "eeb" },
+      { titel: "Frist erst nach Nachweis erledigen", text: "Die Frist erst nach Sendebericht bzw. Eingangsbestätigung als erledigt markieren (Ausgangskontrolle). Und: Ihre feste Ansprechperson bei AnwaltApex anrufen.", visual: "frist" },
+    ],
+    tipps: ["Der Apex Assistent beantwortet „beA gestört – was tun?“ auch für das konkrete Gericht (z. B. LAG oder OLG)."],
+  },
+  {
     key: "fristen", titel: "Fristenkontrolle", kategorie: "Akten & Fristen", dauer: "2 Min.", pfad: "/fristen",
     kurz: "Fristenkalender mit Vorfristen, Vier-Augen-Kontrolle und einem Fristenrechner, der jeden Rechenschritt zeigt.",
     stichworte: ["Notfrist", "nicht verlängerbar", "kritische Frist", "Vorfrist", "Wiedervorlage", "Fristenkalender"],
     schritte: [
       { titel: "Kennzahlen lesen", text: "Oben stehen „Heute fällig“, „Nächste 7 Tage“, „Kritische Fristen“ und „Vier-Augen-Kontrolle offen“. Gezählt werden nur Notfristen und Fristen – Wiedervorlagen, Vorfristen und Termine stehen getrennt daneben.", visual: "frist" },
-      { titel: "Kalender oder Liste", text: "Wechseln Sie zwischen Wochen-, Monats- und Listenansicht. Notfristen und andere nicht verlängerbare Fristen sind rot markiert, Vorfristen gestrichelt. Die Herkunft steht an jeder Frist: „Von KI erkannt“, „Automatisch angelegt“, „Von Hand eingetragen“ oder „Aus Umzug“.", visual: "frist" },
+      { titel: "Kalender oder Liste", text: "Wechseln Sie zwischen Wochen-, Monats- und Listenansicht. Notfristen und andere nicht verlängerbare Fristen sind rot markiert, Vorfristen gestrichelt. Die Herkunft steht an jeder Frist: „Von KI erkannt“, „Durch Assistent angelegt“ (mit Ihrem Auftrag), „Automatisch angelegt“, „Von Hand eingetragen“ oder „Aus Umzug“.", visual: "frist" },
       { titel: "Frist berechnen", text: "Fristart wählen (z. B. Berufung, § 517 ZPO), Zustelldatum eingeben – fertig. Wochenenden und Feiertage am Gerichtsort bzw. in Ihrem Bundesland werden automatisch berücksichtigt.", visual: "rechner" },
       { titel: "Vier-Augen-Kontrolle", text: "Jede Notfrist und Frist bestätigt eine zweite Person mit „Kontrolle bestätigen“ – bis dahin steht „Vier-Augen-Kontrolle offen“ an der Frist.", visual: "vieraugen" },
     ],
@@ -95,17 +107,18 @@ export const WIKI: WikiArtikel[] = [
     schritte: [
       { titel: "Suchen wie Sie denken", text: "Geben Sie einen Sachverhalt ein, z. B. „Kündigung wegen Pfandbon nach 30 Jahren“. Die Suche versteht Umlaute, Wortformen und Normen.", visual: "suche" },
       { titel: "Filtern", text: "Nach Gerichtsebene, Rechtsgebiet und Jahr eingrenzen. Im Prototyp ist die Datenbank ein kuratierter Auszug; im Produktivbetrieb wird sie an offene Rechtsprechungsquellen aller Instanzen angebunden (z. B. Open Legal Data, NeuRIS).", visual: "suche" },
-      { titel: "In die Akte übernehmen", text: "Eine Entscheidung mit einem Klick an eine Akte heften – sie erscheint dann in der Fallanalyse.", visual: "akte" },
+      { titel: "In die Akte übernehmen", text: "Eine Entscheidung direkt an eine Akte heften – sie erscheint dann in der Fallanalyse.", visual: "akte" },
     ],
   },
   {
     key: "motor", titel: "Der 38h-Motor", kategorie: "Erste Schritte", dauer: "2 Min.", pfad: "/automatisierung",
-    kurz: "Standard-Schriftsätze, Fristenkontrolle und Mandanten-Updates laufen autonom im Hintergrund – die Apex Island oben zeigt live, was gerade erledigt wird.",
+    kurz: "Standard-Schriftsätze (z. B. Kostenfestsetzungsantrag) bereitet der 38h-Motor vor – zur Prüfung und Unterschrift. Fristenkontrolle, Zuordnung und Vorfristen laufen im Hintergrund; was die Kanzlei verlässt, geht erst nach Ihrer Freigabe hinaus. Die Apex Island oben zeigt, was zuletzt erledigt wurde.",
     stichworte: ["Apex Island", "Island", "Kapsel", "Automatisierung", "Automationen", "Zeitersparnis", "gesparte Stunden"],
     schritte: [
       { titel: "Automationen ein- und ausschalten", text: "Jede Automation hat einen Schalter, eine klare Beschreibung und zeigt, wie viel Zeit sie pro Lauf spart. Zeitgesteuerte Automationen laufen nur zu ihrer Uhrzeit (z. B. Mandanten-Update freitags um 14:00 Uhr).", visual: "motor" },
-      { titel: "Live zusehen", text: "Die schwarze Kapsel oben – die Apex Island – zeigt live, was der 38h-Motor gerade erledigt, und sonst die in den letzten 7 Tagen gesparte Zeit. Ein Klick öffnet den 38h-Motor.", visual: "motor" },
-      { titel: "Ersparnis berechnen", text: "Der Rechner zeigt, was die gesparte Zeit im Rechenbeispiel in Euro wert ist – auf Basis Ihres Stundensatzes. Das Ziel von bis zu 38 Std. je Woche ist ein Richtwert, keine Garantie.", visual: "motor" },
+      { titel: "Freigabe vor dem Versand", text: "Jede Automation nennt ihre Freigabestufe: Entwürfe und Schreiben nach außen (Deckungsanfrage, Zahlungserinnerung, Mandanten-Update) gehen erst nach Ihrer Freigabe hinaus; interne Schritte wie Vorfristen laufen ohne Rückfrage – nichts davon verlässt die Kanzlei.", visual: "motor" },
+      { titel: "Mitverfolgen", text: "Die schwarze Kapsel oben – die Apex Island – zeigt, was der 38h-Motor zuletzt erledigt hat, und sonst die in den letzten 7 Tagen gesparte Zeit (im Prototyp Beispielwerte). Ein Klick öffnet den 38h-Motor; unter Einstellungen → Darstellung lässt sie sich beruhigen.", visual: "motor" },
+      { titel: "Ersparnis berechnen", text: "Gezählt wird je bearbeitetem Vorgang, nicht je Lauf. Der Rechner zeigt, was die gesparte Zeit im Rechenbeispiel in Euro wert ist. Das Ziel von bis zu 38 Std. je Woche ist ein Richtwert, keine Garantie.", visual: "motor" },
     ],
   },
   {
@@ -127,12 +140,12 @@ export const WIKI: WikiArtikel[] = [
   },
   {
     key: "umzug", titel: "Umzug aus Ihrer bisherigen Software", kategorie: "Umzug", dauer: "2 Min.", pfad: "/umzug",
-    kurz: "Umzug mit einem Klick: Akten, Kontakte und Fristen aus Ihrer bisherigen Software ziehen vollständig um.",
+    kurz: "Umzug in fünf Schritten – mit Vorschau und Rückgängig: Akten, Kontakte und Fristen aus Ihrer bisherigen Software ziehen vollständig um; Dokumente und Aktenkonten übernehmen Sie gemeinsam mit Ihrer festen Ansprechperson.",
     stichworte: ["Migration", "One-Klick-Migration", "Datenübernahme", "Wechsel", "Import"],
     schritte: [
       { titel: "Bisherige Software wählen", text: "RA-MICRO, ACTAPORT, Advoware, ReNoStar oder eine CSV-/Excel-Datei.", visual: "umzug" },
       { titel: "Vorschau prüfen", text: "Spalten werden automatisch zugeordnet. Sie sehen vorab, was übernommen wird – und was doppelt wäre.", visual: "umzug" },
-      { titel: "Übernehmen", text: "Ein Klick – alle Daten sind da. Übernommene Fristen tragen „Aus Umzug“ und gehen in die Vier-Augen-Kontrolle.", visual: "frist" },
+      { titel: "Übernehmen", text: "Nach Ihrer Prüfung übernehmen – jeder Lauf lässt sich rückgängig machen. Übernommene Fristen tragen „Aus Umzug“ und gehen in die Vier-Augen-Kontrolle.", visual: "frist" },
     ],
     tipps: ["Ihre feste Ansprechperson bei AnwaltApex begleitet den Umzug und prüft mit Ihnen die ersten Akten."],
   },
@@ -151,7 +164,7 @@ export const WIKI: WikiArtikel[] = [
     kurz: "Kanzleidaten, Team & Zugänge, Lizenz, KI-Einstellungen und Darstellung.",
     schritte: [
       { titel: "Team einladen", text: "Neue Kolleginnen und Kollegen mit Rolle anlegen – sie erhalten ein Startpasswort.", visual: "team" },
-      { titel: "Lizenz", text: "Lifetime-Lizenz: einmal investiert, keine Monatsgebühren. Updates werden vorher in einer Testumgebung geprüft.", visual: "lizenz" },
+      { titel: "Lizenz", text: "Lifetime-Lizenz: einmal investiert, keine Monatsgebühren. Wartung optional (Richtwert 15 % des Lizenzpreises pro Jahr, das erste Jahr ist enthalten); Updates werden vorher in einer Testumgebung geprüft.", visual: "lizenz" },
     ],
   },
   {
@@ -169,12 +182,12 @@ export const WIKI: WikiArtikel[] = [
     schritte: [
       { titel: "Öffnen", text: "Tippen Sie unten rechts auf die leuchtende Kugel.", visual: "assistent" },
       { titel: "Sprechen", text: "Mikrofon antippen und frei sprechen, z. B. „Welche Fristen laufen diese Woche ab?“, „Wie hoch sind die offenen Forderungen?“ oder „Lege eine Wiedervorlage für Akte 142 in drei Tagen an.“", visual: "assistent" },
-      { titel: "Ergebnis", text: "Der Apex Assistent antwortet hörbar, zeigt Fundstellen und Werkzeug-Chips („Fristenkalender geprüft“) und trägt nur ein, worum Sie ausdrücklich bitten. Findet er keine sichere Antwort, fragt er nach.", visual: "assistent" },
+      { titel: "Ergebnis", text: "Der Apex Assistent antwortet hörbar, zeigt Fundstellen und Werkzeug-Chips („Fristenkalender geprüft“). Einträge schlägt er als Karte vor – eingetragen wird erst nach „Eintragen“, danach gibt es „Rückgängig“. Bei mehreren passenden Akten fragt er nach.", visual: "assistent" },
     ],
   },
   {
     key: "bankabgleich", titel: "Zahlungen automatisch zuordnen", kategorie: "Abrechnung", dauer: "1 Min.", pfad: "/abrechnung?tab=bank",
-    kurz: "So bucht AnwaltApex Zahlungseingänge selbstständig auf Rechnungen und Aktenkonten.",
+    kurz: "So ordnet AnwaltApex Zahlungseingänge Rechnungen und Aktenkonten zu – eindeutige Treffer ab 90 % gebucht, alle anderen zur Bestätigung.",
     schritte: [
       { titel: "Abgleich starten", text: "„Abgleich starten“ prüft alle offenen Umsätze gegen offene Rechnungen.", visual: "bank" },
       { titel: "Sicherheit prüfen", text: "Rechnungsnummer im Verwendungszweck = sicher. Nur Name und Betrag = Vorschlag zur Bestätigung.", visual: "bank" },

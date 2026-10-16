@@ -100,12 +100,12 @@ export function WochenAnsicht({
           return (
             <div key={t} data-tag={t} aria-current={t === markiert ? "date" : undefined} className={cn("sheet flex min-h-[320px] min-w-0 scroll-mt-24 flex-col rounded-[18px]", ring(t) && "ring-2 ring-[var(--ink)]", t === markiert && "bg-ink-softer")}>
               <div className="flex items-center gap-2 border-b border-[var(--line)] px-2.5 py-2">
-                <span className={cn("text-[11.5px] font-semibold uppercase tracking-[0.06em]", frei ? "text-fg-4" : "text-fg-3")}>{wochentagName(t, true)}</span>
+                <span className={cn("text-[12px] font-semibold uppercase tracking-[0.06em]", frei ? "text-fg-3" : "text-fg-3")}>{wochentagName(t, true)}</span>
                 <span className={cn("num ml-auto grid size-7 place-items-center rounded-full text-[13.5px] font-semibold", istHeute ? "bg-ink text-on-ink" : frei ? "text-fg-3" : "text-fg")}>{Number(t.slice(8, 10))}</span>
               </div>
               <div className={cn("flex flex-1 flex-col gap-1.5 rounded-b-[18px] p-1.5", frei && SCHRAFFUR)}>
                 {ft && (
-                  <div className={cn("truncate rounded-[8px] px-2 py-1 text-[10.5px] font-semibold", ft.teilweise ? "bg-amber-soft text-amber" : "bg-surface text-fg-2 ring-1 ring-inset ring-[var(--line)]")} title={ft.teilweise ? `${ft.name} – nur regional, verlängert Fristen nicht` : `${ft.name} – gesetzlicher Feiertag`}>
+                  <div className={cn("truncate rounded-[8px] px-2 py-1 text-[12px] font-semibold", ft.teilweise ? "bg-amber-soft text-amber" : "bg-surface text-fg-2 ring-1 ring-inset ring-[var(--line)]")} title={ft.teilweise ? `${ft.name} – nur regional, verlängert Fristen nicht` : `${ft.name} – gesetzlicher Feiertag`}>
                     {ft.name}
                   </div>
                 )}
@@ -128,15 +128,15 @@ export function WochenAnsicht({
           return (
             <Card key={t} padded={false} data-tag={t} aria-current={t === markiert ? "date" : undefined} className={cn("flex scroll-mt-24 gap-3 p-3", ring(t) && "ring-2 ring-[var(--ink)]", frei && !items.length && t !== markiert && "opacity-80")}>
               <div className="w-11 shrink-0 text-center">
-                <div className={cn("text-[11px] font-semibold uppercase", frei ? "text-fg-4" : "text-fg-3")}>{wochentagName(t, true)}</div>
+                <div className={cn("text-[12px] font-semibold uppercase", frei ? "text-fg-3" : "text-fg-3")}>{wochentagName(t, true)}</div>
                 <div className={cn("num mx-auto mt-0.5 grid size-9 place-items-center rounded-full text-[16px] font-semibold", istHeute ? "bg-ink text-on-ink" : frei ? "text-fg-3" : "")}>{Number(t.slice(8, 10))}</div>
               </div>
               <div className={cn("min-w-0 flex-1 space-y-1.5 rounded-[12px]", frei && !items.length && cn(SCHRAFFUR, "min-h-10"))}>
-                {ft && <div className={cn("text-[11.5px] font-semibold", ft.teilweise ? "text-amber" : "text-fg-2")}>{ft.name}{ft.teilweise ? " (regional)" : ""}</div>}
+                {ft && <div className={cn("text-[12px] font-semibold", ft.teilweise ? "text-amber" : "text-fg-2")}>{ft.name}{ft.teilweise ? " (regional)" : ""}</div>}
                 {items.map((f) => (
                   <FristPille key={f.id} f={f} akte={akten.get(f.akteId)} onClick={() => onOpen(f)} />
                 ))}
-                {!items.length && !ft && <div className="flex h-10 items-center text-[12px] text-fg-4">{frei ? "Wochenende" : "Keine Einträge"}</div>}
+                {!items.length && !ft && <div className="flex h-10 items-center text-[12px] text-fg-3">{frei ? "Wochenende" : "Keine Einträge"}</div>}
               </div>
             </Card>
           );

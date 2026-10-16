@@ -16,6 +16,7 @@ export const ANKER = [
   { id: "lifetime", label: "Lifetime" },
   { id: "ki", label: "KI & Datenschutz" },
   { id: "faq", label: "Fragen" },
+  { id: "kontakt", label: "Kontakt" },
 ];
 
 /** Schwebende Glas-Navigation mit gleitender Markierung des aktuellen Abschnitts. */
@@ -74,7 +75,7 @@ export function Navigation({ scrollRef }: { scrollRef: RefObject<HTMLDivElement 
       <div
         className={cn(
           "mx-auto flex h-14 max-w-[1200px] items-center gap-2 rounded-[22px] pl-3 pr-2 transition-[background-color,box-shadow] duration-500 sm:pl-4",
-          gescrollt ? "glass-strong" : "glass",
+          gescrollt ? "glass-strong glass-deckend" : "glass",
         )}
       >
         <button type="button" onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })} className="flex shrink-0 items-center gap-2.5 rounded-[12px]" aria-label="AnwaltApex – nach oben">

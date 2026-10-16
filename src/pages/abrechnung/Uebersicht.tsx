@@ -1,5 +1,5 @@
 // Reiter „Übersicht“: Kennzahlen, Monatsumsatz, Fremdgeld-Wächter und was der 38h-Motor übernimmt.
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { AlertTriangle, ArrowRight, BellRing, CheckCircle2, Clock, HandCoins, Landmark, Layers, ShieldCheck, Timer, TrendingUp, Wallet, Zap } from "lucide-react";
@@ -9,7 +9,8 @@ import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
 import { addDays, diffDays, fmtDateShort, fmtEUR, monatName, relDays, round2, today } from "@/core/dates";
 import { cn } from "@/lib/cn";
-import { leiteFremdgeldWeiter, macheWeiterleitungRueckgaengig, sendeZahlungserinnerungen } from "./aktionen";
+import { sendeZahlungserinnerungen } from "./aktionen";
+import { WeiterleitungsDialog } from "./WeiterleitungsDialog";
 import { istOffen, istUeberfaellig, offenerBetrag, zaehltAlsUmsatz, type TabKey } from "./lib";
 import { useSammelKandidaten } from "./Sammelabrechnung";
 import { useAbrechnungUI } from "./store";
@@ -114,7 +115,7 @@ function OffenePosten() {
             </div>
             <span className="text-right">
               <span className="num font-semibold">{EUR0(x.summe)}</span>
-              <span className="num ml-1.5 text-[11.5px] text-fg-4">{x.anzahl}×</span>
+              <span className="num ml-1.5 text-[12.5px] text-fg-3">{x.anzahl}×</span>
             </span>
           </li>
         ))}
@@ -144,7 +145,6 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
   const rechnungen = useCol("rechnungen");
   const transaktionen = useCol("transaktionen");
   const automationen = useCol("automationen");
-  const { user } = useKanzlei();
   const nav = useNavigate();
   const setSammel = useAbrechnungUI((s) => s.setSammel);
   const { vorschlaege } = useSammelKandidaten();
@@ -193,15 +193,10 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
   const motor = ["bankabgleich", "mahnwesen", "zeiterfassung"].map((k) => automationen.find((a) => a.key === k)).filter((a): a is NonNullable<typeof a> => !!a);
   const motorStunden = round2(motor.reduce((s, a) => s + a.laeufe * a.minutenProLauf, 0) / 60);
 
+  // „Weiterleiten“ öffnet den Dialog mit Empfänger, IBAN (Pflicht), Betrag, Verwendungszweck und Wirkung
+  const [weiterleitung, setWeiterleitung] = useState<(typeof fremdgeld)[number] | null>(null);
   const weiterleiten = (f: (typeof fremdgeld)[number]) => {
-    if (!f.akte) return;
-    const name = f.mandant?.name ?? "Mandant";
-    const res = leiteFremdgeldWeiter(f.akte, f.saldo, name, user.id);
-    toast("Fremdgeld weitergeleitet", {
-      text: `${fmtEUR(f.saldo)} an ${name} – im Aktenkonto gebucht`,
-      ton: "erfolg",
-      aktion: { label: "Rückgängig", onClick: () => macheWeiterleitungRueckgaengig(res) },
-    });
+    if (f.akte) setWeiterleitung(f);
   };
 
   const aufgaben = [
@@ -304,7 +299,7 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
                   <div className="title-md">{a.titel}</div>
                   <div className="mt-0.5 text-[12.5px] text-fg-3">{a.text}</div>
                 </div>
-                <ArrowRight className="absolute right-4 top-4 size-4 text-fg-4 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:text-ink" />
+                <ArrowRight className="absolute right-4 top-4 size-4 text-fg-3 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:text-ink" />
               </motion.button>
             ))}
           </div>
@@ -312,7 +307,7 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
           <OffenePosten />
         </div>
         <div className="grid grid-cols-1 content-start gap-4">
-          <Card className="flex flex-col">
+          <Card className="flex flex-col scroll-mt-24" id="fremdgeld-waechter">
             <CardHeader icon={<ShieldCheck className="size-4" />} title="Fremdgeld-Wächter" subtitle="Fremdgeld ist unverzüglich an die Berechtigten weiterzuleiten (§ 43a Abs. 7 BRAO)." />
             <ul className="-mx-2 flex-1">
               <AnimatePresence initial={false}>
@@ -330,15 +325,15 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
                       <div className="flex items-start gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex min-w-0 items-baseline gap-2">
-                            <span className="mono shrink-0 text-[12px] text-fg-3">{f.akte?.aktenzeichen}</span>
-                            <span className="truncate text-[13.5px] font-medium">{f.akte?.titel}</span>
+                            <span className="mono shrink-0 text-[12.5px] text-fg-3">{f.akte?.aktenzeichen}</span>
+                            <span className="break-words text-[13.5px] font-medium">{f.akte?.titel}</span>
                           </div>
-                          <div className="mt-0.5 truncate text-[12px] text-fg-3">{f.text}</div>
+                          <div className="mt-0.5 break-words text-[12.5px] text-fg-3">{f.text}</div>
                           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                             <Chip tone={tage >= 3 ? "seal" : "amber"} dot>
                               eingegangen {relDays(f.letzterEingang, heute)}
                             </Chip>
-                            <span className="text-[11.5px] text-fg-4">an {f.mandant?.name ?? "Mandant"}</span>
+                            <span className="text-[12.5px] text-fg-3">an {f.mandant?.name ?? "Mandant"}</span>
                           </div>
                         </div>
                         <div className="flex shrink-0 flex-col items-end gap-2">
@@ -362,9 +357,10 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
                 </motion.li>
               )}
             </ul>
-            <p className="mt-3 border-t border-[var(--line)] pt-3 text-[11.5px] leading-snug text-fg-4">
-              Ab drei Tagen Liegezeit wird rot markiert. „Weiterleiten“ bucht die Auszahlung im Aktenkonto und erledigt die zugehörige Frist.
+            <p className="mt-3 border-t border-[var(--line)] pt-3 text-[12.5px] leading-snug text-fg-3">
+              Ab drei Tagen Liegezeit wird rot markiert. „Weiterleiten“ fragt Empfänger, IBAN und Wirkung ab, bucht die Auszahlung im Aktenkonto und erledigt die zugehörige Frist – nie automatisch.
             </p>
+            <WeiterleitungsDialog akte={weiterleitung?.akte} mandant={weiterleitung?.mandant} offen={weiterleitung?.saldo ?? 0} open={!!weiterleitung} onClose={() => setWeiterleitung(null)} />
           </Card>
           <Card>
             <CardHeader
@@ -377,7 +373,7 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
                 const Icon = a.key === "bankabgleich" ? Landmark : a.key === "mahnwesen" ? BellRing : Timer;
                 return (
                   <li key={a.id} className="flex items-start gap-3">
-                    <div className={cn("mt-0.5 grid size-8 shrink-0 place-items-center rounded-[10px]", a.aktiv ? "bg-ink-soft text-ink" : "bg-[var(--line)] text-fg-4")}>
+                    <div className={cn("mt-0.5 grid size-8 shrink-0 place-items-center rounded-[10px]", a.aktiv ? "bg-ink-soft text-ink" : "bg-[var(--line)] text-fg-3")}>
                       <Icon className="size-4" />
                     </div>
                     <div className="min-w-0 flex-1">

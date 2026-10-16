@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { motion } from "motion/react";
 import { ArrowRight, BadgeCheck, Layers, Receipt, Send } from "lucide-react";
-import { Button, Card, DataTable, Empty, SearchField, Segmented, type ColumnDef } from "@/components/ui";
+import { Button, Card, Chip, DataTable, Empty, SearchField, Segmented, type ColumnDef } from "@/components/ui";
 import { useCol } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
@@ -16,11 +16,22 @@ import { useSammelKandidaten } from "./Sammelabrechnung";
 import { useAbrechnungUI } from "./store";
 import { AkteLabel, Betrag, FormatChip, StatusChip, TabKopf, useLookups } from "./ui";
 
-type Filter = "alle" | "offen" | "ueberfaellig" | "bezahlt" | "entwurf";
-const FILTER: Filter[] = ["alle", "offen", "ueberfaellig", "bezahlt", "entwurf"];
+type Filter = "alle" | "offen" | "ueberfaellig" | "bezahlt" | "entwurf" | "storno";
+const FILTER: Filter[] = ["alle", "offen", "ueberfaellig", "bezahlt", "entwurf", "storno"];
 
-function passt(r: Rechnung, f: Filter, heute: string) {
+/** Zeile der Rechnungsliste – Stornorechnungen erscheinen als eigene Zeile mit Bezug auf die stornierte Rechnung. */
+type Zeile = Rechnung & { stornoZu?: Rechnung };
+
+/** Stornorechnung (eigene Nummer aus dem Nummernkreis) als Listenzeile mit negativem Betrag. */
+function stornoZeile(r: Rechnung): Zeile {
+  const datum = r.storniertAm ?? r.datum;
+  return { ...r, id: `${r.id}#storno`, nummer: r.stornoNummer ?? "", datum, faellig: datum, netto: -r.netto, ust: -r.ust, brutto: -r.brutto, bezahlt: 0, status: "storniert", stornoZu: r };
+}
+
+function passt(r: Zeile, f: Filter, heute: string) {
   if (f === "alle") return true;
+  if (f === "storno") return r.status === "storniert";
+  if (r.stornoZu) return false;
   if (f === "offen") return istOffen(r);
   if (f === "ueberfaellig") return istUeberfaellig(r, heute);
   if (f === "bezahlt") return r.status === "bezahlt";
@@ -78,28 +89,42 @@ export function RechnungenTab() {
   const [q, setQ] = useState("");
   const heute = today();
 
+  const alleZeilen = useMemo<Zeile[]>(() => [...rechnungen, ...rechnungen.filter((r) => r.stornoNummer).map(stornoZeile)], [rechnungen]);
+
   const zaehler = useMemo(() => {
-    const c: Record<Filter, number> = { alle: 0, offen: 0, ueberfaellig: 0, bezahlt: 0, entwurf: 0 };
-    for (const r of rechnungen) for (const f of FILTER) if (passt(r, f, heute)) c[f]++;
+    const c: Record<Filter, number> = { alle: 0, offen: 0, ueberfaellig: 0, bezahlt: 0, entwurf: 0, storno: 0 };
+    for (const r of alleZeilen) for (const f of FILTER) if (passt(r, f, heute)) c[f]++;
     return c;
-  }, [rechnungen, heute]);
+  }, [alleZeilen, heute]);
 
   const zeilen = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return rechnungen.filter((r) => {
+    return alleZeilen.filter((r) => {
       if (!passt(r, filter, heute)) return false;
       if (!s) return true;
       const a = akten.get(r.akteId);
       const k = kontakte.get(r.empfaengerId);
-      return [r.nummer, a?.aktenzeichen, a?.titel, k?.name].some((x) => x?.toLowerCase().includes(s));
+      return [r.nummer, r.stornoZu?.nummer, a?.aktenzeichen, a?.titel, k?.name].some((x) => x?.toLowerCase().includes(s));
     });
-  }, [rechnungen, filter, q, akten, kontakte, heute]);
+  }, [alleZeilen, filter, q, akten, kontakte, heute]);
 
   const offenSumme = round2(zeilen.reduce((s, r) => s + offenerBetrag(r), 0));
 
-  const columns = useMemo<ColumnDef<Rechnung, unknown>[]>(
+  const columns = useMemo<ColumnDef<Zeile, unknown>[]>(
     () => [
-      { id: "nummer", header: "Nummer", accessorKey: "nummer", size: 122, cell: ({ row }) => <span className="mono text-[12.5px] font-medium">{row.original.nummer}</span> },
+      {
+        id: "nummer",
+        header: "Nummer",
+        accessorKey: "nummer",
+        size: 150,
+        cell: ({ row }) => (
+          <div className="min-w-0">
+            <span className="mono text-[12.5px] font-medium">{row.original.nummer}</span>
+            {row.original.stornoZu && <div className="mono truncate text-[12px] text-fg-3">zu {row.original.stornoZu.nummer}</div>}
+            {!row.original.stornoZu && row.original.stornoNummer && <div className="mono truncate text-[12px] text-fg-3">Storno {row.original.stornoNummer}</div>}
+          </div>
+        ),
+      },
       {
         id: "akte",
         header: "Akte",
@@ -115,7 +140,12 @@ export function RechnungenTab() {
         header: "Fällig",
         accessorKey: "faellig",
         size: 100,
-        cell: ({ row }) => <span className={cn("num", istUeberfaellig(row.original, heute) ? "font-semibold text-seal" : "text-fg-2")}>{fmtDate(row.original.faellig)}</span>,
+        cell: ({ row }) =>
+          row.original.stornoZu ? (
+            <span className="text-fg-3">–</span>
+          ) : (
+            <span className={cn("num", istUeberfaellig(row.original, heute) ? "font-semibold text-seal" : "text-fg-2")}>{fmtDate(row.original.faellig)}</span>
+          ),
       },
       {
         id: "brutto",
@@ -124,24 +154,37 @@ export function RechnungenTab() {
         size: 122,
         cell: ({ row }) => (
           <div className="text-right" title={istOffen(row.original) ? `offen: ${fmtEUR(offenerBetrag(row.original))}` : undefined}>
-            <Betrag n={row.original.brutto} className={cn("font-semibold", row.original.status === "storniert" && "text-fg-4 line-through")} />
+            <Betrag n={row.original.brutto} className={cn("font-semibold", row.original.status === "storniert" && !row.original.stornoZu && "text-fg-3 line-through")} />
           </div>
         ),
       },
-      { id: "status", header: "Status", size: 126, accessorFn: (r) => r.status, cell: ({ row }) => <StatusChip r={row.original} /> },
+      {
+        id: "status",
+        header: "Status",
+        size: 126,
+        accessorFn: (r) => (r.stornoZu ? "storno" : r.status),
+        cell: ({ row }) =>
+          row.original.stornoZu ? (
+            <Chip tone="seal" title={`Stornorechnung zu ${row.original.stornoZu.nummer}`}>
+              Storno
+            </Chip>
+          ) : (
+            <StatusChip r={row.original} />
+          ),
+      },
       { id: "format", header: "Format", size: 138, accessorKey: "format", cell: ({ row }) => <FormatChip format={row.original.format} /> },
     ],
     [akten, kontakte, heute],
   );
 
-  const labels: Record<Filter, string> = { alle: "Alle", offen: "Offen", ueberfaellig: "Überfällig", bezahlt: "Bezahlt", entwurf: "Entwürfe" };
+  const labels: Record<Filter, string> = { alle: "Alle", offen: "Offen", ueberfaellig: "Überfällig", bezahlt: "Bezahlt", entwurf: "Entwürfe", storno: "Storniert" };
 
   return (
     <>
       <TabKopf
         icon={<Receipt className="size-[18px]" />}
         titel="Rechnungen"
-        text="Alle Rechnungen mit Status, Fälligkeit und E-Rechnungsformat – Zahlungserinnerungen und Zahlungseingänge mit einem Klick."
+        text="Alle Rechnungen mit Status, Fälligkeit und E-Rechnungsformat – Zahlungserinnerungen als Entwurf zur Freigabe, Zahlungseingänge direkt erfassen."
       />
       <SammelBanner />
       <DataTable
@@ -150,14 +193,14 @@ export function RechnungenTab() {
         columns={columns}
         getRowId={(r) => r.id}
         initialSort={[{ id: "datum", desc: true }]}
-        onRowClick={(r) => oeffne(r.id)}
+        onRowClick={(r) => oeffne(r.stornoZu?.id ?? r.id)}
         selectable
         toolbar={
           <div className="flex flex-wrap items-center gap-2">
             <SearchField id="rechnungen-suche" value={q} onChange={setQ} placeholder="Nummer, Akte, Empfänger …" className="w-full sm:w-[260px]" />
             <Segmented size="sm" options={FILTER.map((f) => ({ value: f, label: labels[f], count: zaehler[f] }))} value={filter} onChange={setFilter} />
             {offenSumme > 0 && (
-              <span className="ml-auto hidden text-[12px] text-fg-3 lg:inline">
+              <span className="ml-auto hidden text-[12.5px] text-fg-3 lg:inline">
                 offen in dieser Ansicht <Betrag n={offenSumme} className="font-semibold text-fg" />
               </span>
             )}
@@ -200,16 +243,16 @@ export function RechnungenTab() {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="mono text-[12.5px] font-semibold">{r.nummer}</span>
-                  <StatusChip r={r} />
+                  {r.stornoZu ? <Chip tone="seal">Storno zu {r.stornoZu.nummer}</Chip> : <StatusChip r={r} />}
                 </div>
-                <div className="mt-1 truncate text-[13.5px]">{a?.titel}</div>
-                <div className={cn("mt-0.5 truncate text-[12px]", istUeberfaellig(r, heute) ? "text-seal" : "text-fg-3")}>
-                  {kontakte.get(r.empfaengerId)?.name} · fällig {fmtDate(r.faellig)}
+                <div className="mt-1 line-clamp-2 break-words text-[13.5px]">{a?.titel}</div>
+                <div className={cn("mt-0.5 truncate text-[12.5px]", istUeberfaellig(r, heute) ? "text-seal" : "text-fg-3")}>
+                  {kontakte.get(r.empfaengerId)?.name} · {r.stornoZu ? `storniert am ${fmtDate(r.datum)}` : `fällig ${fmtDate(r.faellig)}`}
                 </div>
               </div>
               <div className="shrink-0 text-right">
                 <Betrag n={r.brutto} className="text-[14px] font-semibold" />
-                <div className="mt-1 text-[11px] text-fg-4">{r.format}</div>
+                <div className="mt-1 text-[12px] text-fg-3">{r.format}</div>
               </div>
             </div>
           );

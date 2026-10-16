@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import {
-  AlertTriangle, ArrowRight, CalendarClock, Check, CheckCircle2, FileSpreadsheet, FileText, FolderOpen, Info, RotateCcw,
+  AlertTriangle, Archive, ArrowRight, CalendarClock, Check, CheckCircle2, Copy, FileSpreadsheet, FileText, FolderOpen, Info, RotateCcw,
   UploadCloud, Users, Wand2, X,
 } from "lucide-react";
 import { fmtDate, fmtEUR, fmtNum } from "@/core/dates";
@@ -10,7 +10,7 @@ import { AnimatedNumber, Avatar, Button, Chip, DataTable, Segmented, Select, typ
 import { cn } from "@/lib/cn";
 import { festeAnsprechperson } from "@/lib/rollen";
 import { TRENNZEICHEN_NAME, type CsvErgebnis, type DateiInfo } from "./csv";
-import { SYSTEME, ZIELFELDER, normName, type DublettenAktion, type MigZeile, type QuellSystem, type ZielFeld } from "./zuordnung";
+import { SYSTEME, ZIELFELDER, normName, type DateiDublettenAktion, type DublettenAktion, type MigZeile, type QuellSystem, type Umfang, type ZielFeld } from "./zuordnung";
 import type { Entitaet, Ergebnis, Fortschritt } from "./uebernahme";
 
 /* ───────── Schritt 1: Altsystem ───────── */
@@ -130,7 +130,7 @@ export function SchrittDaten({
               <span>{fehler}</span>
             </motion.div>
           )}
-          <p className="text-[12px] text-fg-4">„Beispiel-Export laden“ erzeugt Beispieldaten im Stil eines {systemName}-Exports – ideal zum Ausprobieren, ohne echte Mandantendaten.</p>
+          <p className="text-[12px] text-fg-3">„Beispiel-Export laden“ erzeugt Beispieldaten im Stil eines {systemName}-Exports – ideal zum Ausprobieren, ohne echte Mandantendaten.</p>
         </div>
       ) : (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-5 grid grid-cols-1 gap-4">
@@ -160,13 +160,13 @@ export function SchrittDaten({
           <div>
             <div className="eyebrow mb-2">Erste Zeilen der Datei</div>
             <div className="overflow-x-auto rounded-[16px] bg-[var(--surface-2)] p-3.5 ring-1 ring-[var(--line)]">
-              <table className="mono w-max text-[11.5px] leading-relaxed">
+              <table className="mono w-max text-[12.5px] leading-relaxed">
                 <tbody>
                   {[csv.kopf, ...csv.zeilen.slice(0, 4)].map((r, i) => (
                     <tr key={i} className={i === 0 ? "font-semibold text-fg" : "text-fg-2"}>
                       {r.map((v, k) => (
                         <td key={k} className="max-w-[220px] truncate whitespace-nowrap pr-5">
-                          {v || <span className="text-fg-4">–</span>}
+                          {v || <span className="text-fg-3">–</span>}
                         </td>
                       ))}
                     </tr>
@@ -187,7 +187,7 @@ const FRIST_KURZ: Record<FristTyp, string> = { notfrist: "Notfrist", frist: "Fri
 const FRIST_TON: Record<FristTyp, "seal" | "ink" | "outline" | "neutral" | "violet"> = { notfrist: "seal", frist: "ink", vorfrist: "outline", wiedervorlage: "neutral", termin: "violet" };
 
 export function SchrittZuordnung({
-  csv, zuordnung, auto, setZuordnung, zeilen, kontakte, modus, setModus, ausnahmen, setAusnahme,
+  csv, zuordnung, auto, setZuordnung, zeilen, kontakte, modus, setModus, ausnahmen, setAusnahme, dateiAktionen = {}, setDateiAktion,
 }: {
   csv: CsvErgebnis;
   zuordnung: (ZielFeld | null)[];
@@ -199,8 +199,12 @@ export function SchrittZuordnung({
   setModus: (m: DublettenAktion) => void;
   ausnahmen: Record<number, DublettenAktion>;
   setAusnahme: (nr: number, a: DublettenAktion) => void;
+  dateiAktionen?: Record<number, DateiDublettenAktion>;
+  setDateiAktion?: (nr: number, a: DateiDublettenAktion) => void;
 }) {
   const dubletten = zeilen.filter((z) => z.dublette && !z.fehler);
+  const dateiDubletten = zeilen.filter((z) => z.dateiDublette && !z.fehler);
+  const abgeschlossen = zeilen.filter((z) => !z.fehler && z.status === "abgeschlossen").length;
   const fehler = zeilen.filter((z) => z.fehler);
   const ohneKern = !zuordnung.includes("titel") && !zuordnung.includes("aktenzeichen") && !zuordnung.includes("mandant");
   // Hinweise je Zeile: unlesbares Fristdatum, Plausibilität des Fristendes, unsicheres Sachgebiet
@@ -235,7 +239,7 @@ export function SchrittZuordnung({
 
   const spalten = useMemo<ColumnDef<MigZeile, unknown>[]>(
     () => [
-      { id: "nr", header: "Zeile", size: 64, accessorFn: (z) => z.nr, cell: ({ row }) => <span className="num text-fg-4">{row.original.nr}</span> },
+      { id: "nr", header: "Zeile", size: 64, accessorFn: (z) => z.nr, cell: ({ row }) => <span className="num text-fg-3">{row.original.nr}</span> },
       { id: "az", header: "Aktenzeichen", size: 120, accessorFn: (z) => z.quellAz, cell: ({ row }) => <span className="mono">{row.original.quellAz || "neu"}</span> },
       {
         id: "titel", header: "Bezeichnung", size: 260, accessorFn: (z) => z.titel,
@@ -243,6 +247,8 @@ export function SchrittZuordnung({
           <span className="flex min-w-0 items-center gap-1.5">
             <span className="truncate">{row.original.titel || "–"}</span>
             {row.original.dublette && <Chip tone="amber">Dublette</Chip>}
+            {row.original.dateiDublette && <Chip tone="amber">doppelt in der Datei</Chip>}
+            {row.original.status !== "offen" && <Chip tone="outline">{row.original.status}</Chip>}
           </span>
         ),
       },
@@ -262,7 +268,7 @@ export function SchrittZuordnung({
         id: "frist", header: "Frist", size: 250, accessorFn: (z) => z.fristDatum ?? "",
         cell: ({ row }) => {
           const z = row.original;
-          if (!z.fristDatum) return <span className="text-fg-4">–</span>;
+          if (!z.fristDatum) return <span className="text-fg-3">–</span>;
           return (
             <span className="flex min-w-0 items-center gap-1.5" title={z.fristWarnung}>
               {z.fristWarnung && <AlertTriangle className="size-3.5 shrink-0 text-amber" aria-label="Fristende prüfen" />}
@@ -288,7 +294,9 @@ export function SchrittZuordnung({
         <h2 className="title-lg">Zuordnung prüfen</h2>
         <p className="mt-1 text-[13.5px] text-fg-3">Die Spalten wurden automatisch erkannt. Sie können jede Zuordnung ändern – die Vorschau aktualisiert sich sofort.</p>
         <div className="mt-3 flex flex-wrap gap-1.5">
-          <Chip tone="ink" icon={<FolderOpen className="size-3" />}>{zeilen.length - fehler.length} Akten</Chip>
+          <Chip tone="ink" icon={<FolderOpen className="size-3" />}>
+            {zeilen.length - fehler.length - dateiDubletten.filter((z) => (dateiAktionen[z.nr] ?? "merge") !== "keep").length} Akten
+          </Chip>
           <Chip tone="ink" icon={<Users className="size-3" />}>
             {kontaktZahl.gesamt} Kontakte{kontaktZahl.bekannt ? ` · ${kontaktZahl.bekannt} bereits vorhanden` : ""}
           </Chip>
@@ -296,7 +304,9 @@ export function SchrittZuordnung({
             {mitFrist} {mitFrist === 1 ? "Frist" : "Fristen"}
             {mitWv ? ` · ${mitWv} WV/Termine` : ""}
           </Chip>
-          {dubletten.length > 0 && <Chip tone="amber">{dubletten.length} Dubletten</Chip>}
+          {dubletten.length > 0 && <Chip tone="amber">{dubletten.length} {dubletten.length === 1 ? "Dublette" : "Dubletten"} im Bestand</Chip>}
+          {dateiDubletten.length > 0 && <Chip tone="amber" icon={<Copy className="size-3" />}>{dateiDubletten.length} {dateiDubletten.length === 1 ? "Dublette" : "Dubletten"} in der Datei</Chip>}
+          {abgeschlossen > 0 && <Chip icon={<Archive className="size-3" />}>{abgeschlossen} abgeschlossen</Chip>}
           {fristWarnungen > 0 && <Chip tone="amber" icon={<AlertTriangle className="size-3" />}>{fristWarnungen} {fristWarnungen === 1 ? "Fristende prüfen" : "Fristenden prüfen"}</Chip>}
           {sgPruefen > 0 && <Chip tone="amber">{sgPruefen} {sgPruefen === 1 ? "Sachgebiet prüfen" : "Sachgebiete prüfen"}</Chip>}
           {fehler.length > 0 && <Chip tone="seal">{fehler.length} nicht lesbar</Chip>}
@@ -320,11 +330,11 @@ export function SchrittZuordnung({
                       </span>
                     )}
                   </div>
-                  <div className="truncate text-[11.5px] text-fg-4" title={beispiel}>
+                  <div className="truncate text-[12px] text-fg-3" title={beispiel}>
                     z. B. {beispiel || "–"}
                   </div>
                 </div>
-                <ArrowRight className={cn("hidden size-4 shrink-0 sm:block", zuordnung[i] ? "text-ink" : "text-fg-4")} />
+                <ArrowRight className={cn("hidden size-4 shrink-0 sm:block", zuordnung[i] ? "text-ink" : "text-fg-3")} />
                 <div className="w-full shrink-0 sm:w-[52%] sm:min-w-[156px] sm:max-w-[230px]">
                   <Select
                     id={`umzug-spalte-${i}`}
@@ -351,16 +361,57 @@ export function SchrittZuordnung({
             Bitte ordnen Sie mindestens Aktenzeichen, Bezeichnung oder Mandant zu – sonst lassen sich die Akten nicht eindeutig anlegen.
           </div>
         )}
-        <p className="mt-2 flex items-center gap-1.5 text-[11.5px] text-fg-4">
+        <p className="mt-2 flex items-center gap-1.5 text-[12.5px] text-fg-3">
           <Wand2 className="size-3 text-ink" /> automatisch erkannt (über bekannte Spaltennamen und Synonyme)
         </p>
       </section>
+
+      {dateiDubletten.length > 0 && (
+        <section>
+          <div className="mb-2.5 min-w-0">
+            <div className="eyebrow">Dubletten in der Datei</div>
+            <p className="mt-1 text-[12.5px] text-fg-3">Diese Zeilen stehen mehrfach im Export (gleiche Bezeichnung, gleicher Mandant und Gegner). Standard: zusammenführen – Fristen werden nicht doppelt angelegt.</p>
+          </div>
+          <ul className="grid grid-cols-1 gap-2">
+            {dateiDubletten.map((z) => {
+              const aktion = dateiAktionen[z.nr] ?? "merge";
+              const d = z.dateiDublette!;
+              return (
+                <li key={z.nr} className="flex flex-wrap items-center gap-x-3 gap-y-2.5 rounded-[16px] bg-amber-soft px-3.5 py-3">
+                  <Copy className="size-4 shrink-0 text-amber" />
+                  <div className="min-w-0 flex-1 basis-[220px]">
+                    <div className="break-words text-[13px] font-semibold">
+                      Zeile {z.nr}: <span className="mono">{z.quellAz || "ohne Az."}</span> · {z.titel}
+                    </div>
+                    <div className="text-[12.5px] text-fg-2">
+                      gleicht Zeile {d.nr} (<span className="mono">{d.az || "ohne Az."}</span>)
+                      {d.gleicheFrist && z.fristDatum ? ` – auch die Frist ${fmtDate(z.fristDatum)} ist gleich und wird nur einmal angelegt` : ""}
+                    </div>
+                  </div>
+                  <Segmented<DateiDublettenAktion>
+                    size="sm"
+                    className="w-full sm:w-auto"
+                    full
+                    value={aktion}
+                    onChange={(a) => setDateiAktion?.(z.nr, a)}
+                    options={[
+                      { value: "merge", label: "Zusammenführen" },
+                      { value: "keep", label: "Beide behalten" },
+                      { value: "skip", label: "Überspringen" },
+                    ]}
+                  />
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       {dubletten.length > 0 && (
         <section>
           <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className="eyebrow">Dubletten</div>
+              <div className="eyebrow">Dubletten im Bestand</div>
               <p className="mt-1 text-[12.5px] text-fg-3">Diese Akten gibt es in AnwaltApex bereits (gleiches Aktenzeichen oder gleiche Bezeichnung).</p>
             </div>
             <div className="flex items-center gap-2">
@@ -407,7 +458,7 @@ export function SchrittZuordnung({
               );
             })}
           </ul>
-          <p className="mt-2 text-[11.5px] text-fg-4">„Überschreiben“ aktualisiert Bezeichnung, Beteiligte, Sachgebiet und Gegenstandswert der vorhandenen Akte. Dokumente, Notizen und Fristen bleiben erhalten.</p>
+          <p className="mt-2 text-[12.5px] text-fg-3">„Überschreiben“ aktualisiert Bezeichnung, Beteiligte, Sachgebiet und Gegenstandswert der vorhandenen Akte. Dokumente, Notizen und Fristen bleiben erhalten.</p>
         </section>
       )}
 
@@ -429,7 +480,7 @@ export function SchrittZuordnung({
               {alleHinweise ? "Weniger anzeigen" : `Alle ${fehler.length + hinweise.length} Hinweise anzeigen`}
             </button>
           )}
-          {fristWarnungen > 0 && <p className="text-[11.5px] text-fg-4">Übernommen wird das Datum aus dem Altsystem – die Vier-Augen-Kontrolle prüft jede Frist vor der Freigabe.</p>}
+          {fristWarnungen > 0 && <p className="text-[12.5px] text-fg-3">Übernommen wird das Datum aus dem Altsystem – die Vier-Augen-Kontrolle prüft jede Frist vor der Freigabe.</p>}
         </section>
       )}
 
@@ -476,14 +527,22 @@ const ENTITAETEN: { key: Entitaet; label: string; icon: React.ReactNode }[] = [
   { key: "dokumente", label: "Dokumente-Verweise", icon: <FileText className="size-4" /> },
 ];
 
+const UMFANG: { value: Umfang; titel: string; sub: string }[] = [
+  { value: "offen", titel: "Nur offene Akten", sub: "Abgeschlossene bleiben im Altsystem." },
+  { value: "sechsJahre", titel: "Offene + abgeschlossene der letzten 6 Jahre", sub: "Aufbewahrung der Handakte (§ 50 Abs. 1 BRAO)." },
+  { value: "alle", titel: "Alle – ältere als Archiv (abgeschlossen)", sub: "Abgeschlossene Akten werden als abgeschlossen angelegt, nie offen." },
+];
+
 export function SchrittUebernahme({
-  plan, fortschritt, laeuft, onStart, systemName,
+  plan, fortschritt, laeuft, onStart, systemName, umfang = "alle", setUmfang,
 }: {
-  plan: { akten: number; aktualisieren: number; ueberspringen: number; fristen: number; wiedervorlagen: number; kontakte: number; kontakteVorhanden: number };
+  plan: { akten: number; archiv?: number; aktualisieren: number; ueberspringen: number; zusammengefuehrt?: number; ausserhalb?: number; fristen: number; wiedervorlagen: number; kontakte: number; kontakteVorhanden: number };
   fortschritt: Partial<Record<Entitaet, Fortschritt>>;
   laeuft: boolean;
   onStart: () => void;
   systemName: string;
+  umfang?: Umfang;
+  setUmfang?: (u: Umfang) => void;
 }) {
   const gestartet = laeuft || Object.keys(fortschritt).length > 0;
   return (
@@ -495,18 +554,52 @@ export function SchrittUebernahme({
 
       {!gestartet && (
         <div className="mt-5 grid grid-cols-1 gap-4">
+          {setUmfang && (
+            <fieldset>
+              <legend className="label">Welche Akten?</legend>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Umfang der Übernahme">
+                {UMFANG.map((u) => (
+                  <button
+                    key={u.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={umfang === u.value}
+                    onClick={() => setUmfang(u.value)}
+                    className={cn(
+                      "min-h-11 rounded-[16px] px-3.5 py-2.5 text-left ring-1 ring-inset transition-colors",
+                      umfang === u.value ? "bg-ink-soft text-fg ring-2 ring-[var(--ink)]" : "text-fg-2 ring-[var(--line)] hover:bg-ink-softer",
+                    )}
+                  >
+                    <span className="block text-[13px] font-semibold">{u.titel}</span>
+                    <span className="block text-[12.5px] text-fg-3">{u.sub}</span>
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+          )}
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-            <PlanZahl label="Neue Akten" wert={plan.akten} />
+            <PlanZahl label="Neue Akten" wert={plan.akten} sub={plan.archiv ? `davon ${plan.archiv} abgeschlossen (Archiv)` : undefined} />
             <PlanZahl label="Akten aktualisieren" wert={plan.aktualisieren} />
             <PlanZahl label="Kontakte" wert={plan.kontakte} sub={plan.kontakteVorhanden ? `davon ${plan.kontakteVorhanden} bereits vorhanden` : undefined} />
-            <PlanZahl label="Fristen zur Kontrolle" wert={plan.fristen} sub={plan.wiedervorlagen ? `+ ${plan.wiedervorlagen} Wiedervorlagen/Termine` : undefined} />
+            <PlanZahl label="Fristen zur Kontrolle" wert={plan.fristen} sub={plan.wiedervorlagen ? `+ ${plan.wiedervorlagen} ${plan.wiedervorlagen === 1 ? "Wiedervorlage/Termin" : "Wiedervorlagen/Termine"}` : undefined} />
           </div>
-          {plan.ueberspringen > 0 && <p className="text-[12.5px] text-fg-3">{plan.ueberspringen} Dublette(n) werden übersprungen.</p>}
+          {(plan.ueberspringen > 0 || !!plan.zusammengefuehrt || !!plan.ausserhalb) && (
+            <p className="text-[12.5px] text-fg-3">
+              {[
+                plan.zusammengefuehrt ? `${plan.zusammengefuehrt} ${plan.zusammengefuehrt === 1 ? "Dublette" : "Dubletten"} der Datei werden zusammengeführt` : "",
+                plan.ueberspringen ? `${plan.ueberspringen} ${plan.ueberspringen === 1 ? "Dublette wird" : "Dubletten werden"} übersprungen` : "",
+                plan.ausserhalb ? `${plan.ausserhalb} abgeschlossene ${plan.ausserhalb === 1 ? "Akte liegt" : "Akten liegen"} außerhalb des gewählten Umfangs und ${plan.ausserhalb === 1 ? "bleibt" : "bleiben"} im Altsystem` : "",
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+              .
+            </p>
+          )}
           <div className="flex flex-col items-center gap-3 rounded-[22px] bg-[radial-gradient(120%_140%_at_50%_0%,var(--ink-soft),transparent_70%)] px-5 py-8 text-center ring-1 ring-[var(--line)]">
             <Button variant="primary" size="lg" icon={<ArrowRight className="size-4" />} onClick={onStart} data-autofocus>
-              Jetzt mit einem Klick übernehmen
+              Jetzt übernehmen
             </Button>
-            <p className="max-w-[48ch] text-[12px] text-fg-3">Fristen werden mit Vorfrist (eine Woche vorher) angelegt und als aus dem Umzug übernommen gekennzeichnet – eine zweite Person prüft und bestätigt sie in der Vier-Augen-Kontrolle.</p>
+            <p className="max-w-[48ch] text-[12.5px] text-fg-3">Fristen werden mit Vorfrist (eine Woche vorher) angelegt und als aus dem Umzug übernommen gekennzeichnet – eine zweite Person prüft und bestätigt sie in der Vier-Augen-Kontrolle.</p>
           </div>
         </div>
       )}
@@ -562,7 +655,7 @@ function PlanZahl({ label, wert, sub }: { label: string; wert: number; sub?: str
     <div className="rounded-[16px] bg-[var(--surface-2)] px-3.5 py-3 ring-1 ring-[var(--line)]">
       <div className="text-[24px] font-semibold leading-none tracking-[-0.03em]">{fmtNum(wert)}</div>
       <div className="mt-1.5 text-[12px] text-fg-3">{label}</div>
-      {sub && <div className="mt-0.5 text-[11px] leading-snug text-fg-4">{sub}</div>}
+      {sub && <div className="mt-0.5 text-[12px] leading-snug text-fg-3">{sub}</div>}
     </div>
   );
 }
@@ -583,9 +676,14 @@ export function SchrittFertig({
 }) {
   const e = ergebnis;
   const zahlen = [
-    { label: "Akten übernommen", wert: e.aktenNeu + e.aktenAktualisiert, sub: e.aktenAktualisiert ? `${e.aktenAktualisiert} davon aktualisiert` : "alle neu angelegt", icon: <FolderOpen className="size-4" /> },
+    {
+      label: "Akten übernommen",
+      wert: e.aktenNeu + e.aktenAktualisiert,
+      sub: [e.aktenAktualisiert ? `${e.aktenAktualisiert} davon aktualisiert` : "", e.archiviert ? `${e.archiviert} als abgeschlossen (Archiv)` : ""].filter(Boolean).join(" · ") || "alle neu angelegt",
+      icon: <FolderOpen className="size-4" />,
+    },
     { label: "Kontakte angelegt", wert: e.kontakteNeu, sub: e.kontakteZusammengefuehrt ? `${e.kontakteZusammengefuehrt} mit vorhandenen zusammengeführt` : "ohne Dubletten", icon: <Users className="size-4" /> },
-    { label: "Fristen zur Kontrolle", wert: e.fristenKontrolle, sub: e.fristen > e.fristenKontrolle ? `mit Vorfrist · dazu ${e.fristen - e.fristenKontrolle} Wiedervorlagen/Termine` : "mit Vorfrist, Vier-Augen-Prinzip", icon: <CalendarClock className="size-4" /> },
+    { label: "Fristen zur Kontrolle", wert: e.fristenKontrolle, sub: e.fristen > e.fristenKontrolle ? `mit Vorfrist · dazu ${e.fristen - e.fristenKontrolle} ${e.fristen - e.fristenKontrolle === 1 ? "Wiedervorlage/Termin" : "Wiedervorlagen/Termine"}` : "mit Vorfrist, Vier-Augen-Prinzip", icon: <CalendarClock className="size-4" /> },
     { label: "Dokumente-Verweise", wert: e.dokumente, sub: "Datenblatt je Akte", icon: <FileText className="size-4" /> },
   ];
   return (
@@ -620,13 +718,15 @@ export function SchrittFertig({
             <div className="mt-1.5 text-[28px] font-semibold leading-none tracking-[-0.03em]">
               <AnimatedNumber value={z.wert} />
             </div>
-            <div className="mt-1 text-[11.5px] leading-snug text-fg-3">{z.sub}</div>
+            <div className="mt-1 text-[12px] leading-snug text-fg-3">{z.sub}</div>
           </motion.div>
         ))}
       </div>
-      {(e.uebersprungen > 0 || e.aktenUmbenannt > 0 || e.fehlerhaft > 0) && (
+      {(e.uebersprungen > 0 || e.aktenUmbenannt > 0 || e.fehlerhaft > 0 || e.zusammengefuehrt > 0 || e.ausserhalbUmfang > 0) && (
         <div className="flex flex-wrap gap-1.5">
           {e.uebersprungen > 0 && <Chip>{e.uebersprungen} Dublette(n) übersprungen</Chip>}
+          {e.zusammengefuehrt > 0 && <Chip>{e.zusammengefuehrt} Dublette(n) der Datei zusammengeführt</Chip>}
+          {e.ausserhalbUmfang > 0 && <Chip>{e.ausserhalbUmfang} außerhalb des Umfangs (im Altsystem)</Chip>}
           {e.aktenUmbenannt > 0 && <Chip tone="amber">{e.aktenUmbenannt} Aktenzeichen ergänzt (bereits vergeben)</Chip>}
           {e.fehlerhaft > 0 && <Chip tone="seal">{e.fehlerhaft} Zeile(n) nicht übernommen</Chip>}
         </div>
@@ -655,9 +755,12 @@ export function SchrittFertig({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--line)] pt-4">
-        <Button variant="ghost" size="sm" icon={<RotateCcw className="size-3.5" />} onClick={onRueckgaengig} className="!text-seal">
-          Umzug rückgängig machen
-        </Button>
+        <span className="flex flex-wrap items-center gap-2">
+          <Button variant="ghost" size="sm" icon={<RotateCcw className="size-3.5" />} onClick={onRueckgaengig} className="!text-seal">
+            Umzug rückgängig machen
+          </Button>
+          <span className="text-[12.5px] text-fg-3">auch später im Umzugsprotokoll</span>
+        </span>
         <Button variant="ghost" size="sm" icon={<UploadCloud className="size-3.5" />} onClick={onNeu}>
           Weiteren Export übernehmen
         </Button>

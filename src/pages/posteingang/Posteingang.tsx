@@ -12,7 +12,7 @@ import { Button, Card, PageHeader, SearchField, Segmented } from "@/components/u
 import { NachrichtenListe } from "./NachrichtenListe";
 import { Lesebereich } from "./Lesebereich";
 import { Verbindungsstatus } from "./Verbindungsstatus";
-import { analyseSchluessel, kiAnsicht, starteAnalyse, useAnalyse, useAnalyseStand } from "./analyse";
+import { analyseSchluessel, ersteOeffnungMerken, kiAnsicht, starteAnalyse, useAnalyse, useAnalyseStand } from "./analyse";
 
 type Filter = "alle" | "neu" | "bea" | "email" | "ohne";
 
@@ -52,7 +52,7 @@ function useFuellHoehe(aktiv: boolean) {
 }
 
 export default function Posteingang() {
-  const { tenant } = useKanzlei();
+  const { tenant, user } = useKanzlei();
   const nachrichten = useCol("nachrichten");
   const aktenListe = useCol("akten");
   const data = useData((s) => s.data);
@@ -103,6 +103,11 @@ export default function Posteingang() {
     if (sel?.status === "neu") useData.getState().patch("nachrichten", sel.id, { status: "gelesen" }, { system: true });
   }, [sel?.id, sel?.status]);
 
+  // eEB-Protokoll: erster Lesezeitpunkt und Person – nur beim allerersten Öffnen (später nie überschrieben)
+  useEffect(() => {
+    if (sel && !sel.geoeffnetAm) ersteOeffnungMerken(sel, user);
+  }, [sel?.id, sel?.geoeffnetAm, user.id]);
+
   // Analyse automatisch starten, sobald eine unbearbeitete Nachricht geöffnet wird – auch nach einem Datenwechsel (Reset, Kanzleiwechsel)
   useEffect(() => {
     if (!sel) return;
@@ -149,7 +154,7 @@ export default function Posteingang() {
       <div data-listscroll className={cn("min-h-0 flex-1", zweispaltig && "overflow-y-auto")}>
         <NachrichtenListe items={sichtbar} selectedId={selId} onSelect={oeffnen} akten={akten} laufend={laufend} q={q} gefiltert={filter !== "alle" || !!q.trim()} />
       </div>
-      <div className="border-t border-[var(--line)] px-4 py-2.5 text-[11.5px] text-fg-3">
+      <div className="border-t border-[var(--line)] px-4 py-2.5 text-[12.5px] text-fg-3">
         {eingang.length} Nachrichten · {zaehler.neu} neu · {ausstehend.length} warten auf KI
       </div>
     </Card>
@@ -171,7 +176,7 @@ export default function Posteingang() {
           <div key={k.text} className="rounded-[18px] bg-[var(--ink-softer)] p-3 ring-1 ring-inset ring-[var(--line)]">
             <div className="flex justify-center text-ink">{k.icon}</div>
             <div className="num mt-1.5 text-[22px] font-semibold leading-none">{k.wert}</div>
-            <div className="mt-1 text-[11.5px] text-fg-3">{k.text}</div>
+            <div className="mt-1 text-[12.5px] text-fg-3">{k.text}</div>
           </div>
         ))}
       </div>

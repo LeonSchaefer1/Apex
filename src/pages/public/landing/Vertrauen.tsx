@@ -5,8 +5,9 @@ import { AppIcon } from "@/components/Logo";
 import { cn } from "@/lib/cn";
 import { Abschnitt, Kopf, Reveal } from "./basis";
 import { DEMO_KI_NAME } from "@/ai/status";
+import { VERARBEITUNGSORT } from "@/content/datenschutz";
 
-/** „Umzug mit einem Klick" – Band mit fließenden Datenpaketen. */
+/** „Umzug in fünf Schritten – mit Vorschau und Rückgängig“ – Band mit fließenden Datenpaketen. */
 export function UmzugBand() {
   const pakete = [
     { i: <FolderOpen className="size-3.5" />, t: "Akten" },
@@ -22,10 +23,10 @@ export function UmzugBand() {
           <div>
             <div className="eyebrow mb-3 !text-ink">Umzug</div>
             <h2 id="umzug-titel" className="text-[clamp(26px,3.2vw,38px)] font-bold leading-[1.06] tracking-[-0.04em]">
-              Umzug mit einem Klick.
+              Umzug in fünf Schritten – mit Vorschau und Rückgängig.
             </h2>
             <p className="mt-3 max-w-[48ch] text-[15px] leading-relaxed text-fg-2">
-              Akten, Kontakte und Fristen ziehen mit einem Klick um; Dokumente und Aktenkonten übernehmen Sie gemeinsam mit Ihrem Ansprechpartner. Sie sehen vorab eine Vorschau, Dubletten werden erkannt, Fristen auf Plausibilität geprüft und zur Vier-Augen-Kontrolle vorgelegt. Bei Bedarf laufen beide Systeme parallel.
+              Akten, Kontakte und Fristen übernimmt der Umzug vollständig; Dokumente und Aktenkonten übernehmen Sie gemeinsam mit Ihrer Ansprechpartnerin. Sie sehen vorab eine Vorschau, Dubletten werden erkannt, Fristen auf Plausibilität geprüft und zur Vier-Augen-Kontrolle vorgelegt. Jeder Lauf lässt sich rückgängig machen; bei Bedarf laufen beide Systeme parallel.
             </p>
           </div>
           <div className="flex min-w-0 items-center gap-2 sm:gap-5">
@@ -33,7 +34,7 @@ export function UmzugBand() {
               <span className="grid size-12 place-items-center rounded-[16px] bg-[var(--ink-softer)] text-fg-3 shadow-[inset_0_0_0_1px_var(--line-strong)] sm:size-14 sm:rounded-[18px]">
                 <FileText className="size-6" />
               </span>
-              <span className="text-[11px] leading-tight text-fg-3 sm:text-[11.5px]">
+              <span className="text-[12px] leading-tight text-fg-3 sm:text-[12.5px]">
                 <span className="sm:hidden">Bisherige Software</span>
                 <span className="hidden sm:inline">Ihre bisherige Kanzleisoftware</span>
               </span>
@@ -43,7 +44,7 @@ export function UmzugBand() {
               {pakete.map((p, k) => (
                 <motion.span
                   key={p.t}
-                  className="absolute left-0 inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--surface)] px-2 py-1 text-[11px] font-medium sm:px-2.5 sm:text-[11.5px] text-fg-2 shadow-[0_4px_12px_-6px_rgba(20,30,80,0.3),0_0_0_1px_var(--line)]"
+                  className="absolute left-0 inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--surface)] px-2 py-1 text-[12px] font-medium sm:px-2.5 sm:text-[12.5px] text-fg-2 shadow-[0_4px_12px_-6px_rgba(20,30,80,0.3),0_0_0_1px_var(--line)]"
                   style={{ top: `${14 + ((k * 2) % 5) * 26}px` }}
                   initial={{ left: `${k * 20 - 10}%` }}
                   animate={{ left: ["-25%", "100%"] }}
@@ -56,7 +57,7 @@ export function UmzugBand() {
             </div>
             <div className="flex w-[64px] shrink-0 flex-col items-center gap-2 text-center sm:w-[118px]">
               <AppIcon size={52} />
-              <span className="text-[11.5px] font-semibold leading-tight">AnwaltApex</span>
+              <span className="text-[12.5px] font-semibold leading-tight">AnwaltApex</span>
             </div>
           </div>
         </div>
@@ -68,7 +69,7 @@ export function UmzugBand() {
 const PRINZIPIEN = [
   { i: <Calculator className="size-5" />, t: "KI erkennt – Rechenkern berechnet", s: "Fristen rät keine KI. Sie erkennt das auslösende Ereignis, der geprüfte Fristenrechner rechnet nach §§ 187 ff. BGB und der jeweiligen Verfahrensordnung (z. B. § 222 ZPO, § 43 StPO) – mit Rechenweg und Feiertagen je Bundesland." },
   { i: <BookCheck className="size-5" />, t: "Nachprüfbare Quellen", s: "Präzedenzfälle übernimmt die KI nur aus der Fall-Datenbank – jeweils mit Gericht, Datum und Aktenzeichen zum Nachprüfen. KI-Texte sind als Entwurf gekennzeichnet und werden vor Verwendung anwaltlich geprüft." },
-  { i: <ServerCog className="size-5" />, t: "Daten in Deutschland oder On-Premise", s: "Betrieb in deutschen Rechenzentren oder auf Ihrem eigenen Server. Live-KI nur aufgabenbezogen über Ihren Server beim KI-Anbieter – oder komplett offline. Keine externen Schriften, kein Tracking." },
+  { i: <ServerCog className="size-5" />, t: "Deutsches Rechenzentrum oder eigener Server", s: "Betrieb in einem deutschen Rechenzentrum oder auf einem eigenen Server in der Kanzlei. Live-KI nur aufgabenbezogen über Ihren Server beim KI-Anbieter Anthropic (USA) – oder komplett offline. Keine externen Schriften, kein Tracking." },
   { i: <Lock className="size-5" />, t: "Verschwiegenheit nach § 203 StGB", s: "Strikte Mandantentrennung auf Datenbankebene, verschlüsselte Übertragung, Rollen und Rechte. Sie behalten die Kontrolle über jede Freigabe." },
 ];
 
@@ -108,7 +109,7 @@ export function Vertrauen() {
               <span className="min-w-0">
                 <span className="flex items-center gap-2 text-[14px] font-semibold sm:justify-center">
                   {x.t}
-                  {x.ai && <AiChip className="!h-[18px] !text-[9.5px]" />}
+                  {x.ai && <AiChip className="!h-[20px] !text-[12px]" />}
                 </span>
                 <span className="block text-[12.5px] text-fg-3">{x.s}</span>
               </span>
@@ -131,6 +132,14 @@ export function Vertrauen() {
           </Reveal>
         ))}
       </div>
+      <Reveal className="mt-4 rounded-[20px] bg-[var(--surface-2)] px-5 py-4 text-[14px] leading-relaxed text-fg-2 ring-1 ring-[var(--line)]">
+        <h3 className="text-[15px] font-semibold text-fg">{VERARBEITUNGSORT.titel} der KI</h3>
+        <ul className="mt-1.5 grid gap-1">
+          <li>{VERARBEITUNGSORT.live}</li>
+          <li>{VERARBEITUNGSORT.demo}</li>
+          <li className="text-fg-3">{VERARBEITUNGSORT.eu}</li>
+        </ul>
+      </Reveal>
       <Reveal className="mt-4 flex items-center gap-3 rounded-[20px] bg-green-soft px-5 py-4 text-[14px] text-fg-2">
         <ShieldCheck className="size-5 shrink-0 text-green" />
         <span>

@@ -1,12 +1,15 @@
+import { useState } from "react";
 import { useNavigate } from "react-router";
-import { CalendarClock, Clock, FolderOpen, MapPin, ShieldAlert } from "lucide-react";
+import { CalendarClock, CalendarPlus, Clock, FolderOpen, MapPin, ShieldAlert, Trash2 } from "lucide-react";
 import { fmtDateShort, fmtDateWd, relDays, schuetzeLeerzeichen, wochentagName, fmtDateLong } from "@/core/dates";
 import { fristArtZu } from "@/core/fristen";
 import type { Akte, Frist, User } from "@/core/types";
 import { Avatar, Button, Drawer } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { ErledigtKnopf, KontrolleAktion, KontrollStatus, QuelleChip, RechenwegListe, TypChip, useFristAktionen } from "./FristZeile";
+import { ErledigtKnopf, KontrolleAktion, KontrollStatus, NachweisZeile, QuelleChip, RechenwegListe, TypChip, useFristAktionen } from "./FristZeile";
 import { TYP_META } from "./logik";
+import { DateiDialog, type AusgabeDatei } from "./dateiAusgabe";
+import { erzeugeIcs, icsDateiname } from "./ics";
 
 /** Kompakte Kalender-Pille (Woche/Monat). */
 export function FristPille({ f, akte, onClick, ohneAz }: { f: Frist; akte?: Akte; onClick: () => void; ohneAz?: boolean }) {
@@ -16,7 +19,7 @@ export function FristPille({ f, akte, onClick, ohneAz }: { f: Frist; akte?: Akte
       onClick={onClick}
       title={`${TYP_META[f.typ].label}: ${f.titel}${akte ? ` · ${akte.aktenzeichen} ${akte.titel}` : ""}`}
       className={cn(
-        "flex w-full min-w-0 items-start gap-1 rounded-[9px] px-2 py-1.5 text-left text-[11.5px] leading-tight transition-[transform,box-shadow] duration-300 ease-[var(--spring)] hover:-translate-y-px hover:shadow-[0_4px_12px_-6px_rgba(20,30,80,0.3)]",
+        "flex w-full min-w-0 items-start gap-1 rounded-[9px] px-2 py-1.5 text-left text-[12px] leading-tight transition-[transform,box-shadow] duration-300 ease-[var(--spring)] hover:-translate-y-px hover:shadow-[0_4px_12px_-6px_rgba(20,30,80,0.3)]",
         TYP_META[f.typ].pill,
         f.status === "erledigt" && "opacity-50",
       )}
@@ -27,7 +30,7 @@ export function FristPille({ f, akte, onClick, ohneAz }: { f: Frist; akte?: Akte
           {f.uhrzeit ? <span className="num font-medium opacity-80">{f.uhrzeit} </span> : null}
           {f.titel.replace(/^Vorfrist: /, "")}
         </span>
-        {!ohneAz && akte && <span className="mono mt-0.5 block truncate text-[10.5px] opacity-75">{akte.aktenzeichen}</span>}
+        {!ohneAz && akte && <span className="mono mt-0.5 block truncate text-[12px] opacity-80">{akte.aktenzeichen}</span>}
       </span>
     </button>
   );
@@ -35,7 +38,15 @@ export function FristPille({ f, akte, onClick, ohneAz }: { f: Frist; akte?: Akte
 
 function DetailInhalt({ f, akte, team, user, onClose }: { f: Frist; akte?: Akte; team: User[]; user: User; onClose: () => void }) {
   const nav = useNavigate();
-  const { erledigt, umschalten, kontrollieren } = useFristAktionen(f, user);
+  const { erledigt, umschalten, kontrollieren, streichen, dialog } = useFristAktionen(f, user);
+  const [datei, setDatei] = useState<AusgabeDatei | null>(null);
+  const ics = () =>
+    setDatei({
+      name: icsDateiname(f, akte),
+      mime: "text/calendar",
+      inhalt: erzeugeIcs([{ f, akte }], `${TYP_META[f.typ].label} ${akte?.aktenzeichen ?? ""}`.trim()),
+      beschreibung: "Kalendereintrag mit Rechenweg zum Übernehmen in Outlook, Apple oder Google Kalender",
+    });
   const v = team.find((u) => u.id === f.verantwortlichId);
   const art = f.typ === "notfrist" || f.typ === "frist" ? fristArtZu(f) : undefined;
   const kritisch = !!art?.kritisch;
@@ -43,8 +54,9 @@ function DetailInhalt({ f, akte, team, user, onClose }: { f: Frist; akte?: Akte;
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-1.5">
         <TypChip typ={f.typ} regelKey={f.regelKey} />
-        <QuelleChip quelle={f.quelle} />
+        <QuelleChip quelle={f.quelle} notiz={f.notiz} />
         <KontrollStatus f={f} team={team} />
+        <NachweisZeile f={f} team={team} />
       </div>
       <div className={cn("rounded-[20px] p-4", kritisch ? "bg-seal-soft" : "bg-[var(--ink-softer)] ring-1 ring-inset ring-[var(--line)]")}>
         <div className={cn("eyebrow", kritisch && "!text-seal")}>{f.typ === "termin" ? "Termin" : f.typ === "vorfrist" ? "Vorfrist" : "Fristende"}</div>
@@ -72,7 +84,7 @@ function DetailInhalt({ f, akte, team, user, onClose }: { f: Frist; akte?: Akte;
       <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-[13px]">
         {akte && (
           <div className="col-span-2">
-            <dt className="eyebrow !text-[10px]">Akte</dt>
+            <dt className="eyebrow">Akte</dt>
             <dd className="mt-0.5">
               <span className="mono font-semibold text-ink">{akte.aktenzeichen}</span> {akte.titel}
             </dd>
@@ -80,25 +92,25 @@ function DetailInhalt({ f, akte, team, user, onClose }: { f: Frist; akte?: Akte;
         )}
         {f.grundlage && (
           <div>
-            <dt className="eyebrow !text-[10px]">Grundlage</dt>
+            <dt className="eyebrow">Grundlage</dt>
             <dd className="mt-0.5 font-medium">{f.grundlage}</dd>
           </div>
         )}
         {f.ereignisDatum && (
           <div>
-            <dt className="eyebrow !text-[10px]">Ereignis</dt>
+            <dt className="eyebrow">Ereignis</dt>
             <dd className="num mt-0.5 font-medium">{fmtDateWd(f.ereignisDatum)}</dd>
           </div>
         )}
         {f.vorfrist && f.typ !== "vorfrist" && (
           <div>
-            <dt className="eyebrow !text-[10px]">Vorfrist</dt>
+            <dt className="eyebrow">Vorfrist</dt>
             <dd className="num mt-0.5 font-medium">{fmtDateWd(f.vorfrist)}</dd>
           </div>
         )}
         {v && (
           <div>
-            <dt className="eyebrow !text-[10px]">Verantwortlich</dt>
+            <dt className="eyebrow">Verantwortlich</dt>
             <dd className="mt-1 flex items-center gap-2 font-medium">
               <Avatar initialen={v.initialen} farbe={v.farbe} size={22} />
               {v.name}
@@ -107,7 +119,7 @@ function DetailInhalt({ f, akte, team, user, onClose }: { f: Frist; akte?: Akte;
         )}
         {f.erledigtAm && (
           <div>
-            <dt className="eyebrow !text-[10px]">Erledigt</dt>
+            <dt className="eyebrow">Erledigt</dt>
             <dd className="num mt-0.5 font-medium text-green">{fmtDateShort(f.erledigtAm.slice(0, 10))}</dd>
           </div>
         )}
@@ -131,6 +143,14 @@ function DetailInhalt({ f, akte, team, user, onClose }: { f: Frist; akte?: Akte;
       <div className="flex flex-wrap items-center gap-2 border-t border-[var(--line)] pt-4">
         {f.status === "offen" && <KontrolleAktion f={f} user={user} kontrollieren={kontrollieren} verantwortlich={v} />}
         <ErledigtKnopf erledigt={erledigt} onClick={umschalten} />
+        {f.status === "offen" && f.typ !== "termin" && f.typ !== "vorfrist" && (
+          <Button size="sm" variant="ghost" icon={<Trash2 className="size-4" />} onClick={streichen} title="Streichen – mit Pflichtgrund, protokolliert">
+            Streichen
+          </Button>
+        )}
+        <Button size="sm" variant="ghost" icon={<CalendarPlus className="size-4" />} onClick={ics} title="Als Kalenderdatei (.ics) in Outlook, Apple oder Google Kalender übernehmen">
+          In Kalender übernehmen (.ics)
+        </Button>
         {akte && (
           <Button
             size="sm"
@@ -145,6 +165,8 @@ function DetailInhalt({ f, akte, team, user, onClose }: { f: Frist; akte?: Akte;
           </Button>
         )}
       </div>
+      {dialog}
+      <DateiDialog datei={datei} onClose={() => setDatei(null)} />
     </div>
   );
 }

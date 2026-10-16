@@ -41,7 +41,7 @@ export function KiSchritte({ schritte, aktiv, className, kompakt }: { schritte: 
                   "relative grid size-8 shrink-0 place-items-center rounded-full transition-colors duration-300 [&>svg]:size-4",
                   done && "bg-green-soft text-green",
                   active && "ai-ring bg-[var(--surface)] text-violet",
-                  !done && !active && "bg-[var(--ink-softer)] text-fg-4",
+                  !done && !active && "bg-[var(--ink-softer)] text-fg-3",
                 )}
               >
                 {done ? (
@@ -56,7 +56,7 @@ export function KiSchritte({ schritte, aktiv, className, kompakt }: { schritte: 
               </span>
               <span className="min-w-0">
                 <span className={cn("block truncate text-[13px] font-semibold", active ? "ai-text" : done ? "text-fg" : "text-fg-3")}>{s.label}</span>
-                {s.detail && <span className="block truncate text-[11.5px] text-fg-3">{s.detail}</span>}
+                {s.detail && <span className="block truncate text-[12.5px] text-fg-3">{s.detail}</span>}
               </span>
             </motion.li>
           );

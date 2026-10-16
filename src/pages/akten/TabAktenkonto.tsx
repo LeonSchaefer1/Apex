@@ -1,20 +1,23 @@
 // Reiter „Aktenkonto“: Buchungen mit laufendem Saldo, Fremdgeld-Wächter (§ 43a Abs. 7 BRAO) und Forderungskonto (§§ 288, 367 BGB).
 import { useMemo, useState, type ReactNode } from "react";
 import { motion } from "motion/react";
-import { AlertTriangle, ArrowRightLeft, Calculator, Copy, Info, Landmark, Plus, ReceiptEuro, Scale, Wallet } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, Calculator, Copy, HandCoins, Info, Landmark, Plus, ReceiptEuro, Scale, Undo2, Wallet } from "lucide-react";
 import type { Akte, Buchung, BuchungsArt } from "@/core/types";
 import { fmtDate, fmtEUR, fmtNum, round2, today, uid } from "@/core/dates";
 import { basiszinsAm, forderungskonto, type ForderungsVorgang } from "@/core/zinsen";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
-import { AnimatedNumber, Button, Card, CardHeader, Chip, Empty, Field, Input, Modal, Segmented, Select, Switch, type Tone } from "@/components/ui";
+import { AnimatedNumber, Button, Card, CardHeader, Chip, Empty, Field, Input, Modal, Segmented, Select, Switch, confirmDialog, type Tone } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { useIsMobile } from "@/lib/useMedia";
 import { kopiere } from "@/pages/kontakte/kontaktHelfer";
 import { parseEuro } from "./Mandatsaufnahme";
-import { erledigeFrist } from "@/pages/fristen/logik";
+import { WeiterleitungsDialog } from "@/pages/abrechnung/WeiterleitungsDialog";
+import { storniereWeiterleitung } from "@/pages/abrechnung/aktionen";
+import { ibanFormatiert } from "@/pages/abrechnung/lib";
 import { beruehreAkte, useKontaktMap } from "./helfer";
+import { VorschussDialog } from "./Vorschuss";
 
 export const ART_INFO: Record<BuchungsArt, { label: string; tone: Tone }> = {
   honorar: { label: "Honorar", tone: "ink" },
@@ -43,6 +46,8 @@ export function TabAktenkonto({ akte }: { akte: Akte }) {
   const kontakte = useKontaktMap();
   const mobile = useIsMobile();
   const [neu, setNeu] = useState(false);
+  const [weiterleiten, setWeiterleiten] = useState(false);
+  const [vorschuss, setVorschuss] = useState(false);
   const mandant = kontakte.get(akte.mandantId);
 
   const buchungen = useMemo(() => alle.filter((b) => b.akteId === akte.id).sort((a, b) => a.datum.localeCompare(b.datum) || a.id.localeCompare(b.id)), [alle, akte.id]);
@@ -81,15 +86,24 @@ export function TabAktenkonto({ akte }: { akte: Akte }) {
     };
   }, [buchungen]);
 
-  const fremdgeldWeiterleiten = () => {
-    const st = useData.getState();
-    st.upsert("buchungen", { id: uid("b"), akteId: akte.id, datum: today(), art: "fremdgeld", betrag: -summen.fremdOffen, text: `Weiterleitung Fremdgeld an ${mandant?.name ?? "Mandant"}`, fremdgeld: true });
-    const frist = st.data.fristen.find((f) => f.akteId === akte.id && f.status === "offen" && /fremdgeld/i.test(f.titel));
-    if (frist) erledigeFrist(frist, user.id);
-    st.log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Fremdgeld ${eur(summen.fremdOffen)} an ${mandant?.name ?? "Mandant"} weitergeleitet – ${akte.aktenzeichen}` });
-    beruehreAkte(akte.id);
-    toast("Fremdgeld weitergeleitet", { ton: "erfolg", text: `${eur(summen.fremdOffen)} an ${mandant?.name ?? "den Mandanten"}${frist ? " · zugehörige Frist erledigt" : ""}` });
+  /** Weiterleitungen, die noch nicht storniert sind – „Rückgängig“ bleibt dauerhaft möglich (Stornobuchung). */
+  const storniert = useMemo(() => new Set(buchungen.filter((b) => b.text.startsWith("Storno: ")).map((b) => b.text.slice(8))), [buchungen]);
+  const weiterleitungStornieren = async (b: Buchung) => {
+    const ok = await confirmDialog({
+      titel: "Weiterleitung rückgängig machen?",
+      text: `Es entsteht eine Stornobuchung über ${eur(-b.betrag)} – das Fremdgeld ist danach wieder offen und erscheint im Fremdgeld-Wächter. Die ursprüngliche Buchung bleibt sichtbar; der Vorgang wird protokolliert.${b.weiterleitung?.wirkung === "bereits-ueberwiesen" ? " Eine bereits ausgeführte Überweisung müssen Sie mit der Bank klären." : ""}`,
+      bestaetigen: "Stornieren",
+      gefahr: true,
+    });
+    if (!ok) return;
+    if (storniereWeiterleitung(b.id, user.id)) {
+      beruehreAkte(akte.id);
+      toast("Weiterleitung storniert", { ton: "info", text: `${eur(-b.betrag)} Fremdgeld wieder offen` });
+    }
   };
+  const weiterleitungInfo = (b: Buchung) =>
+    b.weiterleitung ? ` · IBAN ${ibanFormatiert(b.weiterleitung.iban)} · ${b.weiterleitung.wirkung === "sepa-datei" ? "SEPA-Datei zur Freigabe" : "bereits überwiesen"}` : "";
+  const stornierbar = (b: Buchung) => b.art === "fremdgeld" && b.betrag < 0 && !b.text.startsWith("Storno: ") && !storniert.has(b.text);
 
   return (
     <div className="grid grid-cols-1 gap-5">
@@ -133,19 +147,25 @@ export function TabAktenkonto({ akte }: { akte: Akte }) {
               Auf dem Anderkonto liegen <span className="num font-semibold">{eur(summen.fremdOffen)}</span>, die {mandant?.name ?? "dem Mandanten"} zustehen. Fremdgeld ist nach § 43a Abs. 7 BRAO unverzüglich an den Berechtigten weiterzuleiten.
             </p>
           </div>
-          <Button variant="danger" icon={<ArrowRightLeft className="size-4" />} onClick={fremdgeldWeiterleiten}>
-            Weiterleitung buchen
+          <Button variant="danger" icon={<ArrowRightLeft className="size-4" />} onClick={() => setWeiterleiten(true)}>
+            Weiterleiten …
           </Button>
         </motion.div>
       )}
+      <WeiterleitungsDialog akte={akte} mandant={mandant} offen={summen.fremdOffen} open={weiterleiten} onClose={() => setWeiterleiten(false)} />
 
       {/* Buchungen */}
       <Card padded={false}>
         <div className="flex flex-wrap items-start gap-3 p-5 pb-3">
           <CardHeader className="!mb-0 min-w-0 flex-1 basis-[260px]" icon={<ReceiptEuro className="size-4" />} title="Buchungen" subtitle="Honorar, Zahlungen, Vorschüsse und Auslagen · + Forderung an den Mandanten, − Zahlung oder Gutschrift" />
-          <Button size="sm" variant="secondary" icon={<Plus className="size-4" />} onClick={() => setNeu(true)}>
-            Buchung erfassen
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="secondary" icon={<HandCoins className="size-4" />} onClick={() => setVorschuss(true)}>
+              Vorschuss anfordern (§ 9 RVG)
+            </Button>
+            <Button size="sm" variant="secondary" icon={<Plus className="size-4" />} onClick={() => setNeu(true)}>
+              Buchung erfassen
+            </Button>
+          </div>
         </div>
         {zeilen.length === 0 ? (
           <Empty icon={<ReceiptEuro className="size-6" />} title="Noch keine Buchungen" text="Rechnungen, Zahlungseingänge aus dem Bankabgleich und Vorschüsse erscheinen hier automatisch." />
@@ -158,12 +178,20 @@ export function TabAktenkonto({ akte }: { akte: Akte }) {
                     <Chip tone={ART_INFO[b.art].tone}>{artLabel(b)}</Chip>
                     {fremd && b.art !== "fremdgeld" && <Chip tone="amber">Fremdgeld</Chip>}
                   </div>
-                  <div className="mt-1 truncate text-[13.5px]">{b.text}</div>
-                  <div className="text-[12px] text-fg-3">{fmtDate(b.datum)}</div>
+                  <div className="mt-1 break-words text-[13.5px]">
+                    {b.text}
+                    {weiterleitungInfo(b)}
+                  </div>
+                  <div className="text-[12.5px] text-fg-3">{fmtDate(b.datum)}</div>
+                  {stornierbar(b) && (
+                    <Button size="sm" variant="ghost" icon={<Undo2 className="size-4" />} className="mt-1 !px-2" onClick={() => void weiterleitungStornieren(b)}>
+                      Rückgängig (Storno)
+                    </Button>
+                  )}
                 </div>
                 <div className="text-right">
                   <Betrag n={b.betrag} />
-                  <div className="num text-[11.5px] text-fg-4">{fremd ? "Treuhand" : `Saldo ${eur(saldo)}`}</div>
+                  <div className="num text-[12px] text-fg-3">{fremd ? "Treuhand" : `Saldo ${eur(saldo)}`}</div>
                 </div>
               </li>
             ))}
@@ -190,11 +218,23 @@ export function TabAktenkonto({ akte }: { akte: Akte }) {
                         {fremd && b.art !== "fremdgeld" && <Chip tone="amber">Fremdgeld</Chip>}
                       </span>
                     </td>
-                    <td className="w-full max-w-0 truncate" title={b.text}>{b.text}</td>
+                    <td className="w-full max-w-0" title={b.text}>
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="break-words">
+                          {b.text}
+                          {b.weiterleitung && <span className="text-[12.5px] text-fg-3">{weiterleitungInfo(b)}</span>}
+                        </span>
+                        {stornierbar(b) && (
+                          <Button size="sm" variant="ghost" icon={<Undo2 className="size-4" />} className="!h-7 !px-2" onClick={() => void weiterleitungStornieren(b)}>
+                            Rückgängig (Storno)
+                          </Button>
+                        )}
+                      </div>
+                    </td>
                     <td className="whitespace-nowrap text-right">
                       <Betrag n={b.betrag} />
                     </td>
-                    <td className="num whitespace-nowrap text-right text-fg-2">{fremd ? <span className="text-[12px] text-fg-4">getrennt (Treuhand)</span> : eur(saldo)}</td>
+                    <td className="num whitespace-nowrap text-right text-fg-2">{fremd ? <span className="text-[12.5px] text-fg-3">getrennt (Treuhand)</span> : eur(saldo)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -215,6 +255,7 @@ export function TabAktenkonto({ akte }: { akte: Akte }) {
       {akte.forderung && <Forderungskonto akte={akte} buchungen={buchungen} />}
 
       <BuchungErfassen akte={akte} open={neu} onClose={() => setNeu(false)} />
+      <VorschussDialog akte={akte} open={vorschuss} onClose={() => setVorschuss(false)} />
     </div>
   );
 }
@@ -235,7 +276,7 @@ function Kachel({ label, wert, icon, tone = "ink", sub, className, hervorheben }
         <AnimatedNumber value={wert} format={eur} />
       </div>
       {sub && (
-        <div className="mt-0.5 truncate text-[11.5px] text-fg-3" title={sub}>
+        <div className="mt-0.5 truncate text-[12.5px] text-fg-3" title={sub}>
           {sub}
         </div>
       )}
@@ -360,11 +401,11 @@ function Forderungskonto({ akte, buchungen }: { akte: Akte; buchungen: Buchung[]
                   </div>
                   <div className="text-right">
                     <span className={cn("num text-[13.5px] font-semibold", v.betrag < 0 && "text-green")}>{eur(v.betrag)}</span>
-                    <div className="num text-[11.5px] text-fg-4">Saldo {eur(v.saldoGesamt)}</div>
+                    <div className="num text-[12.5px] text-fg-3">Saldo {eur(v.saldoGesamt)}</div>
                   </div>
                 </div>
                 {v.art === "zahlung" && (
-                  <div className="mt-2 grid grid-cols-3 gap-1.5 rounded-[12px] bg-ink-softer p-2 text-center text-[11px]">
+                  <div className="mt-2 grid grid-cols-3 gap-1.5 rounded-[12px] bg-ink-softer p-2 text-center text-[12.5px]">
                     <Verrechnung label="auf Kosten" n={v.aufKosten} />
                     <Verrechnung label="auf Zinsen" n={v.aufZinsen} />
                     <Verrechnung label="auf Hauptford." n={v.aufHaupt} />
@@ -388,7 +429,7 @@ function Forderungskonto({ akte, buchungen }: { akte: Akte; buchungen: Buchung[]
                     Betrag
                   </th>
                   <th colSpan={3} className="!border-b-0 !pb-0 !text-center" style={{ color: "var(--ink)" }}>
-                    <span className="inline-block rounded-full bg-ink-soft px-2.5 py-0.5 text-[11px]">Verrechnung nach § 367 BGB</span>
+                    <span className="inline-block rounded-full bg-ink-soft px-2.5 py-0.5 text-[12.5px]">Verrechnung nach § 367 BGB</span>
                   </th>
                   <th rowSpan={2} className="!text-right !align-bottom" style={{ width: 130 }}>
                     Hauptforderung
@@ -420,9 +461,9 @@ function Forderungskonto({ akte, buchungen }: { akte: Akte; buchungen: Buchung[]
                       </span>
                     </td>
                     <td className={cn("num whitespace-nowrap text-right font-medium", v.betrag < 0 && "text-green")}>{eur(v.betrag)}</td>
-                    <td className="num text-right text-fg-2">{v.aufKosten !== undefined ? eur(v.aufKosten) : <span className="text-fg-4">–</span>}</td>
-                    <td className="num text-right text-fg-2">{v.aufZinsen !== undefined ? eur(v.aufZinsen) : <span className="text-fg-4">–</span>}</td>
-                    <td className="num text-right text-fg-2">{v.aufHaupt !== undefined ? eur(v.aufHaupt) : <span className="text-fg-4">–</span>}</td>
+                    <td className="num text-right text-fg-2">{v.aufKosten !== undefined ? eur(v.aufKosten) : <span className="text-fg-3">–</span>}</td>
+                    <td className="num text-right text-fg-2">{v.aufZinsen !== undefined ? eur(v.aufZinsen) : <span className="text-fg-3">–</span>}</td>
+                    <td className="num text-right text-fg-2">{v.aufHaupt !== undefined ? eur(v.aufHaupt) : <span className="text-fg-3">–</span>}</td>
                     <td className="num text-right">{eur(v.saldoHaupt)}</td>
                     <td className="num text-right font-semibold">{eur(v.saldoGesamt)}</td>
                   </tr>
@@ -485,7 +526,7 @@ function Forderungskonto({ akte, buchungen }: { akte: Akte; buchungen: Buchung[]
 function Verrechnung({ label, n }: { label: string; n?: number }) {
   return (
     <div>
-      <div className="text-fg-4">{label}</div>
+      <div className="text-fg-3">{label}</div>
       <div className="num font-medium text-fg-2">{eur(n ?? 0)}</div>
     </div>
   );
@@ -499,7 +540,7 @@ function Wert({ label, wert, sub, gross, titel }: { label: string; wert: number;
         <AnimatedNumber value={wert} format={eur} />
       </div>
       {sub && (
-        <div className={cn("text-[11.5px] leading-snug", gross ? "opacity-75" : "text-fg-3")} title={titel ?? sub}>
+        <div className={cn("text-[12.5px] leading-snug", gross ? "opacity-75" : "text-fg-3")} title={titel ?? sub}>
           {sub}
         </div>
       )}
@@ -587,7 +628,7 @@ function BuchungErfassen({ akte, open, onClose }: { akte: Akte; open: boolean; o
         <Field label="Betrag" htmlFor="bu-betrag" hint={Number.isNaN(wert) ? <span className="text-seal">Bitte einen Betrag wie 12,00 eingeben.</span> : vorzeichen < 0 ? "Wird als Eingang (−) gebucht." : art === "vorschuss" ? "Wird als offene Vorschussforderung (+) gebucht – noch kein Guthaben." : "Wird als Forderung (+) gebucht."}>
           <div className="relative">
             <Input id="bu-betrag" inputMode="decimal" value={betrag} onChange={(e) => setBetrag(e.target.value)} placeholder="0,00" className="num !pr-9" />
-            <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[13px] text-fg-4">€</span>
+            <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[13px] text-fg-3">€</span>
           </div>
         </Field>
         {art !== "fremdgeld" && (

@@ -1,14 +1,17 @@
 // Reiter „Bankabgleich“: Kontoumsätze werden automatisch Rechnungen zugeordnet – mit sichtbarem Abgleich.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { Building2, Check, CheckCircle2, Clock, Landmark, Link2, ShieldCheck, Sparkles, Upload, X } from "lucide-react";
-import { AnimatedNumber, Button, Card, CardHeader, Chip, ProgressRing, Select, Stat } from "@/components/ui";
+import { ArrowRight, Building2, Check, CheckCircle2, Clock, HandCoins, Landmark, Link2, ShieldCheck, Sparkles, Unlink, Upload, X } from "lucide-react";
+import { AnimatedNumber, Button, Card, CardHeader, Chip, ProgressRing, Segmented, Select, Stat, confirmDialog } from "@/components/ui";
 import { useCol, useData } from "@/store/data";
+import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
-import { fmtDateShort, fmtEUR, nowLocal, round2 } from "@/core/dates";
+import { fmtDate, fmtDateShort, fmtEUR, fmtTime, nowLocal, round2 } from "@/core/dates";
+import { automationDef, ersparnisMinuten } from "@/core/automationen";
 import type { Transaktion } from "@/core/types";
 import { cn } from "@/lib/cn";
-import { AUTO_SCHWELLE, bucheTreffer, gleicheAb, REGELN, type Treffer } from "./abgleich";
+import { AUTO_SCHWELLE, bucheTreffer, gleicheAb, loeseZuordnung, REGELN, zuordnungsProtokoll, type Treffer } from "./abgleich";
 import { istOffen, offenerBetrag } from "./lib";
 import { AkteLabel, TabKopf, useLookups } from "./ui";
 
@@ -16,7 +19,9 @@ type Zustand = "gebucht" | "vorschlag" | "kosten" | "keine" | "bestaetigt" | "ab
 type Ergebnis = Treffer & { zustand: Zustand };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const MIN_GESPART = 8;
+/** Minuten manuelle Zuordnung je automatisch zugeordnetem Umsatz – aus der Automatik-Definition (je Vorgang gezählt). */
+const MIN_JE_UMSATZ = automationDef("bankabgleich")?.minutenProLauf ?? 3;
+const plural = (n: number, eins: string, mehr: string) => `${n} ${n === 1 ? eins : mehr}`;
 
 function tonVon(z: Zustand | undefined): "green" | "amber" | "neutral" | "seal" {
   if (z === "gebucht" || z === "bestaetigt" || z === "manuell") return "green";
@@ -30,7 +35,7 @@ function Verbinder({ ton, sichtbar, scannt }: { ton: ReturnType<typeof tonVon>; 
   return (
     <div className="relative flex h-full items-center justify-center" aria-hidden>
       {/* Desktop: waagerecht */}
-      <svg width="64" height="24" viewBox="0 0 64 24" className="hidden md:block">
+      <svg width="64" height="24" viewBox="0 0 64 24" className="hidden 2xl:block">
         <line x1="4" y1="12" x2="60" y2="12" stroke="var(--line-strong)" strokeDasharray="2 4" />
         {sichtbar && (
           <>
@@ -59,7 +64,7 @@ function Verbinder({ ton, sichtbar, scannt }: { ton: ReturnType<typeof tonVon>; 
         )}
       </svg>
       {/* Mobil: senkrecht */}
-      <svg width="24" height="26" viewBox="0 0 24 26" className="md:hidden">
+      <svg width="24" height="26" viewBox="0 0 24 26" className="2xl:hidden">
         <line x1="12" y1="2" x2="12" y2="24" stroke="var(--line-strong)" strokeDasharray="2 4" />
         {sichtbar && (
           <>
@@ -115,7 +120,12 @@ function Ziel({ children, ton, gestrichelt }: { children: ReactNode; ton?: Retur
 export function BankabgleichTab() {
   const transaktionen = useCol("transaktionen");
   const rechnungen = useCol("rechnungen");
-  const { akten, kontakte } = useLookups();
+  const aktivitaeten = useCol("aktivitaeten");
+  const { akten, kontakte, users } = useLookups();
+  const { user } = useKanzlei();
+  const nav = useNavigate();
+  const [ansicht, setAnsicht] = useState<"offen" | "gebucht">("offen");
+  const [gespartLauf, setGespartLauf] = useState(0);
   const [phase, setPhase] = useState<"bereit" | "laeuft" | "fertig">("bereit");
   const [reihenfolge, setReihenfolge] = useState<string[]>([]);
   const [aktuell, setAktuell] = useState(-1);
@@ -137,7 +147,8 @@ export function BankabgleichTab() {
   const sortiert = (ts: Transaktion[]) => [...ts].sort((a, b) => b.datum.localeCompare(a.datum) || b.betrag - a.betrag);
   const offen = useMemo(() => sortiert(transaktionen.filter((t) => t.status === "offen")), [transaktionen]);
   const liste = phase === "bereit" ? offen.map((t) => t.id) : [...reihenfolge, ...offen.map((t) => t.id).filter((id) => !reihenfolge.includes(id))];
-  const historie = useMemo(() => sortiert(transaktionen.filter((t) => t.status !== "offen" && !reihenfolge.includes(t.id))), [transaktionen, reihenfolge]);
+  // Reiter „Gebucht“: alle zugeordneten Umsätze – auch nach dem Neuladen, mit Grund, Sicherheit, wer und wann
+  const gebuchtListe = useMemo(() => sortiert(transaktionen.filter((t) => t.status !== "offen")), [transaktionen]);
   const offeneRechnungen = useMemo(() => rechnungen.filter(istOffen).sort((a, b) => a.nummer.localeCompare(b.nummer)), [rechnungen]);
 
   const eingaengeOffen = round2(offen.filter((t) => t.betrag > 0).reduce((s, t) => s + t.betrag, 0));
@@ -159,6 +170,7 @@ export function BankabgleichTab() {
       return;
     }
     const treffer = gleicheAb({ transaktionen: offeneT, rechnungen: st.data.rechnungen, akten: st.data.akten, kontakte: st.data.kontakte });
+    setAnsicht("offen");
     setReihenfolge(offeneT.map((t) => t.id));
     setErgebnisse({});
     setManuell({});
@@ -166,6 +178,7 @@ export function BankabgleichTab() {
     let gebucht = 0;
     let vorschlaege = 0;
     let kosten = 0;
+    let fremd = 0;
     for (let i = 0; i < offeneT.length; i++) {
       const t = offeneT[i];
       const tr = treffer[i];
@@ -186,6 +199,10 @@ export function BankabgleichTab() {
       } else if (tr.art === "rechnung") {
         zustand = "vorschlag";
         vorschlaege++;
+      } else if (tr.art === "fremdgeld") {
+        // Fremdgeld nie automatisch buchen oder weiterleiten – nur markieren
+        zustand = "vorschlag";
+        fremd++;
       } else zustand = "keine";
       if (alive.current) {
         setErgebnisse((e) => ({ ...e, [t.id]: { ...tr, zustand } }));
@@ -196,15 +213,18 @@ export function BankabgleichTab() {
       setAktuell(-1);
       setPhase("fertig");
     }
+    // Ersparnis je Vorgang: nur automatisch zugeordnete Umsätze zählen (je Umsatz ca. MIN_JE_UMSATZ Min.)
+    const gespart = ersparnisMinuten("bankabgleich", gebucht + kosten);
+    if (alive.current) setGespartLauf(gespart);
     const auto = st.data.automationen.find((a) => a.key === "bankabgleich");
     if (auto) useData.getState().patch("automationen", auto.id, { laeufe: auto.laeufe + 1, letzterLauf: nowLocal() });
     useData.getState().log({
       akteur: "automation",
       automationKey: "bankabgleich",
-      text: `Bankabgleich: ${gebucht} ${gebucht === 1 ? "Zahlung" : "Zahlungen"} automatisch gebucht, ${vorschlaege} ${vorschlaege === 1 ? "Vorschlag" : "Vorschläge"} zur Prüfung, ${kosten} Kanzleikosten erfasst`,
-      minutenGespart: MIN_GESPART,
+      text: `Bankabgleich: ${plural(gebucht, "Zahlung", "Zahlungen")} automatisch gebucht, ${plural(vorschlaege, "Vorschlag", "Vorschläge")} zur Prüfung, ${kosten} Kanzleikosten erfasst${fremd ? `, ${fremd} Fremdgeld markiert` : ""}`,
+      ...(gespart ? { minutenGespart: gespart } : {}),
     });
-    toast("Bankabgleich abgeschlossen", { text: `${gebucht} gebucht · ${vorschlaege} ${vorschlaege === 1 ? "Vorschlag" : "Vorschläge"} · ${kosten} Kanzleikosten`, ton: "erfolg" });
+    toast("Bankabgleich abgeschlossen", { text: `${gebucht} gebucht · ${plural(vorschlaege, "Vorschlag", "Vorschläge")} · ${kosten} Kanzleikosten${fremd ? ` · ${fremd} Fremdgeld` : ""}`, ton: "erfolg" });
   };
 
   const setZustand = (id: string, zustand: Zustand, patch: Partial<Ergebnis> = {}) => setErgebnisse((e) => (e[id] ? { ...e, [id]: { ...e[id], ...patch, zustand } } : e));
@@ -215,10 +235,45 @@ export function BankabgleichTab() {
       : toast(titel, { text: `${fmtEUR(t.betrag)} auf ${nummer}`, ton: "erfolg" });
 
   const bestaetigen = (t: Transaktion, e: Ergebnis) => {
-    const erg = bucheTreffer(t, e, "manuell");
+    const erg = bucheTreffer(t, e, "manuell", user.id);
     setZustand(t.id, "bestaetigt");
+    if (e.art === "fremdgeld") {
+      const a = e.akteId ? akten.get(e.akteId) : undefined;
+      toast("Als Fremdgeld gebucht", {
+        text: `${fmtEUR(t.betrag)} auf dem Anderkonto${a ? ` · ${a.aktenzeichen}` : ""} – bitte unverzüglich weiterleiten (§ 43a Abs. 7 BRAO)`,
+        ton: "warnung",
+        aktion: { label: "Fremdgeld-Wächter", onClick: zumWaechter },
+      });
+      return;
+    }
     const r = e.rechnungId ? rById.get(e.rechnungId) : undefined;
     zahlungsToast("Zahlung gebucht", t, r?.nummer ?? "Rechnung", erg);
+  };
+
+  const zumWaechter = () => {
+    nav("/abrechnung?tab=uebersicht");
+    window.setTimeout(() => document.getElementById("fremdgeld-waechter")?.scrollIntoView({ behavior: "smooth", block: "start" }), 400);
+  };
+
+  const zuordnungLoesen = async (t: Transaktion) => {
+    const z = t.zuordnung;
+    const r = z?.rechnungId ? rById.get(z.rechnungId) : undefined;
+    const ok = await confirmDialog({
+      titel: "Zuordnung lösen?",
+      text: r
+        ? `Die Zahlung über ${fmtEUR(t.betrag)} auf ${r.nummer} wird im Aktenkonto gegengebucht, die Rechnung ist wieder offen und der Umsatz erscheint wieder unter „Offen“. Der Vorgang wird protokolliert.`
+        : `Der Umsatz über ${fmtEUR(Math.abs(t.betrag))} erscheint wieder unter „Offen“${t.status === "ignoriert" ? "" : "; ein gebuchter Fremdgeld-Eingang wird storniert"}. Der Vorgang wird protokolliert.`,
+      bestaetigen: "Zuordnung lösen",
+      gefahr: true,
+    });
+    if (!ok) return;
+    const text = loeseZuordnung(t, user.id);
+    setErgebnisse((e) => {
+      const n = { ...e };
+      delete n[t.id];
+      return n;
+    });
+    toast("Zuordnung gelöst", { text, ton: "info" });
   };
 
   const zuordnen = (t: Transaktion) => {
@@ -236,7 +291,7 @@ export function BankabgleichTab() {
       akteId: r.akteId,
       ...(ueber > 0.004 ? { ueberzahlung: ueber } : {}),
     };
-    const erg = bucheTreffer(t, tr, "manuell");
+    const erg = bucheTreffer(t, tr, "manuell", user.id);
     setErgebnisse((e) => ({ ...e, [t.id]: { ...tr, zustand: "manuell" } }));
     zahlungsToast("Zahlung zugeordnet", t, r.nummer, erg);
   };
@@ -262,7 +317,7 @@ export function BankabgleichTab() {
     if (!e) {
       if (t.status !== "offen") return historieZiel(t);
       return (
-        <div className={cn("min-h-[76px] items-center rounded-[18px] border border-dashed border-[var(--line)] px-3.5 text-[12.5px] text-fg-4", wartet ? "flex" : "hidden md:flex")}>
+        <div className={cn("min-h-[76px] items-center rounded-[18px] border border-dashed border-[var(--line)] px-3.5 text-[12.5px] text-fg-3", wartet ? "flex" : "hidden 2xl:flex")}>
           {wartet ? "wartet …" : "Noch nicht abgeglichen"}
         </div>
       );
@@ -275,12 +330,47 @@ export function BankabgleichTab() {
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-[13px] font-medium">Kanzleikosten (keine Rechnung)</div>
+            <div className="mt-0.5 text-[12.5px] text-fg-3">automatisch erfasst</div>
             <div className="mt-1">
               <Chip>{e.kategorie}</Chip>
             </div>
           </div>
         </Ziel>
       );
+    if (e.art === "fremdgeld" && e.zustand !== "abgelehnt") {
+      const fa = e.akteId ? akten.get(e.akteId) : undefined;
+      const gebucht = e.zustand === "bestaetigt";
+      return (
+        <Ziel ton="amber">
+          <div className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-amber-soft text-amber">
+            <HandCoins className="size-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <Chip tone="amber">Fremdgeld</Chip>
+              {gebucht ? <Chip tone="ink" icon={<Check className="size-3" />}>Eingang gebucht – weiterleiten</Chip> : <Chip tone="outline">Vorschlag</Chip>}
+            </div>
+            <AkteLabel akte={fa} className="mt-0.5 text-[12.5px]" />
+            <div className="mt-0.5 break-words text-[12.5px] text-fg-3">{e.grund}</div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {!gebucht && (
+                <>
+                  <Button size="sm" variant="primary" icon={<Check className="size-4" />} onClick={() => bestaetigen(t, e)}>
+                    Als Fremdgeld buchen
+                  </Button>
+                  <Button size="sm" variant="ghost" icon={<X className="size-4" />} onClick={() => setZustand(t.id, "abgelehnt")}>
+                    Ablehnen
+                  </Button>
+                </>
+              )}
+              <Button size="sm" variant="secondary" iconRight={<ArrowRight className="size-4" />} onClick={zumWaechter}>
+                Fremdgeld-Wächter
+              </Button>
+            </div>
+          </div>
+        </Ziel>
+      );
+    }
     const r = e.rechnungId ? rById.get(e.rechnungId) : undefined;
     const akte = r ? akten.get(r.akteId) : undefined;
     if (e.art === "rechnung" && r && e.zustand !== "abgelehnt") {
@@ -309,9 +399,7 @@ export function BankabgleichTab() {
               {e.ueberzahlung && <Chip tone="amber">Überzahlung {fmtEUR(e.ueberzahlung)}</Chip>}
             </div>
             <AkteLabel akte={akte} className="mt-0.5 text-[12.5px]" />
-            <div className="mt-0.5 truncate text-[11.5px] text-fg-3" title={e.grund}>
-              {e.grund}
-            </div>
+            <div className="mt-0.5 break-words text-[12.5px] text-fg-3">{e.grund}</div>
             {e.zustand === "vorschlag" && (
               <div className="mt-2 flex flex-wrap gap-2">
                 <Button size="sm" variant="primary" icon={<Check className="size-4" />} onClick={() => bestaetigen(t, e)}>
@@ -334,12 +422,12 @@ export function BankabgleichTab() {
         <div className="min-w-0 flex-1">
           <div className="text-[13px] font-medium">{e.zustand === "abgelehnt" ? "Vorschlag abgelehnt – manuell zuordnen" : "Keine passende Rechnung"}</div>
           {gewaehlt && mehr > 0.004 && (
-            <p className="mt-1 text-[11.5px] leading-snug text-amber">
+            <p className="mt-1 text-[12.5px] leading-snug text-amber">
               Der Umsatz übersteigt den offenen Rest von {gewaehlt.nummer} um {fmtEUR(mehr)} – der Mehrbetrag wird als Guthaben der Mandantschaft gebucht.
             </p>
           )}
-          <div className="mt-2 flex gap-2">
-            <Select aria-label="Rechnung wählen" value={manuell[t.id] ?? ""} onChange={(ev) => setManuell((m) => ({ ...m, [t.id]: ev.target.value }))} className="!h-8 !rounded-[10px] !text-[12.5px]">
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Select aria-label="Rechnung wählen" value={manuell[t.id] ?? ""} onChange={(ev) => setManuell((m) => ({ ...m, [t.id]: ev.target.value }))} className="!h-8 min-w-0 flex-1 !rounded-[10px] !text-[12.5px]">
               <option value="">Rechnung wählen …</option>
               {offeneRechnungen.map((x) => (
                 <option key={x.id} value={x.id}>
@@ -356,29 +444,38 @@ export function BankabgleichTab() {
     );
   };
 
+  /** Gebuchter Umsatz: Ziel, Grund, Sicherheit, automatisch/manuell, wer und wann – mit „Zuordnung lösen“. */
   const historieZiel = (t: Transaktion) => {
     const z = t.zuordnung;
-    if (t.status === "ignoriert")
-      return (
-        <div className="flex min-h-[64px] items-center gap-3 rounded-[18px] border border-[var(--line)] px-3.5 py-2.5">
-          <Building2 className="size-4 shrink-0 text-fg-3" />
-          <span className="min-w-0 truncate text-[12.5px] text-fg-2">{z?.grund ?? "Ohne Rechnungsbezug"}</span>
-        </div>
-      );
     const r = z?.rechnungId ? rById.get(z.rechnungId) : undefined;
+    const a = z?.akteId ? akten.get(z.akteId) : r ? akten.get(r.akteId) : undefined;
+    // Wer und wann: aus der Zuordnung selbst (seit Iteration 1 gespeichert), sonst aus dem Protokoll
+    const log = z?.am ? undefined : zuordnungsProtokoll(aktivitaeten, t);
+    const zeit = z?.am ?? log?.zeit;
+    const vonId = z?.am ? z.von : log?.userId;
+    const automatisch = z?.am ? z.durch === "auto" : log?.akteur === "automation";
+    const wer = zeit ? (vonId ? users.get(vonId)?.name ?? "Nutzer" : automatisch ? "38h-Motor (automatisch)" : "System") : undefined;
+    const fremd = !r && t.status === "zugeordnet";
     return (
-      <div className="flex min-h-[64px] items-center gap-3 rounded-[18px] border border-[var(--line)] px-3.5 py-2.5">
-        <CheckCircle2 className="size-4 shrink-0 text-green" />
+      <div className="flex min-h-[64px] min-w-0 items-start gap-3 rounded-[18px] border border-[var(--line)] bg-[var(--surface)] px-3.5 py-2.5">
+        {t.status === "ignoriert" ? <Building2 className="mt-0.5 size-4 shrink-0 text-fg-3" /> : fremd ? <HandCoins className="mt-0.5 size-4 shrink-0 text-amber" /> : <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-green" />}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="mono text-[12.5px] font-medium">{r?.nummer ?? "Rechnung"}</span>
+            <span className="text-[13px] font-medium">{t.status === "ignoriert" ? "Kanzleikosten" : fremd ? "Fremdgeld" : <span className="mono">{r?.nummer ?? "Rechnung"}</span>}</span>
             {z && (
-              <span className="num text-[11.5px] text-fg-3">
+              <Chip tone="ink">
                 {Math.round(z.sicherheit * 100)} % · {z.durch === "auto" ? "automatisch" : "manuell"}
-              </span>
+              </Chip>
             )}
           </div>
-          <div className="truncate text-[11.5px] text-fg-3">{z?.grund}</div>
+          {a && <AkteLabel akte={a} className="mt-0.5 text-[12.5px]" />}
+          <div className="mt-0.5 break-words text-[12.5px] text-fg-3">{z?.grund ?? "Ohne Rechnungsbezug"}</div>
+          <div className="mt-0.5 text-[12.5px] text-fg-3">
+            {zeit ? `${wer} · ${fmtDate(zeit.slice(0, 10))}, ${fmtTime(zeit)} Uhr` : "Beispieldaten – Zuordnung vor Beginn des Protokolls"}
+          </div>
+          <Button size="sm" variant="ghost" icon={<Unlink className="size-4" />} className="mt-1 !px-2" onClick={() => void zuordnungLoesen(t)}>
+            Zuordnung lösen
+          </Button>
         </div>
       </div>
     );
@@ -399,10 +496,8 @@ export function BankabgleichTab() {
         <div className="num text-[12px] font-semibold text-fg-2">{fmtDateShort(t.datum)}</div>
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[13.5px] font-medium">{t.gegenpartei}</div>
-        <div className="mono truncate text-[11.5px] text-fg-3" title={t.verwendungszweck}>
-          {t.verwendungszweck}
-        </div>
+        <div className="break-words text-[13.5px] font-medium">{t.gegenpartei}</div>
+        <div className="mono break-words text-[12px] text-fg-3">{t.verwendungszweck}</div>
       </div>
       <div className={cn("num shrink-0 text-right text-[14px] font-semibold", t.betrag > 0 ? "text-green" : "text-fg-2")}>
         {t.betrag > 0 ? "+" : "−"}
@@ -416,7 +511,8 @@ export function BankabgleichTab() {
       <TabKopf
         icon={<Landmark className="size-[18px]" />}
         titel="Bankabgleich"
-        text="Kontoumsätze werden automatisch Rechnungen zugeordnet – sichere Treffer bucht AnwaltApex selbst, unsichere legt es Ihnen zur Bestätigung vor."
+        plakette={<Chip tone="amber" title="In dieser Demo stammen die Kontoumsätze aus Beispieldaten – kein echtes Bankkonto angebunden.">Beispielumsätze (simuliert)</Chip>}
+        text="Kontoumsätze werden automatisch Rechnungen zugeordnet – sichere Treffer bucht AnwaltApex selbst, unsichere legt es Ihnen zur Bestätigung vor. Jede Buchung lässt sich unter „Gebucht“ lösen."
         aktionen={
           <>
             <input ref={fileRef} type="file" accept=".xml,.sta,.mt940,.csv" className="hidden" onChange={(e) => importieren(e.target.files?.[0])} />
@@ -460,13 +556,15 @@ export function BankabgleichTab() {
                     <div className="min-w-0 flex-1">
                       <div className="title-md">Abgleich abgeschlossen</div>
                       <div className="text-[12.5px] text-fg-3">
-                        {anz.gebucht} {anz.gebucht === 1 ? "Zahlung" : "Zahlungen"} automatisch gebucht · {anz.vorschlag} {anz.vorschlag === 1 ? "Vorschlag" : "Vorschläge"} · {anz.kosten}{" "}
-                        Kanzleikosten
+                        {plural(anz.gebucht, "Zahlung", "Zahlungen")} automatisch gebucht · {plural(anz.vorschlag, "Vorschlag", "Vorschläge")} · {anz.kosten} Kanzleikosten
                       </div>
                     </div>
-                    <Chip tone="green" icon={<Clock className="size-3.5" />}>
-                      {MIN_GESPART} Min. gespart
-                    </Chip>
+                    <div className="text-right">
+                      <Chip tone="green" icon={<Clock className="size-3.5" />}>
+                        ≈ {gespartLauf} Min. gespart
+                      </Chip>
+                      <div className="mt-1 max-w-[260px] text-[12.5px] text-fg-3">je automatisch zugeordnetem Umsatz ca. {MIN_JE_UMSATZ} Min. manuelle Zuordnung</div>
+                    </div>
                   </div>
                   <div className={cn("mt-4 grid grid-cols-2 gap-2", anz.keine > 0 ? "sm:grid-cols-4" : "sm:grid-cols-3")}>
                     {[
@@ -484,7 +582,7 @@ export function BankabgleichTab() {
                       >
                         <AnimatedNumber value={x.n} className={cn("text-[26px] font-semibold leading-none tracking-[-0.03em]", x.cls)} />
                         <div className="mt-1.5 text-[12.5px] font-medium">{x.label}</div>
-                        <div className="text-[11.5px] text-fg-3">{x.sub}</div>
+                        <div className="text-[12.5px] text-fg-3">{x.sub}</div>
                       </motion.div>
                     ))}
                   </div>
@@ -493,10 +591,40 @@ export function BankabgleichTab() {
             )}
           </AnimatePresence>
 
+          <Segmented
+            value={ansicht}
+            onChange={setAnsicht}
+            options={[
+              { value: "offen", label: "Offen", count: offen.length },
+              { value: "gebucht", label: "Gebucht", count: gebuchtListe.length },
+            ]}
+          />
+
+          {ansicht === "gebucht" ? (
+            <Card padded={false} className="overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] px-4 py-3">
+                <div className="text-[13px] font-semibold">Gebuchte Umsätze</div>
+                <div className="text-[12.5px] text-fg-3">mit Grund, Sicherheit, wer und wann – jede Zuordnung lässt sich lösen</div>
+              </div>
+              {gebuchtListe.length === 0 ? (
+                <p className="px-4 py-10 text-center text-[13px] text-fg-3">Noch keine zugeordneten Umsätze.</p>
+              ) : (
+                <ul className="grid grid-cols-1 gap-2 p-3">
+                  {gebuchtListe.map((t) => (
+                    <li key={t.id} className="grid items-stretch gap-1 2xl:grid-cols-[minmax(0,1.1fr)_64px_minmax(0,1fr)] 2xl:gap-0">
+                      {umsatzKarte(t, false)}
+                      <Verbinder ton={t.status === "ignoriert" ? "neutral" : "green"} sichtbar scannt={false} />
+                      {historieZiel(t)}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+          ) : (
           <Card padded={false} className="overflow-hidden">
             <div className="flex items-center justify-between gap-3 border-b border-[var(--line)] px-4 py-3">
               <div className="text-[13px] font-semibold">{phase === "bereit" ? "Offene Kontoumsätze" : "Ergebnis des Abgleichs"}</div>
-              <div className="hidden text-[12px] text-fg-3 md:block">Umsatz → zugeordnete Rechnung</div>
+              <div className="hidden text-[12.5px] text-fg-3 md:block">Umsatz → zugeordnete Rechnung</div>
             </div>
             {liste.length === 0 ? (
               <div className="flex flex-col items-center px-6 py-12 text-center">
@@ -522,10 +650,10 @@ export function BankabgleichTab() {
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: phase === "laeuft" && idx > aktuell && !e ? 0.6 : 1, y: 0 }}
                       transition={{ delay: phase === "bereit" ? Math.min(idx, 10) * 0.03 : 0 }}
-                      className="grid items-stretch gap-1 md:grid-cols-[minmax(0,1.1fr)_64px_minmax(0,1fr)] md:gap-0"
+                      className="grid items-stretch gap-1 2xl:grid-cols-[minmax(0,1.1fr)_64px_minmax(0,1fr)] 2xl:gap-0"
                     >
                       {umsatzKarte(t, scannt)}
-                      <div className={cn(!e && !scannt && phase !== "laeuft" && t.status === "offen" && "hidden md:block")}>
+                      <div className={cn(!e && !scannt && phase !== "laeuft" && t.status === "offen" && "hidden 2xl:block")}>
                         <Verbinder ton={tonVon(e?.zustand)} sichtbar={!!e} scannt={scannt} />
                       </div>
                       {zielInhalt(t, e, idx)}
@@ -536,19 +664,6 @@ export function BankabgleichTab() {
             )}
           </Card>
 
-          {historie.length > 0 && (
-            <Card padded={false} className="overflow-hidden">
-              <div className="border-b border-[var(--line)] px-4 py-3 text-[13px] font-semibold">Bereits zugeordnet</div>
-              <ul className="grid grid-cols-1 gap-2 p-3">
-                {historie.slice(0, 12).map((t) => (
-                  <li key={t.id} className="grid items-stretch gap-1 opacity-90 md:grid-cols-[minmax(0,1.1fr)_64px_minmax(0,1fr)] md:gap-0">
-                    {umsatzKarte(t, false)}
-                    <Verbinder ton={t.status === "ignoriert" ? "neutral" : "green"} sichtbar scannt={false} />
-                    {historieZiel(t)}
-                  </li>
-                ))}
-              </ul>
-            </Card>
           )}
         </div>
 
@@ -564,7 +679,7 @@ export function BankabgleichTab() {
                 <li key={r.regel} className="flex items-start gap-3">
                   <span
                     className={cn(
-                      "num mt-0.5 grid h-6 w-11 shrink-0 place-items-center rounded-full text-[11px] font-semibold",
+                      "num mt-0.5 grid h-6 w-11 shrink-0 place-items-center rounded-full text-[12px] font-semibold",
                       r.folge === "auto" ? "bg-green-soft text-green" : r.folge === "vorschlag" ? "bg-amber-soft text-amber" : "bg-[var(--line)] text-fg-2",
                     )}
                   >
@@ -572,7 +687,7 @@ export function BankabgleichTab() {
                   </span>
                   <div className="min-w-0">
                     <div className="text-[13px] font-medium">{r.titel}</div>
-                    <div className="text-[12px] leading-snug text-fg-3">{r.text}</div>
+                    <div className="text-[12.5px] leading-snug text-fg-3">{r.text}</div>
                   </div>
                 </li>
               ))}
@@ -581,13 +696,14 @@ export function BankabgleichTab() {
               <Chip tone="green">automatisch gebucht</Chip>
               <Chip tone="amber">Vorschlag zur Bestätigung</Chip>
               <Chip>Kanzleikosten</Chip>
+              <Chip tone="amber">Fremdgeld</Chip>
             </div>
           </Card>
           <Card>
             <CardHeader icon={<Upload className="size-4" />} title="Kontoauszüge" subtitle="Import im Format CAMT.053 (XML), MT940 (.sta) oder CSV." />
             <p className="text-[12.5px] leading-relaxed text-fg-3">
-              Jeder Umsatz wird gegen offene Rechnungen und Aktenkonten geprüft. Jede Zuordnung bleibt nachvollziehbar – mit Regel, Sicherheit und wer gebucht hat. In dieser Demo werden
-              Beispielumsätze verwendet.
+              Jeder Umsatz wird gegen offene Rechnungen und Aktenkonten geprüft. Jede Zuordnung bleibt nachvollziehbar – mit Regel, Sicherheit und wer gebucht hat – und lässt sich unter „Gebucht“ lösen. In
+              dieser Demo werden Beispielumsätze (simuliert) verwendet; es ist kein Bankkonto angebunden.
             </p>
           </Card>
         </div>

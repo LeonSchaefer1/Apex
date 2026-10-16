@@ -111,7 +111,7 @@ export function WikiBibliothek() {
                     <span className="block text-[14px] font-semibold leading-snug">
                       <Highlight text={w.titel} q={q} />
                     </span>
-                    <span className="block text-[11.5px] text-fg-4">{w.kategorie}</span>
+                    <span className="block text-[12.5px] text-fg-3">{w.kategorie}</span>
                   </span>
                   <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[var(--ink-softer)] text-ink transition-all duration-300 ease-[var(--spring)] group-hover:scale-110 group-hover:bg-ink group-hover:text-[var(--on-ink)]">
                     <Play className="ml-0.5 size-3.5" fill="currentColor" />

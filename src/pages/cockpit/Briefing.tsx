@@ -120,7 +120,7 @@ export function Briefing({ saetze, erstellt }: { saetze: Satz[]; erstellt: strin
       <div aria-hidden className="ai-fill pointer-events-none absolute -right-24 -top-28 size-72 rounded-full opacity-[0.13] blur-3xl" />
       <div className="relative flex flex-wrap items-center gap-x-3 gap-y-2">
         <AiChip>KI-Briefing</AiChip>
-        <span className="text-[12px] text-fg-3"><span className="hidden sm:inline">Aus Ihren Kanzleidaten erstellt · </span>{erstellt} Uhr</span>
+        <span className="text-[12.5px] text-fg-3"><span className="hidden sm:inline">Aus Ihren Kanzleidaten erstellt · </span>{erstellt} Uhr</span>
         <div className="ml-auto">
           <button
             type="button"

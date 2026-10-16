@@ -1,23 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router";
 import { motion } from "motion/react";
-import { Calculator, Euro, Repeat, Target } from "lucide-react";
+import { Calculator, Euro, FlaskConical, Repeat, Target } from "lucide-react";
 import { useCol } from "@/store/data";
 import { hatBeispieldaten } from "@/lib/backend";
 import { useKanzlei } from "@/store/session";
 import { addDays, fmtDateShort, fmtEUR, fmtNum, today } from "@/core/dates";
 import type { Automation } from "@/core/types";
-import { AnimatedNumber, Button, Card, PageHeader, ProgressRing, Segmented } from "@/components/ui";
+import { AnimatedNumber, Button, Card, Chip, PageHeader, ProgressRing, Segmented } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { WochenChart, type TagWert } from "./WochenChart";
 import { AutomationDrawer, AutomationKarte, letzteLaeufe } from "./AutomationKarte";
 import { LiveFeed } from "./LiveFeed";
 import { RoiRechner } from "./RoiRechner";
-import { ARBEITSWOCHEN, FLOW_CSS, KATEGORIEN, WERT_PRO_STUNDE, ZIEL_STUNDEN, useNow } from "./shared";
+import { ARBEITSWOCHEN, FLOW_CSS, JAHRESARBEITSSTUNDEN, KATEGORIEN, PERSONALKOSTEN_JAHR, ZIEL_STUNDEN, kostensatz, ungefaehr, useNow, vorgaengeVon } from "./shared";
 
 type Filter = "alle" | Automation["kategorie"];
 
-/** Konservative Bewertung nur zu Personalkosten (Annahme) – zeigt, dass sich der Motor auch ohne Abrechnung rechnet. */
+/** Interner Kostensatz je gesparter Stunde: Personalkosten ÷ Jahresarbeitsstunden (50.000 € ÷ 1.920 Std. = 26,04 €/Std.). */
+const KOSTENSATZ = kostensatz();
 
 export default function Motor() {
   const automationen = useCol("automationen");
@@ -52,18 +53,27 @@ export default function Motor() {
       const t = map.get(a.zeit.slice(0, 10));
       if (!t || !a.minutenGespart) continue;
       t.minuten += a.minutenGespart;
-      t.laeufe += 1;
+      t.laeufe += vorgaengeVon(a);
     }
     return [...map.values()];
   }, [aktivitaeten, grenze]);
 
+  // Bearbeitete Vorgänge je Automatik in den letzten 7 Tagen – Vorbelegung der eigenen Mengen im Rechner
+  const mengen = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const a of aktivitaeten) {
+      if (!a.automationKey || !a.minutenGespart || a.zeit.slice(0, 10) < grenze) continue;
+      m[a.automationKey] = (m[a.automationKey] ?? 0) + vorgaengeVon(a);
+    }
+    return m;
+  }, [aktivitaeten, grenze]);
+
   const wochenMin = tage.reduce((s, t) => s + t.minuten, 0);
-  const laeufeWoche = tage.reduce((s, t) => s + t.laeufe, 0);
+  const vorgaengeWoche = tage.reduce((s, t) => s + t.laeufe, 0);
   const stunden = wochenMin / 60;
   const anteil = stunden / ZIEL_STUNDEN;
-  const wertWoche = stunden * WERT_PRO_STUNDE;
+  const wertWoche = stunden * KOSTENSATZ;
   const wertJahr = wertWoche * ARBEITSWOCHEN;
-  const potenzialJahr = stunden * satz * ARBEITSWOCHEN;
   const aktiv = automationen.filter((a) => a.aktiv).length;
 
   const gefiltert = filter === "alle" ? automationen : automationen.filter((a) => a.kategorie === filter);
@@ -74,11 +84,19 @@ export default function Motor() {
   return (
     <div>
       <style>{FLOW_CSS}</style>
+      {demo && (
+        <div className="mb-4 flex items-start gap-2.5 rounded-[16px] bg-amber-soft px-4 py-3 text-[13px] text-fg-2" role="note">
+          <FlaskConical className="mt-0.5 size-4 shrink-0 text-amber" />
+          <span>
+            <span className="font-semibold text-fg">Demo-Daten</span> – im Echtbetrieb misst der Motor Ihre Kanzlei. Alle Werte hier sind simuliert.
+          </span>
+        </div>
+      )}
       <PageHeader
         eyebrow={`${aktiv} von ${automationen.length} Automationen aktiv`}
         title="38h-Motor"
         hilfe="motor"
-        subtitle="Routineprozesse laufen autonom im Hintergrund – mit messbarer Zeitersparnis. Jede Automation lässt sich einzeln ein- und ausschalten."
+        subtitle="Routineprozesse laufen im Hintergrund – mit messbarer Zeitersparnis und klarer Freigabe: Was die Kanzlei verlässt, geht erst nach Ihrer Freigabe hinaus. Jede Automation lässt sich einzeln ein- und ausschalten."
         actions={
           <Button icon={<Calculator className="size-4" />} onClick={() => document.getElementById("roi")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
             Ersparnis berechnen
@@ -96,11 +114,16 @@ export default function Motor() {
                   <div className="text-[30px] font-semibold leading-none tracking-[-0.03em]">
                     <AnimatedNumber value={Math.min(999, anteil * 100)} format={(n) => `${Math.round(n)} %`} />
                   </div>
-                  <div className="mt-1.5 text-[11.5px] leading-tight text-fg-3">
+                  <div className="mt-1.5 text-[12px] leading-tight text-fg-3">
                     des Wochenziels
                     <br />
                     von {ZIEL_STUNDEN} Std.
                   </div>
+                  {demo && (
+                    <Chip tone="amber" className="mt-1.5">
+                      Beispielwerte
+                    </Chip>
+                  )}
                 </div>
               </ProgressRing>
             </div>
@@ -113,30 +136,33 @@ export default function Motor() {
                   <AnimatedNumber value={stunden} format={(n) => fmtNum(n, 1)} className="[font-variant-numeric:normal]" /> <span className="text-[0.55em] tracking-[-0.03em]">Std.</span>
                 </span>
                 <span className="text-[15px] font-medium text-fg-2">gespart in den letzten 7 Tagen</span>
+                {demo && <Chip tone="amber">Beispielwerte</Chip>}
               </div>
               <p className="mt-2 max-w-[52ch] text-[13px] leading-relaxed text-fg-3">
                 Automatisch erledigt, während Sie an Mandaten arbeiten. Unser Ziel für jede Kanzlei: Ø {ZIEL_STUNDEN} Std. pro Woche.
               </p>
             </div>
             <div className="grid grid-cols-1 gap-2.5 sm:col-span-2 sm:grid-cols-3">
-              <Kpi icon={<Euro className="size-3.5" />} label="Gesparte Kosten · letzte 7 Tage" wert={fmtEUR(Math.round(wertWoche), { cents: false })} sub={`zu Personalkosten (${fmtEUR(WERT_PRO_STUNDE)}/Std.)`} />
-              <Kpi icon={<Target className="size-3.5" />} label="Hochgerechnet pro Jahr" wert={`≈ ${fmtEUR(Math.round(wertJahr / 1000) * 1000, { cents: false })}`} sub={`7-Tage-Wert × ${ARBEITSWOCHEN} Arbeitswochen`} betont />
-              <Kpi icon={<Repeat className="size-3.5" />} label="Automatische Läufe" wert={fmtNum(laeufeWoche)} sub="in den letzten 7 Tagen" />
+              <Kpi
+                icon={<Euro className="size-3.5" />}
+                label="Gesparte Kosten · letzte 7 Tage"
+                wert={fmtEUR(Math.round(wertWoche), { cents: false })}
+                sub={`zu Personalkosten ${fmtEUR(KOSTENSATZ)}/Std. (${fmtEUR(PERSONALKOSTEN_JAHR, { cents: false })} ÷ ${fmtNum(JAHRESARBEITSSTUNDEN)} Std.)`}
+              />
+              <Kpi icon={<Target className="size-3.5" />} label="Hochgerechnet pro Jahr" wert={`≈ ${fmtEUR(ungefaehr(wertJahr), { cents: false })}`} sub={`7-Tage-Wert × ${ARBEITSWOCHEN} Arbeitswochen`} betont />
+              <Kpi icon={<Repeat className="size-3.5" />} label="Bearbeitete Vorgänge" wert={fmtNum(vorgaengeWoche)} sub="in den letzten 7 Tagen – je Vorgang gezählt" />
             </div>
-            <p className="text-[12px] leading-snug text-fg-3 sm:col-span-2">
-              Wird die frei gewordene Zeit als anwaltliche Arbeit abgerechnet (gemessene {fmtNum(stunden, 1)} Std. × Ihr Stundensatz {fmtEUR(satz, { cents: false })} × {ARBEITSWOCHEN} Wochen), entspricht das einem Umsatzpotenzial von <span className="num whitespace-nowrap font-semibold text-fg">≈ {fmtEUR(Math.floor(potenzialJahr / 1000) * 1000, { cents: false })} pro Jahr</span>. Der Rechner unten rechnet mit dem Zielwert von {ZIEL_STUNDEN} Std.
-            </p>
           </div>
           <div className="border-t border-[var(--line)] px-5 pb-3 pt-4 md:px-6">
             <div className="mb-1 flex items-baseline justify-between gap-3">
               <div className="text-[13px] font-semibold">Gesparte Stunden je Tag</div>
-              <div className="text-[11.5px] text-fg-4">{demo ? "Gemessen je Lauf · Demo-Daten" : "Gemessen je Lauf"}</div>
+              <div className="text-[12.5px] text-fg-3">{demo ? "Gemessen je Vorgang · Demo-Daten (simuliert)" : "Gemessen je Vorgang"}</div>
             </div>
             <WochenChart tage={tage} heute={heute} />
           </div>
         </Card>
 
-        <LiveFeed aktivitaeten={aktivitaeten} automationen={automationen} now={now} className="xl:col-span-1" />
+        <LiveFeed aktivitaeten={aktivitaeten} automationen={automationen} now={now} demo={demo} className="xl:col-span-1" />
       </div>
 
       {/* Automationen */}
@@ -144,7 +170,7 @@ export default function Motor() {
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
             <h2 className="title-lg">Automationen</h2>
-            <p className="mt-1 text-[13px] text-fg-3">Was im Hintergrund läuft, wodurch es ausgelöst wird und wie viel Zeit es pro Lauf spart.</p>
+            <p className="mt-1 text-[13px] text-fg-3">Was im Hintergrund läuft, wodurch es ausgelöst wird, wer freigibt und wie viel Zeit es je Vorgang spart.</p>
           </div>
           <Segmented<Filter>
             size="sm"
@@ -178,7 +204,7 @@ export default function Motor() {
           <h2 className="title-lg">So rechnet sich das</h2>
           <p className="mt-1 text-[13px] text-fg-3">Gesparte Zeit in Euro – und der Kostenvergleich zwischen Lifetime-Lizenz und Abo-Modell.</p>
         </div>
-        <RoiRechner startSatz={satz} startArbeitsplaetze={tenant.lizenz.arbeitsplaetze} gemessen={stunden} />
+        <RoiRechner startSatz={satz} startArbeitsplaetze={tenant.lizenz.arbeitsplaetze} automationen={automationen} mengen={mengen} demo={demo} />
       </section>
 
       <AutomationDrawer a={offen} onClose={() => setOffenId(null)} aktivitaeten={aktivitaeten} now={now} />
@@ -189,12 +215,12 @@ export default function Motor() {
 function Kpi({ icon, label, wert, sub, betont }: { icon: React.ReactNode; label: string; wert: string; sub: string; betont?: boolean }) {
   return (
     <div className={cn("min-w-0 rounded-[16px] px-3.5 py-3 ring-1 ring-[var(--line)]", betont ? "bg-green-soft ring-0" : "bg-[var(--surface-2)]")}>
-      <div className={cn("flex items-center gap-1.5 text-[11.5px] font-medium", betont ? "text-green" : "text-fg-3")}>
+      <div className={cn("flex items-center gap-1.5 text-[12px] font-medium", betont ? "text-green" : "text-fg-3")}>
         {icon}
         <span className="min-w-0">{label}</span>
       </div>
       <div className="mt-1 truncate text-[20px] font-semibold tracking-[-0.02em]">{wert}</div>
-      <div className="text-[11.5px] leading-snug text-fg-3">{sub}</div>
+      <div className="text-[12px] leading-snug text-fg-3">{sub}</div>
     </div>
   );
 }

@@ -27,7 +27,7 @@ function Monat({ monat, marken, land, index }: { monat: string; marken: Kalender
       </div>
       <div className="grid grid-cols-7 gap-y-1 text-center">
         {["M", "D", "M", "D", "F", "S", "S"].map((w, i) => (
-          <div key={i} className={cn("text-[10px] font-semibold", i >= 5 ? "text-fg-4" : "text-fg-3")}>
+          <div key={i} className={cn("text-[12px] font-semibold", i >= 5 ? "text-fg-3" : "text-fg-3")}>
             {w}
           </div>
         ))}
@@ -51,7 +51,7 @@ function Monat({ monat, marken, land, index }: { monat: string; marken: Kalender
                 transition={{ type: "spring", stiffness: 520, damping: 22, delay: markiert ? 0.15 + index * 0.1 + (istEnde ? 0.25 : istRoh ? 0.12 : 0) : 0 }}
                 className={cn(
                   "num relative grid size-7 place-items-center rounded-full text-[11.5px]",
-                  frei ? "text-fg-4" : "text-fg-2",
+                  frei ? "text-fg-3" : "text-fg-2",
                   istEreignis && "bg-ink-soft font-semibold text-ink ring-1 ring-inset ring-[var(--ink)]",
                   istVorfrist && !istEnde && "font-semibold text-fg outline-dashed outline-[1.5px] -outline-offset-2 outline-[var(--fg-3)]",
                   istRoh && "font-semibold text-amber line-through ring-[1.5px] ring-inset ring-[var(--amber)]",
@@ -80,7 +80,7 @@ export function MiniKalender({ marken, land }: { marken: KalenderMarken; land: B
           <Monat key={`${mo}-${marken.ereignis}-${marken.ende}`} monat={mo} marken={marken} land={land} index={i} />
         ))}
       </div>
-      <div className="mt-3 flex flex-wrap gap-x-3.5 gap-y-1.5 text-[11px] text-fg-3">
+      <div className="mt-3 flex flex-wrap gap-x-3.5 gap-y-1.5 text-[12px] text-fg-3">
         <span className="inline-flex items-center gap-1.5">
           <span className="size-2.5 rounded-full bg-ink-soft ring-1 ring-[var(--ink)]" /> Ereignis
         </span>

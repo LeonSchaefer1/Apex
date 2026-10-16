@@ -6,6 +6,7 @@ import { useBreite } from "./shared";
 export interface TagWert {
   datum: string;
   minuten: number;
+  /** bearbeitete Vorgänge (je Vorgang gezählt) */
   laeufe: number;
 }
 
@@ -45,12 +46,12 @@ export function WochenChart({ tage, heute }: { tage: TagWert[]; heute: string })
           {ticks.map((v) => (
             <g key={v}>
               <line x1={pad.l} x2={w - pad.r} y1={y(v)} y2={y(v)} stroke="var(--line)" strokeWidth={1} />
-              <text x={pad.l - 8} y={y(v)} dy="0.32em" textAnchor="end" className="num fill-[var(--fg-4)] text-[10.5px]">
+              <text x={pad.l - 8} y={y(v)} dy="0.32em" textAnchor="end" className="num fill-[var(--fg-3)] text-[12px]">
                 {v}
               </text>
             </g>
           ))}
-          <text x={pad.l - 8} y={pad.t - 14} textAnchor="end" className="fill-[var(--fg-4)] text-[10px]">
+          <text x={pad.l - 8} y={pad.t - 14} textAnchor="end" className="fill-[var(--fg-3)] text-[12px]">
             Std.
           </text>
           {tage.map((d, i) => {
@@ -70,14 +71,14 @@ export function WochenChart({ tage, heute }: { tage: TagWert[]; heute: string })
                   style={{ originX: 0.5, originY: 1 }}
                 />
                 {betont && std > 0 && (
-                  <text x={cx} y={y(std) - 8} textAnchor="middle" className="num fill-[var(--fg)] text-[11.5px] font-semibold">
+                  <text x={cx} y={y(std) - 8} textAnchor="middle" className="num fill-[var(--fg)] text-[12px] font-semibold">
                     {fmtNum(std, 1)}
                   </text>
                 )}
-                <text x={cx} y={base + 16} textAnchor="middle" className={istHeute ? "fill-[var(--fg)] text-[11.5px] font-semibold" : "fill-[var(--fg-3)] text-[11.5px]"}>
+                <text x={cx} y={base + 16} textAnchor="middle" className={istHeute ? "fill-[var(--fg)] text-[12px] font-semibold" : "fill-[var(--fg-3)] text-[12px]"}>
                   {istHeute ? "Heute" : wochentagName(d.datum, true)}
                 </text>
-                <text x={cx} y={base + 31} textAnchor="middle" className="num fill-[var(--fg-4)] text-[10px]">
+                <text x={cx} y={base + 31} textAnchor="middle" className="num fill-[var(--fg-3)] text-[12px]">
                   {`${fromISO(d.datum).getUTCDate()}.${fromISO(d.datum).getUTCMonth() + 1}.`}
                 </text>
                 <rect
@@ -115,7 +116,7 @@ export function WochenChart({ tage, heute }: { tage: TagWert[]; heute: string })
               {wochentagName(t.datum, true)}, {fmtDate(t.datum)}
             </div>
             <div className="mt-0.5 text-fg-2">
-              <span className="num font-semibold text-fg">{fmtNum(t.minuten / 60, 1)} Std.</span> gespart · <span className="num">{t.laeufe}</span> Läufe
+              <span className="num font-semibold text-fg">{fmtNum(t.minuten / 60, 1)} Std.</span> gespart · <span className="num">{t.laeufe}</span> {t.laeufe === 1 ? "Vorgang" : "Vorgänge"}
             </div>
           </motion.div>
         )}
@@ -126,7 +127,7 @@ export function WochenChart({ tage, heute }: { tage: TagWert[]; heute: string })
           <tr>
             <th>Tag</th>
             <th>Stunden</th>
-            <th>Läufe</th>
+            <th>Vorgänge</th>
           </tr>
         </thead>
         <tbody>

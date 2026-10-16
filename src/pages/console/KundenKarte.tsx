@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { Activity, BadgeCheck, CalendarClock, CalendarRange, FolderOpen, KeyRound, Mail, Pause, Play, RotateCcw, Trash2, Undo2, Users } from "lucide-react";
+import { Activity, BadgeCheck, CalendarClock, CalendarRange, FolderOpen, KeyRound, Mail, Pause, Play, RotateCcw, Send, Trash2, Undo2, Users } from "lucide-react";
 import { Avatar, Button, Chip } from "@/components/ui";
 import { bundeslandName } from "@/core/feiertage";
 import { fmtDate, fmtNum, relTime, today } from "@/core/dates";
@@ -23,6 +23,8 @@ export interface KartenAktionen {
   passwort: (k: ConsoleKunde, u: User) => void;
   /** Eingebaute Beispiel-Zugänge: öffentliches Demo-Passwort wiederherstellen */
   standardPasswort: (k: ConsoleKunde, u: User) => void;
+  /** Vollständige Einladung (ohne Passwort) in die Zwischenablage */
+  einladung: (k: ConsoleKunde, u: User) => void;
 }
 
 function kuerzel(name: string) {
@@ -74,19 +76,19 @@ export function KundenKarte({ k, i, aktionen, beschaeftigt }: { k: ConsoleKunde;
             )}
             {demo && <Chip tone="violet">Präsentationskanzlei</Chip>}
           </div>
-          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[12px]">
+          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[12.5px]">
             <div className="min-w-0">
-              <dt className="text-fg-4">Lizenz-Nr.</dt>
+              <dt className="text-fg-3">Lizenz-Nr.</dt>
               <dd className="mono truncate font-medium text-fg-2">{t.lizenz.lizenzNr}</dd>
             </div>
             <div className="min-w-0">
-              <dt className="text-fg-4">Arbeitsplätze</dt>
+              <dt className="text-fg-3">Arbeitsplätze</dt>
               <dd className="num font-medium text-fg-2">
                 {t.lizenz.arbeitsplaetze} · seit {fmtDate(t.lizenz.seit)}
               </dd>
             </div>
           </dl>
-          {t.schwerpunkte.length > 0 && <div className="mt-2.5 truncate text-[11.5px] text-fg-4">{t.schwerpunkte.join(" · ")}</div>}
+          {t.schwerpunkte.length > 0 && <div className="mt-2.5 truncate text-[12.5px] text-fg-3">{t.schwerpunkte.join(" · ")}</div>}
           <div className="mt-4 grid grid-cols-3 gap-2">
             <Kennzahl icon={<FolderOpen className="size-3.5" />} wert={k.stats.akten} label="Akten" />
             <Kennzahl icon={<CalendarClock className="size-3.5" />} wert={k.stats.offeneFristen} label="Fristen offen" />
@@ -110,7 +112,7 @@ export function KundenKarte({ k, i, aktionen, beschaeftigt }: { k: ConsoleKunde;
                 <Avatar initialen={u.initialen} farbe={u.farbe} size={28} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[13px] font-medium">
-                    {u.name} <span className="font-normal text-fg-4">· {rollenLabel(u)}</span>
+                    {u.name} <span className="font-normal text-fg-3">· {rollenLabel(u)}</span>
                   </span>
                   <span className="flex min-w-0 items-center gap-1 text-[12px] text-fg-3">
                     <Mail className="size-3 shrink-0" />
@@ -121,7 +123,7 @@ export function KundenKarte({ k, i, aktionen, beschaeftigt }: { k: ConsoleKunde;
                   <button
                     type="button"
                     onClick={() => aktionen.standardPasswort(k, u)}
-                    className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium text-fg-3 transition-colors hover:bg-ink-soft hover:text-ink"
+                    className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-medium text-fg-3 transition-colors hover:bg-ink-soft hover:text-ink"
                     title={`Standardpasswort der Beispielkanzleien für ${u.name} wiederherstellen`}
                     aria-label={`Standardpasswort für ${u.name} wiederherstellen`}
                   >
@@ -131,8 +133,18 @@ export function KundenKarte({ k, i, aktionen, beschaeftigt }: { k: ConsoleKunde;
                 )}
                 <button
                   type="button"
+                  onClick={() => aktionen.einladung(k, u)}
+                  className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-medium text-fg-3 transition-colors hover:bg-ink-soft hover:text-ink"
+                  title={`Vollständige Einladung für ${u.name} kopieren (ohne Passwort)`}
+                  aria-label={`Einladung für ${u.name} kopieren`}
+                >
+                  <Send className="size-3.5" />
+                  <span className="hidden sm:inline">Einladung kopieren</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => aktionen.passwort(k, u)}
-                  className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium text-fg-3 transition-colors hover:bg-ink-soft hover:text-ink"
+                  className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-medium text-fg-3 transition-colors hover:bg-ink-soft hover:text-ink"
                   title={`Neues Passwort für ${u.name} erzeugen`}
                 >
                   <KeyRound className="size-3.5" />
@@ -184,7 +196,7 @@ function Kennzahl({ icon, wert, label }: { icon: React.ReactNode; wert: number; 
     <div className="grid min-w-0 grid-cols-[auto_1fr] items-center gap-x-2 gap-y-1 rounded-[12px] bg-[var(--ink-softer)] px-2.5 py-2 shadow-[inset_0_0_0_1px_var(--line)] sm:flex">
       <span className="shrink-0 text-fg-4">{icon}</span>
       <span className="num text-[15px] font-semibold leading-none tracking-[-0.02em]">{fmtNum(wert)}</span>
-      <span className="col-span-2 min-w-0 truncate text-[11.5px] text-fg-3">{label}</span>
+      <span className="col-span-2 min-w-0 truncate text-[12.5px] text-fg-3">{label}</span>
     </div>
   );
 }

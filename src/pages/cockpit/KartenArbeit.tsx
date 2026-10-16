@@ -1,6 +1,6 @@
 import { Link } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { CalendarClock, CalendarDays, Check, CheckCircle2, FolderOpen, Inbox, Landmark, Mail, MapPin, ShieldAlert, Sparkles, ArrowRight } from "lucide-react";
+import { CalendarClock, CalendarDays, Check, CheckCircle2, FolderOpen, Gavel, Inbox, Landmark, Mail, MapPin, ShieldAlert, Sparkles, ArrowRight, UserCheck } from "lucide-react";
 import { Avatar, Chip } from "@/components/ui";
 import { toast } from "@/store/ui";
 import { useData } from "@/store/data";
@@ -9,6 +9,8 @@ import { fristArtZu } from "@/core/fristen";
 import { istKritisch } from "@/core/fristenLage";
 import type { Frist, Nachricht } from "@/core/types";
 import { cn } from "@/lib/cn";
+import { letzteAbfrageText } from "@/lib/betriebsstatus";
+import { foermlicherName } from "@/lib/rollen";
 import { BentoKarte, KartenKopf, MehrLink, Streifen } from "./Basis";
 import { TYP_LABEL, tagLabel, type CockpitDaten } from "./daten";
 
@@ -74,6 +76,27 @@ export function FristenKarte({ d, i, className }: { d: CockpitDaten; i: number; 
         mehr={{ to: "/fristen", label: "Alle Fristen" }}
       />
 
+      {d.vertretung.length > 0 && (
+        <div className="relative z-[1] mb-3 grid gap-1.5">
+          {d.vertretung.map((v) => (
+            <Link
+              key={v.person.id}
+              to="/fristen?nur=meine"
+              className="flex items-center gap-2.5 rounded-[14px] bg-violet-soft px-3 py-2 text-[13px] text-fg-2 transition-colors hover:bg-[color-mix(in_oklab,var(--violet)_16%,transparent)]"
+            >
+              <UserCheck className="size-4 shrink-0 text-violet" />
+              <span className="min-w-0">
+                <span className="font-semibold text-fg">Sie vertreten heute {v.person.name}</span> – {anzahl(v.fristen, "Frist", "Fristen")}
+                {v.weitere > 0 && `, dazu ${anzahl(v.weitere, "Wiedervorlage oder Vorfrist", "Wiedervorlagen und Vorfristen")}`} bis {wochentagName(addDays(d.heute, 7), true)}, {fmtDateShort(addDays(d.heute, 7))}
+                {v.person.abwesenheit?.bis && <span className="text-fg-3"> · abwesend bis {fmtDateShort(v.person.abwesenheit.bis)}</span>}
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
+
+      <TermineHeute d={d} />
+
       {spotlight.length > 0 && (
         <div className="relative z-[1] mb-3 grid gap-2">
           {spotlight.map((f) => (
@@ -93,7 +116,7 @@ export function FristenKarte({ d, i, className }: { d: CockpitDaten; i: number; 
           </div>
           {d.woche.filter((f) => f.datum > d.bisTag).length > 0 && (
             <>
-              <div className="eyebrow px-2 pb-1 pt-3.5 !text-[10.5px]">
+              <div className="eyebrow px-2 pb-1 pt-3.5">
                 Als Nächstes · bis {wochentagName(naechsteWoche, true)}, {fmtDateShort(naechsteWoche)}
               </div>
               <ul className="flex min-w-0 flex-col gap-0.5">
@@ -111,7 +134,7 @@ export function FristenKarte({ d, i, className }: { d: CockpitDaten; i: number; 
         <div className="relative z-[1] -mx-1 flex-1">
           {gruppen.map((g) => (
             <div key={g.key} className="mb-1.5 last:mb-0">
-              <div className={cn("eyebrow px-2 pb-1 pt-1.5 !text-[10.5px]", g.key === "ueber" && "!text-seal")}>{g.label}</div>
+              <div className={cn("eyebrow px-2 pb-1 pt-1.5", g.key === "ueber" && "!text-seal")}>{g.label}</div>
               <ul className="flex min-w-0 flex-col gap-0.5">
                 <AnimatePresence initial={false}>
                   {g.items.map((f) => (
@@ -148,13 +171,13 @@ function NotfristSpot({ f, d }: { f: Frist; d: CockpitDaten }) {
         <Chip tone="seal" icon={<ShieldAlert className="size-3" />} title={art?.kurz}>
           {f.typ === "notfrist" ? "Notfrist" : "Nicht verlängerbar"}
         </Chip>
-        <span className="text-[12px] font-semibold text-seal">
+        <span className="text-[12.5px] font-semibold text-seal">
           {tage === 0 ? "heute" : `noch ${tage} ${tage === 1 ? "Tag" : "Tage"}`} · {wochentagName(f.datum, true)}, {fmtDateShort(f.datum)}
         </span>
         <ArrowRight className="ml-auto size-4 text-seal opacity-60 transition-transform group-hover:translate-x-0.5" />
       </div>
       <div className="mt-1.5 text-[14px] font-semibold leading-snug">{f.titel}</div>
-      <div className="mt-0.5 truncate text-[12px] text-fg-3">
+      <div className="mt-0.5 truncate text-[12.5px] text-fg-3">
         {a && <span className="mono font-medium text-fg-2">{a.aktenzeichen}</span>} {a?.titel}
         {f.grundlage && <> · {f.grundlage}</>}
       </div>
@@ -168,7 +191,7 @@ function NotfristSpot({ f, d }: { f: Frist; d: CockpitDaten }) {
               transition={{ duration: 1.1, ease: [0.16, 1, 0.3, 1], delay: 0.35 }}
             />
           </div>
-          <span className="num shrink-0 text-[11px] text-fg-3">
+          <span className="num shrink-0 text-[12.5px] text-fg-3">
             Tag {vergangen} von {gesamt}
           </span>
         </div>
@@ -184,6 +207,7 @@ function FristZeile({ f, d, mitDatum }: { f: Frist; d: CockpitDaten; mitDatum?: 
   // rot: Notfrist oder gesetzlich nicht verlängerbare Frist (z. B. § 4 KSchG, StPO, OWiG)
   const notfrist = istKritisch(f);
   const art = notfrist ? fristArtZu(f) : undefined;
+  const vertretenFuer = d.vertreten.get(f.verantwortlichId);
 
   const erledigen = () => {
     const st = useData.getState();
@@ -217,11 +241,16 @@ function FristZeile({ f, d, mitDatum }: { f: Frist; d: CockpitDaten; mitDatum?: 
             {f.titel}
             {f.uhrzeit && <span className="num ml-1.5 font-normal text-fg-3">{f.uhrzeit} Uhr</span>}
           </div>
-          <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[12px] text-fg-3">
-            <Chip tone={notfrist ? "seal" : TYP_TON[f.typ]} className="!h-[19px] !px-1.5 !text-[10.5px]" title={art?.kurz}>
+          <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[12.5px] text-fg-3">
+            <Chip tone={notfrist ? "seal" : TYP_TON[f.typ]} className="!h-[22px] !px-2 !text-[12.5px]" title={art?.kurz}>
               {TYP_LABEL[f.typ]}
             </Chip>
             {(f.datum < d.heute || mitDatum) && <span className={cn("shrink-0 font-semibold", f.datum < d.heute ? "text-seal" : "text-fg-2")}>{tagLabel(f.datum, d.heute)}</span>}
+            {vertretenFuer && (
+              <Chip tone="violet" className="!h-[22px] shrink-0 !px-2 !text-[12.5px]" title={`Vertretung nach § 53 BRAO – ${vertretenFuer.name} ist abwesend`}>
+                Vertretung für {foermlicherName(vertretenFuer).replace(/^Herr /, "Herrn ")}
+              </Chip>
+            )}
             {a && <span className="mono shrink-0 font-medium text-fg-2">{a.aktenzeichen}</span>}
             <span className="truncate">{a?.titel}</span>
           </div>
@@ -245,6 +274,38 @@ function FristZeile({ f, d, mitDatum }: { f: Frist; d: CockpitDaten; mitDatum?: 
   );
 }
 
+/** „Termine heute“ – direkt neben den heute fälligen Fristen: Uhrzeit, Ort, Akte, Link (Quelle: Fristen mit typ 'termin'). */
+function TermineHeute({ d }: { d: CockpitDaten }) {
+  return (
+    <div className="relative z-[1] mb-3 rounded-[16px] bg-[var(--ink-softer)] px-3 py-2">
+      <div className="flex items-center gap-2 text-[12.5px] font-semibold text-fg-2">
+        <Gavel className="size-3.5 text-violet" />
+        Termine heute
+        {d.termineHeute.length > 0 && <span className="num font-normal text-fg-3">· {d.termineHeute.length}</span>}
+      </div>
+      {d.termineHeute.length === 0 ? (
+        <p className="mt-0.5 text-[13px] text-fg-3">Heute keine Termine.</p>
+      ) : (
+        <ul className="mt-1 grid gap-0.5">
+          {d.termineHeute.map((t) => {
+            const a = d.akten.get(t.akteId);
+            return (
+              <li key={t.id}>
+                <Link to={`/akten/${t.akteId}?tab=fristen`} className="group flex min-w-0 items-baseline gap-2 rounded-[10px] px-1 py-1 text-[13px] hover:bg-ink-soft">
+                  <span className="num shrink-0 font-semibold text-violet">{t.uhrzeit ? `${t.uhrzeit} Uhr` : "ganztägig"}</span>
+                  <span className="min-w-0 truncate font-medium group-hover:text-ink">{t.titel}</span>
+                  {t.ort && <span className="hidden min-w-0 truncate text-fg-3 @md:inline">· {t.ort}</span>}
+                  {a && <span className="mono ml-auto shrink-0 text-[12.5px] text-fg-3">{a.aktenzeichen}</span>}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 // ───────────────────────── Posteingang ─────────────────────────
 export function PosteingangKarte({ d, i, className }: { d: CockpitDaten; i: number; className?: string }) {
   const items = d.posteingang.slice(0, 4);
@@ -256,6 +317,21 @@ export function PosteingangKarte({ d, i, className }: { d: CockpitDaten; i: numb
         unter={d.posteingang.length ? `${d.posteingang.length} neu · ${d.wartetAufKi} ${d.wartetAufKi === 1 ? "wartet" : "warten"} auf KI-Analyse` : "beA und E-Mail in einem Postfach"}
         mehr={{ to: "/posteingang", label: "Zum Posteingang" }}
       />
+      <Link
+        to="/hilfe#status"
+        className="relative z-[1] -mt-1 mb-2.5 inline-flex flex-wrap items-center gap-x-2 gap-y-0.5 self-start rounded-full bg-[var(--ink-softer)] px-3 py-1 text-[12.5px] text-fg-2 transition-colors hover:bg-ink-soft"
+        title="Systemstatus öffnen – beA, E-Mail und Bank sind im Prototyp simuliert"
+      >
+        <span className="inline-flex items-center gap-1 font-semibold">
+          <span className="size-2 rounded-full bg-[var(--green)]" aria-hidden /> beA <Check className="size-3.5 text-green" aria-label="verbunden" />
+        </span>
+        <span aria-hidden>·</span>
+        <span className="inline-flex items-center gap-1 font-semibold">
+          E-Mail <Check className="size-3.5 text-green" aria-label="verbunden" />
+        </span>
+        <span aria-hidden>·</span>
+        <span>{letzteAbfrageText()} (simuliert)</span>
+      </Link>
       {items.length === 0 ? (
         <div className="relative z-[1] flex flex-1 flex-col items-center justify-center rounded-[18px] bg-ink-softer px-6 py-10 text-center">
           <Inbox className="size-8 text-ink" />
@@ -294,7 +370,7 @@ function PostZeile({ n, d }: { n: Nachricht; d: CockpitDaten }) {
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2">
             <span className="truncate text-[13.5px] font-semibold">{n.von}</span>
-            <span className="ml-auto shrink-0 text-[11.5px] text-fg-4">{relTime(n.eingang)}</span>
+            <span className="ml-auto shrink-0 text-[12.5px] text-fg-3">{relTime(n.eingang)}</span>
           </span>
           <span className="mt-0.5 block truncate text-[13px] text-fg-2">{n.betreff}</span>
           {fertig && n.ki ? (
@@ -305,21 +381,21 @@ function PostZeile({ n, d }: { n: Nachricht; d: CockpitDaten }) {
               </span>
             </span>
           ) : (
-            <span className="mt-1.5 flex items-center gap-2 text-[12px] text-fg-3">
+            <span className="mt-1.5 flex items-center gap-2 text-[12.5px] text-fg-3">
               <span className="shimmer h-1.5 w-16 rounded-full" aria-hidden />
               Wartet auf KI-Analyse
             </span>
           )}
           <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            {n.kanal === "bea" && <Chip tone="ink" className="!h-[19px] !px-1.5 !text-[10.5px]">beA</Chip>}
-            {n.eebErforderlich && !n.eebAbgegeben && <Chip tone="amber" className="!h-[19px] !px-1.5 !text-[10.5px]">eEB offen</Chip>}
-            {n.ki?.frist && <Chip tone="seal" className="!h-[19px] !px-1.5 !text-[10.5px]">Frist erkannt</Chip>}
+            {n.kanal === "bea" && <Chip tone="ink" className="!h-[22px] !px-2 !text-[12.5px]">beA</Chip>}
+            {n.eebErforderlich && !n.eebAbgegeben && <Chip tone="amber" className="!h-[22px] !px-2 !text-[12.5px]">eEB offen</Chip>}
+            {n.ki?.frist && <Chip tone="seal" className="!h-[22px] !px-2 !text-[12.5px]">Frist erkannt</Chip>}
             {a ? (
-              <span className="mono text-[11.5px] font-medium text-fg-3">{a.aktenzeichen}</span>
+              <span className="mono text-[12.5px] font-medium text-fg-3">{a.aktenzeichen}</span>
             ) : (
-              <Chip tone="outline" className="!h-[19px] !px-1.5 !text-[10.5px]">noch keiner Akte zugeordnet</Chip>
+              <Chip tone="outline" className="!h-[22px] !px-2 !text-[12.5px]">noch keiner Akte zugeordnet</Chip>
             )}
-            <span className={cn("ml-auto inline-flex items-center gap-1 text-[12px] font-semibold transition-transform duration-300 ease-[var(--spring)] group-hover:translate-x-0.5", fertig ? "text-violet" : "text-ink")}>
+            <span className={cn("ml-auto inline-flex items-center gap-1 text-[12.5px] font-semibold transition-transform duration-300 ease-[var(--spring)] group-hover:translate-x-0.5", fertig ? "text-violet" : "text-ink")}>
               <Sparkles className="size-3.5" />
               {fertig ? "KI-Analyse ansehen" : "Analysieren lassen"}
             </span>
@@ -350,7 +426,7 @@ export function TermineKarte({ d, i, className }: { d: CockpitDaten; i: number; 
                 ist ? "bg-ink text-[var(--on-ink)] shadow-[0_8px_20px_-10px_var(--ink)]" : "bg-[var(--ink-softer)] hover:bg-ink-soft",
               )}
             >
-              <span className={cn("text-[10.5px] font-semibold uppercase tracking-wide", ist ? "opacity-80" : "text-fg-3")}>{wochentagName(t.datum, true)}</span>
+              <span className={cn("text-[12.5px] font-semibold uppercase tracking-wide", ist ? "opacity-80" : "text-fg-3")}>{wochentagName(t.datum, true)}</span>
               <span className="num text-[17px] font-semibold leading-tight">{fromISO(t.datum).getUTCDate()}</span>
               <span className="mt-1 flex h-[14px] w-full items-end justify-center gap-[3px] px-2">
                 <span
@@ -358,7 +434,7 @@ export function TermineKarte({ d, i, className }: { d: CockpitDaten; i: number; 
                   style={{ height: `${Math.max(3, (last / maxLast) * 14)}px`, opacity: last ? 1 : 0.25 }}
                 />
               </span>
-              <span className={cn("num mt-1 text-[10.5px]", ist ? "opacity-85" : "text-fg-3")}>{last || "–"}</span>
+              <span className={cn("num mt-1 text-[12.5px]", ist ? "opacity-85" : "text-fg-3")}>{last || "–"}</span>
             </Link>
           );
         })}
@@ -374,12 +450,12 @@ export function TermineKarte({ d, i, className }: { d: CockpitDaten; i: number; 
               <li key={t.id}>
                 <Link to={`/akten/${t.akteId}?tab=fristen`} className="group flex items-center gap-3 rounded-[14px] p-2 transition-colors hover:bg-ink-softer">
                   <span className="grid w-11 shrink-0 place-items-center rounded-[12px] bg-violet-soft py-1 text-violet">
-                    <span className="text-[10px] font-semibold uppercase leading-none tracking-wide">{monatName(dt.getUTCMonth(), true).replace(".", "")}</span>
+                    <span className="text-[12.5px] font-semibold uppercase leading-none tracking-wide">{monatName(dt.getUTCMonth(), true).replace(".", "")}</span>
                     <span className="num text-[18px] font-semibold leading-tight">{dt.getUTCDate()}</span>
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[13.5px] font-semibold group-hover:text-ink">{t.titel}</span>
-                    <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[12px] text-fg-3">
+                    <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[12.5px] text-fg-3">
                       <span className="shrink-0 font-medium text-fg-2">
                         {tagLabel(t.datum, d.heute)}
                         {t.uhrzeit && `, ${t.uhrzeit} Uhr`}
@@ -392,7 +468,7 @@ export function TermineKarte({ d, i, className }: { d: CockpitDaten; i: number; 
                       )}
                     </span>
                     {a && (
-                      <span className="mt-0.5 block truncate text-[11.5px] text-fg-4">
+                      <span className="mt-0.5 block truncate text-[12.5px] text-fg-3">
                         <span className="mono">{a.aktenzeichen}</span> · {a.titel}
                       </span>
                     )}
@@ -404,7 +480,7 @@ export function TermineKarte({ d, i, className }: { d: CockpitDaten; i: number; 
         </ul>
       )}
       {d.termine.length > 0 && d.termine.length < 3 && (
-        <p className="relative z-[1] mt-auto flex items-start gap-2 pt-3 text-[12px] leading-snug text-fg-3">
+        <p className="relative z-[1] mt-auto flex items-start gap-2 pt-3 text-[12.5px] leading-snug text-fg-3">
           <Sparkles className="mt-0.5 size-3.5 shrink-0 text-violet" />
           Ladungen aus dem beA erkennt die KI automatisch und trägt sie mit Ort und Uhrzeit hier ein.
         </p>
@@ -440,11 +516,11 @@ export function AktenKarte({ d, i, className }: { d: CockpitDaten; i: number; cl
                     </span>
                     <span className="mt-1 flex flex-wrap items-center gap-1.5">
                       {gruende.map((g) => (
-                        <Chip key={g.text} tone={g.ton} dot={g.ton === "seal"} className="!h-[19px] !px-1.5 !text-[10.5px]">
+                        <Chip key={g.text} tone={g.ton} dot={g.ton === "seal"} className="!h-[22px] !px-2 !text-[12.5px]">
                           {g.text}
                         </Chip>
                       ))}
-                      <span className="truncate text-[11.5px] text-fg-4">
+                      <span className="truncate text-[12.5px] text-fg-3">
                         {akte.sachgebiet} · {akte.phase}
                       </span>
                     </span>

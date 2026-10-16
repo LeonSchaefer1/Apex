@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import {
-  Sparkles, Scale, CheckCircle2, XCircle, AlertTriangle, ListChecks, FileText, Library, RotateCcw, Copy, Save, Square, BookOpen, Loader2, ChevronRight, FolderOpen,
+  Sparkles, Scale, CheckCircle2, XCircle, AlertTriangle, ListChecks, FileText, Library, RotateCcw, Copy, Save, Square, BookOpen, Loader2, ChevronRight, FolderOpen, Gavel, Info,
 } from "lucide-react";
 import { useData } from "@/store/data";
 import { useKanzlei, useSession } from "@/store/session";
@@ -11,7 +11,11 @@ import { toast } from "@/store/ui";
 import { DEMO_KI_NAME, useAiStatus } from "@/ai/status";
 import { analysiereFall, ANALYSE_PHASEN, type Fallanalyse } from "@/ai/fallanalyse";
 import { nowLocal, relTime } from "@/core/dates";
-import { Button, Card, Chip } from "@/components/ui";
+import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
+import { OHNE_BELEG, SCHAETZWERT_HINWEIS, STUFE_WORT, faktorenAus, stufeWort, type Faktor, type FaktorQuelle } from "@/core/einschaetzung";
+import type { Akte } from "@/core/types";
+import { EntscheidungDrawer } from "@/pages/falldb/EntscheidungDrawer";
+import { Button, Card, Chip, confirmDialog } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { kopiereText } from "@/lib/zwischenablage";
 
@@ -53,9 +57,21 @@ function aktuelleKanzleiId(): string {
   return s && !istConsole(s) ? s.tenant.id : "-";
 }
 
-/** Stabile Dokument-ID des gespeicherten Entwurfs – ein Entwurf je Analyse, kein Duplikat bei erneutem Klick. */
+/** Stabile Dokument-ID eines neu gespeicherten Entwurfs. */
 function entwurfDokId(akteId: string, r: Fallanalyse) {
   return `dok-fa-${akteId}-${r.erstelltAm.replace(/\D/g, "")}`;
+}
+
+/** Die zuletzt an der Akte gespeicherte vollständige Analyse (bleibt nach Navigation und Neuladen sichtbar). */
+function gespeicherte(akte: Akte | undefined): Fallanalyse | null {
+  const e = akte?.kiAnalyse?.ergebnis;
+  return e && Array.isArray(e.argumentePro) && e.entwurf ? (e as Fallanalyse) : null;
+}
+
+/** „Entwurf Kündigungsschutzklage“ aus „Kündigungsschutzklage (Entwurf)“ – Name des Scrollbereichs für Screenreader. */
+function entwurfLabel(titel: string): string {
+  const kern = titel.replace(/\s*\((?:Entwurf)[^)]*\)\s*/i, " ").replace(/\s+/g, " ").trim();
+  return /^entwurf\b/i.test(kern) ? kern : `Entwurf ${kern}`;
 }
 
 /** KI-Fallanalyse einer Akte: animierte Analyse-Pipeline, Erfolgsaussicht, Präzedenzfälle, nächste Schritte, Entwurf. */
@@ -70,7 +86,8 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
   const ai = useAiStatus();
   const akte = data.akten.find((a) => a.id === akteId);
   const schluessel = cacheSchluessel(tenant.id, epoch, akteId);
-  const [ergebnis, setErgebnis] = useState<Fallanalyse | null>(() => cache.get(schluessel) ?? null);
+  const [ergebnis, setErgebnis] = useState<Fallanalyse | null>(() => cache.get(schluessel) ?? gespeicherte(akte));
+  const [drawerId, setDrawerId] = useState<string | null>(null);
   const [phase, setPhase] = useState(-1);
   const [laeuft, setLaeuft] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
@@ -80,7 +97,7 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
   const nav = useNavigate();
 
   useEffect(() => {
-    setErgebnis(cache.get(schluessel) ?? null);
+    setErgebnis(cache.get(schluessel) ?? gespeicherte(useData.getState().data.akten.find((a) => a.id === akteId)));
     setPhase(-1);
     setFehler(null);
     setLaeuft(false);
@@ -89,15 +106,16 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
 
   useEffect(() => {
     if (!autoStart) return;
-    // Liegt bereits ein Ergebnis vor, wird es nur angezeigt.
-    if (!cache.get(schluessel)) void startRef.current?.();
+    // Liegt bereits ein Ergebnis vor (Cache oder an der Akte gespeichert), wird es nur angezeigt.
+    if (!cache.get(schluessel) && !gespeicherte(useData.getState().data.akten.find((a) => a.id === akteId))) void startRef.current?.();
     onAutoStart?.();
   }, [autoStart, schluessel]);
 
   if (!akte) return null;
 
-  const entwurfId = ergebnis ? entwurfDokId(akteId, ergebnis) : null;
-  const entwurfGespeichert = !!entwurfId && data.dokumente.some((d) => d.id === entwurfId);
+  // Gespeichert ist der Entwurf, wenn ein Dokument der E-Akte aus genau dieser Analyse stammt (auch als neue Version).
+  const gespeichertesDok = ergebnis ? data.dokumente.find((d) => d.akteId === akteId && (d.kiAnalyseVom === ergebnis.erstelltAm || d.id === entwurfDokId(akteId, ergebnis))) : undefined;
+  const entwurfGespeichert = !!gespeichertesDok;
 
   const start = async () => {
     ctl.current?.abort();
@@ -126,8 +144,16 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
       setErgebnis(r);
       setPhase(ANALYSE_PHASEN.length);
       const st = useData.getState();
-      st.patch("akten", akteId, { kiAnalyse: { erstelltAm: r.erstelltAm, prozent: r.erfolgsaussicht.prozent, quelle: r.quelle } });
-      st.log({ akteur: "ki", akteId, text: `KI-Fallanalyse erstellt – Erfolgsaussicht ${r.erfolgsaussicht.prozent} % (${akte.aktenzeichen})`, minutenGespart: 45 });
+      // Vollständig an der Akte speichern – die Analyse bleibt nach Navigation und Neuladen sichtbar.
+      st.patch("akten", akteId, { kiAnalyse: { erstelltAm: r.erstelltAm, prozent: r.erfolgsaussicht.prozent, quelle: r.quelle, stufe: r.erfolgsaussicht.stufe, ergebnis: r } });
+      // Zeitersparnis nur einmal je Akte – Wiederholungen werden ohne Minuten protokolliert.
+      const schonGezaehlt = st.data.aktivitaeten.some((a) => a.akteId === akteId && a.akteur === "ki" && /^KI-Fallanalyse/.test(a.text) && (a.minutenGespart ?? 0) > 0);
+      const wort = STUFE_WORT[r.erfolgsaussicht.stufe];
+      st.log(
+        schonGezaehlt
+          ? { akteur: "ki", akteId, text: `KI-Fallanalyse erneut erstellt – ${wort} (${akte.aktenzeichen}); Zeitersparnis zählt nur bei der ersten Analyse` }
+          : { akteur: "ki", akteId, text: `KI-Fallanalyse erstellt – ${wort} (${akte.aktenzeichen})`, minutenGespart: 45 },
+      );
     } catch (e) {
       if (!veraltet()) setFehler(fehlerText(e));
     } finally {
@@ -137,16 +163,39 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
 
   startRef.current = start;
 
+  const oeffneDok = (id: string) => nav(`/akten/${akteId}?tab=dokumente&dok=${encodeURIComponent(id)}`);
   const oeffneEntwurf = () => {
-    if (entwurfId) nav(`/akten/${akteId}?tab=dokumente&dok=${encodeURIComponent(entwurfId)}`);
+    if (gespeichertesDok) oeffneDok(gespeichertesDok.id);
   };
 
-  const speichereEntwurf = () => {
-    if (!ergebnis || !entwurfId) return;
-    if (useData.getState().data.dokumente.some((d) => d.id === entwurfId)) {
-      oeffneEntwurf();
+  const speichereEntwurf = async () => {
+    if (!ergebnis) return;
+    const st = useData.getState();
+    const gleich = st.data.dokumente.find((d) => d.akteId === akteId && (d.kiAnalyseVom === ergebnis.erstelltAm || d.id === entwurfDokId(akteId, ergebnis)));
+    if (gleich) return oeffneDok(gleich.id);
+    // Entwurf gleicher Herkunft und gleichen Titels vorhanden? Dann neue Version statt Dublette.
+    const vorhanden = st.data.dokumente.filter((d) => d.akteId === akteId && d.quelle === "generiert" && d.name === ergebnis.entwurf.titel).sort((a, b) => b.version - a.version)[0];
+    if (vorhanden) {
+      const neu = vorhanden.version + 1;
+      const ok = await confirmDialog({
+        titel: "Als neue Version speichern?",
+        text: `In der E-Akte liegt bereits „${vorhanden.name}“ (Version ${vorhanden.version}). Der neue Entwurf wird als Version ${neu} desselben Dokuments gespeichert – es entsteht keine zweite Datei.`,
+        bestaetigen: `Als Version ${neu} speichern`,
+      });
+      if (!ok) return;
+      useData.getState().patch("dokumente", vorhanden.id, {
+        inhalt: ergebnis.entwurf.text,
+        kiAnalyseVom: ergebnis.erstelltAm,
+        version: neu,
+        autorId: user.id,
+        groesseKb: Math.max(8, Math.round(ergebnis.entwurf.text.length / 900)),
+        seiten: Math.max(1, Math.round(ergebnis.entwurf.text.length / 2600)),
+      });
+      useData.getState().log({ akteur: "nutzer", userId: user.id, akteId, text: `KI-Entwurf „${vorhanden.name}“ als Version ${neu} gespeichert (Schriftsätze)` });
+      toast(`Version ${neu} gespeichert`, { ton: "erfolg", text: vorhanden.name, aktion: { label: "Öffnen", onClick: () => oeffneDok(vorhanden.id) } });
       return;
     }
+    const entwurfId = entwurfDokId(akteId, ergebnis);
     useData.getState().upsert("dokumente", {
       id: entwurfId,
       akteId,
@@ -157,6 +206,7 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
       groesseKb: Math.max(8, Math.round(ergebnis.entwurf.text.length / 900)),
       seiten: Math.max(1, Math.round(ergebnis.entwurf.text.length / 2600)),
       inhalt: ergebnis.entwurf.text,
+      kiAnalyseVom: ergebnis.erstelltAm,
       quelle: "generiert",
       autorId: user.id,
       version: 1,
@@ -164,8 +214,7 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
       ki: { zusammenfassung: "Von der KI-Fallanalyse erstellter Entwurf – bitte prüfen." },
     });
     useData.getState().log({ akteur: "nutzer", userId: user.id, akteId, text: `KI-Entwurf „${ergebnis.entwurf.titel}“ in der E-Akte gespeichert (Schriftsätze)` });
-    const id = entwurfId;
-    toast("Entwurf in der E-Akte gespeichert", { ton: "erfolg", text: "Ordner „Schriftsätze“", aktion: { label: "Öffnen", onClick: () => nav(`/akten/${akteId}?tab=dokumente&dok=${encodeURIComponent(id)}`) } });
+    toast("Entwurf in der E-Akte gespeichert", { ton: "erfolg", text: "Ordner „Schriftsätze“", aktion: { label: "Öffnen", onClick: () => oeffneDok(entwurfId) } });
   };
 
   const kopieren = async () => {
@@ -188,16 +237,16 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
             </div>
             <h3 className="title-lg">In 30 Sekunden zur fundierten Einschätzung</h3>
             <p className="mt-2 max-w-[60ch] text-[13.5px] leading-relaxed text-fg-3">
-              Die KI liest Sachverhalt, Dokumente und Notizen der Akte <span className="mono text-fg-2">{akte.aktenzeichen}</span>, sucht passende Entscheidungen in der Fall-Datenbank und liefert Erfolgsaussicht, Argumente, Risiken, nächste Schritte und einen Schriftsatz-Entwurf – mit Quellen.
+              Die KI liest Sachverhalt, Dokumente und Notizen der Akte <span className="mono text-fg-2">{akte.aktenzeichen}</span>, sucht passende Entscheidungen in der Fall-Datenbank und liefert eine Einschätzung der Erfolgsaussicht, Argumente mit Quellen, Risiken, nächste Schritte und einen Schriftsatz-Entwurf.
             </p>
             {fehler && <div className="mt-3 rounded-[12px] bg-seal-soft px-3 py-2 text-[12.5px] text-seal">{fehler}</div>}
-            {akte.kiAnalyse && <div className="mt-3 text-[12px] text-fg-4">Letzte Analyse {relTime(akte.kiAnalyse.erstelltAm)} · Erfolgsaussicht {akte.kiAnalyse.prozent} %</div>}
+            {akte.kiAnalyse && <div className="mt-3 text-[12.5px] text-fg-3">Letzte Analyse {relTime(akte.kiAnalyse.erstelltAm)} · Einschätzung: {stufeWort(akte.kiAnalyse.stufe, akte.kiAnalyse.prozent)}</div>}
           </div>
           <div className="flex flex-col items-start gap-2 md:items-end">
             <Button variant="ai" size="lg" icon={<Sparkles className="size-4" />} onClick={start}>
               Fallanalyse starten
             </Button>
-            <span className="text-[11.5px] text-fg-4">{ai.quelle === "demo" ? DEMO_KI_NAME : `Live mit Claude${ai.modell ? ` · ${ai.modell}` : ""}`}</span>
+            <span className="text-[12.5px] text-fg-3">{ai.quelle === "demo" ? DEMO_KI_NAME : `Live mit Claude${ai.modell ? ` · ${ai.modell}` : ""}`}</span>
           </div>
         </div>
       </Card>
@@ -226,14 +275,14 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
               {ANALYSE_PHASEN.map((p, i) => (
                 <motion.li key={p} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.06 }} className="flex items-center gap-3 text-[13.5px]">
                   <span className={cn("grid size-6 shrink-0 place-items-center rounded-full transition-colors duration-500", i < phase ? "bg-green text-[var(--on-green)]" : i === phase ? "ai-fill text-white" : "bg-[var(--line)] text-fg-4")}>
-                    {i < phase ? <CheckCircle2 className="size-4" /> : i === phase ? <Loader2 className="size-3.5 animate-spin" /> : <span className="text-[11px] font-semibold">{i + 1}</span>}
+                    {i < phase ? <CheckCircle2 className="size-4" /> : i === phase ? <Loader2 className="size-3.5 animate-spin" /> : <span className="text-[12px] font-semibold">{i + 1}</span>}
                   </span>
                   <span className={cn(i <= phase ? "text-fg" : "text-fg-4", i === phase && "font-medium")}>{p}</span>
                 </motion.li>
               ))}
             </ol>
             {stream && (
-              <div className="mt-4 max-h-24 overflow-hidden rounded-[12px] bg-[var(--ink-softer)] p-3 font-mono text-[11px] leading-snug text-fg-3 [mask-image:linear-gradient(transparent,#000_40%)]">
+              <div className="mt-4 max-h-24 overflow-hidden rounded-[12px] bg-[var(--ink-softer)] p-3 font-mono text-[12px] leading-snug text-fg-3 [mask-image:linear-gradient(transparent,#000_40%)]">
                 {stream.slice(-600)}
               </div>
             )}
@@ -244,7 +293,17 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
   }
 
   const r = ergebnis!;
-  const farbe = r.erfolgsaussicht.stufe === "hoch" ? "var(--green)" : r.erfolgsaussicht.stufe === "mittel" ? "var(--amber)" : "var(--seal)";
+  const ton = r.erfolgsaussicht.stufe === "hoch" ? "green" : r.erfolgsaussicht.stufe === "mittel" ? "amber" : "seal";
+  const faktoren = faktorenAus(r.argumentePro, r.argumenteContra, {
+    entscheidungen: ENTSCHEIDUNGEN.map((e) => ({ id: e.id, gericht: e.gericht, az: e.az })),
+    dokumente: data.dokumente.filter((d) => d.akteId === akteId),
+  });
+  const pro = faktoren.filter((f) => f.richtung === "pro");
+  const contra = faktoren.filter((f) => f.richtung === "contra");
+  const zeigeQuelle = (q: FaktorQuelle) => {
+    if (q.art === "entscheidung" && q.id) setDrawerId(q.id);
+    else if (q.art === "dokument" && q.id) oeffneDok(q.id);
+  };
   const stagger = (i: number) => ({ initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 }, transition: { delay: 0.05 + i * 0.06, type: "spring" as const, stiffness: 300, damping: 30 } });
 
   return (
@@ -253,16 +312,17 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
       <motion.div {...stagger(0)}>
         <Card className="ai-ring overflow-hidden">
           <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[auto_1fr_auto] lg:items-center">
-            <Gauge prozent={r.erfolgsaussicht.prozent} farbe={farbe} />
+            <StufenAnzeige wort={STUFE_WORT[r.erfolgsaussicht.stufe]} ton={ton} />
             <div className="min-w-0">
               <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                <span className="ai-text text-[12px] font-semibold uppercase tracking-[0.08em]">KI-Fallanalyse</span>
-                <Chip tone={r.erfolgsaussicht.stufe === "hoch" ? "green" : r.erfolgsaussicht.stufe === "mittel" ? "amber" : "seal"}>Erfolgsaussicht {r.erfolgsaussicht.stufe}</Chip>
+                <span className="ai-text text-[12.5px] font-semibold uppercase tracking-[0.06em]">KI-Fallanalyse</span>
                 <Chip tone="outline">{r.quelle === "demo" ? "Demo-KI" : "Claude live"}</Chip>
-                <span className="text-[11.5px] text-fg-4">in {(r.dauerMs / 1000).toFixed(1).replace(".", ",")} s</span>
+                <span className="text-[12.5px] text-fg-3">
+                  {relTime(r.erstelltAm)} · in {(r.dauerMs / 1000).toFixed(1).replace(".", ",")} s
+                </span>
               </div>
               <p className="text-[14px] leading-relaxed text-fg-2">{r.zusammenfassung}</p>
-              <p className="mt-2 text-[13px] leading-relaxed text-fg-3">
+              <p className="mt-2 text-[13px] leading-relaxed text-fg-2">
                 <strong className="text-fg">Begründung:</strong> {r.erfolgsaussicht.begruendung}
               </p>
             </div>
@@ -272,6 +332,7 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
               </Button>
             </div>
           </div>
+          <Herleitung prozent={r.erfolgsaussicht.prozent} faktoren={faktoren} onQuelle={zeigeQuelle} />
         </Card>
       </motion.div>
 
@@ -285,7 +346,7 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
               <ol className="grid gap-2">
                 {r.rechtsfragen.map((q, i) => (
                   <li key={i} className="flex gap-3 text-[13.5px] leading-snug text-fg-2">
-                    <span className="num mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-ink-soft text-[11px] font-semibold text-ink">{i + 1}</span>
+                    <span className="num mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-ink-soft text-[12px] font-semibold text-ink">{i + 1}</span>
                     {q}
                   </li>
                 ))}
@@ -296,21 +357,27 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
           <motion.div {...stagger(3)} className="order-3 min-w-0">
             <Card className="h-full">
               <SectionTitle icon={<CheckCircle2 className="size-4" />} title="Was für uns spricht" tone="green" />
-              <ul className="grid gap-2">
-                {r.argumentePro.map((a, i) => (
+              <ul className="grid gap-2.5">
+                {pro.map((f, i) => (
                   <li key={i} className="flex gap-2.5 text-[13.5px] leading-snug text-fg-2">
                     <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-green" />
-                    {a}
+                    <span className="min-w-0">
+                      {f.text}
+                      <Belege f={f} onQuelle={zeigeQuelle} />
+                    </span>
                   </li>
                 ))}
               </ul>
               <div className="my-4 h-px bg-[var(--line)]" />
               <SectionTitle icon={<XCircle className="size-4" />} title="Was dagegen spricht" tone="seal" />
-              <ul className="grid gap-2">
-                {r.argumenteContra.map((a, i) => (
+              <ul className="grid gap-2.5">
+                {contra.map((f, i) => (
                   <li key={i} className="flex gap-2.5 text-[13.5px] leading-snug text-fg-2">
                     <XCircle className="mt-0.5 size-4 shrink-0 text-seal" />
-                    {a}
+                    <span className="min-w-0">
+                      {f.text}
+                      <Belege f={f} onQuelle={zeigeQuelle} />
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -323,9 +390,9 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
               <SectionTitle icon={<Library className="size-4" />} title="Präzedenzfälle aus der Fall-Datenbank" />
               <div className="grid gap-2.5">
                 {r.praezedenzfaelle.map((p) => (
-                  <button key={p.id} type="button" onClick={() => nav(`/fall-datenbank?id=${p.id}`)} className="group min-w-0 rounded-[14px] p-3 text-left ring-1 ring-[var(--line)] transition-all hover:bg-ink-softer hover:ring-[var(--ink-soft)]">
+                  <button key={p.id} type="button" onClick={() => setDrawerId(p.id)} aria-haspopup="dialog" className="group min-w-0 rounded-[14px] p-3 text-left ring-1 ring-[var(--line)] transition-all hover:bg-ink-softer hover:ring-[var(--ink-soft)]">
                     <div className="flex items-center gap-2">
-                      <span className="mono text-[12px] font-semibold text-ink">
+                      <span className="mono text-[12.5px] font-semibold text-ink">
                         {p.gericht} {p.az}
                       </span>
                       <span className="truncate text-[12.5px] font-medium">{p.titel}</span>
@@ -335,7 +402,7 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
                       <div className="bar h-1 flex-1">
                         <motion.span initial={{ width: 0 }} animate={{ width: `${p.relevanz}%` }} transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }} />
                       </div>
-                      <span className="num text-[11px] text-fg-3">{p.relevanz} %</span>
+                      <span className="num shrink-0 text-[12.5px] text-fg-3">Ähnlichkeit {p.relevanz} %</span>
                     </div>
                     <p className="mt-1.5 text-[12.5px] leading-snug text-fg-3">{p.warum}</p>
                   </button>
@@ -389,18 +456,131 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
                 </Button>
               </>
             ) : (
-              <Button size="sm" variant="primary" icon={<Save className="size-3.5" />} onClick={speichereEntwurf}>
+              <Button size="sm" variant="primary" icon={<Save className="size-3.5" />} onClick={() => void speichereEntwurf()}>
                 In E-Akte speichern
               </Button>
             )}
           </div>
-          <div id="fa-entwurf-text" className="paper max-h-[520px] overflow-y-auto whitespace-pre-wrap px-6 py-7 sm:px-10">{r.entwurf.text}</div>
-          <p className="mt-3 flex items-center gap-1.5 text-[11.5px] text-fg-4">
+          <div id="fa-entwurf-text" tabIndex={0} role="region" aria-label={entwurfLabel(r.entwurf.titel)} className="paper max-h-[520px] overflow-y-auto whitespace-pre-wrap px-6 py-7 sm:px-10">
+            {r.entwurf.text}
+          </div>
+          <p className="mt-3 flex items-center gap-1.5 text-[12.5px] text-fg-3">
             <BookOpen className="size-3.5" /> Entwurf der KI – vor Verwendung anwaltlich prüfen. Zitierte Entscheidungen stammen ausschließlich aus der Fall-Datenbank.
           </p>
         </Card>
       </motion.div>
+      <EntscheidungDrawer e={drawerId ? ENTSCHEIDUNGEN.find((e) => e.id === drawerId) : undefined} onClose={() => setDrawerId(null)} onOpen={setDrawerId} />
     </div>
+  );
+}
+
+const TON_FARBE = { green: "var(--green)", amber: "var(--amber)", seal: "var(--seal)" } as const;
+
+/** Verbale Einschätzung als Hauptanzeige – ohne Prozentzahl. */
+function StufenAnzeige({ wort, ton }: { wort: string; ton: keyof typeof TON_FARBE }) {
+  const stufen = ["Schwierig", "Offen", "Gute Aussichten"];
+  const idx = stufen.indexOf(wort);
+  return (
+    <div className="mx-auto flex w-[190px] flex-col items-center text-center">
+      <div className="text-[12.5px] font-medium text-fg-3">Einschätzung der Erfolgsaussicht</div>
+      <div className="mt-1 text-[24px] font-bold leading-tight tracking-[-0.03em]" style={{ color: TON_FARBE[ton] }}>
+        {wort}
+      </div>
+      <div className="mt-2.5 flex w-full gap-1" aria-hidden>
+        {stufen.map((s, i) => (
+          <span key={s} className="h-1.5 flex-1 rounded-full" style={{ background: i <= idx ? TON_FARBE[ton] : "var(--line)" }} />
+        ))}
+      </div>
+      <div className="mt-1.5 flex w-full justify-between text-[12px] text-fg-3" aria-hidden>
+        <span>Schwierig</span>
+        <span>Offen</span>
+        <span>Gut</span>
+      </div>
+    </div>
+  );
+}
+
+const QUELLE_ICON = { entscheidung: <Gavel className="size-3" />, norm: <Scale className="size-3" />, dokument: <FileText className="size-3" /> } as const;
+
+/** Quellen eines Faktors – oder die Markierung „ohne Beleg – anwaltlich prüfen“. */
+function Belege({ f, onQuelle }: { f: Faktor; onQuelle: (q: FaktorQuelle) => void }) {
+  if (!f.quellen.length)
+    return (
+      <span className="ml-1.5 inline-flex translate-y-[-1px] items-center rounded-full bg-amber-soft px-2 py-px align-middle text-[12px] font-medium text-amber">
+        {OHNE_BELEG}
+      </span>
+    );
+  return (
+    <span className="mt-1 flex flex-wrap gap-1">
+      {f.quellen.map((q) =>
+        q.art === "norm" ? (
+          <span key={q.label} className="mono inline-flex items-center gap-1 rounded-full bg-ink-softer px-2 py-px text-[12px] text-fg-2">
+            {QUELLE_ICON.norm} {q.label}
+          </span>
+        ) : (
+          <button
+            key={`${q.art}-${q.id}`}
+            type="button"
+            onClick={() => onQuelle(q)}
+            className="inline-flex max-w-full items-center gap-1 truncate rounded-full bg-ink-soft px-2 py-px text-[12px] font-medium text-ink hover:underline"
+            title={q.art === "entscheidung" ? "Entscheidung aus der Fall-Datenbank öffnen" : "Dokument der E-Akte öffnen"}
+          >
+            {QUELLE_ICON[q.art]} <span className="truncate">{q.label}</span>
+          </button>
+        ),
+      )}
+    </span>
+  );
+}
+
+const GEWICHT_TON = { stark: "text-fg", mittel: "text-fg-2", gering: "text-fg-3" } as const;
+
+/** Aufklappbereich: Schätzwert (nicht als Wahrscheinlichkeit) und Tabelle Faktor – Gewicht – Quelle. */
+function Herleitung({ prozent, faktoren, onQuelle }: { prozent: number; faktoren: Faktor[]; onQuelle: (q: FaktorQuelle) => void }) {
+  return (
+    <details className="group mt-5 rounded-[16px] bg-[var(--ink-softer)] px-4 py-3 open:pb-4">
+      <summary className="flex cursor-pointer list-none items-center gap-2 text-[13.5px] font-semibold text-fg [&::-webkit-details-marker]:hidden">
+        <Info className="size-4 text-ink" />
+        Wie entsteht die Einschätzung?
+        <ChevronRight className="ml-auto size-4 text-fg-3 transition-transform group-open:rotate-90" />
+      </summary>
+      <p className="mt-2.5 text-[13px] leading-relaxed text-fg-2">
+        <span className="font-semibold text-fg">{prozent} %</span> – {SCHAETZWERT_HINWEIS}. Die Zahl fasst zusammen, wie die KI die Faktoren unten gewichtet; sie ist keine statistische Prognose. Maßgeblich ist Ihre anwaltliche Würdigung.
+      </p>
+      <div className="mt-3 overflow-x-auto rounded-[12px] bg-[var(--surface)] ring-1 ring-[var(--line)]">
+        <table className="w-full min-w-[520px] text-left text-[12.5px]">
+          <caption className="sr-only">Faktoren der Einschätzung mit Gewicht und Quelle</caption>
+          <thead className="text-fg-3">
+            <tr className="border-b border-[var(--line)]">
+              <th scope="col" className="px-3 py-2 font-semibold">
+                Faktor
+              </th>
+              <th scope="col" className="px-3 py-2 font-semibold">
+                Gewicht
+              </th>
+              <th scope="col" className="px-3 py-2 font-semibold">
+                Quelle
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[var(--line)]">
+            {faktoren.map((f, i) => (
+              <tr key={i}>
+                <td className="px-3 py-2 align-top text-fg-2">
+                  <span className={cn("mr-1.5 font-semibold", f.richtung === "pro" ? "text-green" : "text-seal")}>{f.richtung === "pro" ? "Für uns:" : "Dagegen:"}</span>
+                  {f.text}
+                </td>
+                <td className={cn("whitespace-nowrap px-3 py-2 align-top font-medium", GEWICHT_TON[f.gewicht])}>{f.gewicht}</td>
+                <td className="px-3 py-2 align-top">
+                  <Belege f={f} onQuelle={onQuelle} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2 text-[12.5px] text-fg-3">Gewicht: Einordnung nach der Reihenfolge der KI-Begründung (erstes Argument stark, zweites mittel, weitere gering) – keine Rechengröße.</p>
+    </details>
   );
 }
 
@@ -409,33 +589,6 @@ function SectionTitle({ icon, title, tone = "ink", className }: { icon: React.Re
     <div className={cn("mb-3 flex items-center gap-2", className)}>
       <span className={cn("grid size-7 place-items-center rounded-[9px]", tone === "green" ? "bg-green-soft text-green" : tone === "seal" ? "bg-seal-soft text-seal" : "bg-ink-soft text-ink")}>{icon}</span>
       <span className="title-md">{title}</span>
-    </div>
-  );
-}
-
-function Gauge({ prozent, farbe }: { prozent: number; farbe: string }) {
-  const r = 52;
-  const c = Math.PI * r; // Halbkreis
-  return (
-    <div className="relative mx-auto h-[96px] w-[150px]">
-      <svg viewBox="0 0 140 80" className="h-full w-full" aria-label={`Erfolgsaussicht ${prozent} Prozent`}>
-        <path d="M18 72 A52 52 0 0 1 122 72" stroke="var(--line)" strokeWidth="12" fill="none" strokeLinecap="round" />
-        <motion.path
-          d="M18 72 A52 52 0 0 1 122 72"
-          stroke={farbe}
-          strokeWidth="12"
-          fill="none"
-          strokeLinecap="round"
-          strokeDasharray={c}
-          initial={{ strokeDashoffset: c }}
-          animate={{ strokeDashoffset: c * (1 - prozent / 100) }}
-          transition={{ duration: 1.4, ease: [0.16, 1, 0.3, 1] }}
-        />
-      </svg>
-      <div className="absolute inset-x-0 bottom-0 text-center">
-        <div className="num text-[30px] font-bold leading-none tracking-[-0.04em]">{prozent} %</div>
-        <div className="text-[11px] text-fg-3">Erfolgsaussicht</div>
-      </div>
     </div>
   );
 }

@@ -1,8 +1,8 @@
 // Reiter „Forderungskonto“: Zinsen nach § 288 BGB taggenau, Teilzahlungen nach § 367 BGB verrechnet.
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Banknote, CalendarDays, Copy, FileSignature, FolderInput, Percent, PiggyBank, Plus, Scale, Wallet } from "lucide-react";
-import { AnimatedNumber, Button, Card, CardHeader, Chip, Drawer, Empty, Field, Input, Modal, Segmented, Select, Stat, Switch } from "@/components/ui";
+import { Banknote, CalendarDays, Copy, FileSignature, FolderInput, Lock, Percent, PiggyBank, Plus, Scale, Wallet } from "lucide-react";
+import { AnimatedNumber, Button, Card, CardHeader, Chip, Drawer, Empty, Field, Input, Modal, Segmented, Select, Stat, Switch, confirmDialog } from "@/components/ui";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
@@ -32,6 +32,9 @@ function vorgaengeFuer(akte: Akte, buchungen: Buchung[], opts: { pauschale40: bo
 }
 
 const FARBE = { haupt: "var(--ink)", zinsen: "var(--amber)", kosten: "var(--violet)" };
+
+/** Ist die 40-€-Verzugspauschale (§ 288 Abs. 5 BGB) im Titel mit tituliert? Nur dann gehört sie in die Vollstreckung. */
+export const pauschaleTituliert = (titel?: string) => !!titel && /288 Abs\. ?5|verzugspauschale|(^|[^\d.,])40(,00)? ?€/i.test(titel);
 
 /** Überzahlung: Zahlungen, die nach Tilgung von Kosten, Zinsen und Hauptforderung übrig bleiben (an den Schuldner zu erstatten). */
 function ueberzahlungVon(stand: ForderungsStand): number {
@@ -93,7 +96,7 @@ function Balken({ teile, hoehe = 14 }: { teile: { key: string; label: string; we
             <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: t.farbe }} />
             <span className="text-fg-3">{t.label}</span>
             <span className="num font-semibold">{fmtEUR(t.wert)}</span>
-            {summe > 0 && <span className="num text-[11.5px] text-fg-4">{(t.wert / summe) * 100 < 1 && t.wert > 0 ? "< 1 %" : `${Math.round((t.wert / summe) * 100)} %`}</span>}
+            {summe > 0 && <span className="num text-[12.5px] text-fg-3">{(t.wert / summe) * 100 < 1 && t.wert > 0 ? "< 1 %" : `${Math.round((t.wert / summe) * 100)} %`}</span>}
           </div>
         ))}
       </div>
@@ -250,21 +253,44 @@ export function ForderungskontoTab() {
   const f = akte?.forderung;
   const [stichtag, setStichtag] = useState(today());
   const [verbraucherWahl, setVerbraucherWahl] = useState<boolean | null>(null);
-  const [pauschale40, setPauschale40] = useState(true);
+  const [pauschaleWahl, setPauschale40] = useState(true);
   const [zahlungOffen, setZahlungOffen] = useState(false);
   const [aufstellung, setAufstellung] = useState(false);
+  // Titulierte Forderung: Zinssatz und Nebenforderungen laut Titel – Abweichung nur bewusst und mit Warnhinweis
+  const [abweichen, setAbweichen] = useState(false);
 
-  useEffect(() => setVerbraucherWahl(null), [akte?.id]);
-  const verbraucher = verbraucherWahl ?? f?.verbraucher ?? true;
+  useEffect(() => {
+    setVerbraucherWahl(null);
+    setAbweichen(false);
+  }, [akte?.id]);
+  const tituliert = !!f?.titel;
+  const titelGilt = tituliert && !abweichen;
+  const verbraucher = titelGilt ? f!.verbraucher : verbraucherWahl ?? f?.verbraucher ?? true;
+  const pauschale40 = titelGilt ? pauschaleTituliert(f?.titel) : pauschaleWahl;
   const stich = stichtag || today();
 
-  const rechne = (vb: boolean, extra: ForderungsVorgang[] = [], bis = stich): ForderungsStand | null => {
+  const rechne = (vb: boolean, extra: ForderungsVorgang[] = [], bis = stich, pauschale = pauschale40): ForderungsStand | null => {
     if (!akte || !f) return null;
-    const vs = [...vorgaengeFuer(akte, buchungen, { pauschale40, verbraucher: vb }), ...extra].filter((v) => v.datum <= bis);
+    const vs = [...vorgaengeFuer(akte, buchungen, { pauschale40: pauschale, verbraucher: vb }), ...extra].filter((v) => v.datum <= bis);
     return forderungskonto({ vorgaenge: vs, verzugAb: f.faelligAb, stichtag: bis < f.faelligAb ? f.faelligAb : bis, verbraucher: vb });
   };
   const stand = useMemo(() => rechne(verbraucher), [akte, buchungen, stich, verbraucher, pauschale40]); // eslint-disable-line react-hooks/exhaustive-deps
   const gegen = useMemo(() => rechne(!verbraucher), [akte, buchungen, stich, verbraucher, pauschale40]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Forderungsaufstellung zum Antrag auf Zwangsvollstreckung: immer mit dem Titel – ohne nicht titulierte Pauschale
+  const standTitel = useMemo(
+    () => (tituliert && f ? rechne(f.verbraucher, [], stich, pauschaleTituliert(f.titel)) : null),
+    [akte, buchungen, stich, tituliert], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  const abweichenStarten = async () => {
+    const ok = await confirmDialog({
+      titel: "Vom Titel abweichend rechnen?",
+      text: `Laut Titel gelten ${f?.verbraucher ? "5" : "9"} Prozentpunkte über dem Basiszins${pauschaleTituliert(f?.titel) ? " und die Verzugspauschale" : ""}. Eine abweichende Berechnung geht über den Titel hinaus und ist nicht vollstreckbar – nur als Vergleichsrechnung. Die Forderungsaufstellung zur Zwangsvollstreckung rechnet weiter mit dem Titel.`,
+      bestaetigen: "Vergleichsrechnung öffnen",
+      gefahr: true,
+    });
+    if (ok) setAbweichen(true);
+  };
 
   if (!akte || !f || !stand) {
     return (
@@ -323,7 +349,7 @@ export function ForderungskontoTab() {
       />
 
       <Card className="mb-4">
-        <div className="grid gap-4 md:grid-cols-[minmax(0,1.4fr)_minmax(0,0.8fr)_minmax(0,1fr)] md:items-end">
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)_minmax(0,1.2fr)] md:items-end">
           <Field label="Forderungssache" htmlFor="fk-akte">
             <Select id="fk-akte" value={akte.id} onChange={(e) => setAkteId(e.target.value)}>
               {fAkten.map((a) => (
@@ -335,20 +361,32 @@ export function ForderungskontoTab() {
           </Field>
           <Field label="Stichtag" htmlFor="fk-stichtag">
             <div className="relative">
-              <CalendarDays className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-fg-4" />
+              <CalendarDays className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-fg-3" />
               <Input id="fk-stichtag" type="date" value={stichtag} min={f.faelligAb} onChange={(e) => setStichtag(e.target.value)} className="!pl-10" />
             </div>
           </Field>
-          <Field label="Verbraucher beteiligt? (§ 288 BGB)">
-            <Segmented
-              full
-              options={[
-                { value: "v", label: "Ja · 5 PP" },
-                { value: "u", label: "Nein · 9 PP" },
-              ]}
-              value={verbraucher ? "v" : "u"}
-              onChange={(v) => setVerbraucherWahl(v === "v")}
-            />
+          <Field label={titelGilt ? "Zinssatz (tituliert)" : "Verbraucher beteiligt? (§ 288 BGB)"}>
+            {titelGilt ? (
+              <div className="rounded-[14px] bg-ink-softer px-3 py-2 text-[13px]">
+                <div className="flex items-start gap-2">
+                  <Lock className="mt-0.5 size-4 shrink-0 text-ink" aria-hidden />
+                  <span className="min-w-0 flex-1 font-medium">laut Titel: {f.verbraucher ? "5" : "9"} Prozentpunkte über dem Basiszins</span>
+                </div>
+                <button type="button" onClick={() => void abweichenStarten()} className="ml-6 mt-0.5 text-[12.5px] font-medium text-ink hover:underline">
+                  abweichend rechnen …
+                </button>
+              </div>
+            ) : (
+              <Segmented
+                full
+                options={[
+                  { value: "v", label: "Ja · 5 PP" },
+                  { value: "u", label: "Nein · 9 PP" },
+                ]}
+                value={verbraucher ? "v" : "u"}
+                onChange={(v) => setVerbraucherWahl(v === "v")}
+              />
+            )}
           </Field>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[12.5px] text-fg-3">
@@ -358,10 +396,18 @@ export function ForderungskontoTab() {
           <span>
             Verzug seit <span className="num font-medium text-fg-2">{fmtDate(f.faelligAb)}</span> ({fmtNum(Math.max(0, diffDays(f.faelligAb, stich) + 1))} Zinstage)
           </span>
-          {f.titel && <span className="truncate">Titel: {f.titel}</span>}
-          {verbraucherWahl !== null && verbraucherWahl !== f.verbraucher && <Chip tone="amber">Vergleichsrechnung – laut Akte {f.verbraucher ? "mit" : "ohne"} Verbraucherbeteiligung</Chip>}
+          {f.titel && <span className="break-words">Titel: {f.titel}</span>}
+          {!tituliert && verbraucherWahl !== null && verbraucherWahl !== f.verbraucher && <Chip tone="amber">Vergleichsrechnung – laut Akte {f.verbraucher ? "mit" : "ohne"} Verbraucherbeteiligung</Chip>}
         </div>
-        <p className="mt-2 text-[11.5px] leading-snug text-fg-4">
+        {tituliert && abweichen && (
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[14px] bg-seal-soft px-3.5 py-2.5 text-[12.5px]" role="alert">
+            <span className="min-w-0 flex-1 basis-[260px] font-medium text-seal">Über den Titel hinaus – nicht vollstreckbar. Vergleichsrechnung; die Forderungsaufstellung zur Zwangsvollstreckung rechnet mit dem Titel.</span>
+            <Button size="sm" variant="secondary" icon={<Lock className="size-4" />} onClick={() => setAbweichen(false)}>
+              Zurück zum Titel
+            </Button>
+          </div>
+        )}
+        <p className="mt-2 text-[12.5px] leading-snug text-fg-3">
           9 Prozentpunkte nur für Entgeltforderungen aus Rechtsgeschäften, an denen kein Verbraucher beteiligt ist – weder als Gläubiger noch als Schuldner (§ 288 Abs. 2 BGB); sonst 5
           Prozentpunkte (§ 288 Abs. 1 BGB).
         </p>
@@ -450,7 +496,7 @@ export function ForderungskontoTab() {
           <div className="mt-6 border-t border-[var(--line)] pt-4">
             <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
               <div className="text-[13px] font-semibold">Verlauf der Gesamtforderung</div>
-              <div className="flex items-center gap-3 text-[11.5px] text-fg-3">
+              <div className="flex items-center gap-3 text-[12.5px] text-fg-3">
                 <span className="flex items-center gap-1.5">
                   <span className="size-2 rounded-full bg-green" /> Zahlung
                 </span>
@@ -469,9 +515,9 @@ export function ForderungskontoTab() {
               { k: "Getilgt gesamt", v: `${f.hauptforderung > 0 ? Math.round((getilgt.haupt / f.hauptforderung) * 100) : 0} %`, s: "der Hauptforderung" },
             ].map((x) => (
               <div key={x.k} className="rounded-[16px] bg-[var(--ink-softer)] px-3.5 py-3">
-                <div className="text-[11.5px] text-fg-3">{x.k}</div>
+                <div className="text-[12.5px] text-fg-3">{x.k}</div>
                 <div className="num mt-0.5 text-[16px] font-semibold tracking-[-0.01em]">{x.v}</div>
-                <div className="truncate text-[11px] text-fg-4">{x.s}</div>
+                <div className="truncate text-[12.5px] text-fg-3">{x.s}</div>
               </div>
             ))}
           </div>
@@ -489,21 +535,21 @@ export function ForderungskontoTab() {
           />
           <div className="flex flex-wrap items-center gap-1.5 text-[13px]">
             <span className="rounded-[10px] bg-ink-softer px-2.5 py-1.5">
-              <span className="block text-[10.5px] text-fg-3">Basiszinssatz</span>
+              <span className="block text-[12px] text-fg-3">Basiszinssatz</span>
               <span className="num font-semibold">{fmtProzent(basis)}</span>
             </span>
-            <span className="text-fg-4">+</span>
+            <span className="text-fg-3">+</span>
             <span className="rounded-[10px] bg-ink-softer px-2.5 py-1.5">
-              <span className="block text-[10.5px] text-fg-3">Aufschlag</span>
+              <span className="block text-[12px] text-fg-3">Aufschlag</span>
               <AnimatePresence mode="popLayout" initial={false}>
                 <motion.span key={aufschlag} initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} className="num block font-semibold">
                   {aufschlag} PP
                 </motion.span>
               </AnimatePresence>
             </span>
-            <span className="text-fg-4">=</span>
+            <span className="text-fg-3">=</span>
             <span className="rounded-[10px] bg-ink px-2.5 py-1.5 text-white">
-              <span className="block text-[10.5px] opacity-75">Zinssatz p. a.</span>
+              <span className="block text-[12px] opacity-80">Zinssatz p. a.</span>
               <span className="num font-semibold">{fmtProzent(satz)}</span>
             </span>
           </div>
@@ -518,9 +564,15 @@ export function ForderungskontoTab() {
                 <label htmlFor="fk-40" className="text-[13px] font-medium">
                   40-€-Verzugspauschale
                 </label>
-                <p className="text-[11.5px] leading-snug text-fg-3">§ 288 Abs. 5 BGB – wird auf Rechtsverfolgungskosten angerechnet; nicht im Arbeitsrecht (BAG 8 AZR 26/18).</p>
+                <p className="text-[12.5px] leading-snug text-fg-3">
+                  {titelGilt
+                    ? pauschaleTituliert(f.titel)
+                      ? "Laut Titel tituliert (§ 288 Abs. 5 BGB)."
+                      : "Nicht tituliert – gehört nicht in die Vollstreckung."
+                    : "§ 288 Abs. 5 BGB – wird auf Rechtsverfolgungskosten angerechnet; nicht im Arbeitsrecht (BAG 8 AZR 26/18)."}
+                </p>
               </div>
-              <Switch id="fk-40" checked={pauschale40} onChange={setPauschale40} label="40-€-Verzugspauschale" />
+              <Switch id="fk-40" checked={pauschale40} disabled={titelGilt} onChange={setPauschale40} label="40-€-Verzugspauschale" />
             </div>
           )}
           <div className="mt-4">
@@ -535,7 +587,7 @@ export function ForderungskontoTab() {
                     <li key={b.ab} className={cn("flex items-center justify-between rounded-[10px] px-2.5 py-1.5 text-[12.5px]", ist ? "bg-ink-soft font-semibold text-ink" : "text-fg-2")}>
                       <span className="num">ab {fmtDate(b.ab)}</span>
                       <span className="flex items-center gap-2">
-                        {ist && <span className="text-[10.5px] font-medium">am Stichtag</span>}
+                        {ist && <span className="text-[12.5px] font-medium">am Stichtag</span>}
                         <span className="num">{fmtProzent(b.satz)}</span>
                       </span>
                     </li>
@@ -674,9 +726,9 @@ export function ForderungskontoTab() {
         open={aufstellung}
         onClose={() => setAufstellung(false)}
         akte={akte}
-        stand={stand}
+        stand={standTitel ?? stand}
         stichtag={stich}
-        verbraucher={verbraucher}
+        verbraucher={tituliert ? f.verbraucher : verbraucher}
         tenant={tenant}
         mandant={mandant}
         schuldner={schuldner}
@@ -779,7 +831,7 @@ function TeilzahlungModal({
                 { k: "Hauptforderung", v: zeile.aufHaupt ?? 0, c: FARBE.haupt },
               ].map((x) => (
                 <div key={x.k} className="rounded-[12px] bg-[var(--surface)] px-2 py-2">
-                  <div className="flex items-center justify-center gap-1.5 text-[10.5px] text-fg-3">
+                  <div className="flex items-center justify-center gap-1.5 text-[12.5px] text-fg-3">
                     <span className="size-2 rounded-[2px]" style={{ background: x.c }} />
                     {x.k}
                   </div>
@@ -801,7 +853,7 @@ function TeilzahlungModal({
               </div>
             </div>
           )}
-          <p className="mt-2 text-[11.5px] text-fg-4">Zahlungen des Schuldners sind Fremdgeld und werden im Aktenkonto entsprechend gekennzeichnet.</p>
+          <p className="mt-2 text-[12.5px] text-fg-3">Zahlungen des Schuldners sind Fremdgeld und werden im Aktenkonto entsprechend gekennzeichnet.</p>
         </div>
       </div>
     </Modal>
@@ -943,16 +995,16 @@ function Forderungsaufstellung({
 
         <div className="mt-5 grid gap-5 sm:grid-cols-2">
           <div>
-            <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] opacity-55">Gläubiger</div>
+            <div className="mb-1 text-[12.5px] font-semibold uppercase tracking-[0.08em] opacity-55">Gläubiger</div>
             <Anschrift k={mandant} />
-            <div className="mt-1 text-[11.5px] opacity-65">vertreten durch {tenant.name}</div>
+            <div className="mt-1 text-[12.5px] opacity-65">vertreten durch {tenant.name}</div>
           </div>
           <div>
-            <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] opacity-55">Schuldner</div>
+            <div className="mb-1 text-[12.5px] font-semibold uppercase tracking-[0.08em] opacity-55">Schuldner</div>
             <Anschrift k={schuldner} />
           </div>
         </div>
-        <div className="mt-4 grid gap-x-6 gap-y-0.5 text-[11.5px] sm:grid-cols-2">
+        <div className="mt-4 grid gap-x-6 gap-y-0.5 text-[12.5px] sm:grid-cols-2">
           <div>
             <span className="opacity-55">Vollstreckungstitel: </span>
             <span className="font-medium">{f.titel ?? "– (noch nicht tituliert)"}</span>
@@ -971,7 +1023,7 @@ function Forderungsaufstellung({
 
         <table className="mt-6 w-full border-collapse text-[12.5px]">
           <thead>
-            <tr className="border-b border-black/15 text-left text-[10.5px] uppercase tracking-[0.06em] opacity-60">
+            <tr className="border-b border-black/15 text-left text-[12.5px] uppercase tracking-[0.06em] opacity-60">
               <th className="py-2 pr-3 font-semibold">Position</th>
               <th className="py-2 text-right font-semibold">Betrag</th>
             </tr>
@@ -1035,12 +1087,12 @@ function Forderungsaufstellung({
           ) : (
             <p>Die Forderung ist zum Stichtag vollständig ausgeglichen{ueberzahlung > 0 ? "; der überzahlte Betrag wird an den Schuldner erstattet" : ""}.</p>
           )}
-          <p className="text-[11px] opacity-60">
+          <p className="text-[12.5px] opacity-60">
             Zahlungen wurden gemäß § 367 Abs. 1 BGB zunächst auf die Kosten, dann auf die Zinsen und zuletzt auf die Hauptforderung angerechnet. Zinsberechnung taggenau (act/365).
           </p>
         </div>
 
-        <div className="mt-10 grid grid-cols-2 gap-6 text-[11.5px]">
+        <div className="mt-10 grid grid-cols-2 gap-6 text-[12.5px]">
           <div>
             {ort}, {fmtDate(today())}
           </div>

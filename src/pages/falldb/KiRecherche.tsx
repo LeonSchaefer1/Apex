@@ -98,7 +98,7 @@ export function KiRecherche({ startText, onOpen }: { startText?: string; onOpen:
         ))}
         {offene.length > 0 && (
           <div className="relative ml-auto w-full sm:w-auto">
-            <FolderInput className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-4" />
+            <FolderInput className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-3" />
             <Select
               id="falldb-aus-akte"
               aria-label="Sachverhalt aus Akte übernehmen"
@@ -133,7 +133,7 @@ export function KiRecherche({ startText, onOpen }: { startText?: string; onOpen:
           {live ? <AiChip>Claude live</AiChip> : <Chip>{DEMO_KI_NAME}</Chip>}
           <span className="hidden sm:inline">{live ? "Claude wählt ausschließlich aus der Fall-Datenbank aus." : "Regelbasierte Recherche, vollständig lokal."}</span>
         </span>
-        <span className="ml-auto hidden text-[11.5px] text-fg-4 md:inline">
+        <span className="ml-auto hidden text-[12.5px] text-fg-3 md:inline">
           <span className="kbd">⌘/Strg</span> <span className="kbd">↵</span> startet
         </span>
       </div>
@@ -184,7 +184,7 @@ export function KiRecherche({ startText, onOpen }: { startText?: string; onOpen:
                       <span className="num grid size-7 shrink-0 place-items-center rounded-full bg-[var(--fg)] text-[12px] font-semibold text-[var(--surface)]">{i + 1}</span>
                       <span className="min-w-0 flex-1">
                         <span className="block text-[14.5px] font-semibold leading-snug">{t.entscheidung.titel}</span>
-                        <span className="mono mt-0.5 block truncate text-[11.5px] text-fg-3">{zitat(t.entscheidung)}</span>
+                        <span className="mono mt-0.5 block truncate text-[12.5px] text-fg-3">{zitat(t.entscheidung)}</span>
                       </span>
                       <span className="w-[64px] shrink-0 text-right">
                         <span className="num block text-[12px] font-semibold text-ink">{t.relevanz} %</span>
@@ -203,14 +203,14 @@ export function KiRecherche({ startText, onOpen }: { startText?: string; onOpen:
                     <span className="relative z-[1] mt-auto flex items-center gap-2">
                       <GerichtSiegel e={t.entscheidung} groesse="sm" />
                       <span className="min-w-0 flex-1 truncate text-[12px] text-fg-3">{t.entscheidung.normen.join(" · ")}</span>
-                      <ChevronRight className="size-4 shrink-0 text-fg-4 transition-transform group-hover:translate-x-0.5" />
+                      <ChevronRight className="size-4 shrink-0 text-fg-3 transition-transform group-hover:translate-x-0.5" />
                     </span>
                   </button>
                 </motion.li>
               ))}
             </ol>
             {ergebnis.treffer.length > 0 && (
-              <p className="text-[11.5px] text-fg-4">
+              <p className="text-[12.5px] text-fg-3">
                 Die KI wählt nur aus geprüften Entscheidungen der Fall-Datenbank
                 {ergebnis.verworfen ? ` – ${ergebnis.verworfen} ${ergebnis.verworfen === 1 ? "Vorschlag wurde" : "Vorschläge wurden"} verworfen, weil ${ergebnis.verworfen === 1 ? "er" : "sie"} dort nicht verzeichnet ${ergebnis.verworfen === 1 ? "ist" : "sind"}` : ""}. Leitsätze sind sinngemäß zusammengefasst – vor Verwendung im Schriftsatz bitte im Original prüfen.
               </p>

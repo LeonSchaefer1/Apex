@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { CODE_SITZUNG_GEWECHSELT, getBackend, type SchreibOptionen } from "@/lib/backend";
 import { nowLocal, uid } from "@/core/dates";
-import type { Aktivitaet, CollectionKey, TenantData } from "@/core/types";
+import { COLLECTIONS, type Aktivitaet, type CollectionKey, type TenantData } from "@/core/types";
 import { toast } from "@/store/ui";
 
 type Doc<K extends CollectionKey> = TenantData[K][number];
@@ -20,12 +20,21 @@ interface DataState {
   patch: <K extends CollectionKey>(col: K, id: string, patch: Partial<Doc<K>>, opts?: SchreibOptionen) => void;
   remove: <K extends CollectionKey>(col: K, id: string) => void;
   log: (a: Omit<Aktivitaet, "id" | "zeit"> & { zeit?: string }, opts?: SchreibOptionen) => void;
+  /** Nur anzeigen, nicht speichern – z. B. einen Protokolleintrag, den das Backend bereits selbst festgehalten hat. */
+  einfuegenLokal: <K extends CollectionKey>(col: K, doc: Doc<K>) => void;
 }
 
 const empty: TenantData = {
   kontakte: [], akten: [], fristen: [], dokumente: [], nachrichten: [], rechnungen: [],
-  buchungen: [], transaktionen: [], zeiten: [], automationen: [], aktivitaeten: [], notizen: [], meta: [],
+  buchungen: [], transaktionen: [], zeiten: [], automationen: [], aktivitaeten: [], notizen: [], umzugLaeufe: [], meta: [],
 };
+
+/** Fehlende Sammlungen (älterer Datenbestand, z. B. vor dem Umzugsprotokoll) als leere Listen ergänzen. */
+function vollstaendig(data: TenantData): TenantData {
+  const out = { ...data };
+  for (const col of COLLECTIONS) if (!Array.isArray(out[col])) (out[col] as unknown[]) = [];
+  return out;
+}
 
 /** Sitzungsfehler (401/409) behandelt die Sitzungsverwaltung (Abgleich, Hinweis, Anmeldung) – hier kein zweiter Hinweis. */
 function istSitzungsfehler(e: unknown): boolean {
@@ -107,7 +116,7 @@ export const useData = create<DataState>((set, get) => {
       set({ status: "laedt", fehler: undefined });
       try {
         const data = await getBackend().loadData();
-        set({ data: structuredClone(data), status: "bereit", epoch: get().epoch + 1 });
+        set({ data: vollstaendig(structuredClone(data)), status: "bereit", epoch: get().epoch + 1 });
       } catch (e) {
         set({ status: "fehler", fehler: e instanceof Error ? e.message : String(e) });
       }
@@ -117,7 +126,7 @@ export const useData = create<DataState>((set, get) => {
       set({ status: "laedt" });
       try {
         const data = await getBackend().resetData();
-        set({ data: structuredClone(data), status: "bereit", epoch: get().epoch + 1 });
+        set({ data: vollstaendig(structuredClone(data)), status: "bereit", epoch: get().epoch + 1 });
       } catch (e) {
         // Zurücksetzen abgelehnt (z. B. fehlende Rechte): bisheriger Stand bleibt sichtbar
         if (get().status === "laedt") set({ status: vorher });
@@ -167,6 +176,11 @@ export const useData = create<DataState>((set, get) => {
     log: (a, opts) => {
       const doc: Aktivitaet = { id: uid("ak"), zeit: a.zeit ?? nowLocal(), ...a };
       get().upsert("aktivitaeten", doc, opts);
+    },
+    einfuegenLokal: (col, doc) => {
+      const arr = get().data[col] as Doc<typeof col>[];
+      if (arr.some((x) => x.id === doc.id)) return;
+      set({ data: { ...get().data, [col]: [doc, ...arr] } });
     },
   };
 });

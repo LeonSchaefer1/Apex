@@ -1,22 +1,35 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { animate, useInView } from "motion/react";
+import { animate, useInView, useReducedMotion } from "motion/react";
 import { cn } from "@/lib/cn";
 
-/** Zahl, die beim Erscheinen hochzählt. */
-export function AnimatedNumber({ value, format = (n) => Math.round(n).toLocaleString("de-DE"), className }: { value: number; format?: (n: number) => string; className?: string }) {
+/**
+ * Kennzahl mit tabellarischen Ziffern. Standard: sofort der Endwert – Geldbeträge und Kennzahlen zeigen nie Zwischenwerte
+ * (kein „36,93 €“ statt „40,00 €“). `hochzaehlen` nur für reine Mengen; bei „Bewegung reduzieren“ nie.
+ */
+export function AnimatedNumber({ value, format = (n) => Math.round(n).toLocaleString("de-DE"), className, hochzaehlen = false }: { value: number; format?: (n: number) => string; className?: string; hochzaehlen?: boolean }) {
   const ref = useRef<HTMLSpanElement>(null);
   const inView = useInView(ref, { once: true });
-  const [shown, setShown] = useState(0);
-  const prev = useRef(0);
+  const reduziert = useReducedMotion();
+  const zaehlen = hochzaehlen && !reduziert;
+  const [shown, setShown] = useState(zaehlen ? 0 : value);
+  const gezaehlt = useRef(false);
   useEffect(() => {
+    if (!zaehlen || gezaehlt.current) {
+      setShown(value);
+      return;
+    }
     if (!inView) return;
-    const ctl = animate(prev.current, value, { duration: 1.1, ease: [0.16, 1, 0.3, 1], onUpdate: setShown });
-    prev.current = value;
-    return () => ctl.stop();
-  }, [value, inView]);
+    gezaehlt.current = true;
+    // nur einmal beim ersten Erscheinen und nur ganzzahlig – spätere Änderungen erscheinen sofort
+    const ctl = animate(0, value, { duration: 0.9, ease: [0.16, 1, 0.3, 1], onUpdate: (n) => setShown(Math.round(n)), onComplete: () => setShown(value) });
+    return () => {
+      ctl.stop();
+      setShown(value);
+    };
+  }, [value, inView, zaehlen]);
   return (
     <span ref={ref} className={cn("num", className)}>
-      {format(inView ? shown : value)}
+      {format(zaehlen ? shown : value)}
     </span>
   );
 }

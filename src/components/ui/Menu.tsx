@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { cn } from "@/lib/cn";
+import { useEscEbene } from "./Modal";
 
 export interface MenuItem {
   label: ReactNode;
@@ -17,14 +18,11 @@ export function Menu({ trigger, items, align = "end", className }: { trigger: (p
   useEffect(() => {
     if (!open) return;
     const h = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
-    const k = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", h);
-    document.addEventListener("keydown", k);
-    return () => {
-      document.removeEventListener("mousedown", h);
-      document.removeEventListener("keydown", k);
-    };
+    return () => document.removeEventListener("mousedown", h);
   }, [open]);
+  // Escape schließt nur das Menü – ein Dialog darunter bleibt offen (gemeinsamer Ebenen-Stapel mit Modal und Drawer).
+  useEscEbene(open, () => setOpen(false));
   return (
     <div ref={ref} className={cn("relative inline-block", className)}>
       {trigger({ open, toggle: () => setOpen((o) => !o) })}
@@ -56,7 +54,7 @@ export function Menu({ trigger, items, align = "end", className }: { trigger: (p
                   >
                     {it.icon && <span className="text-fg-3 [&>svg]:size-4">{it.icon}</span>}
                     <span className="flex-1">{it.label}</span>
-                    {it.hint && <span className="text-[11.5px] text-fg-4">{it.hint}</span>}
+                    {it.hint && <span className="text-[12.5px] text-fg-3">{it.hint}</span>}
                   </button>
                 ),
               )}

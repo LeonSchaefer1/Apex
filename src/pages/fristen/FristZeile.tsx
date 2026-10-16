@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { ChevronDown, Clock, MapPin, RotateCcw, ShieldAlert, Sparkles, UserCheck, Users } from "lucide-react";
-import { fmtDate, fmtDateShort, fmtDateWd, schuetzeLeerzeichen } from "@/core/dates";
+import { Bot, CheckCircle2, ChevronDown, Clock, MapPin, RotateCcw, ShieldAlert, Sparkles, UserCheck, Users } from "lucide-react";
+import { fmtDate, fmtDateShort, fmtDateWd, schuetzeLeerzeichen, today } from "@/core/dates";
 import { fristArtZu } from "@/core/fristen";
 import type { Akte, Frist, FristTyp, User } from "@/core/types";
 import { toast } from "@/store/ui";
+import { useCol } from "@/store/data";
 import { Avatar, Chip } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { QUELLE_LABEL, QUELLE_TITEL, TYP_META, bestaetigeKontrolle, brauchtKontrolle, darfKontrollieren, erledigeFrist, oeffneFristWieder, streifenFarbe } from "./logik";
+import { QUELLE_LABEL, QUELLE_TITEL, TYP_META, bestaetigeKontrolle, brauchtKontrolle, darfKontrollieren, durchAssistent, erfordertNachweis, erledigeFrist, nachweisText, oeffneFristWieder, streifenFarbe } from "./logik";
+import { ErledigenDialog } from "./ErledigenDialog";
 
 const spring = { type: "spring", stiffness: 460, damping: 36 } as const;
 
@@ -30,7 +32,13 @@ export function TypChip({ typ, regelKey }: { typ: FristTyp; regelKey?: string })
 }
 
 /** Herkunft der Frist – dieselben Bezeichnungen im Fristenkalender und im Akten-Reiter (QUELLE_LABEL). */
-export function QuelleChip({ quelle }: { quelle: Frist["quelle"] }) {
+export function QuelleChip({ quelle, notiz }: { quelle: Frist["quelle"]; notiz?: string }) {
+  if (durchAssistent({ notiz }))
+    return (
+      <Chip tone="violet" icon={<Bot className="size-3" />} title="Vom Apex Assistenten auf Ihren Auftrag angelegt">
+        Durch Assistent angelegt
+      </Chip>
+    );
   if (quelle === "ki")
     return (
       <span className="chip ai-ring !bg-transparent" title={QUELLE_TITEL.ki}>
@@ -64,36 +72,64 @@ export function RechenwegListe({ schritte, className }: { schritte: string[]; cl
   return (
     <ol className={cn("relative space-y-2", className)}>
       {schritte.map((s, i) => (
-        <motion.li key={`${i}-${s}`} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ ...spring, delay: i * 0.07 }} className="relative flex gap-3">
+        // Rechenweg sofort vollständig zeigen – kein zeilenweises Einblenden (liest sich ruhiger)
+        <li key={`${i}-${s}`} className="relative flex gap-3">
           {i < schritte.length - 1 && <span className="absolute left-[10px] top-6 h-[calc(100%-12px)] w-px bg-[var(--line-strong)]" aria-hidden />}
-          <span className="num relative grid size-[21px] shrink-0 place-items-center rounded-full bg-surface text-[10.5px] font-semibold text-ink ring-1 ring-[var(--line-strong)]">{i + 1}</span>
+          <span className="num relative grid size-[21px] shrink-0 place-items-center rounded-full bg-surface text-[11px] font-semibold text-ink ring-1 ring-[var(--line-strong)]" aria-hidden>
+            {i + 1}
+          </span>
           <span className="pt-px text-[12.5px] leading-relaxed text-fg-2">{s}</span>
-        </motion.li>
+        </li>
       ))}
     </ol>
   );
 }
 
+/**
+ * Erledigen, Wiederöffnen, Streichen und Vier-Augen-Kontrolle. Notfristen und Fristen öffnen „Wie wurde die Frist gewahrt?“
+ * (Nachweis oder Grund), Wiedervorlagen, Vorfristen und Termine bleiben bei einem Klick. `dialog` muss gerendert werden.
+ */
 export function useFristAktionen(f: Frist, user: User) {
   const [abhaken, setAbhaken] = useState(false);
+  const [dialog, setDialog] = useState<false | "erledigen" | "streichen">(false);
   const erledigt = f.status === "erledigt" || abhaken;
   const umschalten = () => {
     if (f.status === "erledigt") {
-      oeffneFristWieder(f);
-      toast("Wieder geöffnet", { text: f.titel, ton: "info" });
+      oeffneFristWieder(f, today(), user.id);
+      toast("Wieder geöffnet", { text: `${f.titel} – im Verlauf protokolliert`, ton: "info" });
+      return;
+    }
+    if (erfordertNachweis(f)) {
+      setDialog("erledigen");
       return;
     }
     setAbhaken(true);
     setTimeout(() => {
       erledigeFrist(f, user.id);
       setAbhaken(false);
-      toast(`${TYP_META[f.typ].label} erledigt`, { text: f.titel, ton: "erfolg", aktion: { label: "Rückgängig", onClick: () => oeffneFristWieder(f) } });
+      toast(`${TYP_META[f.typ].label} erledigt`, { text: f.titel, ton: "erfolg", aktion: { label: "Rückgängig", onClick: () => oeffneFristWieder(f, today(), user.id) } });
     }, 520);
   };
+  const streichen = () => setDialog("streichen");
   const kontrollieren = () => {
     if (bestaetigeKontrolle(f, user.id)) toast("Kontrolle bestätigt", { text: `Vier-Augen-Kontrolle erfüllt: ${f.titel} (${fmtDate(f.datum)})`, ton: "erfolg" });
   };
-  return { erledigt, umschalten, kontrollieren };
+  const dialogElement = <ErledigenDialog f={f} user={user} open={!!dialog} modus={dialog || "erledigen"} onClose={() => setDialog(false)} />;
+  return { erledigt, umschalten, kontrollieren, streichen, dialog: dialogElement };
+}
+
+/** Status der Ausgangskontrolle einer erledigten Frist („versandt – Nachweis: beA 16:42 Uhr (Dr. Hartmann)“). */
+export function NachweisZeile({ f, team }: { f: Frist; team: User[] }) {
+  const nachrichten = useCol("nachrichten");
+  if (f.status !== "erledigt" || !erfordertNachweis(f)) return null;
+  const text = nachweisText(f, team, nachrichten);
+  const ok = !!f.erledigtNachweis && f.erledigtNachweis.art !== "gestrichen";
+  return (
+    <span className={cn("inline-flex items-start gap-1 text-[12.5px] font-medium", ok ? "text-green" : f.erledigtNachweis ? "text-fg-2" : "text-amber")}>
+      <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" />
+      <span>{text}</span>
+    </span>
+  );
 }
 
 /**
@@ -134,9 +170,9 @@ export function KontrollStatus({ f, team }: { f: Frist; team: User[] }) {
 }
 
 /** Eine Frist als Zeile: Ampelstreifen, Typ, Akte, Grundlage, Verantwortlich, Quelle, Aktionen, Rechenweg. */
-export function FristZeile({ f, akte, team, user, index = 0, zeigeDatum }: { f: Frist; akte?: Akte; team: User[]; user: User; index?: number; zeigeDatum?: boolean }) {
+export function FristZeile({ f, akte, team, user, index = 0, zeigeDatum, vertretungFuer }: { f: Frist; akte?: Akte; team: User[]; user: User; index?: number; zeigeDatum?: boolean; vertretungFuer?: string }) {
   const [offen, setOffen] = useState(false);
-  const { erledigt, umschalten, kontrollieren } = useFristAktionen(f, user);
+  const { erledigt, umschalten, kontrollieren, dialog } = useFristAktionen(f, user);
   const verantwortlich = team.find((u) => u.id === f.verantwortlichId);
   const hatDetails = !!(f.rechenweg?.length || f.notiz || f.ereignisDatum);
   const art = f.typ === "notfrist" || f.typ === "frist" ? fristArtZu(f) : undefined;
@@ -168,7 +204,7 @@ export function FristZeile({ f, akte, team, user, index = 0, zeigeDatum }: { f: 
             {akte ? (
               <Link to={`/akten/${akte.id}?tab=fristen`} className="group inline-flex min-w-0 max-w-full items-baseline gap-1.5 hover:text-ink">
                 <span className="mono shrink-0 font-medium text-fg-2 group-hover:text-ink">{akte.aktenzeichen}</span>
-                <span className="truncate">{akte.titel}</span>
+                <span className="min-w-0 break-words">{akte.titel}</span>
               </Link>
             ) : (
               <span>Akte nicht gefunden</span>
@@ -178,14 +214,20 @@ export function FristZeile({ f, akte, team, user, index = 0, zeigeDatum }: { f: 
             {f.ort && (
               <span className="inline-flex min-w-0 items-center gap-1">
                 · <MapPin className="size-3 shrink-0" />
-                <span className="truncate">{f.ort}</span>
+                <span className="min-w-0 break-words">{f.ort}</span>
               </span>
             )}
             <span className="inline-flex flex-wrap items-center gap-1.5">
-              <QuelleChip quelle={f.quelle} />
+              {vertretungFuer && (
+                <Chip tone="amber" icon={<Users className="size-3" />} title="Die verantwortliche Person ist heute abwesend und hat Sie als Vertretung eingetragen (§ 53 BRAO)">
+                  Vertretung für {vertretungFuer}
+                </Chip>
+              )}
+              <QuelleChip quelle={f.quelle} notiz={f.notiz} />
               <KontrollStatus f={f} team={team} />
+              <NachweisZeile f={f} team={team} />
               {hatDetails && (
-                <button type="button" onClick={() => setOffen((o) => !o)} aria-expanded={offen} className="inline-flex h-[22px] items-center gap-1 rounded-full px-2 text-[11.5px] font-medium text-ink hover:bg-ink-softer">
+                <button type="button" onClick={() => setOffen((o) => !o)} aria-expanded={offen} className="inline-flex h-7 items-center gap-1 rounded-full px-2 text-[12.5px] font-medium text-ink hover:bg-ink-softer">
                   <ChevronDown className={cn("size-3 transition-transform duration-300", offen && "rotate-180")} />
                   {f.rechenweg?.length ? "Rechenweg" : "Details"}
                 </button>
@@ -206,6 +248,7 @@ export function FristZeile({ f, akte, team, user, index = 0, zeigeDatum }: { f: 
           )}
         </div>
       </div>
+      {dialog}
       <AnimatePresence initial={false}>
         {offen && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }} className="overflow-hidden">
@@ -213,23 +256,23 @@ export function FristZeile({ f, akte, team, user, index = 0, zeigeDatum }: { f: 
               <div className="mb-3 flex flex-wrap gap-x-6 gap-y-2 text-[12.5px]">
                 {f.ereignisDatum && (
                   <div>
-                    <div className="eyebrow !text-[10px]">Ereignis</div>
+                    <div className="eyebrow">Ereignis</div>
                     <div className="num mt-0.5 font-medium">{fmtDateWd(f.ereignisDatum)}</div>
                   </div>
                 )}
                 <div>
-                  <div className="eyebrow !text-[10px]">Fristende</div>
+                  <div className="eyebrow">Fristende</div>
                   <div className={cn("num mt-0.5 font-semibold", art?.kritisch && "text-seal")}>{fmtDateWd(f.datum)}</div>
                 </div>
                 {f.vorfrist && (
                   <div>
-                    <div className="eyebrow !text-[10px]">Vorfrist</div>
+                    <div className="eyebrow">Vorfrist</div>
                     <div className="num mt-0.5 font-medium">{fmtDateWd(f.vorfrist)}</div>
                   </div>
                 )}
                 {verantwortlich && (
                   <div>
-                    <div className="eyebrow !text-[10px]">Verantwortlich</div>
+                    <div className="eyebrow">Verantwortlich</div>
                     <div className="mt-0.5 font-medium">{verantwortlich.name}</div>
                   </div>
                 )}

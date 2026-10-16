@@ -97,10 +97,12 @@ export function TabVerlauf({ akte }: { akte: Akte }) {
               <section key={tag}>
                 <div className="mb-3 flex items-baseline gap-2">
                   <h3 className="text-[13px] font-semibold">{tagLabel(tag)}</h3>
-                  <span className="text-[12px] text-fg-4">{fmtDateLong(tag)}</span>
+                  <span className="text-[12.5px] text-fg-3">{fmtDateLong(tag)}</span>
                 </div>
-                <ol className="relative">
+                {/* Nur li als direkte Kinder der Liste – die Zeitleisten-Linie liegt im umgebenden Element */}
+                <div className="relative">
                   <span className="absolute bottom-3 left-[13px] top-3 w-px bg-[var(--line-strong)]" aria-hidden />
+                <ol className="relative">
                   <AnimatePresence initial={false}>
                     {liste.map((e) => {
                       const i = laufend++;
@@ -120,7 +122,7 @@ export function TabVerlauf({ akte }: { akte: Akte }) {
                               <span className="text-[13.5px] leading-snug text-fg">{e.titel}</span>
                             </div>
                             {e.text && <p className={cn("mt-1 text-[13px] leading-relaxed", e.art === "notiz" ? "rounded-[12px] bg-amber-soft/50 px-3 py-2 text-fg-2" : "text-fg-3")}>{e.text}</p>}
-                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11.5px] text-fg-4">
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[12.5px] text-fg-3">
                               <span className="num">{fmtTime(e.zeit)} Uhr</span>
                               <span>·</span>
                               {u ? (
@@ -131,7 +133,7 @@ export function TabVerlauf({ akte }: { akte: Akte }) {
                                 <span>{e.kanal === "bea" ? "beA" : ic.label}</span>
                               )}
                               {e.minuten ? (
-                                <Chip tone="green" className="!h-[18px] !px-1.5 !text-[10.5px]">
+                                <Chip tone="green" className="!h-5 !px-1.5">
                                   {e.minuten} Min. gespart
                                 </Chip>
                               ) : null}
@@ -142,6 +144,7 @@ export function TabVerlauf({ akte }: { akte: Akte }) {
                     })}
                   </AnimatePresence>
                 </ol>
+                </div>
               </section>
             ))}
           </div>

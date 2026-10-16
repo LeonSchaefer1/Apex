@@ -1,10 +1,29 @@
 // Gemeinsame Hilfen des 38h-Motors (nur innerhalb von /automatisierung verwendet).
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CalendarClock, FileText, Inbox, ReceiptEuro, Users, type LucideIcon } from "lucide-react";
-import type { Automation } from "@/core/types";
+import type { Aktivitaet, Automation } from "@/core/types";
+import { automationDef } from "@/core/automationen";
 
 export const ZIEL_STUNDEN = 38;
-export { WOCHEN_PRO_JAHR as ARBEITSWOCHEN, WERT_PRO_STUNDE } from "@/core/automationen";
+export { WOCHEN_PRO_JAHR as ARBEITSWOCHEN, WERT_PRO_STUNDE, PERSONALKOSTEN_JAHR, JAHRESARBEITSSTUNDEN, kostensatz } from "@/core/automationen";
+
+/**
+ * Bearbeitete Vorgänge eines Protokolleintrags: gesparte Minuten ÷ Minuten je Vorgang der Automatik (gezählt je Vorgang,
+ * A-17). KI-Einträge ohne Automatik zählen als ein Vorgang.
+ */
+export function vorgaengeVon(a: Pick<Aktivitaet, "automationKey" | "minutenGespart">): number {
+  if (!a.minutenGespart) return 0;
+  const min = a.automationKey ? automationDef(a.automationKey)?.minutenProLauf : undefined;
+  return min ? Math.max(1, Math.round(a.minutenGespart / min)) : 1;
+}
+
+/** Kaufmännisch gerundet für Hochrechnungen: ab 10.000 € auf volle Tausend (149.760 € → 150.000 €), sonst auf volle Hundert. */
+export function ungefaehr(n: number): number {
+  return Math.abs(n) >= 10_000 ? Math.round(n / 1000) * 1000 : Math.round(n / 100) * 100;
+}
+
+/** Jüngster Eintrag jünger als 15 Minuten? Nur dann „Live“. */
+export const LIVE_MINUTEN = 15;
 
 export const KATEGORIE_ICON: Record<Automation["kategorie"], LucideIcon> = {
   Posteingang: Inbox,

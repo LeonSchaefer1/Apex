@@ -114,7 +114,7 @@ export function EntscheidungKompakt({ e, index, onOpen, zeigeGebiet }: { e: Ents
       <span className="relative z-[1] flex items-center gap-2.5">
         <GerichtSiegel e={e} groesse="sm" />
         <span className="mono min-w-0 flex-1 truncate text-[12px] text-fg-3">{e.az}</span>
-        <span className="num shrink-0 text-[11.5px] text-fg-4">{zeigeGebiet ? `${e.rechtsgebiet} · ${e.datum.slice(0, 4)}` : e.datum.slice(0, 4)}</span>
+        <span className="num shrink-0 text-[12.5px] text-fg-3">{zeigeGebiet ? `${e.rechtsgebiet} · ${e.datum.slice(0, 4)}` : e.datum.slice(0, 4)}</span>
       </span>
       <span className="relative z-[1] block text-[14px] font-semibold leading-snug tracking-[-0.01em] text-fg">{e.titel}</span>
       <span className="relative z-[1] line-clamp-2 text-[12.5px] leading-snug text-fg-3">{e.leitsatz}</span>

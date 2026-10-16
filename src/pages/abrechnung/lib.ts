@@ -1,10 +1,11 @@
 // Fachliche Hilfen der Abrechnung: offene Posten, Rechnungsnummern, Abrechnungsvorschläge je Akte.
 import { addDays, fmtDate, fromISO, round2, today } from "@/core/dates";
-import { berechnetePauschalen, berechneRvg, fassungFuerAuftrag, rvgRechnungsPositionen, UST_SATZ, type RvgFassung, type RvgZeile } from "@/core/rvg";
+import { berechnetePauschalen, berechneRvg, fassungFuerAuftrag, rvgRechnungsPositionen, type RvgFassung, type RvgZeile } from "@/core/rvg";
 import type { Akte, AktenPhase, Dokument, Frist, ISODate, Kontakt, Rechnung, RechnungsPosition, User, Zeiteintrag } from "@/core/types";
+import { summen, type Summen } from "@/core/abrechnung";
 
-export type TabKey = "uebersicht" | "rechnungen" | "rvg" | "bank" | "forderung" | "zeit";
-export const TAB_KEYS: TabKey[] = ["uebersicht", "rechnungen", "rvg", "bank", "forderung", "zeit"];
+export type TabKey = "uebersicht" | "rechnungen" | "rvg" | "bank" | "forderung" | "zinsen" | "zeit";
+export const TAB_KEYS: TabKey[] = ["uebersicht", "rechnungen", "rvg", "bank", "forderung", "zinsen", "zeit"];
 
 export const MINUTEN_JE_EINZELRECHNUNG = 6;
 export const STANDARD_STUNDENSATZ = 250;
@@ -86,19 +87,8 @@ export function isoWoche(iso: string): { jahr: number; kw: number; montag: strin
 
 export const FASSUNG_LABEL: Record<RvgFassung, string> = { "2025": "KostBRÄG 2025", "2021": "KostRÄG 2021" };
 
-// ───────────── Rechenhilfen ─────────────
-export interface Summen {
-  netto: number;
-  ust: number;
-  brutto: number;
-}
-
-/** Summen aus Positionen (USt. 19 % nach Nr. 7008 VV RVG). */
-export function summen(positionen: RechnungsPosition[], ust = true): Summen {
-  const netto = round2(positionen.reduce((s, p) => s + p.betrag, 0));
-  const u = ust ? round2(netto * UST_SATZ) : 0;
-  return { netto, ust: u, brutto: round2(netto + u) };
-}
+// Summen, Rechtsschutz-Aufteilung, Vorschuss (§ 9 RVG) und IBAN-Prüfung liegen in src/core/abrechnung.ts (mit Tests).
+export { ibanFormatiert, ibanGueltig, ibanKompakt, rsvAufteilung, rsvBlockText, summen, vorschussVorschlag, type Summen } from "@/core/abrechnung";
 
 // ───────────── Sammelabrechnung: Vorschlag je Akte ─────────────
 export const PHASE_POSITIONEN: Partial<Record<AktenPhase, string[]>> = {
@@ -165,16 +155,49 @@ function vollstreckungsbescheidBeantragt(akte: Akte, dokumente: Dokument[]): boo
   return /vollstreckungsbescheid/i.test(akte.forderung?.titel ?? "") || dokumente.some((d) => d.akteId === akte.id && /vollstreckungsbescheid/i.test(d.name));
 }
 
-/** Stundenpositionen je Bearbeiter (Vergütungsvereinbarung nach § 3a RVG). */
-export function stundenPositionen(eintraege: Zeiteintrag[], usersById: Map<string, User>, fallbackSatz: number, vereinbarterSatz?: number): RechnungsPosition[] {
+/** Woher der Stundensatz einer Zeitabrechnung stammt. */
+export type SatzQuelle = "vereinbarung" | "abrechnung" | "person";
+
+/** Stundensatz für eine Zeitabrechnung: abweichend je Abrechnung > vereinbarter Satz der Akte (§ 3a RVG) > Satz der Person. */
+export function satzFuerAbrechnung(akte: Pick<Akte, "verguetungsvereinbarung"> | undefined, eingabe: number | undefined, personSatz: number): { satz: number; quelle: SatzQuelle } {
+  const vereinbart = akte?.verguetungsvereinbarung?.stundensatz;
+  if (eingabe !== undefined && eingabe > 0 && eingabe !== vereinbart) return { satz: eingabe, quelle: "abrechnung" };
+  if (vereinbart) return { satz: vereinbart, quelle: "vereinbarung" };
+  return { satz: personSatz, quelle: "person" };
+}
+
+/**
+ * Stundenpositionen je Bearbeiter. „lt. Vergütungsvereinbarung“ steht nur im Text, wenn der Satz tatsächlich der an der Akte
+ * hinterlegte vereinbarte Stundensatz ist (§ 3a RVG) – ein abweichender oder persönlicher Satz wird nur als Betrag genannt.
+ */
+export function stundenPositionen(
+  eintraege: Zeiteintrag[],
+  usersById: Map<string, User>,
+  fallbackSatz: number,
+  vereinbarterSatz?: number,
+  opts: { satz?: number; quelle?: SatzQuelle; vereinbarungDatum?: ISODate } = {},
+): RechnungsPosition[] {
   const proUser = new Map<string, number>();
   for (const z of eintraege) proUser.set(z.userId, (proUser.get(z.userId) ?? 0) + z.minuten);
   return [...proUser.entries()].map(([userId, minuten]) => {
     const u = usersById.get(userId);
-    const satz = vereinbarterSatz ?? u?.stundensatz ?? fallbackSatz;
+    const quelle: SatzQuelle = opts.quelle ?? (vereinbarterSatz ? "vereinbarung" : "person");
+    const satz = opts.satz ?? vereinbarterSatz ?? u?.stundensatz ?? fallbackSatz;
     const std = round2(minuten / 60);
-    return { vv: "Std", bezeichnung: `Tätigkeit ${u?.name ?? "Rechtsanwalt"} lt. Vergütungsvereinbarung (${satz.toLocaleString("de-DE")} €/Std.)`, menge: std, betrag: round2(std * satz) };
+    const satzText = `${satz.toLocaleString("de-DE")} €/Std.`;
+    const bezeichnung =
+      quelle === "vereinbarung"
+        ? `Tätigkeit ${u?.name ?? "Rechtsanwalt"} lt. Vergütungsvereinbarung${opts.vereinbarungDatum ? ` vom ${fmtDate(opts.vereinbarungDatum)}` : ""} (${satzText})`
+        : `Tätigkeit ${u?.name ?? "Rechtsanwalt"} nach Zeitaufwand (${satzText})`;
+    return { vv: "Std", bezeichnung, menge: std, betrag: round2(std * satz) };
   });
+}
+
+/** Stundensatz einer Zeitposition aus der Rechnung („… (240 €/Std.)“), sonst aus Betrag und Menge. */
+export function satzAusPosition(p: RechnungsPosition): number {
+  const m = p.bezeichnung.match(/\((\d{1,3}(?:\.\d{3})*(?:,\d+)?) €\/Std\.\)/);
+  if (m) return Number(m[1].replace(/\./g, "").replace(",", "."));
+  return p.menge ? round2(p.betrag / p.menge) : 0;
 }
 
 /**
@@ -208,7 +231,7 @@ export function vorschlagFuerAkte(
     if (!hatVerguetungsvereinbarung(akte, dokumente)) return { akte, grund: `Ohne Vergütungsvereinbarung – Rahmengebühren nach ${teil} VV RVG bestimmen (§ 14 RVG)` };
     const offen = zeitenDerAkte.filter((z) => z.abrechenbar && !z.abgerechnet);
     if (!offen.length) return { akte, grund: `${sache}: keine offenen abrechenbaren Zeiten` };
-    const positionen = stundenPositionen(offen, usersById, fallbackSatz, akte.verguetungsvereinbarung?.stundensatz);
+    const positionen = stundenPositionen(offen, usersById, fallbackSatz, akte.verguetungsvereinbarung?.stundensatz, { vereinbarungDatum: akte.verguetungsvereinbarung?.datum });
     return { akte, art: "stunden", positionen, summen: summen(positionen), bereitsAbgerechnet: [], zeitIds: offen.map((z) => z.id), hinweis: "nach Zeitaufwand lt. Vergütungsvereinbarung (§ 3a RVG)" };
   }
 
@@ -269,6 +292,35 @@ export function vorschlagFuerAkte(
 }
 
 export const istVorschlag = (v: Vorschlag | Ausschluss): v is Vorschlag => "positionen" in v;
+
+// ───────────── Rechtsschutz, E-Rechnung, Korrektur, Umzug ─────────────
+
+export const RSV_VORSTEUER_HINWEIS =
+  "Hinweis für vorsteuerabzugsberechtigte Mandanten: Die Rechtsschutzversicherung erstattet nur den Nettobetrag; die Umsatzsteuer tragen Sie selbst und ziehen sie als Vorsteuer ab.";
+
+/** Deckungsstand für Sammelabrechnung (Spalte und Filter „RSV“). */
+export type RsvStand = "erteilt" | "angefragt" | "keine";
+export function rsvStand(akte: Pick<Akte, "rsv">): RsvStand {
+  const d = akte.rsv?.deckung;
+  if (d === "erteilt") return "erteilt";
+  if (d === "angefragt" || d === "offen") return "angefragt";
+  return "keine";
+}
+export const RSV_STAND_LABEL: Record<RsvStand, string> = { erteilt: "Deckung erteilt", angefragt: "Deckung angefragt", keine: "keine RSV" };
+
+/** E-Rechnung: bei Organisationen als Empfänger vorbelegt (B2B), sonst PDF. */
+export function formatVorbelegung(empfaenger?: Pick<Kontakt, "typ">): Rechnung["format"] {
+  return empfaenger?.typ === "organisation" ? "XRechnung" : "PDF";
+}
+
+export const ERECHNUNG_PFLICHT =
+  "Empfang von E-Rechnungen ist seit 01.01.2025 Pflicht; Ausstellung im B2B-Verkehr ab 01.01.2027 bei Vorjahresumsatz über 800.000 €, sonst ab 01.01.2028.";
+
+/** Korrekturrechnung: Bezugstext auf die stornierte Ursprungsrechnung. */
+export const korrekturText = (nummer: string) => `Korrektur zu ${nummer}`;
+
+/** Aus einem Umzug übernommen und Abrechnungsstand noch nicht geprüft – in der Sammelabrechnung nicht vorausgewählt. */
+export const abrechnungUngeprueft = (akte: Pick<Akte, "umzugLaufId" | "abrechnungGeprueft">) => !!akte.umzugLaufId && !akte.abrechnungGeprueft;
 
 /** Leistungszeitraum einer Rechnung (Auftrag bis Rechnungsdatum). */
 export function leistungszeitraum(akte: Akte | undefined, r: Rechnung): [string, string] {

@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { motion, useReducedMotion } from "motion/react";
-import { ArrowUpRight, Check, Clock, History, Play, Radio, Repeat, Timer, Zap } from "lucide-react";
+import { ArrowUpRight, Check, Clock, History, Play, Radio, Repeat, ShieldCheck, Timer, Zap } from "lucide-react";
 import type { Aktivitaet, Automation } from "@/core/types";
 import { addDays, fmtNum, nowLocal, relTime, toLocalISO, today } from "@/core/dates";
 import { useData } from "@/store/data";
@@ -10,7 +10,30 @@ import { toast } from "@/store/ui";
 import { useMotorStore } from "@/lib/motor";
 import { Button, Card, Chip, Drawer, Empty, Switch } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { FLOW_SEGMENT_S, KATEGORIE_ICON, fmtStd } from "./shared";
+import { automationDef } from "@/core/automationen";
+import { FLOW_SEGMENT_S, KATEGORIE_ICON, fmtStd, vorgaengeVon } from "./shared";
+
+/** „Freigabe: …“ – aus der Definition der Automatik (Paket A, A-17). */
+export function freigabeVon(key: string): string {
+  return automationDef(key)?.freigabe ?? "nach Ihrer Freigabe";
+}
+/** Was als ein Vorgang zählt, z. B. „je erkannter Frist“. */
+export function vorgangVon(key: string): string {
+  return automationDef(key)?.vorgang ?? "je Vorgang";
+}
+
+/** Freigabezeile für Karte und Detailansicht. */
+function FreigabeZeile({ k }: { k: string }) {
+  return (
+    <div className="flex items-start gap-2 rounded-[12px] bg-[var(--ink-softer)] px-3 py-2 text-[12.5px]">
+      <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-ink" />
+      <span className="min-w-0">
+        <span className="text-fg-3">Freigabe: </span>
+        <span className="font-medium text-fg-2">{freigabeVon(k)}</span>
+      </span>
+    </div>
+  );
+}
 
 /** Schaltet eine Automation um – mit Rückmeldung und Protokolleintrag (Audit). */
 export function useAutomationUmschalten() {
@@ -39,8 +62,8 @@ export function MiniFlow({ schritte, aktiv }: { schritte: string[]; aktiv: boole
               title={s}
               onMouseEnter={() => setHover(i)}
               className={cn(
-                "num relative z-[2] grid size-6 shrink-0 place-items-center rounded-full text-[10.5px] font-semibold transition-all duration-300 ease-[var(--spring)]",
-                aktiv ? "bg-ink-soft text-ink" : "bg-[var(--line)] text-fg-4",
+                "num relative z-[2] grid size-6 shrink-0 place-items-center rounded-full text-[11px] font-semibold transition-all duration-300 ease-[var(--spring)]",
+                aktiv ? "bg-ink-soft text-ink" : "bg-[var(--line)] text-fg-3",
                 hover === i && "scale-110 bg-ink text-[var(--on-ink)]",
               )}
             >
@@ -58,14 +81,14 @@ export function MiniFlow({ schritte, aktiv }: { schritte: string[]; aktiv: boole
           </Fragment>
         ))}
       </div>
-      <div className="mt-2 h-[18px] truncate text-[12px] text-fg-3">
+      <div className="mt-2 min-h-[18px] text-[12.5px] text-fg-3">
         {hover !== null ? (
           <>
             <span className="font-semibold text-fg-2">Schritt {hover + 1}:</span> {schritte[hover]}
           </>
         ) : (
           <>
-            {schritte[0]} <span className="text-fg-4">→ … →</span> {schritte[k]}
+            {schritte[0]} <span className="text-fg-3">→ … →</span> {schritte[k]}
           </>
         )}
       </div>
@@ -122,12 +145,15 @@ export function AutomationKarte({ a, onOpen, now, ausFeed }: { a: Automation; on
 
       <p className="line-clamp-3 text-[13px] leading-relaxed text-fg-3">{a.beschreibung}</p>
 
-      <div className="flex items-start gap-2 rounded-[12px] bg-[var(--ink-softer)] px-3 py-2 text-[12.5px]">
-        <Radio className="mt-0.5 size-3.5 shrink-0 text-ink" />
-        <span className="min-w-0">
-          <span className="text-fg-3">Auslöser: </span>
-          <span className="font-medium text-fg-2">{a.ausloeser}</span>
-        </span>
+      <div className="grid gap-1.5">
+        <div className="flex items-start gap-2 rounded-[12px] bg-[var(--ink-softer)] px-3 py-2 text-[12.5px]">
+          <Radio className="mt-0.5 size-3.5 shrink-0 text-ink" />
+          <span className="min-w-0">
+            <span className="text-fg-3">Auslöser: </span>
+            <span className="font-medium text-fg-2">{a.ausloeser}</span>
+          </span>
+        </div>
+        <FreigabeZeile k={a.key} />
       </div>
 
       <div className="relative z-[2] cursor-pointer" onClick={onOpen}>
@@ -135,9 +161,9 @@ export function AutomationKarte({ a, onOpen, now, ausFeed }: { a: Automation; on
       </div>
 
       <div className="mt-auto grid grid-cols-3 gap-2 border-t border-[var(--line)] pt-3.5">
-        <Kennzahl icon={<Timer className="size-3.5" />} label="Pro Lauf" wert={`${a.minutenProLauf} Min.`} />
-        <Kennzahl icon={<Repeat className="size-3.5" />} label="Läufe gesamt" wert={fmtNum(a.laeufe)} />
-        <Kennzahl icon={<Clock className="size-3.5" />} label="Letzter Lauf" wert={letzter ? relTime(letzter, now) : "–"} />
+        <Kennzahl icon={<Timer className="size-3.5" />} label={vorgangVon(a.key)} wert={`${a.minutenProLauf} Min.`} />
+        <Kennzahl icon={<Repeat className="size-3.5" />} label="Vorgänge gesamt" wert={fmtNum(a.laeufe)} />
+        <Kennzahl icon={<Clock className="size-3.5" />} label="Zuletzt" wert={letzter ? relTime(letzter, now) : "–"} />
       </div>
     </Card>
   );
@@ -146,9 +172,9 @@ export function AutomationKarte({ a, onOpen, now, ausFeed }: { a: Automation; on
 function Kennzahl({ icon, label, wert }: { icon: React.ReactNode; label: string; wert: string }) {
   return (
     <div className="min-w-0">
-      <div className="flex items-center gap-1 text-[11px] text-fg-4">
-        {icon}
-        <span className="truncate">{label}</span>
+      <div className="flex items-start gap-1 text-[12px] text-fg-3">
+        <span className="mt-0.5 shrink-0">{icon}</span>
+        <span className="min-w-0 leading-snug">{label}</span>
       </div>
       <div className="num mt-0.5 truncate text-[13.5px] font-semibold">{wert}</div>
     </div>
@@ -171,6 +197,7 @@ export function AutomationDrawer({ a: aktuell, onClose, aktivitaeten, now }: { a
   const laeufe = useMemo(() => (a ? aktivitaeten.filter((x) => x.automationKey === a.key).slice(0, 14) : []), [a, aktivitaeten]);
   const grenze = addDays(today(), -6);
   const letzte7 = useMemo(() => (a ? aktivitaeten.filter((x) => x.automationKey === a.key && x.zeit.slice(0, 10) >= grenze) : []), [a, aktivitaeten, grenze]);
+  const vorgaenge7 = letzte7.reduce((s, x) => s + vorgaengeVon(x), 0);
   const Icon = a ? KATEGORIE_ICON[a.kategorie] : Zap;
   const reduziert = useReducedMotion();
 
@@ -196,7 +223,7 @@ export function AutomationDrawer({ a: aktuell, onClose, aktivitaeten, now }: { a
       open={!!aktuell}
       onClose={onClose}
       title={a?.name ?? ""}
-      subtitle={a ? `${a.kategorie} · ${a.aktiv ? "läuft automatisch im Hintergrund" : "pausiert"}` : undefined}
+      subtitle={a ? `${a.kategorie} · ${a.aktiv ? "aktiv" : "pausiert"} · Freigabe: ${freigabeVon(a.key)}` : undefined}
       icon={<Icon className="size-5" />}
       width={560}
       footer={
@@ -217,7 +244,7 @@ export function AutomationDrawer({ a: aktuell, onClose, aktivitaeten, now }: { a
           <div className="flex items-center justify-between gap-3 rounded-[16px] bg-[var(--ink-softer)] p-3.5">
             <div className="min-w-0">
               <div className="text-[13.5px] font-semibold">{a.aktiv ? "Automation ist aktiv" : "Automation ist pausiert"}</div>
-              <div className="text-[12px] text-fg-3">{a.aktiv ? "Sie läuft bei jedem Auslöser selbstständig." : "Es werden keine Läufe ausgeführt."}</div>
+              <div className="text-[12.5px] text-fg-3">{a.aktiv ? `Freigabe: ${freigabeVon(a.key)}.` : "Es werden keine Vorgänge bearbeitet."}</div>
             </div>
             <Switch checked={a.aktiv} onChange={(v) => umschalten(a, v)} label={a.aktiv ? "Automation pausieren" : "Automation aktivieren"} />
           </div>
@@ -225,17 +252,20 @@ export function AutomationDrawer({ a: aktuell, onClose, aktivitaeten, now }: { a
           <p className="text-[14px] leading-relaxed text-fg-2">{a.beschreibung}</p>
 
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-            <MiniStat label="Pro Lauf" wert={`${a.minutenProLauf} Min.`} />
-            <MiniStat label="Läufe gesamt" wert={fmtNum(a.laeufe)} />
+            <MiniStat label={`Min. ${vorgangVon(a.key)}`} wert={`${a.minutenProLauf} Min.`} />
+            <MiniStat label="Vorgänge gesamt" wert={fmtNum(a.laeufe)} />
             <MiniStat label="Gesamt gespart" wert={`${fmtStd(a.laeufe * a.minutenProLauf)} Std.`} />
-            <MiniStat label="Letzte 7 Tage" wert={`${letzte7.length} ${letzte7.length === 1 ? "Lauf" : "Läufe"}`} />
+            <MiniStat label="Letzte 7 Tage" wert={`${vorgaenge7} ${vorgaenge7 === 1 ? "Vorgang" : "Vorgänge"}`} />
           </div>
 
           <section>
-            <div className="eyebrow mb-2">Auslöser</div>
-            <div className="flex items-center gap-2.5 rounded-[14px] border border-[var(--line)] px-3.5 py-3 text-[13.5px]">
-              <Radio className="size-4 shrink-0 text-ink" />
-              {a.ausloeser}
+            <div className="eyebrow mb-2">Auslöser und Freigabe</div>
+            <div className="grid gap-1.5">
+              <div className="flex items-center gap-2.5 rounded-[14px] border border-[var(--line)] px-3.5 py-3 text-[13.5px]">
+                <Radio className="size-4 shrink-0 text-ink" />
+                {a.ausloeser}
+              </div>
+              <FreigabeZeile k={a.key} />
             </div>
           </section>
 
@@ -276,10 +306,10 @@ export function AutomationDrawer({ a: aktuell, onClose, aktivitaeten, now }: { a
           <section>
             <div className="mb-2 flex items-center gap-2">
               <History className="size-4 text-fg-3" />
-              <span className="eyebrow">Letzte Läufe</span>
+              <span className="eyebrow">Zuletzt bearbeitet</span>
             </div>
             {laeufe.length === 0 ? (
-              <Empty icon={<Zap className="size-6" />} title="Noch keine Läufe" text="Sobald der Auslöser eintritt, erscheinen die Läufe hier – mit gesparter Zeit." />
+              <Empty icon={<Zap className="size-6" />} title="Noch keine Vorgänge" text="Sobald der Auslöser eintritt, erscheinen die bearbeiteten Vorgänge hier – mit gesparter Zeit." />
             ) : (
               <ul className="divide-y divide-[var(--line)] overflow-hidden rounded-[16px] border border-[var(--line)]">
                 {laeufe.map((l) => (
@@ -292,21 +322,21 @@ export function AutomationDrawer({ a: aktuell, onClose, aktivitaeten, now }: { a
                     >
                       <span className="min-w-0 flex-1">
                         <span className="line-clamp-2 text-[13px] leading-snug">{l.text}</span>
-                        <span className="text-[11.5px] text-fg-4">{relTime(l.zeit, now)}</span>
+                        <span className="text-[12px] text-fg-3">{relTime(l.zeit, now)}</span>
                       </span>
                       {l.minutenGespart ? (
                         <Chip tone="green" className="num shrink-0">
                           +{l.minutenGespart} Min.
                         </Chip>
                       ) : null}
-                      {l.akteId && <ArrowUpRight className="mt-0.5 size-4 shrink-0 text-fg-4 transition-colors group-hover:text-ink" />}
+                      {l.akteId && <ArrowUpRight className="mt-0.5 size-4 shrink-0 text-fg-3 transition-colors group-hover:text-ink" />}
                     </button>
                   </li>
                 ))}
               </ul>
             )}
           </section>
-          {a.aktiv && <p className="text-[11.5px] leading-snug text-fg-4">„Jetzt ausführen“ wird im Demo-Betrieb simuliert und erscheint wie ein echter Lauf im Protokoll.</p>}
+          {a.aktiv && <p className="text-[12.5px] leading-snug text-fg-3">„Jetzt ausführen“ wird im Demo-Betrieb simuliert und erscheint wie ein echter Vorgang im Protokoll.</p>}
         </div>
       )}
     </Drawer>
@@ -316,7 +346,7 @@ export function AutomationDrawer({ a: aktuell, onClose, aktivitaeten, now }: { a
 function MiniStat({ label, wert }: { label: string; wert: string }) {
   return (
     <div className="min-w-0 rounded-[14px] border border-[var(--line)] px-3 py-2.5">
-      <div className="truncate text-[11px] text-fg-4">{label}</div>
+      <div className="text-[12px] leading-snug text-fg-3">{label}</div>
       <div className="num mt-0.5 truncate text-[15px] font-semibold tracking-[-0.01em]">{wert}</div>
     </div>
   );

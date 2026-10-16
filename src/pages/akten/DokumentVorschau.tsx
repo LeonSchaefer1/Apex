@@ -1,5 +1,6 @@
 // Dokumentvorschau als Seitenpanel: Papieransicht, Metadaten, KI-Zusammenfassung, Versionen.
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { ChevronLeft, ChevronRight, Copy, FileStack, PenLine, Sparkles, Trash2 } from "lucide-react";
 import type { Akte, Dokument } from "@/core/types";
@@ -26,6 +27,7 @@ export function DokumentVorschau({
 }) {
   const { tenant, user } = useKanzlei();
   const { byId } = useTeam();
+  const nav = useNavigate();
   const letzte = useRef<Dokument | undefined>(dok);
   if (dok) letzte.current = dok;
   const d = dok ?? letzte.current;
@@ -144,6 +146,17 @@ export function DokumentVorschau({
               <Chip>{fmtKb(d.groesseKb)}</Chip>
               <Chip tone="outline">{d.format.toUpperCase()}</Chip>
               <div className="flex-1" />
+              {d.inhalt.trim().length >= 20 && (
+                <Button
+                  size="sm"
+                  variant="ai"
+                  icon={<Sparkles className="size-4" />}
+                  onClick={() => nav(`/ki?tab=dokument&akte=${encodeURIComponent(akte.id)}&dok=${encodeURIComponent(d.id)}`)}
+                  title="Text dieses Dokuments in der Dokument-Analyse prüfen – Fristen, Ausschlussfristen, nächste Schritte"
+                >
+                  Mit KI analysieren
+                </Button>
+              )}
               <input ref={versionRef} type="file" className="hidden" aria-hidden tabIndex={-1} onChange={(e) => e.target.files?.[0] && void neueVersion(e.target.files[0])} />
               <Button size="sm" variant="ghost" icon={<FileStack className="size-4" />} onClick={() => versionRef.current?.click()}>
                 Neue Version
@@ -168,14 +181,14 @@ export function DokumentVorschau({
 
             <div className="rounded-[18px] bg-[var(--bg-deep)] p-3 sm:p-6">
               <article className="paper mx-auto w-full max-w-[640px] px-6 py-8 sm:px-12 sm:py-12">
-                <header className="mb-7 flex items-start justify-between gap-4 border-b border-current/10 pb-3 text-[10.5px] font-semibold uppercase tracking-[0.1em] opacity-55">
+                <header className="mb-7 flex items-start justify-between gap-4 border-b border-current/10 pb-3 text-[12px] font-semibold uppercase tracking-[0.1em] opacity-55">
                   <span className="truncate">{tenant.name}</span>
                   <span className="mono shrink-0">Az. {akte.aktenzeichen}</span>
                 </header>
                 <div className="whitespace-pre-wrap break-words text-[13.5px] leading-[1.7]" style={{ fontFamily: "ui-serif, Georgia, 'Times New Roman', serif" }}>
                   <Highlight text={d.inhalt} q={q} />
                 </div>
-                <footer className="mt-10 flex justify-between border-t border-current/10 pt-3 text-[10.5px] opacity-50">
+                <footer className="mt-10 flex justify-between border-t border-current/10 pt-3 text-[12px] opacity-50">
                   <span className="truncate">{d.name}</span>
                   <span className="num shrink-0">
                     Seite 1 von {seiten}

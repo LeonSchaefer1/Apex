@@ -57,7 +57,7 @@ function speichere(id: string, v: Gespeichert) {
  * Mehrfachauswahl – Einstellungen werden je Tabelle gespeichert. Auf dem Smartphone als Kartenliste.
  */
 export function DataTable<T>({
-  id, data, columns, onRowClick, mobileRow, selectable, bulkActions, getRowId, empty, initialSort, toolbar, maxHeight,
+  id, data, columns, onRowClick, mobileRow, selectable, bulkActions, getRowId, empty, initialSort, toolbar, maxHeight, defaultHidden,
 }: {
   id: string;
   data: T[];
@@ -71,10 +71,16 @@ export function DataTable<T>({
   initialSort?: SortingState;
   toolbar?: ReactNode;
   maxHeight?: string;
+  /** Spalten (ID), die anfangs ausgeblendet sind – nur solange für diese Spalte noch keine eigene Wahl gespeichert ist. */
+  defaultHidden?: string[];
 }) {
   const saved = useMemo(() => lade(id), [id]);
   const [sorting, setSorting] = useState<SortingState>(saved.sorting ?? initialSort ?? []);
-  const [visibility, setVisibility] = useState<VisibilityState>(saved.visibility ?? {});
+  const [visibility, setVisibility] = useState<VisibilityState>(() => {
+    const v: VisibilityState = { ...(saved.visibility ?? {}) };
+    for (const col of defaultHidden ?? []) if (!(col in v)) v[col] = false;
+    return v;
+  });
   const [sizing, setSizing] = useState<ColumnSizingState>(saved.sizing ?? {});
   // Standard ist die globale Dichte; der Schalter in der Tabelle überschreibt sie nur für diese Ansicht.
   const globaleDichte = useUI((st) => st.dichte);

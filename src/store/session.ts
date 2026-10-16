@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { beiSitzungsproblem, getBackend, getInfo, gleicheSitzung, istConsole, type KanzleiSitzung, type Sitzung, type SitzungsProblem } from "@/lib/backend";
+import { beiSitzungsproblem, getBackend, getInfo, gleicheSitzung, istConsole, kanzleiSicherheit, type KanzleiSitzung, type Sitzung, type SitzungsProblem } from "@/lib/backend";
 import { useAiStatus } from "@/ai/status";
 import { useData } from "@/store/data";
 import { toast } from "@/store/ui";
@@ -11,22 +11,65 @@ interface SessionState {
   login: (email: string, passwort: string) => Promise<Sitzung>;
   /** Erste Anmeldung mit Startpasswort: eigenes Passwort festlegen und anmelden. */
   passwortErsetzen: (email: string, startPasswort: string, neuesPasswort: string) => Promise<Sitzung>;
+  /** Zweiter Schritt der Anmeldung mit dem Code aus der Authenticator-App. */
+  zweiFaktorAnmelden: (vorgang: string, code: string) => Promise<Sitzung>;
   logout: () => Promise<void>;
+  /** Sperre bei Inaktivität: Inhalte verdeckt, bis die Person sich mit ihrem Passwort wieder anmeldet (oder abmeldet). */
+  gesperrt: boolean;
+  sperren: () => void;
+  entsperren: (passwort: string) => Promise<void>;
 }
 
-export const useSession = create<SessionState>((set) => ({
+const LS_GESPERRT = "aa:gesperrt";
+
+function sperrSchluessel(s: Sitzung | null): string | null {
+  return s && !istConsole(s) ? `${s.tenant.id}:${s.user.id}` : null;
+}
+function sperreGespeichert(s: Sitzung | null): boolean {
+  const k = sperrSchluessel(s);
+  if (!k) return false;
+  try {
+    return localStorage.getItem(LS_GESPERRT) === k;
+  } catch {
+    return false;
+  }
+}
+function sperreMerken(k: string | null) {
+  try {
+    if (k) localStorage.setItem(LS_GESPERRT, k);
+    else localStorage.removeItem(LS_GESPERRT);
+  } catch {
+    /* Speicher gesperrt – Sperre gilt dann nur in diesem Tab */
+  }
+}
+
+export const useSession = create<SessionState>((set, get) => ({
   status: "unbekannt",
   sitzung: null,
-  setSitzung: (s) => set({ sitzung: s, status: s ? "angemeldet" : "abgemeldet" }),
+  gesperrt: false,
+  // Eine gespeicherte Sperre (Neuladen während der Sperre) bleibt bestehen – Neuladen umgeht die Sperre nicht.
+  setSitzung: (s) => set({ sitzung: s, status: s ? "angemeldet" : "abgemeldet", gesperrt: sperreGespeichert(s) }),
   login: async (email, passwort) => {
     const s = await getBackend().login(email, passwort);
-    set({ sitzung: s, status: "angemeldet" });
+    sperreMerken(null);
+    letzteAktivitaet = Date.now();
+    set({ sitzung: s, status: "angemeldet", gesperrt: false });
     sendeSignal();
     return s;
   },
   passwortErsetzen: async (email, startPasswort, neuesPasswort) => {
     const s = await getBackend().passwortErsetzen(email, startPasswort, neuesPasswort);
-    set({ sitzung: s, status: "angemeldet" });
+    sperreMerken(null);
+    letzteAktivitaet = Date.now();
+    set({ sitzung: s, status: "angemeldet", gesperrt: false });
+    sendeSignal();
+    return s;
+  },
+  zweiFaktorAnmelden: async (vorgang, code) => {
+    const s = await getBackend().zweiFaktorAnmelden(vorgang, code);
+    sperreMerken(null);
+    letzteAktivitaet = Date.now();
+    set({ sitzung: s, status: "angemeldet", gesperrt: false });
     sendeSignal();
     return s;
   },
@@ -37,10 +80,47 @@ export const useSession = create<SessionState>((set) => ({
       // Abmelden darf nie hängen bleiben – die Sitzung im Browser wird in jedem Fall beendet.
       console.warn("Abmelden am Server fehlgeschlagen", e);
     }
-    set({ sitzung: null, status: "abgemeldet" });
+    sperreMerken(null);
+    set({ sitzung: null, status: "abgemeldet", gesperrt: false });
     sendeSignal();
   },
+  sperren: () => {
+    const k = sperrSchluessel(get().sitzung);
+    if (!k || get().gesperrt) return;
+    sperreMerken(k);
+    set({ gesperrt: true });
+  },
+  entsperren: async (passwort) => {
+    await getBackend().entsperren(passwort);
+    sperreMerken(null);
+    letzteAktivitaet = Date.now();
+    set({ gesperrt: false });
+  },
 }));
+
+// ───────────── Sperre bei Inaktivität (Kanzlei-Einstellung: 5, 10, 15 oder 30 Minuten) ─────────────
+// Als Aktivität zählen Maus, Tastatur, Touch und Scrollen. Nach Ablauf legt sich der Sperrbildschirm über die App (AppShell).
+
+let letzteAktivitaet = Date.now();
+
+/** Minuten bis zur Sperre für die aktuelle Kanzlei-Sitzung (Console-Sitzungen: keine Sperre). */
+export function sperreMinutenFuer(s: Sitzung | null): number | null {
+  if (!s || istConsole(s)) return null;
+  return kanzleiSicherheit(s.tenant).sperreMinuten;
+}
+
+if (typeof window !== "undefined") {
+  const aktiv = () => {
+    letzteAktivitaet = Date.now();
+  };
+  for (const ev of ["pointerdown", "pointermove", "keydown", "touchstart", "wheel", "scroll"]) window.addEventListener(ev, aktiv, { passive: true, capture: true });
+  setInterval(() => {
+    const st = useSession.getState();
+    if (st.status !== "angemeldet" || st.gesperrt) return;
+    const min = sperreMinutenFuer(st.sitzung);
+    if (min && Date.now() - letzteAktivitaet >= min * 60_000) st.sperren();
+  }, 5_000);
+}
 
 /** Kanzlei-Sitzung (wirft, wenn Console-Sitzung) – nur innerhalb der Kanzlei-App verwenden. */
 export function useKanzlei(): KanzleiSitzung {

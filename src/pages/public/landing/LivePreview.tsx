@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef } from "react";
+import { useMemo, useRef } from "react";
 import { AnimatePresence, motion, useInView } from "motion/react";
 import { CalendarClock, Check, FolderOpen, Inbox, Landmark, LayoutDashboard, Search, ShieldCheck, Sparkles, Zap } from "lucide-react";
 import { AiChip, Chip } from "@/components/ui";
@@ -6,13 +6,14 @@ import { AppIcon } from "@/components/Logo";
 import { berechneNachRegel } from "@/core/fristen";
 import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
 import { addDays, fmtDateShort, fmtDateWd, today, wochentagName } from "@/core/dates";
+import { STUFE_WORT } from "@/core/einschaetzung";
 import { cn } from "@/lib/cn";
 import { useTakt } from "./basis";
 
 /**
- * Live-Vorschau im Hero: ein Miniatur-Fenster der echten App.
+ * Vorschau im Hero: ein Miniatur-Fenster der echten App.
  * Ablauf (je Takt): beA-Zustellung trifft ein → KI erkennt die Frist → der Fristenrechner rechnet mit Rechenweg →
- * Frist übernommen → KI-Fallanalyse füllt die Erfolgsaussicht. Im Ruhezustand ist der Endzustand sichtbar.
+ * Frist übernommen → KI-Fallanalyse nennt die Einschätzung in Worten (nie „0 %“). Im Ruhezustand ist der Endzustand sichtbar.
  */
 const SCHRITTE = 17;
 const TAKT = 950;
@@ -48,8 +49,7 @@ export function LivePreview() {
   const post = s < 1 ? "neu" : s < 3 ? "liest" : "erkannt";
   const zeilen = Math.max(0, Math.min(f.rechenweg.length, s - 3));
   const uebernommen = s >= 9;
-  const analyse = s >= 10 ? Math.min(1, (s - 10) / 2) : 0;
-  const quote = 0.78;
+  const analyseFertig = s >= 12;
   const bereich = s < 3 ? "post" : s < 10 ? "frist" : "ki";
 
   return (
@@ -65,16 +65,13 @@ export function LivePreview() {
             <span className="size-2.5 rounded-full bg-amber opacity-70" />
             <span className="size-2.5 rounded-full bg-green opacity-70" />
           </div>
-          <div className="mx-auto hidden h-6 min-w-0 max-w-[260px] flex-1 items-center gap-1.5 rounded-full bg-[var(--ink-softer)] px-3 text-[11px] text-fg-3 shadow-[inset_0_0_0_1px_var(--line)] sm:flex">
+          <div className="mx-auto hidden h-6 min-w-0 max-w-[260px] flex-1 items-center gap-1.5 rounded-full bg-[var(--ink-softer)] px-3 text-[12px] text-fg-3 shadow-[inset_0_0_0_1px_var(--line)] sm:flex">
             <Search className="size-3 shrink-0" />
             <span className="truncate">Akten, Fristen, Urteile durchsuchen …</span>
           </div>
-          <span className="ml-auto inline-flex items-center gap-1.5 text-[10.5px] font-semibold text-fg-3 sm:ml-0">
-            <span className="relative flex size-1.5">
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--green)] opacity-60" />
-              <span className="relative inline-flex size-1.5 rounded-full bg-[var(--green)]" />
-            </span>
-            Live-Vorschau
+          <span className="ml-auto inline-flex items-center gap-1.5 text-[12px] font-semibold text-fg-3 sm:ml-0">
+            <span className="relative inline-flex size-1.5 rounded-full bg-[var(--green)]" aria-hidden />
+            Vorschau mit Beispieldaten
           </span>
         </div>
 
@@ -108,35 +105,35 @@ export function LivePreview() {
                     <Landmark className="size-3.5" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[11.5px] font-semibold">Landgericht Berlin II</div>
-                    <div className="truncate text-[10.5px] text-fg-3">beA · {wochentagName(f.ereignis, true)}, {fmtDateShort(f.ereignis)}</div>
+                    <div className="truncate text-[12.5px] font-semibold">Landgericht Berlin II</div>
+                    <div className="truncate text-[12px] text-fg-3">beA · {wochentagName(f.ereignis, true)}, {fmtDateShort(f.ereignis)}</div>
                   </div>
-                  <Chip tone="amber" className="!h-[18px] !px-1.5 !text-[9.5px]">
+                  <Chip tone="amber" className="!h-[21px] !px-1.5 !text-[12px]">
                     eEB
                   </Chip>
                 </div>
-                <div className="mt-2 text-[11.5px] leading-snug text-fg-2">Zustellung Urteil · Neumann ./. Arslan Autohaus GmbH</div>
+                <div className="mt-2 text-[12.5px] leading-snug text-fg-2">Zustellung Urteil · Neumann ./. Arslan Autohaus GmbH</div>
                 <div className="mt-2 h-[22px]">
                   <AnimatePresence mode="wait" initial={false}>
                     {post === "neu" && (
                       <motion.div key="neu" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}>
-                        <Chip tone="ink" className="!h-[20px] !text-[10px]">
+                        <Chip tone="ink" className="!h-[21px] !text-[12px]">
                           Neu eingegangen
                         </Chip>
                       </motion.div>
                     )}
                     {post === "liest" && (
-                      <motion.div key="liest" className="flex items-center gap-2 text-[10.5px] font-medium text-violet" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}>
+                      <motion.div key="liest" className="flex items-center gap-2 text-[12px] font-medium text-violet" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}>
                         <span className="shimmer h-1.5 w-12 rounded-full" />
                         KI liest das Urteil …
                       </motion.div>
                     )}
                     {post === "erkannt" && (
                       <motion.div key="erkannt" className="flex flex-wrap items-center gap-1.5" initial={{ opacity: 0, scale: 0.92 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: "spring", stiffness: 500, damping: 30 }}>
-                        <Chip tone="seal" className="!h-[20px] !text-[10px]" dot>
+                        <Chip tone="seal" className="!h-[21px] !text-[12px]" dot>
                           Frist erkannt
                         </Chip>
-                        <span className="mono text-[10px] text-fg-3">→ Akte 118/26</span>
+                        <span className="mono text-[12px] text-fg-3">→ Akte 118/26</span>
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -146,19 +143,27 @@ export function LivePreview() {
               {/* KI-Fallanalyse */}
               <Kachel aktiv={bereich === "ki"} ai>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11.5px] font-semibold">KI-Fallanalyse</span>
-                  <AiChip className="!h-[18px] !text-[9.5px]">KI</AiChip>
+                  <span className="text-[12.5px] font-semibold">KI-Fallanalyse</span>
+                  <AiChip className="!h-[21px] !text-[12px]">KI</AiChip>
                 </div>
-                <div className="mt-1 truncate text-[10.5px] text-fg-3">
+                <div className="mt-1 truncate text-[12px] text-fg-3">
                   <span className="mono">142/26</span> · Kündigungsschutz Weber
                 </div>
-                <div className="mt-2 flex items-center gap-3">
-                  <Gauge wert={analyse * quote} />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[10px] font-medium text-fg-3">Erfolgsaussicht</div>
-                    <div className="num text-[20px] font-semibold leading-none tracking-[-0.03em]">{Math.round(analyse * quote * 100)} %</div>
-                    <div className="mt-1 text-[10px] text-fg-4">Beispiel · mit Begründung</div>
-                  </div>
+                <div className="mt-2 min-h-[58px]">
+                  <div className="text-[12px] font-medium text-fg-3">Einschätzung der Erfolgsaussicht</div>
+                  <AnimatePresence mode="wait" initial={false}>
+                    {analyseFertig ? (
+                      <motion.div key="fertig" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ type: "spring", stiffness: 420, damping: 32 }}>
+                        <div className="text-[17px] font-semibold leading-tight tracking-[-0.02em] text-green">{STUFE_WORT.hoch} (Beispiel)</div>
+                        <div className="mt-0.5 text-[12px] leading-snug text-fg-2">14 Jahre ohne Abmahnung, Bagatellwert – Abmahnung hätte genügt.</div>
+                      </motion.div>
+                    ) : (
+                      <motion.div key="laeuft" className="mt-1 flex items-center gap-2 text-[12.5px] font-medium text-violet" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                        <span className="shimmer h-1.5 w-12 rounded-full" aria-hidden />
+                        Analyse läuft …
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
                 <ul className="mt-2 grid grid-cols-1 gap-1">
                   {praezedenz.map((e, k) => (
@@ -166,11 +171,11 @@ export function LivePreview() {
                       key={e.id}
                       animate={{ opacity: s >= 11 + k * 0.5 || s === SCHRITTE - 1 ? 1 : 0.25, x: s >= 11 + k * 0.5 || s === SCHRITTE - 1 ? 0 : -4 }}
                       transition={{ type: "spring", stiffness: 420, damping: 32 }}
-                      className="flex min-w-0 items-center gap-1.5 text-[10px]"
+                      className="flex min-w-0 items-center gap-1.5 text-[12px]"
                     >
                       <span className="shrink-0 rounded-[5px] bg-violet-soft px-1 font-semibold text-violet">{e.gericht}</span>
                       <span className="mono shrink-0 text-fg-2">{e.az}</span>
-                      <span className="truncate text-fg-4">{e.titel.replace(/[„“]/g, "")}</span>
+                      <span className="truncate text-fg-3">{e.titel.replace(/[„“]/g, "")}</span>
                     </motion.li>
                   ))}
                 </ul>
@@ -184,24 +189,24 @@ export function LivePreview() {
                   <CalendarClock className="size-3.5" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="text-[11.5px] font-semibold leading-tight">{f.regel.titel}</div>
-                  <div className="text-[10.5px] text-fg-3">{f.regel.grundlage} · Akte 118/26</div>
+                  <div className="text-[12.5px] font-semibold leading-tight">{f.regel.titel}</div>
+                  <div className="text-[12px] text-fg-3">{f.regel.grundlage} · Akte 118/26</div>
                 </div>
-                <Chip tone="seal" className="!h-[18px] !px-1.5 !text-[9.5px]">
+                <Chip tone="seal" className="!h-[21px] !px-1.5 !text-[12px]">
                   Notfrist
                 </Chip>
               </div>
               <div className="mt-2.5 rounded-[12px] bg-[var(--ink-softer)] p-2.5">
-                <div className="eyebrow mb-1.5 !text-[9px]">Rechenweg</div>
+                <div className="eyebrow mb-1.5">Rechenweg</div>
                 <ol className="grid grid-cols-1 gap-1">
                   {f.rechenweg.map((z, k) => (
                     <motion.li
                       key={k}
                       animate={{ opacity: k < zeilen ? 1 : 0.18, y: k < zeilen ? 0 : 3 }}
                       transition={{ type: "spring", stiffness: 420, damping: 34 }}
-                      className={cn("flex gap-1.5 text-[10px] leading-snug", k === f.rechenweg.length - 2 ? "font-semibold text-fg" : "text-fg-2")}
+                      className={cn("flex gap-1.5 text-[12px] leading-snug", k === f.rechenweg.length - 2 ? "font-semibold text-fg" : "text-fg-2")}
                     >
-                      <span className="num mt-px grid size-3.5 shrink-0 place-items-center rounded-full bg-ink-soft text-[8px] font-bold text-ink">{k + 1}</span>
+                      <span className="num mt-px grid size-4 shrink-0 place-items-center rounded-full bg-ink-soft text-[10px] font-bold text-ink">{k + 1}</span>
                       <span className="min-w-0">{kurz(z)}</span>
                     </motion.li>
                   ))}
@@ -210,22 +215,22 @@ export function LivePreview() {
               <div className="mt-auto pt-2.5">
                 <div className="flex items-end justify-between gap-2">
                   <div>
-                    <div className="text-[10px] font-medium text-fg-3">Fristende</div>
+                    <div className="text-[12px] font-medium text-fg-3">Fristende</div>
                     <div className="text-[15px] font-semibold tracking-[-0.02em] text-seal">{fmtDateWd(f.ende)}</div>
                   </div>
                   <AnimatePresence mode="wait" initial={false}>
                     {uebernommen ? (
-                      <motion.span key="ok" initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.8, opacity: 0 }} transition={{ type: "spring", stiffness: 520, damping: 26 }} className="inline-flex h-7 items-center gap-1 rounded-full bg-green-soft px-2.5 text-[10.5px] font-semibold text-green">
+                      <motion.span key="ok" initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.8, opacity: 0 }} transition={{ type: "spring", stiffness: 520, damping: 26 }} className="inline-flex h-7 items-center gap-1 rounded-full bg-green-soft px-2.5 text-[12px] font-semibold text-green">
                         <Check className="size-3.5" /> Übernommen
                       </motion.span>
                     ) : (
-                      <motion.span key="btn" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="btn btn-primary btn-sm !h-7 !px-2.5 !text-[10.5px]">
+                      <motion.span key="btn" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="btn btn-primary btn-sm !h-7 !px-2.5 !text-[12px]">
                         Frist übernehmen
                       </motion.span>
                     )}
                   </AnimatePresence>
                 </div>
-                <div className="mt-2 flex items-center gap-1.5 text-[10px] text-fg-4">
+                <div className="mt-2 flex items-center gap-1.5 text-[12px] text-fg-3">
                   <ShieldCheck className="size-3 text-green" />
                   KI erkennt · Rechenkern berechnet · Vier-Augen-Kontrolle
                 </div>
@@ -243,7 +248,7 @@ export function LivePreview() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.85 }}
             transition={{ type: "spring", stiffness: 480, damping: 30 }}
-            className="absolute -bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-[#090b14] py-1.5 pl-1.5 pr-3.5 text-[11.5px] font-medium text-white shadow-[0_12px_30px_-10px_rgba(0,0,0,0.6)] ring-1 ring-white/10"
+            className="absolute -bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-[#090b14] py-1.5 pl-1.5 pr-3.5 text-[12.5px] font-medium text-white shadow-[0_12px_30px_-10px_rgba(0,0,0,0.6)] ring-1 ring-white/10"
           >
             <span className="grid size-5 place-items-center rounded-full bg-white/10">
               <Zap className="size-3 text-[#ffd166]" fill="#ffd166" />
@@ -271,35 +276,5 @@ function Kachel({ children, aktiv, ai, className }: { children: React.ReactNode;
     >
       {children}
     </motion.div>
-  );
-}
-
-/** Halbkreis-Anzeige im KI-Schimmer. */
-function Gauge({ wert }: { wert: number }) {
-  const id = useId();
-  const r = 26;
-  const c = Math.PI * r;
-  return (
-    <svg width={64} height={38} viewBox="0 0 64 38" aria-hidden className="shrink-0">
-      <defs>
-        <linearGradient id={id} x1="0" x2="1" y1="0" y2="0">
-          <stop offset="0" stopColor="var(--ai-1)" />
-          <stop offset="0.55" stopColor="var(--ai-2)" />
-          <stop offset="1" stopColor="var(--ai-3)" />
-        </linearGradient>
-      </defs>
-      <path d={`M 6 32 A ${r} ${r} 0 0 1 58 32`} fill="none" stroke="var(--line-strong)" strokeWidth={6} strokeLinecap="round" />
-      <motion.path
-        d={`M 6 32 A ${r} ${r} 0 0 1 58 32`}
-        fill="none"
-        stroke={`url(#${id})`}
-        strokeWidth={6}
-        strokeLinecap="round"
-        strokeDasharray={c}
-        animate={{ strokeDashoffset: c * (1 - wert) }}
-        initial={false}
-        transition={{ type: "spring", stiffness: 80, damping: 20 }}
-      />
-    </svg>
   );
 }

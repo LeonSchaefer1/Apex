@@ -7,12 +7,14 @@ import { AppIcon, Wordmark } from "@/components/Logo";
 import { cn } from "@/lib/cn";
 import { Abschnitt, Kopf, Reveal, scrollZu } from "./basis";
 import { ANKER } from "./Navigation";
-import { DEMO_KI_NAME } from "@/ai/status";
+import { VERARBEITUNGSORT } from "@/content/datenschutz";
+import { ESCROW, LIZENZ_KENNZEICHNUNG, UEBERTRAGBARKEIT, WARTUNG } from "@/content/lizenz";
+import { KontaktBlock, useAnfrage } from "./Anfrage";
 
 const PROBLEME = [
-  { i: <AlertOctagon className="size-5" />, p: "Nach dem Update funktioniert der gewohnte Ablauf nicht mehr.", l: "Getestete Updates – Zeitpunkt wählen Sie." },
-  { i: <Hourglass className="size-5" />, p: "45 bis 60 Minuten in der Hotline-Warteschleife.", l: "Fester Ansprechpartner mit Durchwahl." },
-  { i: <Link2Off className="size-5" />, p: "beA oder E-Mail streikt – mit einer Fehlermeldung, die niemand versteht.", l: "Live-Status und Fehler in Klartext." },
+  { i: <AlertOctagon className="size-5" />, p: "Nach der Aktualisierung funktioniert der gewohnte Ablauf nicht mehr.", l: "Geprüfte Aktualisierungen – Zeitpunkt wählen Sie." },
+  { i: <Hourglass className="size-5" />, p: "45 bis 60 Minuten in der Telefon-Warteschleife.", l: "Feste Ansprechpartnerin mit Durchwahl." },
+  { i: <Link2Off className="size-5" />, p: "beA oder E-Mail streikt – mit einer Fehlermeldung, die niemand versteht.", l: "Betriebsstatus und Fehler in Klartext." },
   { i: <Search className="size-5" />, p: "Die Suche in großen Akten dauert länger als das Blättern.", l: "Volltextsuche über alles mit ⌘K." },
   { i: <Receipt className="size-5" />, p: "Das Forderungskonto rechnet Zinsen nicht vollständig.", l: "Taggenaue Zinsen, Verrechnung nach § 367 BGB." },
   { i: <Mail className="size-5" />, p: "Nach dem E-Mail-Versand ist der Fallkontext weg.", l: "Versand aus der Akte bleibt in der Akte." },
@@ -50,13 +52,22 @@ export function Erfahrungen() {
 }
 
 const FRAGEN = [
-  { f: "Was bedeutet „Lifetime-Lizenz“ genau?", a: "Sie erwerben AnwaltApex einmalig und dürfen die Software dauerhaft nutzen – ohne monatliche Lizenzgebühren. Eine optionale Wartung ist transparent geregelt; ob und wie lange Sie sie nutzen, entscheiden Sie." },
-  { f: "Was kostet AnwaltApex?", a: "Die einmalige Investition richtet sich nach der Kanzleigröße, also nach Arbeitsplätzen und gewünschten Modulen. Ihr persönliches Angebot erhalten Sie innerhalb von 24 Stunden." },
-  { f: "Wo liegen unsere Daten?", a: `Entweder in einem deutschen Rechenzentrum (Private Cloud) oder auf einem Server in Ihrer Kanzlei (On-Premise). Die Daten jeder Kanzlei sind auf Datenbankebene streng getrennt. Nutzen Sie die Live-KI, sendet Ihr Server die für die jeweilige Aufgabe nötigen Inhalte an den KI-Anbieter Anthropic (Claude) – mit Vertrag nach § 43e BRAO und Auftragsverarbeitung. Ohne Live-KI arbeitet die ${DEMO_KI_NAME} nach festen Regeln – dann gehen keine Inhalte an einen KI-Anbieter.` },
+  {
+    f: "Was bedeutet „Lifetime-Lizenz“ genau?",
+    a: `Lifetime-Lizenz heißt: Kauflizenz ohne Laufzeit. Sie erwerben AnwaltApex einmalig und dürfen die Software dauerhaft nutzen – ohne monatliche Lizenzgebühren. ${WARTUNG.kurz} Ohne Wartung bleiben Software und Daten unbefristet nutzbar und vollständig exportierbar. ${UEBERTRAGBARKEIT}. ${ESCROW}. (${LIZENZ_KENNZEICHNUNG}.)`,
+  },
+  {
+    f: "Was kostet AnwaltApex?",
+    a: `Die einmalige Investition richtet sich nach der Kanzleigröße, also nach Arbeitsplätzen und gewünschten Modulen. ${WARTUNG.kurz} Enthalten: ${WARTUNG.enthalten.join(", ")}. Ohne Wartung: ${WARTUNG.ohne.join("; ")}. Ihr Angebot fordern Sie über „Angebot anfordern“ an – im Echtbetrieb meldet sich Ihre Ansprechpartnerin innerhalb eines Werktags. (${LIZENZ_KENNZEICHNUNG}.)`,
+  },
+  {
+    f: "Wo liegen unsere Daten?",
+    a: `Entweder in einem deutschen Rechenzentrum oder auf einem eigenen Server in Ihrer Kanzlei. Die Daten jeder Kanzlei sind auf Datenbankebene streng getrennt. ${VERARBEITUNGSORT.titel} der KI – ${VERARBEITUNGSORT.live} ${VERARBEITUNGSORT.demo} ${VERARBEITUNGSORT.eu}`,
+  },
   { f: "Ersetzt die KI die anwaltliche Prüfung?", a: "Nein. Die KI erkennt, fasst zusammen und schlägt vor – etwa eine Frist aus einem Urteil oder passende Präzedenzfälle. Fristen berechnet ausschließlich der geprüfte Fristenrechner mit nachvollziehbarem Rechenweg. Übernommen wird nur, was Sie freigeben." },
   { f: "Wie läuft der Umzug aus unserer bisherigen Software?", a: "Sie laden den Export Ihrer bisherigen Kanzleisoftware hoch. AnwaltApex zeigt eine Vorschau, erkennt Dubletten, prüft die Fristen auf Plausibilität (z. B. Fristende an einem Wochenende oder Feiertag) und legt sie zur Vier-Augen-Kontrolle vor. Auf Wunsch arbeiten Sie eine Zeit lang parallel." },
   { f: "Ist das beA angebunden?", a: "Im Produktivbetrieb über die Schnittstelle der BRAK für Kanzleisoftware – in dieser Demo sind beA-Eingang und Empfangsbekenntnis simuliert. beA-Nachrichten und E-Mails landen in einem gemeinsamen Posteingang. Die KI ordnet sie der Akte zu, erkennt Fristen und bereitet das elektronische Empfangsbekenntnis vor – abgegeben wird es erst, wenn die Frist notiert ist." },
-  { f: "Können wir AnwaltApex vorher testen?", a: "Gern. Sie erhalten einen eigenen Testzugang – auf Wunsch mit Beispieldaten – und einen festen Ansprechpartner, der Sie durch die ersten Schritte begleitet." },
+  { f: "Können wir AnwaltApex vorher testen?", a: "Gern. Über „Testzugang anfordern“ erhalten Sie einen eigenen Testzugang – auf Wunsch mit Beispieldaten – und eine feste Ansprechpartnerin, die Sie durch die ersten Schritte begleitet. Die öffentliche Demo starten Sie sofort über „Demo starten“." },
 ];
 
 export function Faq() {
@@ -68,7 +79,7 @@ export function Faq() {
           className="!mb-0 lg:sticky lg:top-24 lg:self-start"
           eyebrow="Häufige Fragen"
           titel="Gut zu wissen."
-          text="Ihre Frage ist nicht dabei? Stellen Sie sie in der Demo – direkt Ihrem festen Ansprechpartner."
+          text="Ihre Frage ist nicht dabei? Rufen Sie Ihre Ansprechpartnerin an – die Nummer steht unten unter „Kontakt“."
         />
         <Reveal>
           <ul className="sheet divide-y divide-[var(--line)] overflow-hidden rounded-[28px]">
@@ -120,7 +131,7 @@ export function Faq() {
 export function Schluss() {
   const nav = useNavigate();
   return (
-    <section className="px-4 pb-16 pt-4 sm:px-6 md:pb-24">
+    <section id="kontakt" className="scroll-mt-20 px-4 pb-16 pt-4 sm:px-6 md:pb-24">
       <Reveal className="relative mx-auto max-w-[1200px] overflow-hidden rounded-[34px] bg-[var(--fg)] px-6 py-12 text-[var(--bg)] sm:px-12 sm:py-16">
         <div aria-hidden className="pointer-events-none absolute -right-24 -top-32 size-[420px] rounded-full opacity-50 blur-3xl" style={{ background: "radial-gradient(circle, var(--ink-bright), transparent 65%)" }} />
         <div aria-hidden className="pointer-events-none absolute -bottom-40 left-10 size-[360px] rounded-full opacity-25 blur-3xl" style={{ background: "radial-gradient(circle, var(--aura-3), transparent 65%)" }} />
@@ -134,10 +145,14 @@ export function Schluss() {
             <Button variant="primary" size="lg" iconRight={<ArrowRight className="size-4" />} onClick={() => nav("/login")}>
               Demo starten
             </Button>
-            <button type="button" onClick={() => nav("/login")} className="btn btn-lg bg-[color-mix(in_oklab,var(--bg)_14%,transparent)] text-[var(--bg)] hover:bg-[color-mix(in_oklab,var(--bg)_22%,transparent)]">
-              Anmelden
+            <button type="button" onClick={() => useAnfrage.getState().oeffne("testzugang")} className="btn btn-lg bg-[color-mix(in_oklab,var(--bg)_14%,transparent)] text-[var(--bg)] hover:bg-[color-mix(in_oklab,var(--bg)_22%,transparent)]">
+              Testzugang anfordern
             </button>
           </div>
+        </div>
+        <div className="relative mt-10 rounded-[22px] bg-[color-mix(in_oklab,var(--bg)_10%,transparent)] p-4 sm:p-5">
+          <h3 className="mb-3 text-[13px] font-semibold uppercase tracking-[0.06em] text-[color-mix(in_oklab,var(--bg)_80%,transparent)]">Kontakt</h3>
+          <KontaktBlock hell />
         </div>
       </Reveal>
     </section>
@@ -184,7 +199,7 @@ export function Fusszeile() {
             <Wordmark size={17} />
           </div>
           <p className="mt-3 max-w-[38ch] text-[13px] leading-relaxed text-fg-3">Ein Werkzeug. Volle Kontrolle. Die Kanzlei-Software, die mitdenkt – mit Lifetime-Lizenz statt Abo.</p>
-          <p className="mt-4 flex items-center gap-2 text-[12px] text-fg-4">
+          <p className="mt-4 flex items-center gap-2 text-[13px] text-fg-3">
             <Lock className="size-3.5" /> Keine externen Schriften, kein Tracking auf dieser Seite.
           </p>
         </div>
@@ -211,12 +226,12 @@ export function Fusszeile() {
               </li>
             ))}
           </ul>
-          <p className="mt-4 flex items-center gap-1.5 text-[12px] text-fg-4">
-            <Clock className="size-3.5" /> Angebot innerhalb von 24 Stunden
-          </p>
+          <button type="button" onClick={() => useAnfrage.getState().oeffne("angebot")} className="mt-4 flex items-center gap-1.5 text-[13px] font-medium text-ink hover:underline" aria-haspopup="dialog">
+            <Clock className="size-3.5" /> Angebot anfordern – Antwort innerhalb eines Werktags
+          </button>
         </div>
       </div>
-      <div className="mx-auto mt-10 flex max-w-[1200px] flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-5 text-[12px] text-fg-4">
+      <div className="mx-auto mt-10 flex max-w-[1200px] flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-5 text-[13px] text-fg-3">
         <span>© {jahr} AnwaltApex. Alle Rechte vorbehalten.</span>
         <span>Vergleiche beziehen sich auf klassische Kanzleisoftware im Allgemeinen.</span>
       </div>

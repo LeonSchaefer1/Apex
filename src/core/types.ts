@@ -8,7 +8,7 @@ export type Bundesland =
   | "BW" | "BY" | "BE" | "BB" | "HB" | "HH" | "HE" | "MV"
   | "NI" | "NW" | "RP" | "SL" | "SN" | "ST" | "SH" | "TH";
 
-export type Rolle = "partner" | "anwalt" | "refa" | "admin";
+export type Rolle = "partner" | "anwalt" | "refa" | "admin" | "azubi";
 
 export interface Ansprechpartner {
   name: string;
@@ -39,6 +39,8 @@ export interface Tenant {
   /** Pflichtangabe auf Rechnungen (§ 14 Abs. 4 S. 1 Nr. 2 UStG): Steuernummer oder USt-IdNr. der Kanzlei. */
   steuernummer?: string;
   ustIdNr?: string;
+  /** Sicherheitseinstellungen der Kanzlei: Zwei-Faktor-Pflicht und Sperre bei Inaktivität (Minuten, Standard 15). */
+  sicherheit?: { zweiFaktorPflicht?: boolean; sperreMinuten?: 5 | 10 | 15 | 30 };
 }
 
 export interface User {
@@ -51,6 +53,12 @@ export interface User {
   initialen: string;
   farbe: string;
   stundensatz?: number;
+  /** Förmliche Anrede („Sehr geehrte Frau …“, „Guten Tag, Frau …“). Fehlt = keine Anrede bestimmbar. */
+  anrede?: "Frau" | "Herr";
+  /** Abwesenheit mit Vertretung (§ 53 BRAO). */
+  abwesenheit?: { von: ISODate; bis: ISODate; vertretungId?: ID; grund?: string };
+  /** Zugang vorübergehend gesperrt (umkehrbar) – Anmeldung und Sitzung verweigert. */
+  deaktiviert?: boolean;
 }
 
 export type KontaktRolle = "mandant" | "gegner" | "gegneranwalt" | "gericht" | "versicherung" | "behoerde" | "sonstige";
@@ -72,6 +80,10 @@ export interface Kontakt {
   notiz?: string;
   safeId?: string; // beA SAFE-ID
   createdAt: ISODateTime;
+  /** Zusatzangaben für die Rolle „Versicherung“ (Rechtsschutz). */
+  versicherung?: { schadenabteilung?: string; postfach?: string; ansprechpartner?: string; drebisKennung?: string };
+  /** Herkunft aus einem Umzugslauf (für Rückgängig). */
+  umzugLaufId?: string;
 }
 
 export type Sachgebiet =
@@ -115,9 +127,16 @@ export interface Akte {
   forderung?: Forderungsdaten; // nur Forderungseinzug
   mandantenportal?: boolean;
   entscheidungen?: string[]; // an die Akte geheftete Entscheidungen (Fall-Datenbank)
-  kiAnalyse?: { erstelltAm: string; prozent: number; quelle: string }; // letzte KI-Fallanalyse (Kurzinfo)
+  /** letzte KI-Fallanalyse: Kurzinfo (prozent = KI-Schätzwert, Anzeige verbal über `stufe`) und vollständiges Ergebnis zum Wiederanzeigen */
+  kiAnalyse?: { erstelltAm: string; prozent: number; quelle: string; stufe?: "hoch" | "mittel" | "gering"; ergebnis?: KiAnalyseErgebnis };
   /** Vergütungsvereinbarung (§ 3a RVG, Textform) – Voraussetzung für die Abrechnung nach Zeitaufwand. */
   verguetungsvereinbarung?: { datum: ISODate; stundensatz?: number; erfasstVon?: ID };
+  /** Dokumentierte Kollisionsprüfung (§ 43a Abs. 4 BRAO) mit Entscheidung und Vermerk. */
+  kollisionspruefung?: { am: ISODateTime; von: ID; treffer: string[]; entscheidung: "uebernommen" | "abgelehnt"; vermerk: string };
+  /** Herkunft aus einem Umzugslauf (für Rückgängig). */
+  umzugLaufId?: string;
+  /** Abrechnung geprüft (z. B. nach Umzug vor der Sammelabrechnung). */
+  abrechnungGeprueft?: boolean;
 }
 
 export interface Forderungsdaten {
@@ -152,11 +171,36 @@ export interface Frist {
   bezugId?: ID; // Vorfrist → zugehörige Frist
   notiz?: string;
   createdAt: ISODateTime;
+  /** Ausgangskontrolle: Nachweis bzw. Grund der Erledigung. */
+  erledigtNachweis?: {
+    art: "bea" | "fax" | "bote" | "post" | "persoenlich" | "gestrichen" | "sonstiges";
+    text?: string;
+    nachrichtId?: ID;
+    kontrolleOffenBestaetigt?: boolean;
+  };
+  /** Herkunft aus einem Umzugslauf (für Rückgängig). */
+  umzugLaufId?: string;
 }
 
 export type DokumentArt =
   | "schriftsatz" | "brief" | "urteil" | "beschluss" | "vollmacht" | "rechnung"
   | "email" | "bea" | "notiz" | "anlage" | "vertrag" | "gutachten";
+
+/** Vollständig gespeicherte KI-Fallanalyse einer Akte (gleiche Form wie `Fallanalyse` in src/ai/fallanalyse.ts). */
+export interface KiAnalyseErgebnis {
+  zusammenfassung: string;
+  rechtsfragen: string[];
+  erfolgsaussicht: { prozent: number; stufe: "hoch" | "mittel" | "gering"; begruendung: string };
+  argumentePro: string[];
+  argumenteContra: string[];
+  praezedenzfaelle: { id: string; gericht: string; az: string; titel: string; relevanz: number; warum: string }[];
+  naechsteSchritte: { titel: string; detail: string }[];
+  risiken: string[];
+  entwurf: { titel: string; text: string };
+  quelle: "server" | "artefakt" | "demo";
+  dauerMs: number;
+  erstelltAm: string;
+}
 
 export interface Dokument {
   id: ID;
@@ -173,6 +217,10 @@ export interface Dokument {
   version: number;
   createdAt: ISODateTime;
   ki?: { zusammenfassung?: string; erkannteFristen?: number };
+  /** Herkunft aus einem Umzugslauf (für Rückgängig). */
+  umzugLaufId?: string;
+  /** Entwurf aus der KI-Fallanalyse vom … (Zeitstempel `erstelltAm` der Analyse) – erkennt „schon gespeichert“ und neue Versionen. */
+  kiAnalyseVom?: string;
 }
 
 export interface Anhang {
@@ -223,6 +271,15 @@ export interface Nachricht {
   eebAbgegeben?: ISODateTime;
   ki?: KiVorschlag;
   kiStatus?: "ausstehend" | "analysiert" | "uebernommen" | "verworfen";
+  /** Erster Lesezeitpunkt (eEB-Protokoll). */
+  geoeffnetAm?: ISODateTime;
+  geoeffnetVon?: ID;
+  /** Im eEB angegebenes Zustellungsdatum (Standard: Eingangstag, änderbar). */
+  eebZustellungsdatum?: ISODate;
+  /** Berufsträger, der das eEB abgegeben hat. */
+  eebAbgegebenVon?: ID;
+  /** „Zur Abgabe vorlegen“ (z. B. durch die ReFa an die Anwältin). */
+  eebVorlage?: { von: ID; am: ISODateTime; an?: ID; notiz?: string };
 }
 
 export interface RechnungsPosition {
@@ -257,6 +314,11 @@ export interface Rechnung {
   /** Storno: eigene Belegnummer aus dem Rechnungsnummernkreis und Datum der Stornorechnung. */
   stornoNummer?: string;
   storniertAm?: ISODate;
+  /** Aufteilung bei Rechtsschutz: RSV-Anteil und Selbstbeteiligung des Mandanten. */
+  /** Aufteilung bei Rechtsschutz; `zugesagt: false` = Deckungszusage stand bei der Abrechnung noch aus (Text „vorbehaltlich der Deckungszusage“). */
+  rsv?: { versicherung: string; versicherungsnummer?: string; schadennummer?: string; selbstbeteiligung: number; anteilVersicherung: number; zugesagt?: boolean };
+  /** Korrekturrechnung: Verweis auf die stornierte Ursprungsrechnung. */
+  korrekturVon?: ID;
 }
 
 export type BuchungsArt = "honorar" | "vorschuss" | "fremdgeld" | "auslage" | "zahlung" | "gerichtskosten" | "zinsen" | "kosten";
@@ -271,6 +333,15 @@ export interface Buchung {
   rechnungId?: ID;
   transaktionId?: ID;
   fremdgeld?: boolean; // § 43a Abs. 7 BRAO
+  /** Weiterleitung von Fremdgeld mit Empfänger, IBAN und Wirkung. */
+  weiterleitung?: {
+    empfaenger: string;
+    iban: string;
+    verwendungszweck: string;
+    wirkung: "sepa-datei" | "bereits-ueberwiesen";
+    am: ISODateTime;
+    von: ID;
+  };
 }
 
 export interface Transaktion {
@@ -281,7 +352,8 @@ export interface Transaktion {
   iban: string;
   verwendungszweck: string;
   status: "offen" | "zugeordnet" | "ignoriert";
-  zuordnung?: { rechnungId?: ID; akteId?: ID; sicherheit: number; durch: "auto" | "manuell"; grund: string };
+  /** Zuordnung im Bankabgleich – mit Zeitpunkt (`am`) und Person (`von`, bei manueller Zuordnung) für den Reiter „Gebucht“. */
+  zuordnung?: { rechnungId?: ID; akteId?: ID; sicherheit: number; durch: "auto" | "manuell"; grund: string; am?: ISODateTime; von?: ID };
 }
 
 export interface Zeiteintrag {
@@ -303,10 +375,15 @@ export interface Automation {
   ausloeser: string;
   schritte: string[];
   aktiv: boolean;
+  /** Gesparte Minuten je tatsächlich bearbeitetem Vorgang (nicht je Lauf) – der Name ist historisch. */
   minutenProLauf: number;
+  /** Was als ein Vorgang zählt, z. B. „je zugeordnetem Umsatz“ */
+  vorgang?: string;
   laeufe: number;
   letzterLauf?: ISODateTime;
   kategorie: "Fristen" | "Mandanten" | "Dokumente" | "Finanzen" | "Posteingang";
+  /** Freigabestufe in Worten, z. B. „Entwurf – Versand erst nach Ihrer Freigabe“. */
+  freigabe?: string;
 }
 
 export interface Aktivitaet {
@@ -319,6 +396,8 @@ export interface Aktivitaet {
   text: string;
   minutenGespart?: number;
   icon?: string;
+  /** Beispieleintrag aus den Demodaten – nicht von einer echten Person ausgelöst. */
+  beispiel?: boolean;
 }
 
 export interface Notiz {
@@ -327,6 +406,30 @@ export interface Notiz {
   userId: ID;
   text: string;
   zeit: ISODateTime;
+}
+
+/**
+ * Umzugsprotokoll (Datenübernahme aus der Altsoftware): je Lauf Datum, Datei, Zahlen und die Daten für „Rückgängig“ –
+ * gespeichert beim Datenbestand der Kanzlei, damit ein Lauf auch nach dem Neuladen und an jedem Arbeitsplatz umkehrbar ist.
+ */
+export interface UmzugLauf {
+  id: ID;
+  datum: ISODateTime;
+  system: string;
+  datei: string;
+  userId: ID;
+  zahlen: {
+    aktenNeu: number;
+    aktenAktualisiert: number;
+    archiviert: number;
+    kontakteNeu: number;
+    fristen: number;
+    zusammengefuehrt: number;
+    uebersprungen: number;
+  };
+  /** Angelegte Datensätze und vorheriger Stand aktualisierter Akten/Kontakte (nach dem Rückgängigmachen geleert). */
+  undo: { erstellt: { col: CollectionKey; id: ID }[]; vorher: { col: "akten" | "kontakte"; doc: Akte | Kontakt }[] };
+  rueckgaengig?: { am: ISODateTime; von: ID };
 }
 
 export interface TenantData {
@@ -342,6 +445,7 @@ export interface TenantData {
   automationen: Automation[];
   aktivitaeten: Aktivitaet[];
   notizen: Notiz[];
+  umzugLaeufe: UmzugLauf[];
   meta: { seedVersion: number; seededAt: ISODateTime; letzteMigration?: ISODateTime }[];
 }
 
@@ -349,7 +453,7 @@ export type CollectionKey = Exclude<keyof TenantData, "meta">;
 
 export const COLLECTIONS: CollectionKey[] = [
   "kontakte", "akten", "fristen", "dokumente", "nachrichten", "rechnungen",
-  "buchungen", "transaktionen", "zeiten", "automationen", "aktivitaeten", "notizen",
+  "buchungen", "transaktionen", "zeiten", "automationen", "aktivitaeten", "notizen", "umzugLaeufe",
 ];
 
 export interface SessionInfo {

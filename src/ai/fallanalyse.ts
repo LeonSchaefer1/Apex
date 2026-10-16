@@ -1,6 +1,7 @@
 // KI-Fallanalyse: Sachverhalt → Rechtsfragen → Präzedenzfälle → Erfolgsaussicht → nächste Schritte → Entwurf.
 import { addDays, diffDays, fmtDate, fmtEUR, today } from "@/core/dates";
 import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
+import { deckungsanfrageStatus, deckungsText, stufeAusProzent } from "@/core/einschaetzung";
 import type { Akte, Frist, Kontakt, TenantData } from "@/core/types";
 import { forderungskonto, type ForderungsVorgang } from "@/core/zinsen";
 import { istConsole } from "@/lib/backend";
@@ -33,7 +34,29 @@ export const ANALYSE_PHASEN = [
 ] as const;
 
 function stufe(p: number): "hoch" | "mittel" | "gering" {
-  return p >= 65 ? "hoch" : p >= 40 ? "mittel" : "gering";
+  return stufeAusProzent(p);
+}
+
+/** Echter Stand der Deckung statt „läuft automatisch“: Zusage, Entwurf zur Freigabe, versandt am … von … */
+export function deckungsDetail(akte: Akte, data: TenantData): string {
+  const vers = akte.rsv?.versicherung ?? "der Rechtsschutzversicherung";
+  if (akte.rsv?.deckung === "erteilt") return `Deckungszusage von ${vers} liegt vor.`;
+  if (akte.rsv?.deckung === "abgelehnt") return `${vers} hat die Deckung abgelehnt – Mandantschaft informieren, ggf. Stichentscheid (§ 128 VVG) prüfen.`;
+  const s = deckungsanfrageStatus(akte.id, data.aktivitaeten, data.dokumente);
+  const name = (id: string) => {
+    const sz = useSession.getState().sitzung;
+    return sz && !istConsole(sz) ? sz.team.find((u) => u.id === id)?.name : undefined;
+  };
+  const wv = data.fristen.find((f) => f.akteId === akte.id && f.status === "offen" && f.typ === "wiedervorlage" && /deckung/i.test(f.titel));
+  const wvText = wv ? ` Wiedervorlage am ${fmtDate(wv.datum)} gesetzt.` : "";
+  if (s.status === "keine") return `Deckungsanfrage an ${vers}: ${deckungsText(s)} – das Mandatsaufnahme-Paket bereitet sie zur Freigabe vor.${wvText}`;
+  return `Deckungsanfrage an ${vers}: ${deckungsText(s, name, (iso) => fmtDate(iso.slice(0, 10)))}${s.status === "entwurf" ? " (E-Akte, Ordner „Korrespondenz“)" : ""}.${wvText}`;
+}
+
+/** Schritte zur Deckung nennen immer den tatsächlichen Stand – auch bei Antworten der Live-KI. */
+function mitDeckungsstand(schritte: { titel: string; detail: string }[], akte: Akte, data: TenantData): { titel: string; detail: string }[] {
+  if (!akte.rsv && !data.dokumente.some((d) => d.akteId === akte.id && /deckungsanfrage/i.test(d.name))) return schritte;
+  return schritte.map((x) => (/deckung/i.test(`${x.titel}`) ? { titel: x.titel, detail: deckungsDetail(akte, data) } : x));
 }
 
 /** Verfasser eines Entwurfs (Unterschrift). */
@@ -138,13 +161,13 @@ function demoAnalyse(akte: Akte, data: TenantData, treffer: Treffer[], verfasser
       },
       argumentePro: [
         "14 Jahre beanstandungsfreie Betriebszugehörigkeit – hohes „Vertrauenskapital“ (BAG 2 AZR 541/09).",
-        "Geringer Wert (8,97 €), Ware war beschädigt und zur Entsorgung bestimmt – kein echter Vermögensschaden.",
-        "Duldung durch den Schichtleiter: Mandant durfte annehmen, die Mitnahme sei erlaubt (Zeuge: Kollege Pohl).",
-        "Keine vorherige Abmahnung, keine Anhörung des Mandanten.",
-        "Soziale Gesichtspunkte: 52 Jahre, zwei unterhaltsberechtigte Kinder.",
+        "Geringer Wert (8,97 €), Ware war beschädigt und zur Entsorgung bestimmt – kein echter Vermögensschaden (Kündigungsschreiben).",
+        "Duldung durch den Schichtleiter: Mandant durfte annehmen, die Mitnahme sei erlaubt (Zeuge: Kollege Pohl; Gesprächsnotiz Erstberatung).",
+        "Keine vorherige Abmahnung, keine Anhörung des Mandanten (Gesprächsnotiz Erstberatung).",
+        "Soziale Gesichtspunkte: 52 Jahre, zwei unterhaltsberechtigte Kinder (Gesprächsnotiz Erstberatung).",
       ],
       argumenteContra: [
-        "Auch Bagatelldelikte können grundsätzlich einen wichtigen Grund darstellen.",
+        "Auch Bagatelldelikte können grundsätzlich einen wichtigen Grund nach § 626 Abs. 1 BGB darstellen.",
         "Falls es eine klare, bekannte Anweisung „Bruchware ist Eigentum des Betriebs“ gab, schwächt das die Duldungsargumentation.",
         "Mögliche Videoaufzeichnung könnte den Vorgang belegen (vgl. BAG 2 AZR 133/18) – Verwertbarkeit prüfen.",
       ],
@@ -158,7 +181,7 @@ function demoAnalyse(akte: Akte, data: TenantData, treffer: Treffer[], verfasser
         { titel: "Betriebsratsanhörung anfordern", detail: "Im Gütetermin vollständige Unterlagen zur Anhörung nach § 102 BetrVG verlangen; Fehler führen zur Unwirksamkeit." },
         { titel: "Zeugen benennen", detail: "Kollege Pohl und Schichtleiter zur gelebten Praxis bei Bruchware befragen." },
         meldeSchritt,
-        { titel: "Deckungszusage der Rechtsschutzversicherung abwarten", detail: "Anfrage an Nordlicht Rechtsschutz AG läuft automatisch, Wiedervorlage ist gesetzt." },
+        { titel: "Deckungszusage der Rechtsschutzversicherung", detail: deckungsDetail(akte, data) },
       ],
       risiken: [
         "Kostenrisiko gering: In der 1. Instanz trägt jede Partei ihre Anwaltskosten selbst (§ 12a Abs. 1 S. 1 ArbGG); Rechtsschutz angefragt.",
@@ -497,7 +520,7 @@ function bussgeldAnalyse(akte: Akte, data: TenantData, treffer: Treffer[], verfa
       fristSchritt(akte, data, { titel: "Einspruchsfrist prüfen", detail: "Zwei Wochen ab Zustellung des Bußgeldbescheids (§ 67 Abs. 1 OWiG) – im Fristenrechner eintragen." }, ["notfrist", "frist"]),
       { titel: "Akteneinsicht und Messunterlagen anfordern", detail: "Akteneinsicht (§ 46 Abs. 1 OWiG i. V. m. § 147 StPO) sowie Rohmessdaten, Eichschein und Lebensakte des Messgeräts beantragen." },
       ...(fahrverbot ? [{ titel: "Härtegründe belegen", detail: "Arbeitgeberbescheinigung und Nachweise zur beruflichen Angewiesenheit auf die Fahrerlaubnis zusammenstellen." }] : []),
-      ...(akte.rsv ? [{ titel: "Deckung der Rechtsschutzversicherung", detail: `${akte.rsv.versicherung}: Deckung ${akte.rsv.deckung === "erteilt" ? "erteilt" : "angefragt"}.` }] : []),
+      ...(akte.rsv ? [{ titel: "Deckung der Rechtsschutzversicherung", detail: deckungsDetail(akte, data) }] : []),
     ],
     risiken: ["Nach dem Einspruch ist das Gericht nicht an den Bescheid gebunden – eine höhere Geldbuße ist möglich; das Gericht muss darauf hinweisen.", "Punkte im Fahreignungsregister fallen unabhängig vom Fahrverbot an."],
     entwurf: {
@@ -802,7 +825,7 @@ export async function analysiereFall(
         argumentePro: res.argumentePro ?? [],
         argumenteContra: res.argumenteContra ?? [],
         praezedenzfaelle: praez.length ? praez : praezedenzListe(treffer),
-        naechsteSchritte: res.naechsteSchritte ?? [],
+        naechsteSchritte: mitDeckungsstand(res.naechsteSchritte ?? [], akte, data),
         risiken: res.risiken ?? [],
         entwurf: { titel: res.entwurfTitel || "Entwurf", text: res.entwurfText || "" },
         quelle: aktuelleQuelle(),
@@ -817,5 +840,6 @@ export async function analysiereFall(
   await warte(700);
   phase(4);
   await warte(450);
-  return { ...demoAnalyse(akte, data, treffer, verfasser), quelle: "demo", dauerMs: performance.now() - t0, erstelltAm: new Date().toISOString() };
+  const demo = demoAnalyse(akte, data, treffer, verfasser);
+  return { ...demo, naechsteSchritte: mitDeckungsstand(demo.naechsteSchritte, akte, data), quelle: "demo", dauerMs: performance.now() - t0, erstelltAm: new Date().toISOString() };
 }

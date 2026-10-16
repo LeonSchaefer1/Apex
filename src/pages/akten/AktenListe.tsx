@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { motion } from "motion/react";
 import { AlarmClock, AlertTriangle, Archive, CalendarClock, Check, FolderOpen, FolderPlus, Flag, Plus, Send, Sparkle, UserRound, UserRoundCog, ListChecks, X } from "lucide-react";
-import type { Akte, Frist } from "@/core/types";
-import { fmtDate, fmtDateShort, fmtEUR, nowLocal, relTime, today } from "@/core/dates";
+import type { Akte, Frist, User } from "@/core/types";
+import { fmtDate, fmtDateShort, fmtEUR, nowLocal, relTime, today, uid } from "@/core/dates";
 import { search } from "@/core/search";
 import { aktenMitFrist } from "@/core/fristenLage";
 import { aktenZahlen, wochenbeginn } from "@/core/kennzahlen";
@@ -21,6 +21,11 @@ import { Mandatsaufnahme } from "./Mandatsaufnahme";
 import { offeneEintraege, offeneEintraegeText, schliesseAkteAb } from "./AkteKopf";
 
 type StatusFilter = "offen" | "ruhend" | "abgeschlossen" | "alle";
+
+/** Wer kann Akten bearbeiten (Bearbeitung = Rechtsanwalt)? Whitelist statt Ausschluss – Azubis und ReFa nicht. */
+export function kannBearbeiten(u: User): boolean {
+  return (u.rolle === "partner" || u.rolle === "anwalt") && !u.deaktiviert;
+}
 
 interface Filter {
   status: StatusFilter;
@@ -52,12 +57,19 @@ export default function AktenListe() {
   const [neuOffen, setNeuOffen] = useState(false);
   const [bulk, setBulkRoh] = useState<{ art: "bearbeiter" | "status"; rows: Akte[]; clear: () => void } | null>(null);
   const [abschlussPruefen, setAbschlussPruefen] = useState(false);
+  // Bearbeiterwechsel: gewählte neue Bearbeitung und Optionen (Fristen mit übertragen, Wiedervorlage)
+  const [uebergabe, setUebergabe] = useState<{ an: User; fristen: boolean; wiedervorlage: boolean } | null>(null);
   const setBulk = (b: typeof bulk) => {
     setBulkRoh(b);
     setAbschlussPruefen(false);
+    setUebergabe(null);
   };
 
-  const q = params.get("q") ?? "";
+  // Suche lokal führen – die URL folgt entprellt (~250 ms); während der Eingabe wird nicht aus der URL zurückgeschrieben.
+  const urlQ = params.get("q") ?? "";
+  const [suche, setSuche] = useState(urlQ);
+  const tippt = useRef(false);
+  const q = useDeferredValue(suche);
   const filter: Filter = {
     status: (params.get("status") as StatusFilter) || "offen",
     sg: params.get("sg") ?? "",
@@ -90,6 +102,27 @@ export default function AktenListe() {
     },
     [setParams],
   );
+
+  useEffect(() => {
+    if (suche === urlQ) {
+      tippt.current = false;
+      return;
+    }
+    const t = window.setTimeout(() => {
+      tippt.current = false;
+      setze({ q: suche.trim() ? suche : "" });
+    }, 250);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suche]);
+  // Änderungen von außen (Filter zurücksetzen, Browser-Zurück, Befehlspalette) übernehmen – nur, wenn gerade niemand tippt
+  useEffect(() => {
+    if (!tippt.current) setSuche(urlQ);
+  }, [urlQ]);
+  const sucheAendern = (v: string) => {
+    tippt.current = true;
+    setSuche(v);
+  };
 
   const heute = today();
   const montag = wochenbeginn(heute);
@@ -172,17 +205,38 @@ export default function AktenListe() {
           const a = row.original;
           return (
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                {a.prioritaet === "hoch" && <span className="size-1.5 shrink-0 rounded-full bg-seal" title="Hohe Priorität" />}
-                <span className="truncate font-semibold text-fg">
+              <div className="flex items-start gap-1.5">
+                {a.prioritaet === "hoch" && (
+                  <span className="mt-[7px] size-1.5 shrink-0 rounded-full bg-seal" title="Hohe Priorität">
+                    <span className="sr-only">Hohe Priorität</span>
+                  </span>
+                )}
+                <span className="line-clamp-2 break-words font-semibold leading-snug text-fg" title={a.titel}>
                   <Highlight text={a.titel} q={q} />
                 </span>
               </div>
-              <div className="truncate text-[12px] text-fg-3">
+              <div className="break-words text-[12.5px] text-fg-3">
                 <Highlight text={kontakte.get(a.mandantId)?.name ?? "–"} q={q} />
-                {a.gerichtsAz && <span className="mono text-fg-4"> · {a.gerichtsAz}</span>}
+                {a.gerichtsAz && <span className="mono text-fg-3"> · {a.gerichtsAz}</span>}
               </div>
             </div>
+          );
+        },
+      },
+      {
+        id: "Gericht",
+        header: "Gericht",
+        size: 170,
+        accessorFn: (a) => (a.gerichtId ? kontakte.get(a.gerichtId)?.name ?? "" : ""),
+        cell: ({ row }) => {
+          const g = row.original.gerichtId ? kontakte.get(row.original.gerichtId)?.name : undefined;
+          return g ? (
+            <div className="min-w-0">
+              <div className="line-clamp-2 break-words text-[12.5px] text-fg-2">{g}</div>
+              {row.original.gerichtsAz && <div className="mono truncate text-[12.5px] text-fg-3">{row.original.gerichtsAz}</div>}
+            </div>
+          ) : (
+            <span className="text-[12.5px] text-fg-3">noch kein Verfahren</span>
           );
         },
       },
@@ -212,11 +266,11 @@ export default function AktenListe() {
         accessorFn: (a) => naechste.get(a.id)?.datum ?? "9999-12-31",
         cell: ({ row }) => {
           const f = naechste.get(row.original.id);
-          if (!f) return <span className="text-[12.5px] text-fg-4">–</span>;
+          if (!f) return <span className="text-[12.5px] text-fg-3">–</span>;
           return (
             <div className="min-w-0" title={`${f.titel} – ${fmtDate(f.datum)}`}>
               <FristChip datum={f.datum} />
-              <div className="mt-0.5 truncate text-[11.5px] text-fg-3">
+              <div className="mt-0.5 truncate text-[12.5px] text-fg-3">
                 {fmtDateShort(f.datum)} · {FRIST_TYP_LABEL[f.typ]}
               </div>
             </div>
@@ -297,6 +351,50 @@ export default function AktenListe() {
     setBulk(null);
   };
 
+  /** Offene Fristen, Vorfristen, Wiedervorlagen und Termine einer Akte, für die bisher die alte Bearbeitung verantwortlich ist. */
+  const offeneFristenVon = (a: Akte) => fristen.filter((f) => f.akteId === a.id && f.status === "offen" && f.verantwortlichId === a.bearbeiterId);
+
+  /** Sammeländerung „Bearbeiter ändern“: Verlauf je Akte, optional Fristen mit übertragen und Wiedervorlage für die neue Bearbeitung. */
+  const uebergeben = () => {
+    if (!bulk || !uebergabe) return;
+    const { an, fristen: mitFristen, wiedervorlage } = uebergabe;
+    const st = useData.getState();
+    const jetzt = nowLocal();
+    const betroffen = bulk.rows.filter((r) => r.bearbeiterId !== an.id);
+    let fristZahl = 0;
+    for (const r of betroffen) {
+      const alt = byId.get(r.bearbeiterId)?.name ?? "bisherige Bearbeitung";
+      const offen = offeneFristenVon(r);
+      st.patch("akten", r.id, { bearbeiterId: an.id, updatedAt: jetzt });
+      if (mitFristen) {
+        for (const f of offen) st.patch("fristen", f.id, { verantwortlichId: an.id });
+        fristZahl += offen.length;
+      }
+      st.log({
+        akteur: "nutzer",
+        userId: user.id,
+        akteId: r.id,
+        text: `Bearbeitung von ${alt} an ${an.name} übergeben · durch ${user.name}${mitFristen && offen.length ? ` · ${offen.length} ${offen.length === 1 ? "offene Frist" : "offene Fristen"} übertragen` : ""} – ${r.aktenzeichen}`,
+      });
+      if (wiedervorlage) {
+        st.upsert("fristen", {
+          id: uid("f"), akteId: r.id, titel: `Übernommene Akte sichten (bisher ${alt})`, typ: "wiedervorlage", datum: today(), status: "offen",
+          verantwortlichId: an.id, quelle: "automatisch", createdAt: jetzt,
+          notiz: `${user.name} hat die Bearbeitung am ${fmtDate(today())} übergeben.${mitFristen && offen.length ? ` ${offen.length} offene ${offen.length === 1 ? "Frist" : "Fristen"} mit übertragen.` : ""}`,
+        });
+      }
+    }
+    const n = betroffen.length;
+    toast(n ? `${n} ${n === 1 ? "Akte" : "Akten"} an ${an.name} übergeben` : "Keine Änderung", {
+      ton: n ? "erfolg" : "info",
+      text: n
+        ? `${an.name}: ${n} ${n === 1 ? "Akte" : "Akten"} übernommen${mitFristen ? `, ${fristZahl} ${fristZahl === 1 ? "offene Frist" : "offene Fristen"}` : ""}${wiedervorlage ? " · Wiedervorlage für heute gesetzt" : ""} · im Verlauf jeder Akte protokolliert`
+        : `Alle ausgewählten Akten liegen schon bei ${an.name}.`,
+    });
+    bulk.clear();
+    setBulk(null);
+  };
+
   const neueAkte = () => setNeuOffen(true);
   const ausUrl = params.get("neu") === "1" || !!params.get("nachricht");
   const schliesseNeu = useCallback(() => {
@@ -353,7 +451,7 @@ export default function AktenListe() {
               <span className="block text-[26px] font-semibold leading-tight tracking-[-0.03em]">
                 <AnimatedNumber value={k.value} />
               </span>
-              <span className="block truncate text-[12px] text-fg-3">{k.sub}</span>
+              <span className="block truncate text-[12.5px] text-fg-3">{k.sub}</span>
             </span>
           </motion.button>
         ))}
@@ -396,11 +494,13 @@ export default function AktenListe() {
         columns={columns}
         getRowId={(a) => a.id}
         initialSort={[{ id: "aktenzeichen", desc: true }]}
+        // Spalte „Gericht“ ist unter „Spalten wählen“ zuschaltbar, anfangs aber ausgeblendet – die Tabelle passt so auf 1366 px.
+        defaultHidden={["Gericht"]}
         onRowClick={(a) => nav(`/akten/${a.id}`)}
         selectable
         toolbar={
           <div className="flex flex-wrap items-center gap-2">
-            <SearchField id="akten-suche" value={q} onChange={(v) => setze({ q: v })} placeholder="Az., Titel, Mandant, Schlagwort …" className="w-full min-w-[220px] flex-1 lg:max-w-[340px]" />
+            <SearchField id="akten-suche" value={suche} onChange={sucheAendern} placeholder="Az., Name, Stichwort" className="w-full min-w-[220px] flex-1 lg:max-w-[400px]" />
             <Segmented<StatusFilter>
               size="sm"
               value={filter.status}
@@ -456,16 +556,16 @@ export default function AktenListe() {
                   {a.prioritaet === "hoch" && <span className="size-1.5 rounded-full bg-seal" />}
                   {a.status !== "offen" && <Chip tone={STATUS_INFO[a.status].tone}>{STATUS_INFO[a.status].label}</Chip>}
                 </div>
-                <div className="mt-0.5 truncate text-[14.5px] font-semibold">
+                <div className="mt-0.5 line-clamp-2 break-words text-[14.5px] font-semibold leading-snug">
                   <Highlight text={a.titel} q={q} />
                 </div>
-                <div className="truncate text-[12.5px] text-fg-3">
+                <div className="break-words text-[12.5px] text-fg-3">
                   {kontakte.get(a.mandantId)?.name ?? "–"} · {a.sachgebiet}
                 </div>
               </div>
               <div className="flex shrink-0 flex-col items-end gap-1">
-                {f ? <FristChip datum={f.datum} /> : <span className="text-[12px] text-fg-4">keine Frist</span>}
-                <span className="text-[11.5px] text-fg-4">{relTime(a.updatedAt)}</span>
+                {f ? <FristChip datum={f.datum} /> : <span className="text-[12.5px] text-fg-3">keine Frist</span>}
+                <span className="text-[12.5px] text-fg-3">{relTime(a.updatedAt)}</span>
               </div>
             </div>
           );
@@ -489,7 +589,7 @@ export default function AktenListe() {
           />
         }
       />
-      <p className="mt-3 px-1 text-[12px] text-fg-4">
+      <p className="mt-3 px-1 text-[12.5px] text-fg-3">
         {liste.length} {liste.length === 1 ? "Akte" : "Akten"} · Spaltenbreite, sichtbare Spalten und Zeilendichte merkt sich AnwaltApex für Sie · {tenant.kurzname}
       </p>
 
@@ -500,7 +600,16 @@ export default function AktenListe() {
         onClose={() => setBulk(null)}
         size={abschlussPruefen ? "md" : "sm"}
         footer={
-          abschlussPruefen && bulk ? (
+          uebergabe && bulk ? (
+            <>
+              <Button variant="ghost" onClick={() => setUebergabe(null)} className="mr-auto">
+                Zurück
+              </Button>
+              <Button variant="primary" icon={<UserRoundCog className="size-4" />} onClick={uebergeben}>
+                Übergeben
+              </Button>
+            </>
+          ) : abschlussPruefen && bulk ? (
             <>
               <Button variant="ghost" onClick={() => setAbschlussPruefen(false)} className="mr-auto">
                 Zurück
@@ -515,35 +624,45 @@ export default function AktenListe() {
           ) : undefined
         }
         icon={bulk?.art === "bearbeiter" ? <UserRoundCog className="size-[18px]" /> : <ListChecks className="size-[18px]" />}
-        title={bulk?.art === "bearbeiter" ? "Bearbeiter ändern" : abschlussPruefen ? (bulk && bulk.rows.filter((r) => r.status !== "abgeschlossen").length === 1 ? "Akte abschließen?" : "Akten abschließen?") : "Status ändern"}
+        title={bulk?.art === "bearbeiter" ? (uebergabe ? `An ${uebergabe.an.name} übergeben` : "Bearbeiter ändern") : abschlussPruefen ? (bulk && bulk.rows.filter((r) => r.status !== "abgeschlossen").length === 1 ? "Akte abschließen?" : "Akten abschließen?") : "Status ändern"}
         subtitle={bulk ? `${bulk.rows.length} ${bulk.rows.length === 1 ? "Akte" : "Akten"} ausgewählt` : undefined}
       >
         <div className="grid grid-cols-1 gap-1.5">
-          {bulk?.art === "bearbeiter"
+          {bulk?.art === "bearbeiter" && uebergabe
+            ? (
+                <UebergabeOptionen
+                  rows={bulk.rows}
+                  an={uebergabe.an}
+                  byId={byId}
+                  offeneFristen={(a) => offeneFristenVon(a).length}
+                  fristen={uebergabe.fristen}
+                  wiedervorlage={uebergabe.wiedervorlage}
+                  onFristen={(v) => setUebergabe({ ...uebergabe, fristen: v })}
+                  onWiedervorlage={(v) => setUebergabe({ ...uebergabe, wiedervorlage: v })}
+                />
+              )
+            : bulk?.art === "bearbeiter"
             ? team
-                .filter((u) => u.rolle !== "refa" && u.rolle !== "admin")
+                .filter(kannBearbeiten)
                 .map((u) => {
                   const alle = bulk.rows.every((r) => r.bearbeiterId === u.id);
                   return (
                     <button
                       key={u.id}
                       type="button"
-                      onClick={() => {
-                        const st = useData.getState();
-                        for (const r of bulk.rows) st.patch("akten", r.id, { bearbeiterId: u.id, updatedAt: nowLocal() });
-                        st.log({ akteur: "nutzer", userId: user.id, text: `${bulk.rows.length} ${bulk.rows.length === 1 ? "Akte" : "Akten"} an ${u.name} übertragen` });
-                        toast("Bearbeiter geändert", { ton: "erfolg", text: `${bulk.rows.length} ${bulk.rows.length === 1 ? "Akte" : "Akten"} jetzt bei ${u.name}` });
-                        bulk.clear();
-                        setBulk(null);
-                      }}
-                      className="flex items-center gap-3 rounded-[14px] px-3 py-2.5 text-left transition-colors hover:bg-ink-softer"
+                      onClick={() => setUebergabe({ an: u, fristen: true, wiedervorlage: true })}
+                      className="flex min-h-11 items-center gap-3 rounded-[14px] px-3 py-2.5 text-left transition-colors hover:bg-ink-softer"
                     >
                       <Avatar initialen={u.initialen} farbe={u.farbe} size={34} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[14px] font-medium">{u.name}</span>
-                        <span className="block truncate text-[12px] text-fg-3">{u.titel}</span>
+                        <span className="block truncate text-[12.5px] text-fg-3">{u.titel}</span>
                       </span>
-                      {alle && <Check className="size-4 text-ink" />}
+                      {alle && (
+                        <span className="flex items-center gap-1 text-[12.5px] text-fg-3">
+                          <Check className="size-4 text-ink" /> bisher
+                        </span>
+                      )}
                     </button>
                   );
                 })
@@ -579,6 +698,70 @@ export default function AktenListe() {
   );
 }
 
+/** Bearbeiterwechsel: Was passiert mit den offenen Fristen – und bekommt die neue Bearbeitung eine Wiedervorlage? */
+function UebergabeOptionen({
+  rows,
+  an,
+  byId,
+  offeneFristen,
+  fristen,
+  wiedervorlage,
+  onFristen,
+  onWiedervorlage,
+}: {
+  rows: Akte[];
+  an: User;
+  byId: Map<string, User>;
+  offeneFristen: (a: Akte) => number;
+  fristen: boolean;
+  wiedervorlage: boolean;
+  onFristen: (v: boolean) => void;
+  onWiedervorlage: (v: boolean) => void;
+}) {
+  const betroffen = rows.filter((r) => r.bearbeiterId !== an.id);
+  const fristZahl = betroffen.reduce((s, a) => s + offeneFristen(a), 0);
+  return (
+    <div className="grid grid-cols-1 gap-3 text-[13px]">
+      {betroffen.length ? (
+        <ul className="grid grid-cols-1 gap-1 rounded-[14px] bg-ink-softer p-3">
+          {betroffen.slice(0, 6).map((a) => (
+            <li key={a.id} className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+              <span className="mono shrink-0 text-[12.5px] font-semibold text-fg-2">{a.aktenzeichen}</span>
+              <span className="min-w-0 flex-1 break-words text-fg">{a.titel}</span>
+              <span className="text-[12.5px] text-fg-3">bisher {byId.get(a.bearbeiterId)?.name ?? "–"}</span>
+            </li>
+          ))}
+          {betroffen.length > 6 && <li className="text-[12.5px] text-fg-3">und {betroffen.length - 6} weitere</li>}
+        </ul>
+      ) : (
+        <p className="rounded-[14px] bg-ink-softer p-3 text-fg-2">Alle ausgewählten Akten liegen schon bei {an.name}.</p>
+      )}
+      {betroffen.length > 0 && betroffen.length < rows.length && (
+        <p className="px-1 text-[12.5px] text-fg-3">
+          {rows.length - betroffen.length} {rows.length - betroffen.length === 1 ? "Akte liegt" : "Akten liegen"} schon bei {an.name} – bleibt unverändert.
+        </p>
+      )}
+      <label className="flex cursor-pointer items-start gap-2.5 rounded-[12px] px-1 py-1">
+        <input type="checkbox" className="mt-0.5 size-4 accent-[var(--ink)]" checked={fristen} onChange={(e) => onFristen(e.target.checked)} />
+        <span>
+          <span className="font-medium text-fg">
+            Offene Fristen mit übertragen ({fristZahl} {fristZahl === 1 ? "Eintrag" : "Einträge"})
+          </span>
+          <span className="block text-[12.5px] text-fg-3">Fristen, Vorfristen, Wiedervorlagen und Termine, für die bisher die alte Bearbeitung verantwortlich ist.</span>
+        </span>
+      </label>
+      <label className="flex cursor-pointer items-start gap-2.5 rounded-[12px] px-1 py-1">
+        <input type="checkbox" className="mt-0.5 size-4 accent-[var(--ink)]" checked={wiedervorlage} onChange={(e) => onWiedervorlage(e.target.checked)} />
+        <span>
+          <span className="font-medium text-fg">Wiedervorlage für {an.name}: „Übernommene Akte sichten“ (heute)</span>
+          <span className="block text-[12.5px] text-fg-3">So sieht {an.name} die Übergabe im Cockpit und im Fristenkalender.</span>
+        </span>
+      </label>
+      <p className="px-1 text-[12.5px] text-fg-3">Jede Akte erhält den Verlaufseintrag „Bearbeitung von … an {an.name} übergeben“ mit Ihrem Namen.</p>
+    </div>
+  );
+}
+
 /** Prüfschritt vor dem Sammel-Abschluss: offene Fristen und Termine je Akte, damit nichts unbemerkt liegen bleibt. */
 function AbschlussPruefung({ rows, fristen }: { rows: Akte[]; fristen: Frist[] }) {
   const mitOffenen = rows.map((a) => ({ a, o: offeneEintraege(a.id, fristen) })).filter((x) => x.o.fristen || x.o.wiedervorlagen || x.o.termine);
@@ -600,7 +783,7 @@ function AbschlussPruefung({ rows, fristen }: { rows: Akte[]; fristen: Frist[] }
               {mitOffenen.slice(0, 5).map(({ a, o }) => (
                 <li key={a.id} className="flex min-w-0 items-baseline gap-2">
                   <span className="mono shrink-0 text-[12px] font-semibold text-fg-2">{a.aktenzeichen}</span>
-                  <span className="min-w-0 flex-1 truncate text-fg">{a.titel}</span>
+                  <span className="min-w-0 flex-1 break-words text-fg">{a.titel}</span>
                   <span className={cn("shrink-0 text-[12px] font-medium", o.notfristen ? "text-seal" : "text-fg-3")}>
                     {o.notfristen ? `${o.notfristen} nicht verlängerbar` : `${o.fristen + o.wiedervorlagen + o.termine} offen`}
                   </span>

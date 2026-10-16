@@ -1,13 +1,13 @@
 // Posteingang: KI-Analyse (Ablauf, Zwischenspeicher) und die fachlichen Aktionen (zuordnen, Fristen übernehmen, eEB …).
 import { create } from "zustand";
-import { analysiereNachricht, analysiereRegelbasiert, type DokAnalyse, type FristVorschlag } from "@/ai/dokumentAnalyse";
+import { analysiereNachricht, analysiereRegelbasiert, type DokAnalyse, type FristVorschlag, type Rechtsmittelhinweis } from "@/ai/dokumentAnalyse";
 import type { KiQuelle } from "@/ai/status";
-import { nowLocal, uid } from "@/core/dates";
-import type { Akte, Anhang, Bundesland, Dokument, DokumentArt, Frist, Nachricht, TenantData, User } from "@/core/types";
-import { istConsole } from "@/lib/backend";
+import { fmtDate, fmtDateWd, fmtTime, nowLocal, today, uid } from "@/core/dates";
+import type { Akte, Anhang, Bundesland, Dokument, DokumentArt, Frist, ID, ISODate, Nachricht, TenantData, User } from "@/core/types";
+import { darfEebAbgeben as darfEebAbgebenRolle, istConsole } from "@/lib/backend";
 import { useData } from "@/store/data";
 import { useSession } from "@/store/session";
-import { legeFristAn } from "@/pages/fristen/logik";
+import { legeFristAn, vorfristenZu } from "@/pages/fristen/logik";
 
 export const SCHRITTE = [
   { titel: "Dokument lesen", text: "Text und Anhänge werden erfasst" },
@@ -153,6 +153,8 @@ export interface KiAnsicht {
   quelle?: KiQuelle;
   dauerMs?: number;
   frisch: boolean;
+  /** Rechtsmittelgericht bei Urteilen („Berufung einzulegen beim Kammergericht, § 519 Abs. 1 ZPO“) */
+  rechtsmittel?: Rechtsmittelhinweis;
 }
 
 function eebRelevant(n: Nachricht, analyseEeb: boolean) {
@@ -188,6 +190,7 @@ export function kiAnsicht(n: Nachricht, data: TenantData, land: Bundesland, fris
       quelle: frisch.quelle,
       dauerMs: frisch.dauerMs,
       frisch: true,
+      rechtsmittel: frisch.rechtsmittel,
     };
   }
   if (!n.ki || n.kiStatus === "ausstehend") return null;
@@ -214,6 +217,7 @@ export function kiAnsicht(n: Nachricht, data: TenantData, land: Bundesland, fris
     eeb,
     dokumentArt: ki.dokumentArt ?? rb.dokumentArt,
     frisch: false,
+    rechtsmittel: rb.rechtsmittel,
   };
 }
 
@@ -388,10 +392,130 @@ export function terminEintragen(n: Nachricht, akte: Akte, user: User, termin: No
   useData.getState().log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Termin „${termin.titel}“ am ${termin.datum.split("-").reverse().join(".")} eingetragen` });
 }
 
-export function eebAbgeben(n: Nachricht, user: User) {
+// ───────────────────────── eEB: Abgabe nur durch Berufsträger, Vorlage durch das Sekretariat ─────────────────────────
+
+/**
+ * Nur Rechtsanwältinnen und Rechtsanwälte geben das eEB ab (Whitelist – neue Rollen wie „azubi“ sind automatisch ausgeschlossen).
+ * Gleiche Regel wie Rechte-Matrix, Demo- und Server-Backend (`darfEebAbgeben` aus `@/lib/backend`).
+ */
+export function darfEebAbgeben(u: Pick<User, "rolle">): boolean {
+  return darfEebAbgebenRolle(u.rolle);
+}
+
+/** Erklärsatz für Sekretariat und Auszubildende */
+export const EEB_ERKLAERUNG =
+  "Das eEB gibt die Anwältin bzw. der Anwalt selbst ab – ohne qualifizierte elektronische Signatur nur über den eigenen sicheren Übermittlungsweg (§ 173 Abs. 3 ZPO). Sie bereiten vor und legen vor.";
+
+function zeitpunkt(iso: string): string {
+  return `${fmtDate(iso.slice(0, 10))}, ${fmtTime(iso)} Uhr`;
+}
+
+/** Name zu einer Personen-ID (Team der Kanzlei) */
+function nameVon(id: ID | undefined, team: User[]): string {
+  return (id && team.find((u) => u.id === id)?.name) || "unbekannt";
+}
+
+/**
+ * eEB-Protokoll in einer Zeile: wer, wann, Zustellungsdatum, erster Lesezeitpunkt.
+ * „eEB abgegeben von Dr. Julia Hartmann am 16.10.2026, 15:43 Uhr · Zustellungsdatum 16.10.2026 · erstmals geöffnet am 16.10.2026, 15:39 Uhr von Dr. Julia Hartmann“
+ */
+export function eebProtokoll(n: Pick<Nachricht, "eebAbgegeben" | "eebAbgegebenVon" | "eebZustellungsdatum" | "geoeffnetAm" | "geoeffnetVon" | "eingang">, team: User[]): string {
+  const teile = [`eEB abgegeben von ${nameVon(n.eebAbgegebenVon, team)} am ${n.eebAbgegeben ? zeitpunkt(n.eebAbgegeben) : "–"}`];
+  teile.push(`Zustellungsdatum ${fmtDate(n.eebZustellungsdatum ?? n.eingang.slice(0, 10))}`);
+  teile.push(n.geoeffnetAm ? `erstmals geöffnet am ${zeitpunkt(n.geoeffnetAm)} von ${nameVon(n.geoeffnetVon, team)}` : "erstmals geöffnet: nicht erfasst");
+  return teile.join(" · ");
+}
+
+/** Hält den ersten Lesezeitpunkt fest – nur, wenn er noch fehlt (Protokoll „wann erstmals zur Kenntnis genommen“). */
+export function ersteOeffnungMerken(n: Nachricht, user: User) {
+  if (n.geoeffnetAm) return;
+  useData.getState().patch("nachrichten", n.id, { geoeffnetAm: nowLocal(), geoeffnetVon: user.id });
+}
+
+/**
+ * „Zur eEB-Abgabe vorlegen“: Vorlage an der Nachricht, Wiedervorlage für heute bei der Anwältin bzw. dem Anwalt
+ * (erscheint in Fristen und Cockpit) und Eintrag im Verlauf der Akte.
+ */
+export function eebVorlegen(n: Nachricht, akte: Akte | undefined, user: User, an: User, notiz: string): Frist | undefined {
   const { patch, log } = useData.getState();
-  patch("nachrichten", n.id, { eebAbgegeben: nowLocal() });
-  log({ akteur: "nutzer", userId: user.id, akteId: n.akteId, text: `Elektronisches Empfangsbekenntnis abgegeben: ${n.betreff}` });
+  const am = nowLocal();
+  patch("nachrichten", n.id, { eebVorlage: { von: user.id, am, an: an.id, notiz: notiz.trim() || undefined } });
+  let wv: Frist | undefined;
+  if (akte) {
+    const az = akte.gerichtsAz ?? n.betreff.split(" – ")[0];
+    wv = legeFristAn({
+      akteId: akte.id,
+      titel: `eEB abgeben – ${az} (vorgelegt von ${user.name})`,
+      typ: "wiedervorlage",
+      datum: today(),
+      quelle: "manuell",
+      verantwortlichId: an.id,
+      notiz: `Empfangsbekenntnis zu „${n.betreff}“ zur Abgabe vorgelegt von ${user.name} am ${zeitpunkt(am)}.${notiz.trim() ? ` Notiz: ${notiz.trim()}` : ""}`,
+    }).frist;
+  }
+  log({
+    akteur: "nutzer",
+    userId: user.id,
+    akteId: akte?.id ?? n.akteId,
+    text: `eEB zur Abgabe vorgelegt an ${an.name} (${n.betreff})${notiz.trim() ? ` – Notiz: ${notiz.trim()}` : ""}`,
+  });
+  return wv;
+}
+
+/** Fristvorschläge der Nachricht mit einem anderen Zustellungsdatum neu berechnen – Fristenrechner, gleiche Regeln. */
+export function fristenZumZustellungsdatum(n: Nachricht, data: TenantData, land: Bundesland, datum: ISODate, ansicht: KiAnsicht): { alt: FristVorschlag; neu: FristVorschlag }[] {
+  const rb = analysiereRegelbasiert({ text: n.text, betreff: n.betreff, von: n.von, vonAdresse: n.vonAdresse, eingang: datum, kanal: n.kanal }, data, land);
+  return ansicht.fristen.map((alt, i) => {
+    const neu = rb.fristen.find((x) => x.regelKey === alt.regelKey && x.titel === alt.titel) ?? rb.fristen.find((x) => x.regelKey === alt.regelKey) ?? rb.fristen[i];
+    return { alt, neu: neu ?? alt };
+  });
+}
+
+/** „Berufungsfrist: Mo 16.11. → Di 17.11.2026“ */
+export function fristAenderungText(p: { alt: FristVorschlag; neu: FristVorschlag }): string {
+  const kurz = (d: ISODate) => fmtDateWd(d).replace(/\d{4}$/, "").replace(/,/, "");
+  return `${p.alt.titel}: ${kurz(p.alt.ende)} → ${fmtDateWd(p.neu.ende).replace(/,/, "")}`;
+}
+
+/**
+ * Gibt das eEB ab (nur Berufsträger). Protokolliert Wer, Wann, Zustellungsdatum und ersten Lesezeitpunkt in einer Zeile.
+ * Weicht das Zustellungsdatum vom Eingangstag ab, werden die bereits notierten Kalenderfristen samt Vorfristen angepasst.
+ */
+export function eebAbgeben(
+  n: Nachricht,
+  user: User,
+  opts: { zustellungsdatum: ISODate; team: User[]; akte?: Akte; anpassungen?: { alt: FristVorschlag; neu: FristVorschlag }[]; kontrolleOffenBestaetigt?: boolean },
+): string | undefined {
+  if (!darfEebAbgeben(user)) return undefined;
+  const { patch, log, data } = useData.getState();
+  const aktuell = data.nachrichten.find((x) => x.id === n.id) ?? n;
+  if (aktuell.eebAbgegeben) return undefined;
+  const am = nowLocal();
+  // Erster Lesezeitpunkt fehlt (z. B. ältere Daten): Abgabe gilt als spätester Kenntniszeitpunkt
+  const geoeffnet = aktuell.geoeffnetAm ? {} : { geoeffnetAm: am, geoeffnetVon: user.id };
+  patch("nachrichten", n.id, { eebAbgegeben: am, eebAbgegebenVon: user.id, eebZustellungsdatum: opts.zustellungsdatum, ...geoeffnet });
+  const akteId = opts.akte?.id ?? aktuell.akteId;
+  // Notierte Fristen an das erklärte Zustellungsdatum anpassen (protokolliert)
+  const geaendert: string[] = [];
+  if (opts.akte && opts.anpassungen?.length) {
+    for (const p of opts.anpassungen) {
+      if (p.alt.ende === p.neu.ende && p.alt.ereignisDatum === p.neu.ereignisDatum) continue;
+      const f = data.fristen.find((x) => x.akteId === opts.akte!.id && x.typ !== "vorfrist" && x.status === "offen" && x.datum === p.alt.ende && (x.regelKey === p.alt.regelKey || x.titel === p.alt.titel));
+      if (!f) continue;
+      patch("fristen", f.id, { datum: p.neu.ende, vorfrist: p.neu.vorfrist, ereignisDatum: p.neu.ereignisDatum, rechenweg: p.neu.rechenweg });
+      for (const v of vorfristenZu(f, data.fristen))
+        patch("fristen", v.id, { datum: p.neu.vorfrist, notiz: `Vorfrist zu „${f.titel}“ (Fristende ${fmtDate(p.neu.ende)}).` });
+      geaendert.push(fristAenderungText(p));
+    }
+  }
+  const protokoll = eebProtokoll({ ...aktuell, ...geoeffnet, eebAbgegeben: am, eebAbgegebenVon: user.id, eebZustellungsdatum: opts.zustellungsdatum }, opts.team.some((u) => u.id === user.id) ? opts.team : [...opts.team, user]);
+  const zusatz = opts.kontrolleOffenBestaetigt ? " · Vier-Augen-Kontrolle stand noch aus – notierte Fristen selbst geprüft (bestätigt)" : "";
+  log({ akteur: "nutzer", userId: user.id, akteId, text: `${protokoll}${zusatz} – ${n.betreff}` });
+  if (geaendert.length) log({ akteur: "nutzer", userId: user.id, akteId, text: `Fristen an das Zustellungsdatum ${fmtDate(opts.zustellungsdatum)} angepasst: ${geaendert.join("; ")}` });
+  // Offene Vorlage-Wiedervorlage „eEB abgeben – …“ erledigt sich mit der Abgabe
+  for (const wv of data.fristen.filter((x) => x.akteId === akteId && x.typ === "wiedervorlage" && x.status === "offen" && x.titel.startsWith("eEB abgeben – ")))
+    patch("fristen", wv.id, { status: "erledigt", erledigtAm: am, erledigtVon: user.id });
+  return protokoll;
 }
 
 export function alsErledigt(n: Nachricht, user: User, erledigt = true) {

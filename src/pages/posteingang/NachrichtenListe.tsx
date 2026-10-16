@@ -94,7 +94,8 @@ export function NachrichtenListe({
       />
     );
   return (
-    <ul className="space-y-0.5 p-1.5" role="listbox" aria-label="Nachrichten">
+    // Schlichte Liste mit Schaltflächen (ul > li > button) – die geöffnete Nachricht trägt aria-current.
+    <ul className="space-y-0.5 p-1.5" aria-label="Nachrichten">
       {items.map((n, i) => {
         const akte = n.akteId ? akten.get(n.akteId) : undefined;
         const neu = n.status === "neu";
@@ -111,8 +112,7 @@ export function NachrichtenListe({
             <button
               type="button"
               data-nachricht={n.id}
-              role="option"
-              aria-selected={sel}
+              aria-current={sel ? "true" : undefined}
               onClick={() => onSelect(n.id)}
               className={cn(
                 "group relative isolate flex w-full gap-3 rounded-[16px] px-3 py-3 pl-4 text-left transition-colors",
@@ -127,20 +127,30 @@ export function NachrichtenListe({
                   transition={{ type: "spring", stiffness: 520, damping: 38 }}
                 />
               )}
-              {neu && <span className="absolute left-1.5 top-[26px] size-2 rounded-full bg-ink" aria-label="ungelesen" />}
+              {neu && (
+                <>
+                  <span className="absolute left-1.5 top-[26px] size-2 rounded-full bg-ink" aria-hidden />
+                  <span className="sr-only">Ungelesen: </span>
+                </>
+              )}
               <KanalSymbol kanal={n.kanal} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2">
-                  <span className={cn("truncate text-[13.5px]", neu ? "font-semibold text-fg" : "font-medium text-fg-2")}>
+                  <span className={cn("min-w-0 break-words text-[13.5px]", neu ? "font-semibold text-fg" : "font-medium text-fg-2")}>
                     <Highlight text={n.von} q={q} />
                   </span>
-                  <span className={cn("num ml-auto shrink-0 text-[11.5px]", neu ? "font-medium text-ink" : "text-fg-3")}>{eingangsZeit(n.eingang)}</span>
+                  <span className={cn("num ml-auto shrink-0 text-[12.5px]", neu ? "font-medium text-ink" : "text-fg-3")}>{eingangsZeit(n.eingang)}</span>
                 </div>
-                <div className={cn("mt-0.5 flex min-w-0 items-center gap-1.5 text-[13px]", neu ? "font-semibold text-fg" : "text-fg-2")}>
-                  <span className="truncate">
+                <div className={cn("mt-0.5 flex min-w-0 items-start gap-1.5 text-[13px]", neu ? "font-semibold text-fg" : "text-fg-2")}>
+                  <span className="line-clamp-2 min-w-0 break-words">
                     <Highlight text={n.betreff} q={q} />
                   </span>
-                  {n.anhaenge.length > 0 && <Paperclip className="size-3.5 shrink-0 text-fg-3" aria-label={`${n.anhaenge.length} Anhänge`} />}
+                  {n.anhaenge.length > 0 && (
+                    <>
+                      <Paperclip className="mt-0.5 size-3.5 shrink-0 text-fg-3" aria-hidden />
+                      <span className="sr-only">{n.anhaenge.length === 1 ? "1 Anhang" : `${n.anhaenge.length} Anhänge`}</span>
+                    </>
+                  )}
                 </div>
                 <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-snug text-fg-3">{vorschau(n.text)}</p>
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">

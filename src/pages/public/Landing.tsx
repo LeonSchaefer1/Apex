@@ -8,6 +8,7 @@ import { Vergleich } from "./landing/Vergleich";
 import { Lifetime } from "./landing/Lifetime";
 import { UmzugBand, Vertrauen } from "./landing/Vertrauen";
 import { Erfahrungen, Faq, Fusszeile, Schluss } from "./landing/Abschluss";
+import { AnfrageDialog } from "./landing/Anfrage";
 
 /** Öffentliche Produktseite (/willkommen) – stellt AnwaltApex Interessenten vor. Scrollt im eigenen Container. */
 export default function Landing() {
@@ -30,6 +31,7 @@ export default function Landing() {
         <Schluss />
       </main>
       <Fusszeile />
+      <AnfrageDialog />
     </div>
     </MotionConfig>
   );

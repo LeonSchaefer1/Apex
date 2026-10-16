@@ -23,6 +23,8 @@ export default function KiStudio() {
   const roh = params.get("tab");
   const tab: Tab = TABS.includes(roh as Tab) ? (roh as Tab) : "fallanalyse";
   const akteParam = params.get("akte") ?? undefined;
+  // Deep-Link aus dem Dokumentbetrachter der Akte: /ki?tab=dokument&akte=<id>&dok=<dokId>
+  const dokParam = params.get("dok") ?? undefined;
   // Deep-Link aus dem Cockpit (?start=1): Fallanalyse der Akte sofort starten und sichtbar machen.
   const startWunsch = tab === "fallanalyse" && params.get("start") === "1";
   const mobil = useIsMobile();
@@ -60,7 +62,7 @@ export default function KiStudio() {
           className="sm:shrink-0"
           full={mobil}
           value={tab}
-          onChange={(t) => setze({ tab: t === "fallanalyse" ? null : t, start: null })}
+          onChange={(t) => setze({ tab: t === "fallanalyse" ? null : t, start: null, dok: null })}
           options={[
             { value: "fallanalyse", label: "Fallanalyse", icon: mobil ? undefined : <BrainCircuit className="size-4" /> },
             { value: "dokument", label: mobil ? "Dokument" : "Dokument-Analyse", icon: mobil ? undefined : <FileScan className="size-4" /> },
@@ -77,7 +79,7 @@ export default function KiStudio() {
       <AnimatePresence mode="wait" initial={false}>
         <motion.div key={tab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ type: "spring", stiffness: 420, damping: 36 }} className="min-w-0">
           {tab === "fallanalyse" && <FallanalyseTab akteId={akteParam} onAkte={(id) => setze({ akte: id, start: null })} autoStart={startWunsch} onAutoStart={() => setze({ start: null })} />}
-          {tab === "dokument" && <DokumentAnalyseTab akteParam={akteParam} />}
+          {tab === "dokument" && <DokumentAnalyseTab akteParam={akteParam} dokParam={dokParam} />}
           {tab === "schriftsatz" && <SchriftsatzTab akteParam={akteParam} onAkte={(id) => setze({ akte: id })} />}
         </motion.div>
       </AnimatePresence>

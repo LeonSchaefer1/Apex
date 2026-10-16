@@ -108,7 +108,7 @@ export function GepruefteUpdates() {
               );
             })}
           </ol>
-          <p className="mt-5 text-[11.5px] text-fg-4">Versionsangaben und Testzahlen sind in dieser Demo Beispielwerte.</p>
+          <p className="mt-5 text-[12.5px] text-fg-3">Versionsangaben und Testzahlen sind in dieser Demo Beispielwerte.</p>
         </Card>
 
         <div className="flex min-w-0 flex-col gap-4">

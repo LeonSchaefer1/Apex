@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { BookMarked, CalendarClock, CalendarPlus, ChevronRight, FileText, Globe, Hourglass, Library, NotebookPen, PenLine, ReceiptEuro, Send, StickyNote } from "lucide-react";
+import { BookMarked, CalendarClock, CalendarPlus, ChevronRight, Eye, FileText, Globe, Hourglass, Library, NotebookPen, PenLine, ReceiptEuro, Send, StickyNote } from "lucide-react";
 import type { Akte } from "@/core/types";
 import { istKritisch, zaehltAlsFrist } from "@/core/fristenLage";
 import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
@@ -14,6 +14,8 @@ import { Avatar, Button, Card, CardHeader, Chip, Switch, Textarea } from "@/comp
 import { cn } from "@/lib/cn";
 import { DOK_ART_LABEL, FRIST_TYP_LABEL, FristChip, beruehreAkte, schlagwortAnzeige, useKontaktMap, useTeam } from "./helfer";
 import { DokIcon } from "./TabDokumente";
+import { DiktatKnopf } from "./Diktat";
+import { useMandantenportal } from "./Mandantenportal";
 
 export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onTab: (t: string) => void; onDok: (id: string) => void; onFrist: () => void }) {
   const nav = useNavigate();
@@ -29,6 +31,9 @@ export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onT
   const [bearbeite, setBearbeite] = useState(false);
   const [sachverhalt, setSachverhalt] = useState(akte.beschreibung);
   const mandant = kontakte.get(akte.mandantId);
+  const portalAktionen = useMandantenportal(akte);
+  // Aktenkonto-Kennzahl nur für Rollen mit Zugriff (Auszubildende sehen das Aktenkonto nicht)
+  const mitAktenkonto = user.rolle !== "azubi";
 
   const offen = useMemo(() => fristen.filter((f) => f.akteId === akte.id && f.status === "offen" && f.typ !== "vorfrist").sort((a, b) => a.datum.localeCompare(b.datum)), [fristen, akte.id]);
   const doks = useMemo(() => dokumente.filter((d) => d.akteId === akte.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [dokumente, akte.id]);
@@ -55,18 +60,15 @@ export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onT
     toast("Sachverhalt aktualisiert", { ton: "erfolg" });
   };
 
-  const portal = (an: boolean) => {
-    useData.getState().patch("akten", akte.id, { mandantenportal: an, updatedAt: nowLocal() });
-    useData.getState().log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Mandantenportal ${an ? "freigeschaltet" : "gesperrt"} – ${akte.aktenzeichen}` });
-    toast(an ? "Mandantenportal freigeschaltet" : "Mandantenportal gesperrt", { ton: "erfolg" });
-  };
+  // Freischalten nur nach Rückfrage (Empfängeradresse, sichtbare Inhalte), Sperren sofort – beides protokolliert
+  const portal = (an: boolean) => (an ? portalAktionen.freischalten() : portalAktionen.sperren());
 
   const kennzahlen = [
     // gezählt wie überall (fristenLage): nur Notfristen und Fristen – Wiedervorlagen und Termine stehen in der Liste darunter
     { label: "Offene Fristen", wert: String(offen.filter(zaehltAlsFrist).length), icon: <CalendarClock className="size-4" />, on: () => onTab("fristen") },
     { label: "Dokumente", wert: String(doks.length), icon: <FileText className="size-4" />, on: () => onTab("dokumente") },
     { label: "Erfasste Zeit", wert: `${(minuten / 60).toLocaleString("de-DE", { maximumFractionDigits: 1 })} Std.`, icon: <Hourglass className="size-4" />, on: undefined },
-    { label: "Honorar offen", wert: fmtEUR(honorarOffen), icon: <ReceiptEuro className="size-4" />, on: () => onTab("aktenkonto") },
+    ...(mitAktenkonto ? [{ label: "Honorar offen", wert: fmtEUR(honorarOffen), icon: <ReceiptEuro className="size-4" />, on: () => onTab("aktenkonto") }] : []),
   ];
 
   return (
@@ -85,7 +87,7 @@ export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onT
           >
             <span className="grid grid-cols-1 size-9 shrink-0 place-items-center rounded-[11px] bg-ink-soft text-ink">{k.icon}</span>
             <span className="min-w-0">
-              <span className="block truncate text-[12px] text-fg-3">{k.label}</span>
+              <span className="block text-[12.5px] text-fg-3">{k.label}</span>
               <span className="num block truncate text-[16px] font-semibold tracking-[-0.02em]">{k.wert}</span>
             </span>
           </motion.button>
@@ -155,12 +157,12 @@ export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onT
                     <button type="button" onClick={() => onDok(d.id)} className="flex w-full items-center gap-3 rounded-[14px] px-2 py-2 text-left transition-colors hover:bg-ink-softer">
                       <DokIcon d={d} size={34} />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13.5px] font-medium">{d.name}</span>
-                        <span className="block truncate text-[12px] text-fg-3">
+                        <span className="block break-words text-[13.5px] font-medium">{d.name}</span>
+                        <span className="block text-[12.5px] text-fg-3">
                           {DOK_ART_LABEL[d.art]} · {d.ordner} · {relTime(d.createdAt)}
                         </span>
                       </span>
-                      <ChevronRight className="size-4 shrink-0 text-fg-4" />
+                      <ChevronRight className="size-4 shrink-0 text-fg-3" />
                     </button>
                   </li>
                 ))}
@@ -181,7 +183,8 @@ export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onT
                   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) speichereNotiz();
                 }}
               />
-              <div className="flex justify-end">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <DiktatKnopf onText={(t) => setNotiz((v) => (v.trim() ? `${v.trim()} ${t}` : t))} />
                 <Button size="sm" variant="primary" disabled={!notiz.trim()} onClick={speichereNotiz}>
                   Notiz speichern
                 </Button>
@@ -193,7 +196,7 @@ export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onT
                   const u = byId.get(n.userId);
                   return (
                     <motion.li key={n.id} layout initial={{ opacity: 0, y: -8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: 460, damping: 34 }} className="rounded-[14px] bg-ink-softer p-3">
-                      <div className="flex items-center gap-2 text-[12px] text-fg-3">
+                      <div className="flex items-center gap-2 text-[12.5px] text-fg-3">
                         {u && <Avatar initialen={u.initialen} farbe={u.farbe} size={20} />}
                         <span className="font-medium text-fg-2">{u?.name ?? "Unbekannt"}</span>
                         <span>· {relTime(n.zeit)}</span>
@@ -203,7 +206,7 @@ export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onT
                   );
                 })}
               </AnimatePresence>
-              {notizen.length === 0 && <li className="text-[12.5px] text-fg-4">Noch keine Notizen.</li>}
+              {notizen.length === 0 && <li className="text-[12.5px] text-fg-3">Noch keine Notizen.</li>}
             </ul>
           </Card>
         </div>
@@ -228,8 +231,8 @@ export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onT
                     <button type="button" onClick={() => onTab("fristen")} className="flex w-full items-start gap-3 rounded-[14px] px-2 py-2 text-left transition-colors hover:bg-ink-softer">
                       <span className={cn("mt-1 size-2 shrink-0 rounded-full", istKritisch(f) ? "bg-seal" : f.typ === "termin" ? "bg-ink" : "bg-[var(--line-strong)]")} />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13.5px] font-medium">{f.titel}</span>
-                        <span className="block truncate text-[12px] text-fg-3">
+                        <span className="block break-words text-[13.5px] font-medium">{f.titel}</span>
+                        <span className="block text-[12.5px] text-fg-3">
                           {FRIST_TYP_LABEL[f.typ]} · {fmtDateWd(f.datum)}
                           {f.uhrzeit ? `, ${f.uhrzeit} Uhr` : ""}
                         </span>
@@ -260,10 +263,14 @@ export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onT
                 : `Schalten Sie das Portal frei, damit ${mandant?.name ?? "der Mandant"} den Stand jederzeit selbst einsehen und Unterlagen sicher hochladen kann.`}
             </p>
             {akte.mandantenportal && mandant?.email && (
-              <div className="mt-3 flex items-center gap-2 rounded-[12px] bg-green-soft px-3 py-2 text-[12.5px] text-green">
-                <Send className="size-3.5" /> Zugang an {mandant.email}
+              <div className="mt-3 flex items-center gap-2 break-all rounded-[12px] bg-green-soft px-3 py-2 text-[12.5px] text-green">
+                <Send className="size-3.5 shrink-0" /> Zugang an {mandant.email}
               </div>
             )}
+            <Button size="sm" variant="ghost" icon={<Eye className="size-4" />} className="mt-3" onClick={portalAktionen.ansehen}>
+              Als Mandant ansehen
+            </Button>
+            {portalAktionen.dialoge}
           </Card>
 
           <Card>
@@ -282,7 +289,7 @@ export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onT
                     <div className="flex flex-wrap items-center gap-1.5">
                       <Chip tone="ink">{e.gericht}</Chip>
                       <span className="mono text-[12px] text-fg-2">{e.az}</span>
-                      <span className="text-[12px] text-fg-4">· {fmtDate(e.datum)}</span>
+                      <span className="text-[12.5px] text-fg-3">· {fmtDate(e.datum)}</span>
                     </div>
                     <div className="mt-1.5 text-[13.5px] font-semibold">{e.titel}</div>
                     <p className="mt-1 line-clamp-3 text-[12.5px] leading-relaxed text-fg-2">{e.leitsatz}</p>

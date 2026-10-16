@@ -27,7 +27,7 @@ export function FeiertageInfo({ land: start }: { land: Bundesland }) {
             Feiertage {jahr} · {bundeslandName(land)}
           </span>
           <span className="block text-[12.5px] text-fg-3">
-            {liste.length} Feiertage{regional ? `, davon ${regional} nur regional` : ""} – Grundlage für die Fristverschiebung nach § 222 Abs. 2 ZPO
+            {liste.length} Feiertage{regional ? `, davon ${regional} nur regional` : ""} – maßgeblich sind die Feiertage am Gerichtsort, nicht am Kanzleisitz (§ 222 Abs. 2 ZPO)
           </span>
         </span>
         <ChevronDown className={cn("size-5 shrink-0 text-fg-3 transition-transform duration-300", offen && "rotate-180")} />
@@ -84,6 +84,7 @@ export function FeiertageInfo({ land: start }: { land: Bundesland }) {
               <div className="mt-4 flex gap-2.5 rounded-[14px] bg-amber-soft p-3.5 text-[12.5px] leading-relaxed text-fg-2">
                 <Info className="mt-0.5 size-4 shrink-0 text-amber" />
                 <span>
+                  <strong className="font-semibold text-fg">Gerichtsort statt Kanzleisitz.</strong> Ein Feiertag nur am Kanzleisitz (z. B. Allerheiligen in Nordrhein-Westfalen bei einem Gericht in Hessen) verlängert die Frist nicht – der Fristenrechner weist im Rechenweg darauf hin.{" "}
                   <strong className="font-semibold text-fg">Regionale Feiertage: AnwaltApex verlängert vorsorglich nicht.</strong> Maßgeblich sind die Feiertage am Ort des Gerichts bzw. der Behörde, bei der die Frist zu wahren ist
                   (§ 222 Abs. 2 ZPO). Gilt ein nur regionaler Feiertag dort (z. B. Mariä Himmelfahrt in München), endet die Frist rechtlich erst am nächsten Werktag – AnwaltApex notiert trotzdem den früheren Tag als
                   sichere Seite und weist bei der Berechnung darauf hin.

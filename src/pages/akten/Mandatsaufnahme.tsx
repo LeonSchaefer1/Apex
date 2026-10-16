@@ -1,17 +1,21 @@
 // Mandatsaufnahme: neue Akte in vier Schritten – inkl. automatischem Mandatsaufnahme-Paket.
-import { useEffect, useMemo, useState } from "react";
+// Kollisionsprüfung mit verbindlicher Entscheidung (§ 43a Abs. 4 BRAO, § 3 BORA), Entwurf in sessionStorage,
+// bei Kündigungen Klagefrist (§ 4 S. 1 KSchG) und Gegenstandswert-Vorschlag (§ 42 Abs. 2 S. 1 GKG).
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { AlertTriangle, ArrowLeft, ArrowRight, Check, CheckCircle2, FilePlus2, FolderOpen, FolderPlus, Inbox, Info, ShieldCheck, Sparkles, Zap } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, Ban, CalendarClock, Check, CheckCircle2, FilePlus2, FolderOpen, FolderPlus, History, Inbox, Info, ShieldCheck, Sparkles, UserCheck, Zap } from "lucide-react";
 import { Link } from "react-router";
 import type { Akte, Dokument, Frist, Kontakt, Nachricht, Sachgebiet } from "@/core/types";
-import { fmtDate, fmtDateWd, fmtEUR, nowLocal, today, uid } from "@/core/dates";
+import { fmtDate, fmtDateWd, fmtEUR, fmtTime, nowLocal, today, uid } from "@/core/dates";
+import { berechneNachRegel } from "@/core/fristen";
 import { VERSICHERUNGEN, VORNAMEN_M, VORNAMEN_W } from "@/core/seed/pools";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
+import { toast } from "@/store/ui";
 import { Button, Chip, Field, Input, Modal, Segmented, Select, Switch, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { KontaktAuswahl, KontaktFelder, emailUngueltig, entwurfGueltig, entwurfName, entwurfZuKontakt, leererEntwurf, type KontaktEntwurf } from "@/pages/kontakte/KontaktFormular";
-import { aktenVonKontakt, findeKontaktNachName, istOrganisationsName, KontaktAvatar } from "@/pages/kontakte/kontaktHelfer";
+import { DUBLETTE_GRUND, aktenVonKontakt, findeDublette, findeKontaktNachName, istOrganisationsName, KontaktAvatar } from "@/pages/kontakte/kontaktHelfer";
 import { SACHGEBIETE, naechstesAktenzeichen, useTeam, werktagIn } from "./helfer";
 
 const SCHRITTE = ["Mandant", "Sache", "Rechtsschutz", "Zusammenfassung"] as const;
@@ -41,6 +45,72 @@ interface Rsv {
   nummer: string;
   schadennummer: string;
   selbstbeteiligung: string;
+}
+
+/** Kündigungsschutz: Zugang der Kündigung und Bruttomonatsentgelt (nur Arbeitsrecht). */
+interface Kschg {
+  zugang: string;
+  entgelt: string;
+}
+
+/** Entscheidung über Kollisionstreffer – gilt nur für die Treffer, für die sie getroffen wurde (`fuer`). */
+interface Kollision {
+  entscheidung: "" | "uebernommen" | "abgelehnt";
+  vermerk: string;
+  fuer: string;
+}
+
+/** Entwurf der Mandatsaufnahme – bleibt bis zum Abschluss in sessionStorage. */
+interface Entwurf {
+  gespeichert: string;
+  nachrichtId: string | null;
+  schritt: number;
+  modus: "bestehend" | "neu";
+  mandantId?: string;
+  entwurf: KontaktEntwurf;
+  sache: Sache;
+  rsv: Rsv;
+  portalWahl: boolean | null;
+  kschg: Kschg;
+  kollision: Kollision;
+}
+
+const ENTWURF_KEY = "apex.mandatsaufnahme.entwurf";
+function ladeEntwurf(): Entwurf | null {
+  try {
+    const raw = sessionStorage.getItem(ENTWURF_KEY);
+    if (!raw) return null;
+    const e = JSON.parse(raw) as Entwurf;
+    return e && typeof e.schritt === "number" && e.sache && e.entwurf ? e : null;
+  } catch {
+    return null;
+  }
+}
+function speichereEntwurf(e: Entwurf) {
+  try {
+    sessionStorage.setItem(ENTWURF_KEY, JSON.stringify(e));
+  } catch {
+    /* Speicher nicht verfügbar – der Entwurf lebt dann nur im Dialog */
+  }
+}
+function loescheEntwurf() {
+  try {
+    sessionStorage.removeItem(ENTWURF_KEY);
+  } catch {
+    /* ignorieren */
+  }
+}
+
+/** Gegenstandswert der Kündigungsschutzklage: Vierteljahresentgelt (§ 42 Abs. 2 S. 1 GKG). */
+export function vierteljahresentgelt(bruttomonat: number): number {
+  return Math.round(bruttomonat * 3 * 100) / 100;
+}
+
+const betragText = (n: number) => n.toLocaleString("de-DE", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+
+/** Escape in Feldern mit Vorschlagsliste schließt nur die Liste – nicht den Dialog. */
+function escapeNurListe(e: ReactKeyboardEvent<HTMLInputElement>) {
+  if (e.key === "Escape") e.stopPropagation();
 }
 
 export function parseEuro(s: string): number {
@@ -117,14 +187,23 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
   const standardBearbeiter = anwaelte.some((a) => a.id === user.id) ? user.id : anwaelte[0]?.id ?? user.id;
   const [sache, setSache] = useState<Sache>({ titel: "", titelManuell: false, thema: "", sachgebiet: "Arbeitsrecht", gegner: "", wert: "", beschreibung: "", prioritaet: "normal", bearbeiterId: standardBearbeiter });
   const [rsv, setRsv] = useState<Rsv>({ aktiv: false, versicherung: "", nummer: "", schadennummer: "", selbstbeteiligung: "" });
-  const [portal, setPortal] = useState(true);
+  // Mandantenportal: null = automatisch (an, sobald eine E-Mail-Adresse erfasst ist)
+  const [portalWahl, setPortalWahl] = useState<boolean | null>(null);
+  const [kschg, setKschg] = useState<Kschg>({ zugang: "", entgelt: "" });
+  const [kollision, setKollision] = useState<Kollision>({ entscheidung: "", vermerk: "", fuer: "" });
   const [erfolg, setErfolg] = useState<{ akte: Akte; schritte: { text: string; sub?: string }[]; minuten: number } | null>(null);
   const [quelle, setQuelle] = useState<Nachricht | undefined>();
   // Anfrage ist schon einer Akte zugeordnet (z. B. nach Browser-Zurück) → keine zweite Akte aus derselben Nachricht
   const [bereits, setBereits] = useState<{ nachricht: Nachricht; akte?: Akte } | undefined>();
   const [zeigeFehler, setZeigeFehler] = useState(false);
+  // Gespeicherter Entwurf aus einer früheren Sitzung – „Entwurf fortsetzen?“
+  const [offenerEntwurf, setOffenerEntwurf] = useState<Entwurf | null>(null);
+  const [verwerfenFrage, setVerwerfenFrage] = useState(false);
+  const fragtRef = useRef(false);
+  const startJson = useRef<string | null>(null);
+  const [startMarke, setStartMarke] = useState(0);
 
-  // Beim Öffnen frisch beginnen
+  // Beim Öffnen frisch beginnen – ein offener Entwurf wird angeboten
   useEffect(() => {
     if (!open) return;
     setSchritt(0);
@@ -133,19 +212,27 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
     setEntwurf(leererEntwurf());
     setSache({ titel: "", titelManuell: false, thema: "", sachgebiet: (tenant.schwerpunkte[0] as Sachgebiet) ?? "Arbeitsrecht", gegner: "", wert: "", beschreibung: "", prioritaet: "normal", bearbeiterId: standardBearbeiter });
     setRsv({ aktiv: false, versicherung: "", nummer: "", schadennummer: "", selbstbeteiligung: "" });
-    setPortal(true);
+    setPortalWahl(null);
+    setKschg({ zugang: "", entgelt: "" });
+    setKollision({ entscheidung: "", vermerk: "", fuer: "" });
     setErfolg(null);
     setQuelle(undefined);
     setBereits(undefined);
     setZeigeFehler(false);
+    setVerwerfenFrage(false);
+    fragtRef.current = false;
+    startJson.current = null;
+    setStartMarke((m) => m + 1);
 
     // Aus dem Posteingang: /akten?neu=1&nachricht=<id> – Anfrage übernehmen
     const st = useData.getState().data;
     const n = nachrichtId ? st.nachrichten.find((x) => x.id === nachrichtId) : undefined;
     if (n?.akteId) {
+      setOffenerEntwurf(null);
       setBereits({ nachricht: n, akte: st.akten.find((a) => a.id === n.akteId) });
       return;
     }
+    setOffenerEntwurf(ladeEntwurf());
     if (n) {
       setQuelle(n);
       const adresse = n.vonAdresse?.trim().toLowerCase();
@@ -177,6 +264,73 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, nachrichtId]);
 
+  // Ausgangszustand merken – „Eingaben vorhanden?“ vergleicht dagegen
+  const formJson = JSON.stringify({ modus, mandantId: mandantId ?? null, entwurf, sache, rsv, portalWahl, kschg, kollision });
+  useEffect(() => {
+    if (startMarke) startJson.current = formJson;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startMarke]);
+  const geaendert = startJson.current !== null && formJson !== startJson.current;
+
+  // Entwurf bis zum Abschluss in sessionStorage halten
+  useEffect(() => {
+    if (!open || erfolg || bereits || offenerEntwurf || startJson.current === null) return;
+    if (formJson === startJson.current) return;
+    speichereEntwurf({ gespeichert: nowLocal(), nachrichtId: quelle?.id ?? null, schritt, modus, mandantId, entwurf, sache, rsv, portalWahl, kschg, kollision });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formJson, schritt, open, erfolg, bereits, offenerEntwurf]);
+
+  const entwurfFortsetzen = () => {
+    const e = offenerEntwurf;
+    if (!e) return;
+    const st = useData.getState().data;
+    const n = e.nachrichtId ? st.nachrichten.find((x) => x.id === e.nachrichtId && !x.akteId) : undefined;
+    setQuelle(n);
+    setModus(e.modus);
+    setMandantId(e.mandantId && st.kontakte.some((k) => k.id === e.mandantId) ? e.mandantId : undefined);
+    setEntwurf(e.entwurf);
+    setSache({ ...e.sache, bearbeiterId: anwaelte.some((a) => a.id === e.sache.bearbeiterId) ? e.sache.bearbeiterId : standardBearbeiter });
+    setRsv(e.rsv);
+    setPortalWahl(e.portalWahl ?? null);
+    setKschg(e.kschg ?? { zugang: "", entgelt: "" });
+    setKollision(e.kollision ?? { entscheidung: "", vermerk: "", fuer: "" });
+    setRichtung(1);
+    setSchritt(Math.min(3, Math.max(0, e.schritt)));
+    setOffenerEntwurf(null);
+  };
+  const neuBeginnen = () => {
+    loescheEntwurf();
+    setOffenerEntwurf(null);
+  };
+
+  // Schließen mit Eingaben → Rückfrage „Weiter bearbeiten / Eingaben verwerfen“ (Escape, X, Abbrechen, Klick daneben)
+  const schliessen = useCallback(() => {
+    if (fragtRef.current) return;
+    if (erfolg || bereits || offenerEntwurf || !geaendert) {
+      onClose();
+      return;
+    }
+    fragtRef.current = true;
+    setVerwerfenFrage(true);
+  }, [erfolg, bereits, offenerEntwurf, geaendert, onClose]);
+  const weiterBearbeiten = () => {
+    setVerwerfenFrage(false);
+    // erst nach dem Tastendruck freigeben – sonst öffnet dasselbe Escape die Rückfrage erneut
+    window.setTimeout(() => (fragtRef.current = false), 0);
+  };
+  const verwerfen = () => {
+    loescheEntwurf();
+    setVerwerfenFrage(false);
+    window.setTimeout(() => (fragtRef.current = false), 0);
+    onClose();
+  };
+  const entwurfBehalten = () => {
+    setVerwerfenFrage(false);
+    window.setTimeout(() => (fragtRef.current = false), 0);
+    onClose();
+    toast("Entwurf behalten", { text: "Beim nächsten Öffnen der Mandatsaufnahme können Sie ihn fortsetzen.", ton: "info" });
+  };
+
   const mandant = modus === "bestehend" ? kontakte.find((k) => k.id === mandantId) : undefined;
   const mandantName = modus === "bestehend" ? mandant?.name ?? "" : entwurfName(entwurf);
   const mandantKurz = modus === "bestehend" ? (mandant ? kurzName(mandant) : "") : entwurf.typ === "person" ? entwurf.nachname.trim() : entwurf.firma.trim();
@@ -191,14 +345,54 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
   const az = useMemo(() => naechstesAktenzeichen(akten), [akten]);
   const bearbeiter = team.find((u) => u.id === sache.bearbeiterId);
 
-  // Interessenkonflikt-Hinweise
+  // Dublette: Der neue Mandant existiert schon als Kontakt (Name ohne Rechtsform, E-Mail oder Telefon)
+  const dublette = useMemo(
+    () => (modus === "neu" && (entwurfName(entwurf) || entwurf.email || entwurf.telefon) ? findeDublette(kontakte, { name: entwurfName(entwurf), email: entwurf.email, telefon: entwurf.telefon }) : undefined),
+    [modus, entwurf, kontakte],
+  );
+  const bestehendenVerwenden = (k: Kontakt) => {
+    setModus("bestehend");
+    setMandantId(k.id);
+    toast("Bestehender Kontakt übernommen", { text: `${k.name} wird als Mandant verknüpft – keine Dublette.`, ton: "erfolg" });
+  };
+
+  // Kollisionsprüfung (§ 43a Abs. 4 BRAO): Mandant ist anderswo Gegner, Gegner ist anderswo Mandant
   const mandantKonflikt = useMemo(() => {
-    const k = modus === "bestehend" ? mandant : findeKontaktNachName(kontakte, entwurfName(entwurf));
+    const k = modus === "bestehend" ? mandant : dublette?.grund === "name" ? dublette.kontakt : findeKontaktNachName(kontakte, entwurfName(entwurf));
     if (!k) return [];
     return aktenVonKontakt(k, akten).filter((x) => (x.rolle === "Gegner" || x.rolle === "Schuldner") && x.akte.status !== "abgeschlossen");
-  }, [modus, mandant, entwurf, kontakte, akten]);
-  const gegnerKontakt = findeKontaktNachName(kontakte, sache.gegner);
+  }, [modus, mandant, dublette, entwurf, kontakte, akten]);
+  const gegnerDublette = useMemo(() => (sache.gegner.trim() ? findeDublette(kontakte, { name: sache.gegner }) : undefined), [kontakte, sache.gegner]);
+  const gegnerKontakt = findeKontaktNachName(kontakte, sache.gegner) ?? (gegnerDublette?.grund === "name" ? gegnerDublette.kontakt : undefined);
   const gegnerKonflikt = useMemo(() => (gegnerKontakt ? aktenVonKontakt(gegnerKontakt, akten).filter((x) => x.rolle === "Mandant" && x.akte.status !== "abgeschlossen") : []), [gegnerKontakt, akten]);
+  const treffer = useMemo(
+    () => [
+      ...mandantKonflikt.map((x) => `${mandantName || "Mandant"}: ${x.rolle} in ${x.akte.aktenzeichen} ${x.akte.titel}`),
+      ...gegnerKonflikt.map((x) => `${gegnerKontakt?.name ?? sache.gegner.trim()}: Mandant in ${x.akte.aktenzeichen} ${x.akte.titel}`),
+    ],
+    [mandantKonflikt, gegnerKonflikt, mandantName, gegnerKontakt, sache.gegner],
+  );
+  const trefferKey = treffer.join("|");
+  const entscheidungGilt = !!kollision.entscheidung && kollision.fuer === trefferKey;
+  const entscheidung = entscheidungGilt ? kollision.entscheidung : "";
+
+  // Mandantenportal: ohne E-Mail-Adresse kein Zugang – dann standardmäßig aus
+  const mandantEmail = (modus === "bestehend" ? mandant?.email : emailUngueltig(entwurf.email) ? "" : entwurf.email)?.trim() ?? "";
+  const portal = !!mandantEmail && (portalWahl ?? true);
+
+  // Kündigungsschutz: Klagefrist (Fristenkern, Regel kschg_klage) und Gegenstandswert-Vorschlag 3 × Bruttomonatsentgelt
+  const arbeitsrecht = sache.sachgebiet === "Arbeitsrecht";
+  const zugangOk = /^\d{4}-\d{2}-\d{2}$/.test(kschg.zugang);
+  const klagefrist: ReturnType<typeof berechneNachRegel> | null = useMemo(() => {
+    if (!arbeitsrecht || !zugangOk) return null;
+    try {
+      return berechneNachRegel("kschg_klage", kschg.zugang, tenant.bundesland, undefined, { feiertagsOrt: "Kanzleisitz", kanzleiLand: tenant.bundesland });
+    } catch {
+      return null;
+    }
+  }, [arbeitsrecht, zugangOk, kschg.zugang, tenant.bundesland]);
+  const entgelt = kschg.entgelt.trim() ? parseEuro(kschg.entgelt) : 0;
+  const wertVorschlag = arbeitsrecht && entgelt > 0 ? vierteljahresentgelt(entgelt) : 0;
 
   const versicherungen = useMemo(() => [...new Set([...VERSICHERUNGEN, ...kontakte.filter((k) => k.rollen.includes("versicherung")).map((k) => k.name)])], [kontakte]);
 
@@ -221,9 +415,17 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
         ? "Bitte die Bearbeitung (Rechtsanwalt) wählen."
         : Number.isNaN(wert) || wert < 0
           ? "Bitte einen gültigen Gegenstandswert eintragen, z. B. 10.200 – oder das Feld leeren."
-          : undefined,
+          : arbeitsrecht && (Number.isNaN(entgelt) || entgelt < 0)
+            ? "Bitte ein gültiges Bruttomonatsentgelt eintragen, z. B. 3.800 – oder das Feld leeren."
+            : arbeitsrecht && kschg.zugang && !zugangOk
+              ? "Bitte das Datum des Zugangs der Kündigung vollständig eintragen – oder das Feld leeren."
+              : undefined,
     rsv.aktiv && !rsv.versicherung.trim() ? "Bitte die Rechtsschutzversicherung eintragen – oder den Schalter ausschalten, wenn keine besteht." : undefined,
-    undefined,
+    treffer.length && !entscheidung
+      ? "Bitte über den Kollisionstreffer entscheiden: „Mandat trotzdem übernehmen“ mit Begründung oder „Mandat ablehnen“."
+      : entscheidung === "uebernommen" && !kollision.vermerk.trim()
+        ? "Bitte begründen, warum kein widerstreitendes Interesse vorliegt – z. B. „anderer Lebenssachverhalt – kein widerstreitendes Interesse nach § 43a Abs. 4 BRAO, § 3 BORA“."
+        : undefined,
   ];
   const gueltig = fehler.map((f) => !f);
 
@@ -248,7 +450,24 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
     gehe(schritt + 1);
   };
 
+  // „Mandat ablehnen“: keine Akte, Protokolleintrag mit den Treffern (ohne Aktenbezug)
+  const ablehnen = () => {
+    const vermerk = kollision.vermerk.trim();
+    useData.getState().log({
+      akteur: "nutzer",
+      userId: user.id,
+      text: `Mandat abgelehnt – Interessenkollision (§ 43a Abs. 4 BRAO): ${mandantName || "Mandant"}${sache.gegner.trim() ? ` ./. ${sache.gegner.trim()}` : ""} · Treffer: ${treffer.join("; ")}${vermerk ? ` · Vermerk: ${vermerk}` : ""} · keine Akte angelegt`,
+    });
+    loescheEntwurf();
+    onClose();
+    toast("Mandat abgelehnt – keine Akte angelegt", { text: "Die Entscheidung mit den Kollisionstreffern steht im Protokoll.", ton: "info" });
+  };
+
   const anlegen = () => {
+    if (treffer.length && entscheidung === "abgelehnt") {
+      ablehnen();
+      return;
+    }
     const erster = gueltig.findIndex((g) => !g);
     if (erster >= 0) {
       gehe(erster);
@@ -326,15 +545,28 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
       gegenstandswert: Number.isNaN(wert) ? 0 : wert,
       bearbeiterId: ra.id,
       sachbearbeiterId: refa?.id,
-      rsv: rsv.aktiv ? { versicherung: vName, versicherungsnummer: rsv.nummer.trim(), schadennummer: rsv.schadennummer.trim() || undefined, deckung: "angefragt", selbstbeteiligung: sb !== undefined && !Number.isNaN(sb) ? sb : undefined } : undefined,
+      rsv: rsv.aktiv ? { versicherung: vName, versicherungsnummer: rsv.nummer.trim(), schadennummer: rsv.schadennummer.trim() || undefined, deckung: "offen", selbstbeteiligung: sb !== undefined && !Number.isNaN(sb) ? sb : undefined } : undefined,
       beschreibung: sache.beschreibung.trim(),
       schlagworte: [sache.sachgebiet.toLowerCase()],
       prioritaet: sache.prioritaet,
       createdAt: jetzt,
       updatedAt: jetzt,
       mandantenportal: portal,
+      kollisionspruefung: {
+        am: jetzt,
+        von: user.id,
+        treffer,
+        entscheidung: "uebernommen",
+        vermerk: treffer.length ? kollision.vermerk.trim() : `Keine Treffer – Mandant${gName ? " und Gegner" : ""} gegen den Aktenbestand geprüft.`,
+      },
     };
     st.upsert("akten", akte);
+
+    // Kollisionsprüfung: Vermerk als Aktennotiz und im Verlauf
+    const kollisionsText = treffer.length
+      ? `Kollisionsprüfung (§ 43a Abs. 4 BRAO, § 3 BORA): ${treffer.length} Treffer – ${treffer.join("; ")}. Entscheidung: Mandat trotzdem übernommen. Begründung: ${kollision.vermerk.trim()}`
+      : `Kollisionsprüfung (§ 43a Abs. 4 BRAO, § 3 BORA): keine Treffer – Mandant${gName ? " und Gegner" : ""} gegen den Aktenbestand geprüft.`;
+    st.upsert("notizen", { id: uid("no"), akteId: akte.id, userId: user.id, text: kollisionsText, zeit: jetzt });
 
     // Arbeitssachen: Hinweis auf den Ausschluss der Kostenerstattung vor Abschluss der Vertretungsvereinbarung (§ 12a Abs. 1 S. 2 ArbGG)
     const arbeitssache = akte.sachgebiet === "Arbeitsrecht";
@@ -374,7 +606,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
     if (akte.rsv) {
       paket.push(
         dok({
-          name: `Deckungsanfrage ${akte.rsv.versicherung}`, art: "schriftsatz", ordner: "Korrespondenz", format: "docx",
+          name: `Deckungsanfrage ${akte.rsv.versicherung}`, art: "brief", ordner: "Korrespondenz", format: "docx",
           inhalt: `${akte.rsv.versicherung}\nSchadenabteilung\n\n${ort}, ${fmtDate(heute)}\n\nVersicherungsnehmer: ${m.name}\nVersicherungsnummer: ${akte.rsv.versicherungsnummer || "wird nachgereicht"}${akte.rsv.schadennummer ? `\nSchadennummer: ${akte.rsv.schadennummer}` : ""}\nUnser Zeichen: ${aktenzeichen}\n\nDeckungsanfrage – ${akte.titel}\n\nSehr geehrte Damen und Herren,\n\nwir zeigen an, dass uns Ihr Versicherungsnehmer mit der Wahrnehmung seiner rechtlichen Interessen beauftragt hat, und bitten um Erteilung der Deckungszusage für die außergerichtliche und gegebenenfalls gerichtliche Tätigkeit (${akte.sachgebiet}).\n\nSachverhalt:\n${akte.beschreibung || "Die ausführliche Sachverhaltsschilderung reichen wir kurzfristig nach."}${gName ? `\n\nGegner: ${gName}` : ""}\nGegenstandswert (vorläufig): ${fmtEUR(akte.gegenstandswert)}\n\nFür eine kurzfristige Bestätigung wären wir dankbar.\n\n${gruss}`,
         }),
       );
@@ -387,7 +619,30 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
     }
     for (const d of paket) st.upsert("dokumente", d);
 
+    // Kündigungsschutzklage: Klagefrist und Vorfrist automatisch – zur Vier-Augen-Kontrolle
+    let klage: Frist | undefined;
+    if (arbeitssache && klagefrist) {
+      klage = {
+        id: uid("f"), akteId: akte.id, titel: "Klagefrist Kündigungsschutzklage", typ: klagefrist.regel.typ, datum: klagefrist.ende, vorfrist: klagefrist.vorfrist,
+        regelKey: "kschg_klage", grundlage: klagefrist.regel.grundlage, ereignisDatum: kschg.zugang, rechenweg: klagefrist.rechenweg, status: "offen",
+        verantwortlichId: ra.id, quelle: "automatisch", createdAt: jetzt,
+        notiz: `Automatisch aus der Mandatsaufnahme (Zugang der Kündigung am ${fmtDate(kschg.zugang)}) – bitte im Vier-Augen-Prinzip kontrollieren.`,
+      };
+      st.upsert("fristen", klage);
+      st.upsert("fristen", {
+        id: uid("f"), akteId: akte.id, titel: `Vorfrist: ${klage.titel}`, typ: "vorfrist", datum: klagefrist.vorfrist, bezugId: klage.id, status: "offen",
+        verantwortlichId: refa?.id ?? ra.id, quelle: "automatisch", createdAt: jetzt,
+      });
+    }
+
     st.log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Akte angelegt – ${aktenzeichen} ${akte.titel}` });
+    st.log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `${kollisionsText} – ${aktenzeichen}` });
+    if (klage && klagefrist) {
+      st.log({ akteur: "automation", automationKey: "vorfristen", akteId: akte.id, minutenGespart: 4, text: `Klagefrist (§ 4 S. 1 KSchG) bis ${fmtDate(klagefrist.ende)} und Vorfrist am ${fmtDate(klagefrist.vorfrist)} eingetragen – zur Vier-Augen-Kontrolle – ${aktenzeichen}` });
+    }
+    if (portal && mandantEmail) {
+      st.log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Mandantenportal freigeschaltet für ${m.name} (Zugangs-E-Mail an ${mandantEmail}) – ${aktenzeichen}` });
+    }
     st.log({
       akteur: "automation", automationKey: "mandatsaufnahme", akteId: akte.id, minutenGespart: 25,
       text: `Mandatsaufnahme-Paket (Vollmacht, Mandatsbestätigung, Datenschutzhinweise, Hinweis § 49b Abs. 5 BRAO${arbeitssache ? ", Hinweis § 12a ArbGG" : ""}) erstellt – ${aktenzeichen}`,
@@ -429,9 +684,12 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
               { text: `Wiedervorlage am ${fmtDateWd(wiedervorlage)}`, sub: "Deckungszusage nachhalten" },
             ]
           : []),
+        ...(klage && klagefrist ? [{ text: `Klagefrist bis ${fmtDateWd(klagefrist.ende)} eingetragen`, sub: `Vorfrist ${fmtDateWd(klagefrist.vorfrist)} · zur Vier-Augen-Kontrolle` }] : []),
+        { text: treffer.length ? "Kollisionsprüfung mit Begründung dokumentiert" : "Kollisionsprüfung ohne Treffer dokumentiert", sub: "Aktennotiz „Kollisionsprüfung“ und Verlauf" },
         ...(quelle ? [{ text: "Anfrage aus dem Posteingang zugeordnet", sub: `„${quelle.betreff}“ – abgelegt in „Korrespondenz“` }] : []),
       ],
     });
+    loescheEntwurf();
   };
 
   // Nach Erfolg automatisch in die Akte wechseln
@@ -459,9 +717,21 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
         </Button>
       )}
     </>
-  ) : (
+  ) : offenerEntwurf ? (
     <>
       <Button variant="ghost" onClick={onClose} className="mr-auto">
+        Später
+      </Button>
+      <Button variant="secondary" onClick={neuBeginnen}>
+        Neu beginnen
+      </Button>
+      <Button variant="primary" icon={<History className="size-4" />} onClick={entwurfFortsetzen} data-autofocus>
+        Entwurf fortsetzen
+      </Button>
+    </>
+  ) : (
+    <>
+      <Button variant="ghost" onClick={schliessen} className="mr-auto">
         Abbrechen
       </Button>
       {schritt > 0 && (
@@ -473,8 +743,12 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
         <Button variant="primary" iconRight={<ArrowRight className="size-4" />} onClick={weiter} aria-describedby={zeigeFehler && fehler[schritt] ? "ma-fehler" : undefined}>
           {schritt === 2 && !rsv.aktiv ? "Ohne Rechtsschutz weiter" : "Weiter"}
         </Button>
+      ) : treffer.length && entscheidung === "abgelehnt" ? (
+        <Button variant="danger" icon={<Ban className="size-4" />} onClick={anlegen}>
+          Mandat ablehnen
+        </Button>
       ) : (
-        <Button variant="primary" icon={<FolderPlus className="size-4" />} onClick={anlegen}>
+        <Button variant="primary" icon={<FolderPlus className="size-4" />} onClick={anlegen} aria-describedby={zeigeFehler && fehler[3] ? "ma-fehler" : undefined}>
           Akte anlegen
         </Button>
       )}
@@ -482,30 +756,34 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
   );
 
   return (
+    <>
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={schliessen}
       size="lg"
       icon={erfolg ? <CheckCircle2 className="size-[18px]" /> : <FolderPlus className="size-[18px]" />}
-      title={erfolg ? "Akte angelegt" : "Mandatsaufnahme"}
-      subtitle={erfolg ? "Das Mandatsaufnahme-Paket wurde automatisch erstellt." : "Neue Akte in vier Schritten – Vollmacht, Mandatsbestätigung und Datenschutzhinweise erstellt AnwaltApex automatisch."}
+      title={erfolg ? "Akte angelegt" : offenerEntwurf ? "Entwurf fortsetzen?" : "Mandatsaufnahme"}
+      subtitle={erfolg ? "Das Mandatsaufnahme-Paket wurde automatisch erstellt." : offenerEntwurf ? "Es gibt eine nicht abgeschlossene Mandatsaufnahme." : "Neue Akte in vier Schritten – Vollmacht, Mandatsbestätigung und Datenschutzhinweise erstellt AnwaltApex automatisch."}
       footer={footer}
     >
       {erfolg ? (
         <ErfolgsAnsicht erfolg={erfolg} />
       ) : bereits ? (
         <BereitsZugeordnet nachricht={bereits.nachricht} akte={bereits.akte} onOeffnen={onClose} />
+      ) : offenerEntwurf ? (
+        <EntwurfFrage e={offenerEntwurf} kontakte={kontakte} />
       ) : (
         <>
           {quelle && (
             <div className="mb-4 flex items-center gap-3 rounded-[16px] bg-violet-soft px-3.5 py-2.5 text-[12.5px]">
               <Inbox className="size-4 shrink-0 text-violet" />
-              <span className="min-w-0 flex-1 truncate text-fg-2">
+              <span className="min-w-0 flex-1 break-words text-fg-2">
                 Übernommen aus dem Posteingang: <span className="font-semibold text-fg">{quelle.von}</span> – „{quelle.betreff}“
               </span>
             </div>
           )}
           <Schrittleiste schritt={schritt} gueltig={gueltig} onGehe={gehe} />
+          {schritt < 3 && <KonfliktHinweis treffer={treffer} />}
           <div className="relative mt-5 min-h-[340px]">
             <AnimatePresence mode="popLayout" custom={richtung} initial={false}>
               <motion.div
@@ -532,14 +810,29 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                       <KontaktAuswahl id="ma-mandant" value={mandantId} onSelect={(k) => setMandantId(k.id)} bevorzugt={["mandant"]} hoehe={260} />
                     ) : (
                       <>
+                        {dublette && (
+                          <div className="flex flex-wrap items-start gap-3 rounded-[16px] bg-amber-soft p-3.5 text-[13px]" role="status">
+                            <KontaktAvatar k={dublette.kontakt} size={32} />
+                            <div className="min-w-[180px] flex-1">
+                              <div className="font-semibold text-fg">Kontakt besteht bereits</div>
+                              <div className="mt-0.5 text-fg-2">
+                                „{dublette.kontakt.name}“{dublette.kontakt.ort ? ` aus ${dublette.kontakt.ort}` : ""} – {DUBLETTE_GRUND[dublette.grund]}.
+                                {aktenVonKontakt(dublette.kontakt, akten).length > 0 &&
+                                  ` Beteiligt in ${aktenVonKontakt(dublette.kontakt, akten)
+                                    .slice(0, 2)
+                                    .map((x) => `${x.akte.aktenzeichen} (${x.rolle})`)
+                                    .join(", ")}.`}
+                              </div>
+                            </div>
+                            <Button size="sm" variant="secondary" icon={<UserCheck className="size-4" />} onClick={() => bestehendenVerwenden(dublette.kontakt)}>
+                              Bestehenden Kontakt verwenden
+                            </Button>
+                          </div>
+                        )}
                         <KontaktFelder idPrefix="ma-neu" value={entwurf} onChange={setEntwurf} />
                         <PflichtHinweis />
                       </>
                     )}
-                    <KonfliktHinweis
-                      treffer={mandantKonflikt.map((x) => `${x.akte.aktenzeichen} ${x.akte.titel}`)}
-                      text={`${mandantName || "Dieser Kontakt"} ist in folgenden Akten Gegner:`}
-                    />
                   </div>
                 )}
 
@@ -553,8 +846,12 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                           ))}
                         </Select>
                       </Field>
-                      <Field label="Gegner" htmlFor="ma-gegner" hint={sache.gegner.trim() ? (gegnerKontakt ? "Bestehender Kontakt wird verknüpft." : "Wird als neuer Kontakt angelegt.") : "Optional – z. B. Arbeitgeber, Vermieter, Versicherung."}>
-                        <Input id="ma-gegner" list="ma-gegner-liste" value={sache.gegner} onChange={(e) => setSache({ ...sache, gegner: e.target.value })} placeholder="Name oder Firma" autoComplete="off" />
+                      <Field
+                        label="Gegner"
+                        htmlFor="ma-gegner"
+                        hint={sache.gegner.trim() ? (gegnerKontakt ? `Bestehender Kontakt „${gegnerKontakt.name}“ wird verknüpft.` : "Wird als neuer Kontakt angelegt.") : "Optional – z. B. Arbeitgeber, Vermieter, Versicherung."}
+                      >
+                        <Input id="ma-gegner" list="ma-gegner-liste" value={sache.gegner} onChange={(e) => setSache({ ...sache, gegner: e.target.value })} onKeyDown={escapeNurListe} placeholder="Name oder Firma" autoComplete="off" />
                         <datalist id="ma-gegner-liste">
                           {kontakte.filter((k) => !k.rollen.includes("gericht")).slice(0, 300).map((k) => (
                             <option key={k.id} value={k.name} />
@@ -569,12 +866,11 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                     >
                       <Input id="ma-titel" value={titel} onChange={(e) => setSache({ ...sache, titel: e.target.value, titelManuell: true })} placeholder="z. B. Weber ./. Kröger Logistik GmbH" />
                     </Field>
-                    <KonfliktHinweis treffer={gegnerKonflikt.map((x) => `${x.akte.aktenzeichen} ${x.akte.titel}`)} text={`${sache.gegner.trim()} ist Mandant in:`} />
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <Field label="Gegenstandswert" htmlFor="ma-wert" hint={Number.isNaN(wert) ? <span className="text-seal">Bitte einen Betrag wie 10.200 oder 4860,50 eingeben.</span> : wert > 0 ? `${fmtEUR(wert)} – Grundlage der Gebühren nach RVG` : "Vorläufig, kann später angepasst werden."}>
                         <div className="relative">
                           <Input id="ma-wert" inputMode="decimal" value={sache.wert} onChange={(e) => setSache({ ...sache, wert: e.target.value })} placeholder="0" className="num !pr-9" />
-                          <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[13px] text-fg-4">€</span>
+                          <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[13px] text-fg-3">€</span>
                         </div>
                       </Field>
                       <Field label="Bearbeitung (Rechtsanwalt) *" htmlFor="ma-ra">
@@ -587,6 +883,25 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                         </Select>
                       </Field>
                     </div>
+                    {arbeitsrecht && (
+                      <div className="grid grid-cols-1 gap-3 rounded-[16px] bg-ink-softer p-3.5 shadow-[inset_0_0_0_1px_var(--line)]">
+                        <div className="flex items-center gap-2 text-[13px] font-semibold">
+                          <CalendarClock className="size-4 text-ink" /> Kündigung? Klagefrist und Gegenstandswert
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <Field label="Zugang der Kündigung" htmlFor="ma-zugang" hint={zugangOk ? `${fmtDateWd(kschg.zugang)} – Ereignis für die Klagefrist (§ 4 S. 1 KSchG)` : "Leer lassen, wenn es nicht um eine Kündigung geht."}>
+                            <Input id="ma-zugang" type="date" value={kschg.zugang} max={today()} onChange={(e) => setKschg({ ...kschg, zugang: e.target.value })} />
+                          </Field>
+                          <Field label="Bruttomonatsentgelt" htmlFor="ma-entgelt" hint={Number.isNaN(entgelt) ? <span className="text-seal">Bitte einen Betrag wie 3.800 eingeben.</span> : "Für den Gegenstandswert (§ 42 Abs. 2 S. 1 GKG)"}>
+                            <div className="relative">
+                              <Input id="ma-entgelt" inputMode="decimal" value={kschg.entgelt} onChange={(e) => setKschg({ ...kschg, entgelt: e.target.value })} placeholder="z. B. 3.800" className="num !pr-9" />
+                              <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[13px] text-fg-3">€</span>
+                            </div>
+                          </Field>
+                        </div>
+                        <KschgVorschau klagefrist={klagefrist} entgelt={entgelt} wertVorschlag={wertVorschlag} wert={wert} onUebernehmen={() => setSache({ ...sache, wert: betragText(wertVorschlag) })} />
+                      </div>
+                    )}
                     <Field label="Sachverhalt" htmlFor="ma-beschreibung">
                       <Textarea id="ma-beschreibung" rows={3} value={sache.beschreibung} onChange={(e) => setSache({ ...sache, beschreibung: e.target.value })} placeholder="Worum geht es? Was möchte der Mandant erreichen?" />
                     </Field>
@@ -609,21 +924,23 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                 {schritt === 2 && (
                   <div className="grid grid-cols-1 gap-4">
                     <div className="flex items-center gap-3 rounded-[16px] bg-ink-softer p-4 shadow-[inset_0_0_0_1px_var(--line)]">
-                      <span className="grid grid-cols-1 size-10 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">
-                        <ShieldCheck className="size-5" />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[14px] font-semibold">Mandant ist rechtsschutzversichert</div>
-                        <div className="text-[12.5px] text-fg-3">AnwaltApex erstellt dann automatisch die Deckungsanfrage und setzt eine Wiedervorlage in 7 Tagen.</div>
-                      </div>
-                      <Switch id="ma-rsv" checked={rsv.aktiv} onChange={(v) => setRsv({ ...rsv, aktiv: v })} label="Rechtsschutzversicherung vorhanden" />
+                      <label htmlFor="ma-rsv" className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+                        <span className="grid grid-cols-1 size-10 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">
+                          <ShieldCheck className="size-5" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[14px] font-semibold">Mandant ist rechtsschutzversichert</span>
+                          <span className="block text-[12.5px] text-fg-3">AnwaltApex erstellt dann automatisch die Deckungsanfrage und setzt eine Wiedervorlage in 7 Tagen.</span>
+                        </span>
+                      </label>
+                      <Switch id="ma-rsv" checked={rsv.aktiv} onChange={(v) => setRsv({ ...rsv, aktiv: v })} label="Mandant ist rechtsschutzversichert" />
                     </div>
                     <AnimatePresence initial={false}>
                       {rsv.aktiv && (
                         <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ type: "spring", stiffness: 420, damping: 38 }} className="overflow-hidden">
                           <div className="grid grid-cols-1 gap-3 p-0.5 sm:grid-cols-2">
                             <Field label="Versicherung *" htmlFor="ma-vers" className="sm:col-span-2">
-                              <Input id="ma-vers" list="ma-vers-liste" value={rsv.versicherung} onChange={(e) => setRsv({ ...rsv, versicherung: e.target.value })} placeholder="z. B. Nordlicht Rechtsschutz AG" autoComplete="off" />
+                              <Input id="ma-vers" list="ma-vers-liste" value={rsv.versicherung} onChange={(e) => setRsv({ ...rsv, versicherung: e.target.value })} onKeyDown={escapeNurListe} placeholder="z. B. Nordlicht Rechtsschutz AG" autoComplete="off" />
                               <datalist id="ma-vers-liste">
                                 {versicherungen.map((v) => (
                                   <option key={v} value={v} />
@@ -636,10 +953,10 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                             <Field label="Schadennummer" htmlFor="ma-snr" hint="Falls schon vergeben.">
                               <Input id="ma-snr" value={rsv.schadennummer} onChange={(e) => setRsv({ ...rsv, schadennummer: e.target.value })} className="mono" autoComplete="off" />
                             </Field>
-                            <Field label="Selbstbeteiligung" htmlFor="ma-sb">
+                            <Field label="Selbstbeteiligung" htmlFor="ma-sb" hint="Optional – erscheint in der Zusammenfassung und später in der Rechnung.">
                               <div className="relative">
                                 <Input id="ma-sb" inputMode="decimal" value={rsv.selbstbeteiligung} onChange={(e) => setRsv({ ...rsv, selbstbeteiligung: e.target.value })} placeholder="0" className="num !pr-9" />
-                                <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[13px] text-fg-4">€</span>
+                                <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[13px] text-fg-3">€</span>
                               </div>
                             </Field>
                             <PflichtHinweis className="sm:col-span-2" />
@@ -673,23 +990,48 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                           <span className="num">{fmtEUR(Number.isNaN(wert) ? 0 : wert)}</span>
                         </Zeile>
                         <Zeile label="Bearbeitung">{bearbeiter?.name ?? "–"}</Zeile>
-                        <Zeile label="Rechtsschutz">{rsv.aktiv ? `${rsv.versicherung} · ${rsv.nummer.trim() || "Nr. wird nachgereicht"}` : "Keiner"}</Zeile>
+                        <Zeile label="Rechtsschutz">{rsv.aktiv ? `${rsv.versicherung} · ${rsv.nummer.trim() || "Nr. wird nachgereicht"}${rsv.schadennummer.trim() ? ` · Schaden-Nr. ${rsv.schadennummer.trim()}` : ""}` : "Keiner"}</Zeile>
+                        {rsv.aktiv && (
+                          <Zeile label="Selbstbeteiligung">
+                            <span className="num">{rsv.selbstbeteiligung.trim() && !Number.isNaN(parseEuro(rsv.selbstbeteiligung)) ? fmtEUR(parseEuro(rsv.selbstbeteiligung)) : "keine angegeben"}</span>
+                          </Zeile>
+                        )}
                         <Zeile label="Phase">Mandatsaufnahme</Zeile>
                       </dl>
                     </div>
-                    <div className="flex items-center gap-3 rounded-[16px] p-1">
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[13.5px] font-semibold">Mandantenportal freischalten</div>
-                        <div className="text-[12.5px] text-fg-3">Der Mandant sieht den Stand seiner Sache und kann Unterlagen sicher hochladen.</div>
+                    {arbeitsrecht && (klagefrist || wertVorschlag > 0) && (
+                      <div className="rounded-[18px] bg-[var(--surface)] p-4 shadow-[0_0_0_1px_var(--line)]">
+                        <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold">
+                          <CalendarClock className="size-4 text-ink" /> Kündigungsschutz
+                        </div>
+                        <KschgVorschau klagefrist={klagefrist} entgelt={entgelt} wertVorschlag={wertVorschlag} wert={wert} onUebernehmen={() => setSache({ ...sache, wert: betragText(wertVorschlag) })} mitRechenweg />
                       </div>
-                      <Switch id="ma-portal" checked={portal} onChange={setPortal} label="Mandantenportal freischalten" />
+                    )}
+                    <KollisionsEntscheidung
+                      treffer={treffer}
+                      entscheidung={entscheidung}
+                      vermerk={kollision.vermerk}
+                      onEntscheidung={(e) => setKollision({ ...kollision, entscheidung: e, fuer: trefferKey })}
+                      onVermerk={(v) => setKollision({ ...kollision, vermerk: v })}
+                      fehler={zeigeFehler && !!fehler[3]}
+                    />
+                    <div className="flex items-center gap-3 rounded-[16px] p-1">
+                      <label htmlFor="ma-portal" className={cn("min-w-0 flex-1", mandantEmail && "cursor-pointer")}>
+                        <span className="block text-[13.5px] font-semibold">Mandantenportal freischalten</span>
+                        <span className="block text-[12.5px] text-fg-3">
+                          {mandantEmail
+                            ? `Zugangs-E-Mail an ${mandantEmail} – der Mandant sieht den Stand seiner Sache und kann Unterlagen sicher hochladen.`
+                            : "Keine E-Mail-Adresse des Mandanten erfasst – ohne Adresse kein Portalzugang. Sie können das Portal später in der Akte freischalten."}
+                        </span>
+                      </label>
+                      <Switch id="ma-portal" checked={portal} disabled={!mandantEmail} onChange={setPortalWahl} label="Mandantenportal freischalten" />
                     </div>
                     <div className="rounded-[18px] bg-ink-softer p-4 shadow-[inset_0_0_0_1px_var(--line)]">
                       <div className="mb-2.5 flex items-center gap-2 text-[13px] font-semibold">
                         <Zap className="size-4 text-ink" /> Das erledigt AnwaltApex automatisch
                       </div>
                       <ul className="grid grid-cols-1 gap-1.5 text-[13px] text-fg-2">
-                        {["Vollmacht zur digitalen Unterschrift", "Mandatsbestätigung", "Datenschutzhinweise (Art. 13 DSGVO)", "Bestätigung Hinweis Abrechnung nach Gegenstandswert (§ 49b Abs. 5 BRAO)", ...(sache.sachgebiet === "Arbeitsrecht" ? ["Bestätigung Hinweis Kostentragung Arbeitsgericht (§ 12a Abs. 1 S. 2 ArbGG)"] : []), ...(rsv.aktiv ? [`Deckungsanfrage an ${rsv.versicherung || "die Versicherung"}`, "Wiedervorlage in 7 Tagen (Deckungszusage)"] : [])].map((t) => (
+                        {["Vollmacht zur digitalen Unterschrift", "Mandatsbestätigung", "Datenschutzhinweise (Art. 13 DSGVO)", "Bestätigung Hinweis Abrechnung nach Gegenstandswert (§ 49b Abs. 5 BRAO)", ...(sache.sachgebiet === "Arbeitsrecht" ? ["Bestätigung Hinweis Kostentragung Arbeitsgericht (§ 12a Abs. 1 S. 2 ArbGG)"] : []), ...(klagefrist ? [`Klagefrist bis ${fmtDate(klagefrist.ende)} und Vorfrist eintragen (zur Vier-Augen-Kontrolle)`] : []), "Aktennotiz „Kollisionsprüfung“", ...(rsv.aktiv ? [`Deckungsanfrage an ${rsv.versicherung || "die Versicherung"}`, "Wiedervorlage in 7 Tagen (Deckungszusage)"] : [])].map((t) => (
                           <li key={t} className="flex items-start gap-2">
                             <FilePlus2 className="mt-0.5 size-3.5 shrink-0 text-fg-3" />
                             {t}
@@ -729,11 +1071,203 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
         </>
       )}
     </Modal>
+    <Modal
+      open={verwerfenFrage}
+      onClose={weiterBearbeiten}
+      size="sm"
+      title="Eingaben verwerfen?"
+      icon={<AlertTriangle className="size-[18px]" />}
+      footer={
+        <>
+          <Button variant="ghost" onClick={entwurfBehalten} className="mr-auto">
+            Als Entwurf behalten
+          </Button>
+          <Button variant="danger" onClick={verwerfen}>
+            Eingaben verwerfen
+          </Button>
+          <Button variant="primary" onClick={weiterBearbeiten} data-autofocus>
+            Weiter bearbeiten
+          </Button>
+        </>
+      }
+    >
+      <p className="text-[14px] text-fg-2">Die Mandatsaufnahme ist noch nicht abgeschlossen. Ihre Eingaben gehen beim Verwerfen verloren – als Entwurf behalten, können Sie sie beim nächsten Öffnen fortsetzen.</p>
+    </Modal>
+    </>
+  );
+}
+
+/** „Entwurf fortsetzen?“ – Inhalt des gespeicherten Entwurfs in einer Zeile. */
+function EntwurfFrage({ e, kontakte }: { e: Entwurf; kontakte: Kontakt[] }) {
+  const mandant = e.modus === "bestehend" ? kontakte.find((k) => k.id === e.mandantId)?.name : entwurfName(e.entwurf);
+  const titel = e.sache.titelManuell ? e.sache.titel : "";
+  return (
+    <div className="grid grid-cols-1 gap-3 py-2">
+      <div className="flex items-start gap-3 rounded-[18px] bg-ink-softer p-4 text-[13.5px] shadow-[inset_0_0_0_1px_var(--line)]">
+        <History className="mt-0.5 size-5 shrink-0 text-ink" />
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold text-fg">Nicht abgeschlossene Mandatsaufnahme</div>
+          <dl className="mt-1.5 grid gap-1 text-fg-2">
+            <div>
+              <dt className="inline text-fg-3">Mandant: </dt>
+              <dd className="inline font-medium text-fg">{mandant || "noch nicht gewählt"}</dd>
+            </div>
+            {(titel || e.sache.gegner) && (
+              <div>
+                <dt className="inline text-fg-3">{titel ? "Titel: " : "Gegner: "}</dt>
+                <dd className="inline">{titel || e.sache.gegner}</dd>
+              </div>
+            )}
+            <div>
+              <dt className="inline text-fg-3">Stand: </dt>
+              <dd className="inline">
+                Schritt {e.schritt + 1} von 4 „{SCHRITTE[Math.min(3, e.schritt)]}“ · zuletzt bearbeitet {fmtDate(e.gespeichert.slice(0, 10))}, {fmtTime(e.gespeichert)} Uhr
+              </dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+      <p className="px-1 text-[12.5px] text-fg-3">Der Entwurf liegt nur in diesem Browserfenster, bis die Akte angelegt ist. „Neu beginnen“ verwirft ihn.</p>
+    </div>
+  );
+}
+
+/** Klagefrist (Fristenkern, Regel kschg_klage) und Gegenstandswert 3 × Bruttomonatsentgelt (§ 42 Abs. 2 S. 1 GKG). */
+function KschgVorschau({
+  klagefrist,
+  entgelt,
+  wertVorschlag,
+  wert,
+  onUebernehmen,
+  mitRechenweg,
+}: {
+  klagefrist: ReturnType<typeof berechneNachRegel> | null;
+  entgelt: number;
+  wertVorschlag: number;
+  wert: number;
+  onUebernehmen: () => void;
+  mitRechenweg?: boolean;
+}) {
+  if (!klagefrist && !wertVorschlag) return null;
+  const uebernommen = wertVorschlag > 0 && Math.abs(wert - wertVorschlag) < 0.005;
+  return (
+    <div className="grid grid-cols-1 gap-2.5 text-[13px]">
+      {klagefrist && (
+        <div>
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <span className="text-fg-3">Klagefrist (§ 4 S. 1 KSchG):</span>
+            <span className="font-semibold text-fg">{fmtDateWd(klagefrist.ende)}</span>
+            <span className="text-fg-3">· Vorfrist {fmtDateWd(klagefrist.vorfrist)}</span>
+          </div>
+          {mitRechenweg && (
+            <ol className="mt-1.5 list-decimal space-y-0.5 pl-5 text-[12.5px] leading-relaxed text-fg-2">
+              {klagefrist.rechenweg.map((r) => (
+                <li key={r}>{r}</li>
+              ))}
+            </ol>
+          )}
+          <p className="mt-1 text-[12.5px] text-fg-3">Wird bei der Anlage mit Vorfrist eingetragen – zur Vier-Augen-Kontrolle. Feiertage: Kanzleisitz; den Gerichtsort bei Klageerhebung prüfen.</p>
+        </div>
+      )}
+      {wertVorschlag > 0 && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+          <span className="text-fg-3">Gegenstandswert-Vorschlag:</span>
+          <span className="num font-semibold text-fg">
+            3 × {fmtEUR(entgelt)} = {fmtEUR(wertVorschlag)}
+          </span>
+          <span className="text-[12.5px] text-fg-3">(§ 42 Abs. 2 S. 1 GKG)</span>
+          {uebernommen ? (
+            <Chip tone="green" icon={<Check className="size-3" />}>
+              übernommen
+            </Chip>
+          ) : (
+            <Button size="sm" variant="secondary" onClick={onUebernehmen}>
+              Übernehmen
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Kollisionstreffer: Entscheidung „trotzdem übernehmen“ (mit Pflichtbegründung) oder „ablehnen“. */
+function KollisionsEntscheidung({
+  treffer,
+  entscheidung,
+  vermerk,
+  onEntscheidung,
+  onVermerk,
+  fehler,
+}: {
+  treffer: string[];
+  entscheidung: Kollision["entscheidung"];
+  vermerk: string;
+  onEntscheidung: (e: "uebernommen" | "abgelehnt") => void;
+  onVermerk: (v: string) => void;
+  fehler: boolean;
+}) {
+  if (!treffer.length)
+    return (
+      <p className="flex items-start gap-2 px-1 text-[12.5px] text-fg-3">
+        <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-green" />
+        <span>Kollisionsprüfung: keine Treffer im Aktenbestand. Das Ergebnis wird als Aktennotiz „Kollisionsprüfung“ dokumentiert.</span>
+      </p>
+    );
+  return (
+    <section className={cn("rounded-[18px] bg-seal-soft p-4 text-[13px]", fehler && "ring-2 ring-[var(--seal)]")} aria-labelledby="ma-kollision-titel">
+      <div id="ma-kollision-titel" className="flex items-center gap-2 font-semibold text-seal">
+        <AlertTriangle className="size-4 shrink-0" /> Kollisionsprüfung: {treffer.length} Treffer – Entscheidung erforderlich
+      </div>
+      <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-fg-2">
+        {treffer.map((t) => (
+          <li key={t} className="break-words">
+            {t}
+          </li>
+        ))}
+      </ul>
+      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Entscheidung über die Kollision">
+        {(
+          [
+            ["uebernommen", "Mandat trotzdem übernehmen", "Mit Begründung (Pflicht) – Vermerk in Akte und Verlauf"],
+            ["abgelehnt", "Mandat ablehnen", "Keine Akte – Protokolleintrag mit den Treffern"],
+          ] as const
+        ).map(([wert, label, sub]) => (
+          <button
+            key={wert}
+            type="button"
+            role="radio"
+            aria-checked={entscheidung === wert}
+            onClick={() => onEntscheidung(wert)}
+            className={cn(
+              "min-h-11 rounded-[14px] px-3.5 py-2.5 text-left ring-1 ring-inset transition-colors",
+              entscheidung === wert ? "bg-[var(--surface)] text-fg ring-2 ring-[var(--ink)]" : "bg-[var(--surface)]/60 text-fg-2 ring-[var(--line)] hover:bg-[var(--surface)]",
+            )}
+          >
+            <span className="flex items-center gap-2 text-[13.5px] font-semibold">
+              {wert === "uebernommen" ? <UserCheck className="size-4" /> : <Ban className="size-4" />} {label}
+            </span>
+            <span className="mt-0.5 block text-[12.5px] text-fg-3">{sub}</span>
+          </button>
+        ))}
+      </div>
+      {entscheidung && (
+        <Field label={entscheidung === "uebernommen" ? "Begründung (Pflicht)" : "Vermerk (optional)"} htmlFor="ma-kollision-vermerk" className="mt-3">
+          <Textarea
+            id="ma-kollision-vermerk"
+            rows={2}
+            value={vermerk}
+            onChange={(e) => onVermerk(e.target.value)}
+            placeholder={entscheidung === "uebernommen" ? "z. B. anderer Lebenssachverhalt – kein widerstreitendes Interesse nach § 43a Abs. 4 BRAO, § 3 BORA" : "z. B. Mandant an Kollegin verwiesen"}
+          />
+        </Field>
+      )}
+    </section>
   );
 }
 
 function PflichtHinweis({ className }: { className?: string }) {
-  return <p className={cn("px-1 text-[12px] text-fg-4", className)}>* Pflichtfeld</p>;
+  return <p className={cn("px-1 text-[12.5px] text-fg-3", className)}>* Pflichtfeld</p>;
 }
 
 function BereitsZugeordnet({ nachricht, akte, onOeffnen }: { nachricht: Nachricht; akte?: Akte; onOeffnen: () => void }) {
@@ -761,7 +1295,7 @@ function BereitsZugeordnet({ nachricht, akte, onOeffnen }: { nachricht: Nachrich
             <span className="mono block text-[12.5px] font-semibold text-ink">{akte.aktenzeichen}</span>
             <span className="block truncate text-[14px] font-semibold">{akte.titel}</span>
           </span>
-          <ArrowRight className="size-4 shrink-0 text-fg-4 transition-transform group-hover:translate-x-0.5 group-hover:text-ink" />
+          <ArrowRight className="size-4 shrink-0 text-fg-3 transition-transform group-hover:translate-x-0.5 group-hover:text-ink" />
         </Link>
       ) : (
         <p className="px-1 text-[13px] text-fg-3">Die zugeordnete Akte ist nicht mehr vorhanden.</p>
@@ -773,28 +1307,29 @@ function BereitsZugeordnet({ nachricht, akte, onOeffnen }: { nachricht: Nachrich
 function Zeile({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="min-w-0">
-      <dt className="eyebrow !text-[10px]">{label}</dt>
-      <dd className="mt-0.5 truncate font-medium">{children}</dd>
+      <dt className="eyebrow">{label}</dt>
+      <dd className="mt-0.5 break-words font-medium">{children}</dd>
     </div>
   );
 }
 
-function KonfliktHinweis({ treffer, text }: { treffer: string[]; text: string }) {
+/** Kollisionstreffer bleiben bis zur Zusammenfassung sichtbar – dort fällt die Entscheidung. */
+function KonfliktHinweis({ treffer }: { treffer: string[] }) {
   return (
     <AnimatePresence initial={false}>
       {treffer.length > 0 && (
-        <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="flex gap-3 rounded-[16px] bg-seal-soft p-3.5 text-[13px] text-seal" role="alert">
+        <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="mt-3 flex gap-3 rounded-[16px] bg-seal-soft p-3.5 text-[13px] text-seal" role="alert">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           <div className="min-w-0">
-            <div className="font-semibold">Möglicher Interessenkonflikt (§ 43a Abs. 4 BRAO)</div>
-            <div className="mt-0.5 text-fg-2">{text}</div>
+            <div className="font-semibold">Möglicher Interessenkonflikt (§ 43a Abs. 4 BRAO) – {treffer.length} Treffer</div>
             <ul className="mt-1 list-disc pl-4 text-fg-2">
               {treffer.slice(0, 4).map((t) => (
-                <li key={t} className="truncate">
+                <li key={t} className="break-words">
                   {t}
                 </li>
               ))}
             </ul>
+            <div className="mt-1 text-[12.5px] text-fg-2">Sie entscheiden in der Zusammenfassung: Mandat mit Begründung übernehmen oder ablehnen.</div>
           </div>
         </motion.div>
       )}
@@ -867,8 +1402,8 @@ function ErfolgsAnsicht({ erfolg }: { erfolg: { akte: Akte; schritte: { text: st
               <Check className="size-3.5" strokeWidth={3} />
             </motion.span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[13.5px] font-medium">{s.text}</span>
-              {s.sub && <span className="block truncate text-[12px] text-fg-3">{s.sub}</span>}
+              <span className="block break-words text-[13.5px] font-medium">{s.text}</span>
+              {s.sub && <span className="block break-words text-[12.5px] text-fg-3">{s.sub}</span>}
             </span>
           </motion.li>
         ))}
@@ -883,7 +1418,7 @@ function ErfolgsAnsicht({ erfolg }: { erfolg: { akte: Akte; schritte: { text: st
         <div className="mx-auto h-1.5 w-40 overflow-hidden rounded-full bg-[var(--line)]" aria-hidden>
           <motion.span className="block h-full rounded-full bg-ink" initial={{ width: "0%" }} animate={{ width: "100%" }} transition={{ duration: 5.2, ease: "linear" }} />
         </div>
-        <div className="text-center text-[11.5px] text-fg-4">Die Akte öffnet sich gleich automatisch.</div>
+        <div className="text-center text-[12.5px] text-fg-3">Die Akte öffnet sich gleich automatisch.</div>
       </motion.div>
     </div>
   );

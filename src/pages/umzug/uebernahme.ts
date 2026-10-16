@@ -1,10 +1,10 @@
 // Führt die Übernahme aus: Kontakte (zusammengeführt), Akten, Fristen (zur Vier-Augen-Kontrolle) und Dokument-Verweise.
-// Jede Änderung wird für „Umzug rückgängig machen" vorgemerkt.
+// Jeder Lauf trägt eine `umzugLaufId` an allen angelegten Datensätzen und wird für „Rückgängig machen“ vorgemerkt.
 import type { Akte, Aktivitaet, Bundesland, CollectionKey, Dokument, Frist, Kontakt, User } from "@/core/types";
 import { addDays, fmtDate, nowLocal, today, uid } from "@/core/dates";
 import { istWerktag } from "@/core/feiertage";
 import { useData } from "@/store/data";
-import { ORG, grundlageAus, normName, type DublettenAktion, type MigZeile } from "./zuordnung";
+import { ORG, grundlageAus, imUmfang, normName, type DateiDublettenAktion, type DublettenAktion, type MigZeile, type Umfang } from "./zuordnung";
 
 export type Entitaet = "kontakte" | "akten" | "fristen" | "dokumente";
 
@@ -30,10 +30,17 @@ export interface Ergebnis {
   /** davon Notfristen und Fristen – sie gehen in die Vier-Augen-Kontrolle (Wiedervorlagen und Termine nicht) */
   fristenKontrolle: number;
   dokumente: number;
+  /** Dubletten innerhalb der Datei, die mit der ersten Zeile zusammengeführt wurden */
+  zusammengefuehrt: number;
+  /** als abgeschlossen (Archiv) übernommene Akten */
+  archiviert: number;
+  /** wegen des gewählten Umfangs (nur offene / letzte 6 Jahre) nicht übernommen */
+  ausserhalbUmfang: number;
+  laufId: string;
   undo: UndoInfo;
 }
 
-function neuerKontakt(name: string, rolle: "mandant" | "gegner", system: string): Kontakt {
+function neuerKontakt(name: string, rolle: "mandant" | "gegner", system: string, laufId: string): Kontakt {
   const org = ORG.test(name);
   const ohneTitel = name.replace(/^(Dr\.|Prof\.)\s+/g, "");
   const teile = ohneTitel.split(/\s+/);
@@ -45,6 +52,7 @@ function neuerKontakt(name: string, rolle: "mandant" | "gegner", system: string)
     rollen: [rolle],
     notiz: `Aus ${system} übernommen.`,
     createdAt: nowLocal(),
+    umzugLaufId: laufId,
   };
 }
 
@@ -63,6 +71,10 @@ const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export async function fuehreUmzugAus(opts: {
   zeilen: MigZeile[];
   aktionFuer: (z: MigZeile) => DublettenAktion;
+  /** Dubletten innerhalb der Datei: zusammenführen (Standard), beide behalten, überspringen */
+  dateiAktionFuer?: (z: MigZeile) => DateiDublettenAktion;
+  umfang?: Umfang;
+  laufId?: string;
   system: string;
   user: User;
   team: User[];
@@ -70,17 +82,42 @@ export async function fuehreUmzugAus(opts: {
   onFortschritt: (e: Entitaet, f: Fortschritt) => void;
 }): Promise<Ergebnis> {
   const { zeilen, aktionFuer, system, user, team, bundesland, onFortschritt } = opts;
+  const dateiAktionFuer = opts.dateiAktionFuer ?? (() => "merge" as const);
+  const umfang = opts.umfang ?? "alle";
+  const laufId = opts.laufId ?? uid("uz");
   const st = () => useData.getState();
   const undo: UndoInfo = { erstellt: [], vorher: [] };
-  const e: Ergebnis = { kontakteNeu: 0, kontakteZusammengefuehrt: 0, aktenNeu: 0, aktenAktualisiert: 0, aktenUmbenannt: 0, uebersprungen: 0, fehlerhaft: 0, fristen: 0, fristenKontrolle: 0, dokumente: 0, undo };
+  const e: Ergebnis = {
+    kontakteNeu: 0, kontakteZusammengefuehrt: 0, aktenNeu: 0, aktenAktualisiert: 0, aktenUmbenannt: 0, uebersprungen: 0, fehlerhaft: 0, fristen: 0, fristenKontrolle: 0, dokumente: 0,
+    zusammengefuehrt: 0, archiviert: 0, ausserhalbUmfang: 0, laufId, undo,
+  };
 
   const anwalt = user.rolle === "partner" || user.rolle === "anwalt" ? user : team.find((u) => u.rolle === "partner" || u.rolle === "anwalt") ?? user;
   const refa = team.find((u) => u.rolle === "refa");
+  const heuteTag = today();
 
+  // Dubletten innerhalb der Datei: „zusammenführen“ hängt die Zeile an die erste an (Frist nur, wenn sie abweicht)
+  const angehaengt = new Map<number, MigZeile[]>();
   const zuImportieren = zeilen.filter((z) => {
     if (z.fehler) {
       e.fehlerhaft++;
       return false;
+    }
+    if (!imUmfang(z, umfang, heuteTag)) {
+      e.ausserhalbUmfang++;
+      return false;
+    }
+    if (z.dateiDublette) {
+      const a = dateiAktionFuer(z);
+      if (a === "skip") {
+        e.uebersprungen++;
+        return false;
+      }
+      if (a === "merge") {
+        angehaengt.set(z.dateiDublette.nr, [...(angehaengt.get(z.dateiDublette.nr) ?? []), z]);
+        e.zusammengefuehrt++;
+        return false;
+      }
     }
     if (z.dublette && aktionFuer(z) === "skip") {
       e.uebersprungen++;
@@ -119,7 +156,7 @@ export async function fuehreUmzugAus(opts: {
       e.kontakteZusammengefuehrt++;
     } else {
       const rolle = rollen.has("mandant") ? "mandant" : "gegner";
-      const k = neuerKontakt(name, rolle, system);
+      const k = neuerKontakt(name, rolle, system, laufId);
       if (rollen.size > 1) k.rollen = ["mandant", "gegner"];
       st().upsert("kontakte", k);
       undo.erstellt.push({ col: "kontakte", id: k.id });
@@ -160,7 +197,8 @@ export async function fuehreUmzugAus(opts: {
     const z = zuImportieren[i];
     const mandantId = z.mandant ? kontaktId.get(normName(z.mandant)) : undefined;
     const gegnerId = z.gegner ? kontaktId.get(normName(z.gegner)) : undefined;
-    const herkunft = `Aus ${system} übernommen am ${fmtDate(heute)}${z.quellAz ? ` (Aktenzeichen im Altsystem: ${z.quellAz})` : ""}.`;
+    const dazu = angehaengt.get(z.nr) ?? [];
+    const herkunft = `Aus ${system} übernommen am ${fmtDate(heute)}${z.quellAz ? ` (Aktenzeichen im Altsystem: ${z.quellAz})` : ""}.${dazu.length ? ` Zusammengeführt mit ${dazu.map((d) => `Zeile ${d.nr}${d.quellAz ? ` (Az. ${d.quellAz})` : ""}`).join(", ")} – Dublette in der Datei.` : ""}`;
     if (z.dublette && aktionFuer(z) === "overwrite") {
       const ex = st().data.akten.find((a) => a.id === z.dublette!.akteId);
       if (ex) {
@@ -182,25 +220,33 @@ export async function fuehreUmzugAus(opts: {
       const { az, umbenannt } = freiesAz(z.quellAz);
       if (umbenannt) e.aktenUmbenannt++;
       const mId = mandantId ?? (() => {
-        const k = neuerKontakt(z.titel.split(" ./. ")[0] || "Mandant (aus Altsystem)", "mandant", system);
+        const k = neuerKontakt(z.titel.split(" ./. ")[0] || "Mandant (aus Altsystem)", "mandant", system, laufId);
         st().upsert("kontakte", k);
         undo.erstellt.push({ col: "kontakte", id: k.id });
         e.kontakteNeu++;
         return k.id;
       })();
+      const abgeschlossen = z.status === "abgeschlossen";
+      if (abgeschlossen) e.archiviert++;
       const akte: Akte = {
         id: uid("a"),
         aktenzeichen: az,
         titel: z.titel,
         sachgebiet: z.sachgebiet,
-        phase: "Außergerichtlich",
-        status: "offen",
+        phase: abgeschlossen ? "Abgeschlossen" : "Außergerichtlich",
+        status: z.status,
+        // Ohne Abschlussdatum im Export: Aufbewahrung vorsorglich ab Übernahme (§ 50 Abs. 1 BRAO)
+        ...(abgeschlossen ? { abgeschlossenAm: z.abgeschlossenAm ?? heute } : {}),
+        umzugLaufId: laufId,
         mandantId: mId,
         gegnerId,
         gegenstandswert: z.gegenstandswert,
         bearbeiterId: anwalt.id,
         sachbearbeiterId: refa?.id,
-        beschreibung: herkunft + (umbenannt ? ` Aktenzeichen war bereits vergeben und wurde zu ${az} ergänzt.` : ""),
+        beschreibung:
+          herkunft +
+          (umbenannt ? ` Aktenzeichen war bereits vergeben und wurde zu ${az} ergänzt.` : "") +
+          (abgeschlossen ? ` Im Altsystem „${z.statusRoh}“ – als abgeschlossen (Archiv) übernommen${z.abgeschlossenAm ? "" : "; Abschlussdatum nicht übertragen, Aufbewahrung (§ 50 BRAO) vorsorglich ab Übernahme vorgemerkt"}.` : ""),
         schlagworte: ["Umzug", system],
         prioritaet: "normal",
         createdAt: z.angelegt ? `${z.angelegt}T09:00:00` : nowLocal(),
@@ -215,15 +261,19 @@ export async function fuehreUmzugAus(opts: {
     await pause(aPause);
   }
 
-  // 3 · Fristen – Quelle „migration", ohne Kontrollvermerk: zur Vier-Augen-Kontrolle vorgelegt
-  const mitFrist = zuImportieren.filter((z) => z.fristDatum && akteFuer.has(z.nr));
+  // 3 · Fristen – Quelle „migration", ohne Kontrollvermerk: zur Vier-Augen-Kontrolle vorgelegt.
+  // Zusammengeführte Dubletten bringen ihre Frist nur mit, wenn sie abweicht – nie doppelt.
+  const mitFrist = zuImportieren
+    .filter((z) => akteFuer.has(z.nr))
+    .flatMap((z) => [z, ...(angehaengt.get(z.nr) ?? []).map((d) => ({ ...d, nr: z.nr }))])
+    .filter((z) => z.fristDatum);
   onFortschritt("fristen", { done: 0, total: mitFrist.length });
   const fPause = Math.max(20, Math.min(80, 900 / Math.max(1, mitFrist.length)));
   for (let i = 0; i < mitFrist.length; i++) {
     const z = mitFrist[i];
     const akte = akteFuer.get(z.nr)!;
     const titel = z.fristTitel || "Frist aus Altsystem";
-    const schonDa = st().data.fristen.some((f) => f.akteId === akte.id && f.datum === z.fristDatum && f.titel === titel);
+    const schonDa = st().data.fristen.some((f) => f.akteId === akte.id && f.datum === z.fristDatum && normName(f.titel) === normName(titel));
     if (!schonDa) {
       const echteFrist = z.fristTyp === "notfrist" || z.fristTyp === "frist";
       const grundlage = grundlageAus(z.fristTitel);
@@ -238,6 +288,7 @@ export async function fuehreUmzugAus(opts: {
         status: "offen",
         verantwortlichId: akte.bearbeiterId,
         quelle: "migration",
+        umzugLaufId: laufId,
         notiz: [
           echteFrist ? `Aus ${system} übernommen – Datum laut Altsystem, nicht nachgerechnet. Bitte im Vier-Augen-Prinzip prüfen und mit dem Fristenrechner nachrechnen.` : `Aus ${system} übernommen (${z.fristTyp === "termin" ? "Termin" : "Wiedervorlage"}).`,
           z.fristWarnung,
@@ -260,7 +311,13 @@ export async function fuehreUmzugAus(opts: {
   for (let i = 0; i < akten.length; i++) {
     const z = akten[i];
     const akte = akteFuer.get(z.nr)!;
-    const inhalt = [`Datenblatt aus ${system} (Zeile ${z.nr} des Exports)`, "", ...z.roh.map(([k, v]) => `${k}: ${v || "–"}`)].join("\n");
+    const dazu = angehaengt.get(z.nr) ?? [];
+    const inhalt = [
+      `Datenblatt aus ${system} (Zeile ${z.nr} des Exports)`,
+      "",
+      ...z.roh.map(([k, v]) => `${k}: ${v || "–"}`),
+      ...dazu.flatMap((d) => ["", `Zusammengeführt: Zeile ${d.nr} des Exports (Dublette)`, ...d.roh.map(([k, v]) => `${k}: ${v || "–"}`)]),
+    ].join("\n");
     const dok: Dokument = {
       id: uid("d"),
       akteId: akte.id,
@@ -274,6 +331,7 @@ export async function fuehreUmzugAus(opts: {
       autorId: user.id,
       version: 1,
       createdAt: nowLocal(),
+      umzugLaufId: laufId,
     };
     st().upsert("dokumente", dok);
     undo.erstellt.push({ col: "dokumente", id: dok.id });
@@ -296,15 +354,35 @@ export async function fuehreUmzugAus(opts: {
   st().log({
     akteur: "system",
     userId: user.id,
-    text: `Umzug aus ${system}: ${e.aktenNeu} Akten neu, ${e.aktenAktualisiert} aktualisiert, ${e.kontakteNeu} Kontakte, ${e.fristenKontrolle} Fristen zur Kontrolle vorgelegt${e.fristen > e.fristenKontrolle ? `, ${e.fristen - e.fristenKontrolle} Wiedervorlagen/Termine` : ""}`,
+    text: `Umzug aus ${system}: ${e.aktenNeu} Akten neu${e.archiviert ? ` (davon ${e.archiviert} als abgeschlossen)` : ""}, ${e.aktenAktualisiert} aktualisiert, ${e.kontakteNeu} Kontakte, ${e.fristenKontrolle} Fristen zur Kontrolle vorgelegt${e.fristen > e.fristenKontrolle ? `, ${e.fristen - e.fristenKontrolle} ${e.fristen - e.fristenKontrolle === 1 ? "Wiedervorlage/Termin" : "Wiedervorlagen/Termine"}` : ""}${e.zusammengefuehrt ? `, ${e.zusammengefuehrt} Dublette(n) der Datei zusammengeführt` : ""}`,
   });
   return e;
 }
 
-/** Macht einen Umzug vollständig rückgängig: neu angelegte Datensätze entfernen, geänderte wiederherstellen. */
-export function macheRueckgaengig(undo: UndoInfo, system: string, userId: string) {
+/**
+ * Macht einen Umzug vollständig rückgängig: neu angelegte Datensätze entfernen (auch alles mit der `umzugLaufId` des Laufs und
+ * später in diesen Akten angelegte Fristen, Dokumente und Notizen), geänderte Akten und Kontakte wiederherstellen.
+ */
+export function macheRueckgaengig(undo: UndoInfo, system: string, userId: string, laufId?: string) {
   const st = useData.getState();
-  for (const { col, id } of [...undo.erstellt].reverse()) st.remove(col, id);
+  const data = st.data;
+  const neueAkten = new Set(undo.erstellt.filter((x) => x.col === "akten").map((x) => x.id));
+  if (laufId) for (const a of data.akten) if (a.umzugLaufId === laufId) neueAkten.add(a.id);
+  const weg: { col: CollectionKey; id: string }[] = [...undo.erstellt];
+  if (laufId) {
+    for (const k of data.kontakte) if (k.umzugLaufId === laufId) weg.push({ col: "kontakte", id: k.id });
+    for (const a of data.akten) if (a.umzugLaufId === laufId) weg.push({ col: "akten", id: a.id });
+  }
+  for (const f of data.fristen) if (neueAkten.has(f.akteId) || (laufId && f.umzugLaufId === laufId)) weg.push({ col: "fristen", id: f.id });
+  for (const d of data.dokumente) if (neueAkten.has(d.akteId) || (laufId && d.umzugLaufId === laufId)) weg.push({ col: "dokumente", id: d.id });
+  for (const n of data.notizen) if (neueAkten.has(n.akteId)) weg.push({ col: "notizen", id: n.id });
+  const gesehen = new Set<string>();
+  for (const { col, id } of [...weg].reverse()) {
+    const key = `${col}:${id}`;
+    if (gesehen.has(key)) continue;
+    gesehen.add(key);
+    if ((data[col] as { id: string }[]).some((x) => x.id === id)) st.remove(col, id);
+  }
   // rückwärts, damit bei mehrfach geänderten Akten der ursprüngliche Stand zuletzt geschrieben wird
   for (const { col, doc } of [...undo.vorher].reverse()) {
     if (col === "akten") st.upsert("akten", doc as Akte);

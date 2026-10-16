@@ -1,12 +1,12 @@
-import { CircleHelp, Columns3, Monitor, Moon, PanelLeft, Rows3, Rows4, Sparkles, Sun } from "lucide-react";
-import { useUI, type Dichte, type ThemeWahl } from "@/store/ui";
+import { CircleHelp, Columns3, Keyboard, Monitor, Moon, PanelLeft, Rows3, Rows4, Sparkles, Sun, Type } from "lucide-react";
+import { SCHRIFTGROESSEN, useUI, type Dichte, type Schriftgroesse, type ThemeWahl } from "@/store/ui";
 import { useMedia } from "@/lib/useMedia";
 import { Chip, Segmented, Switch } from "@/components/ui";
 import { tabellenDichteZuruecksetzen } from "@/components/ui/DataTable";
 import { Abschnitt, Zeile } from "./teile";
 
 export function DarstellungTab() {
-  const { theme, setTheme, dichte, setDichte, sidebarKompakt, toggleSidebar } = useUI();
+  const { theme, setTheme, dichte, setDichte, sidebarKompakt, toggleSidebar, schrift, setSchrift, liveMeldungen, setLiveMeldungen, kugel, setKugel, setKuerzel } = useUI();
   const reduziert = useMedia("(prefers-reduced-motion: reduce)");
   const dunkelSystem = useMedia("(prefers-color-scheme: dark)");
 
@@ -25,6 +25,16 @@ export function DarstellungTab() {
               ]}
             />
           </Zeile>
+          <Zeile
+            titel="Schriftgröße"
+            text={schrift === 100 ? "Standardgröße. Größer stellen Sie alles – Text, Schaltflächen und Abstände – gleichmäßig um 12 % oder 25 % größer." : `Alles wird ${schrift === 112 ? "um 12 %" : "um 25 %"} größer dargestellt – gilt sofort und nur auf diesem Gerät.`}
+          >
+            <Segmented<string>
+              value={String(schrift)}
+              onChange={(v) => setSchrift(Number(v) as Schriftgroesse)}
+              options={SCHRIFTGROESSEN.map((g) => ({ value: String(g), label: `${g} %`, icon: g === 100 ? <Type className="size-3.5" /> : undefined }))}
+            />
+          </Zeile>
           <Zeile titel="Dichte" text={dichte === "compact" ? "Kompakt: engere Tabellenzeilen und kleinere Grundschrift – mehr Zeilen auf einen Blick, ideal für große Aktenlisten." : "Großzügig: mehr Luft, ruhiger zu lesen. Gilt für alle Tabellen, sofern Sie dort nichts anderes gewählt haben."}>
             <Segmented<Dichte>
               value={dichte}
@@ -40,6 +50,26 @@ export function DarstellungTab() {
           </Zeile>
           <Zeile titel="Seitenleiste kompakt" htmlFor="sb-kompakt" text="Zeigt nur Symbole – mehr Platz für Akten und Dokumente. Wirkt auf Bildschirmen ab Tablet-Breite.">
             <Switch id="sb-kompakt" checked={sidebarKompakt} onChange={() => toggleSidebar()} label="Seitenleiste kompakt" />
+          </Zeile>
+          <Zeile
+            titel="Live-Meldungen in der Kopfleiste"
+            htmlFor="live-meldungen"
+            text={
+              liveMeldungen
+                ? reduziert
+                  ? "Eingeschaltet – wegen „Bewegung reduzieren“ zeigt die Apex Island trotzdem nur die ruhige Wochenbilanz."
+                  : "Die Apex Island zeigt höchstens alle 90 Sekunden kurz, was der 38h-Motor gerade erledigt hat (Beispielwerte)."
+                : "Aus: Die Apex Island zeigt nur die ruhige Wochenbilanz – ohne Wechsel und ohne Bewegung."
+            }
+          >
+            <Switch id="live-meldungen" checked={liveMeldungen} onChange={setLiveMeldungen} label="Live-Meldungen in der Kopfleiste" />
+          </Zeile>
+          <Zeile
+            titel="Assistent-Kugel anzeigen"
+            htmlFor="kugel"
+            text={kugel ? "Die Kugel unten rechts öffnet den Apex Assistenten. Am Rand lässt sie sich auch einklappen." : "Ausgeblendet. Den Assistenten erreichen Sie weiter über Strg+K (Mac: ⌘ K) → „Apex Assistent“."}
+          >
+            <Switch id="kugel" checked={kugel} onChange={setKugel} label="Assistent-Kugel anzeigen" />
           </Zeile>
           <Zeile
             titel="Bewegung"
@@ -71,6 +101,17 @@ export function DarstellungTab() {
           <li className="flex gap-3">
             <span className="kbd shrink-0">Esc</span>
             <span>Schließt Dialoge und Seitenpanels.</span>
+          </li>
+          <li className="flex gap-3">
+            <span className="grid size-5 shrink-0 place-items-center text-ink">
+              <Keyboard className="size-4" />
+            </span>
+            <span>
+              Taste <span className="kbd">W</span> legt eine Wiedervorlage an, <span className="kbd">F</span> öffnet den Fristenrechner.{" "}
+              <button type="button" className="font-semibold text-ink underline-offset-2 hover:underline" onClick={() => setKuerzel(true)}>
+                Alle Tastaturkürzel (?)
+              </button>
+            </span>
           </li>
           <li className="flex gap-3">
             <span className="grid size-5 shrink-0 place-items-center text-ink">

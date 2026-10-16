@@ -1,18 +1,23 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Building2, Check, CheckCircle2, Copy, Eye, EyeOff, KeyRound, Link2, Mail, Plus, Send } from "lucide-react";
+import { Building2, Check, CheckCircle2, Copy, Link2, Mail, Plus, Send } from "lucide-react";
 import { Button, Chip, Field, Input, Modal, Select, Switch } from "@/components/ui";
 import { BUNDESLAENDER } from "@/core/feiertage";
 import { addDays, fmtDate, today } from "@/core/dates";
 import { getBackend, type NeuerKunde, type NeuerKundeErgebnis } from "@/lib/backend";
 import type { Bundesland, Sachgebiet } from "@/core/types";
 import { cn } from "@/lib/cn";
+import { StartpasswortKarte } from "@/components/StartpasswortKarte";
 import { LOGIN_URL_HINWEIS, SACHGEBIETE, einladungsText, kopieren, landFuerStadt, loginUrl } from "./helfer";
 
-const LEER = (): NeuerKunde => ({
+/** Formularzustand: Bundesland und Anrede ohne Vorbelegung („“ = noch nicht gewählt bzw. keine Anrede). */
+type Formular = Omit<NeuerKunde, "bundesland" | "adminAnrede"> & { bundesland: Bundesland | ""; adminAnrede: "" | "Frau" | "Herr" };
+
+const LEER = (): Formular => ({
   kanzlei: "",
   stadt: "",
-  bundesland: "BE",
+  bundesland: "",
+  adminAnrede: "",
   adminName: "",
   adminEmail: "",
   arbeitsplaetze: 5,
@@ -21,9 +26,14 @@ const LEER = (): NeuerKunde => ({
   testBis: addDays(today(), 30),
 });
 
+/** „der Hauptnutzerin“ / „des Hauptnutzers“ / „der Hauptnutzerin bzw. des Hauptnutzers“ */
+function hauptnutzerGenitiv(anrede: Formular["adminAnrede"]) {
+  return anrede === "Frau" ? "der Hauptnutzerin" : anrede === "Herr" ? "des Hauptnutzers" : "der Hauptnutzerin bzw. des Hauptnutzers";
+}
+
 /** Dialog: Testzugang für eine neue Kanzlei anlegen – mit fertigem Einladungstext. */
 export function NeuerZugang({ open, onClose, onAngelegt }: { open: boolean; onClose: () => void; onAngelegt: () => void }) {
-  const [form, setForm] = useState<NeuerKunde>(LEER);
+  const [form, setForm] = useState<Formular>(LEER);
   const [landBeruehrt, setLandBeruehrt] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
   const [laedt, setLaedt] = useState(false);
@@ -40,18 +50,23 @@ export function NeuerZugang({ open, onClose, onAngelegt }: { open: boolean; onCl
     }
   }, [open]);
 
-  const set = <K extends keyof NeuerKunde>(k: K, v: NeuerKunde[K]) => setForm((f) => ({ ...f, [k]: v }));
+  const set = <K extends keyof Formular>(k: K, v: Formular[K]) => setForm((f) => ({ ...f, [k]: v }));
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(form.adminEmail.trim());
+  const stadtErkannt = !!form.stadt.trim() && !!landFuerStadt(form.stadt);
   const probleme = useMemo(() => {
     const p: Record<string, string> = {};
     if (!form.kanzlei.trim()) p.kanzlei = "Bitte den Namen der Kanzlei eintragen.";
     if (!form.stadt.trim()) p.stadt = "Bitte die Stadt eintragen – sie bestimmt auch die Gerichte der Beispieldaten.";
+    if (!form.bundesland)
+      p.bundesland = form.stadt.trim() && !stadtErkannt
+        ? `„${form.stadt.trim()}“ ist in unserer Ortsliste nicht enthalten. Bitte wählen Sie das Bundesland der Kanzlei aus der Liste – es bestimmt die Feiertage für die Fristen.`
+        : "Bitte wählen Sie das Bundesland der Kanzlei – es bestimmt die Feiertage für die Fristen.";
     if (!form.adminName.trim()) p.adminName = "Wer erhält den Zugang? Bitte Vor- und Nachnamen eintragen.";
     if (!emailOk) p.adminEmail = "Bitte eine gültige E-Mail-Adresse eintragen, z. B. name@kanzlei.de.";
     if (!(form.arbeitsplaetze >= 1 && form.arbeitsplaetze <= 500)) p.arbeitsplaetze = "Zwischen 1 und 500 Arbeitsplätzen.";
-    if (form.testBis && form.testBis < today()) p.testBis = "Das Datum liegt in der Vergangenheit.";
+    if (form.testBis && form.testBis < today()) p.testBis = "Das Datum liegt in der Vergangenheit. Bitte ein künftiges Datum wählen oder das Feld leeren (unbefristet).";
     return p;
-  }, [form, emailOk]);
+  }, [form, emailOk, stadtErkannt]);
 
   const anlegen = async (e?: FormEvent) => {
     e?.preventDefault();
@@ -59,8 +74,10 @@ export function NeuerZugang({ open, onClose, onAngelegt }: { open: boolean; onCl
     if (Object.keys(probleme).length) return;
     setLaedt(true);
     setFehler(null);
+    if (!form.bundesland) return;
     try {
-      const r = await getBackend().console.create({ ...form, kanzlei: form.kanzlei.trim(), stadt: form.stadt.trim(), adminName: form.adminName.trim(), adminEmail: form.adminEmail.trim() });
+      const { adminAnrede, bundesland, ...rest } = form;
+      const r = await getBackend().console.create({ ...rest, bundesland, ...(adminAnrede ? { adminAnrede } : {}), kanzlei: form.kanzlei.trim(), stadt: form.stadt.trim(), adminName: form.adminName.trim(), adminEmail: form.adminEmail.trim() });
       setErgebnis(r);
       onAngelegt();
     } catch (err) {
@@ -72,15 +89,16 @@ export function NeuerZugang({ open, onClose, onAngelegt }: { open: boolean; onCl
 
   const zeige = (k: string) => (geprueft ? probleme[k] : undefined);
   // Stadt und Bundesland gehen zusammen an die Erzeugung der Beispieldaten (Gerichte, Feiertage).
-  const stadtErkannt = !!form.stadt.trim() && !!landFuerStadt(form.stadt);
-  const landHinweis =
-    !form.stadt.trim() || landBeruehrt ? (
-      "Bestimmt die Feiertage für die Fristberechnung."
-    ) : stadtErkannt ? (
-      "Aus der Stadt übernommen – bestimmt die Feiertage für die Fristberechnung."
-    ) : (
-      <span className="text-amber">„{form.stadt.trim()}“ kennt die Liste nicht – bitte das Bundesland prüfen.</span>
-    );
+  const landHinweis = zeige("bundesland") ? (
+    <span className="text-seal">{zeige("bundesland")}</span>
+  ) : !form.stadt.trim() || landBeruehrt ? (
+    "Pflichtfeld – bestimmt die Feiertage für die Fristberechnung."
+  ) : stadtErkannt ? (
+    "Aus der Stadt übernommen – bestimmt die Feiertage für die Fristberechnung."
+  ) : (
+    <span className="text-amber">„{form.stadt.trim()}“ ist in unserer Ortsliste nicht enthalten – bitte wählen Sie das Bundesland.</span>
+  );
+  const nutzerGen = hauptnutzerGenitiv(form.adminAnrede);
 
   return (
     <Modal
@@ -89,7 +107,7 @@ export function NeuerZugang({ open, onClose, onAngelegt }: { open: boolean; onCl
       size="lg"
       icon={ergebnis ? <CheckCircle2 className="size-5" /> : <Plus className="size-5" />}
       title={ergebnis ? "Testzugang ist bereit" : "Neuen Testzugang anlegen"}
-      subtitle={ergebnis ? `${ergebnis.tenant.name} · Lizenz ${ergebnis.tenant.lizenz.lizenzNr}` : "Die Kanzlei erhält einen eigenen, streng getrennten Datenbestand und einen Zugang für den Hauptnutzer der Kanzlei."}
+      subtitle={ergebnis ? `${ergebnis.tenant.name} · Lizenz ${ergebnis.tenant.lizenz.lizenzNr}` : "Die Kanzlei erhält einen eigenen, streng getrennten Datenbestand und einen Zugang für die Hauptnutzerin bzw. den Hauptnutzer der Kanzlei."}
       footer={
         ergebnis ? (
           <>
@@ -129,7 +147,8 @@ export function NeuerZugang({ open, onClose, onAngelegt }: { open: boolean; onCl
                   value={form.stadt}
                   onChange={(e) => {
                     const v = e.target.value;
-                    setForm((f) => ({ ...f, stadt: v, bundesland: !landBeruehrt ? landFuerStadt(v) ?? f.bundesland : f.bundesland }));
+                    // Keine Vorbelegung: Erkennt die Ortsliste die Stadt nicht, bleibt das Bundesland leer (Pflichtfeld).
+                    setForm((f) => ({ ...f, stadt: v, bundesland: !landBeruehrt ? landFuerStadt(v) ?? "" : f.bundesland }));
                   }}
                   placeholder="z. B. Köln"
                   autoComplete="address-level2"
@@ -140,11 +159,14 @@ export function NeuerZugang({ open, onClose, onAngelegt }: { open: boolean; onCl
                 <Select
                   id="nk-land"
                   value={form.bundesland}
+                  aria-invalid={!!zeige("bundesland")}
+                  required
                   onChange={(e) => {
                     setLandBeruehrt(true);
-                    set("bundesland", e.target.value as Bundesland);
+                    set("bundesland", e.target.value as Bundesland | "");
                   }}
                 >
+                  <option value="">Bitte wählen …</option>
                   {BUNDESLAENDER.map((b) => (
                     <option key={b.code} value={b.code}>
                       {b.name}
@@ -152,10 +174,17 @@ export function NeuerZugang({ open, onClose, onAngelegt }: { open: boolean; onCl
                   ))}
                 </Select>
               </Field>
-              <Field label="Name des Hauptnutzers der Kanzlei" htmlFor="nk-admin" hint={zeige("adminName") && <span className="text-seal">{zeige("adminName")}</span>}>
+              <Field label="Anrede" htmlFor="nk-anrede" hint="Für die förmliche Anrede in Einladung und App.">
+                <Select id="nk-anrede" value={form.adminAnrede} onChange={(e) => set("adminAnrede", e.target.value as Formular["adminAnrede"])}>
+                  <option value="">keine Angabe</option>
+                  <option value="Frau">Frau</option>
+                  <option value="Herr">Herr</option>
+                </Select>
+              </Field>
+              <Field label={`Name ${nutzerGen}`} htmlFor="nk-admin" hint={zeige("adminName") && <span className="text-seal">{zeige("adminName")}</span>}>
                 <Input id="nk-admin" value={form.adminName} onChange={(e) => set("adminName", e.target.value)} placeholder="z. B. Dr. Anna Becker" autoComplete="name" aria-invalid={!!zeige("adminName")} />
               </Field>
-              <Field label="E-Mail des Hauptnutzers" htmlFor="nk-email" hint={zeige("adminEmail") ? <span className="text-seal">{zeige("adminEmail")}</span> : "Damit meldet sich die Kanzlei an."}>
+              <Field label={`E-Mail ${nutzerGen}`} htmlFor="nk-email" className="sm:col-span-2" hint={zeige("adminEmail") ? <span className="text-seal">{zeige("adminEmail")}</span> : "Damit meldet sich die Kanzlei an."}>
                 <Input id="nk-email" type="email" inputMode="email" value={form.adminEmail} onChange={(e) => set("adminEmail", e.target.value)} placeholder="anna.becker@kanzlei.de" autoComplete="email" aria-invalid={!!zeige("adminEmail")} />
               </Field>
               <Field label="Arbeitsplätze" htmlFor="nk-plaetze" hint={zeige("arbeitsplaetze") && <span className="text-seal">{zeige("arbeitsplaetze")}</span>}>
@@ -189,7 +218,7 @@ export function NeuerZugang({ open, onClose, onAngelegt }: { open: boolean; onCl
                   );
                 })}
               </div>
-              <p className="mt-1.5 text-[12px] text-fg-3">{form.schwerpunkte.length ? `${form.schwerpunkte.length} ausgewählt – die Beispielakten richten sich danach.` : "Ohne Auswahl werden allgemeine Beispielakten erzeugt."}</p>
+              <p className="mt-1.5 text-[13px] text-fg-3">{form.schwerpunkte.length ? `${form.schwerpunkte.length} ausgewählt – die Beispielakten richten sich danach.` : "Ohne Auswahl werden allgemeine Beispielakten erzeugt."}</p>
             </fieldset>
 
             <label htmlFor="nk-beispiel" className="flex cursor-pointer items-center gap-4 rounded-[16px] bg-[var(--ink-softer)] p-3.5 shadow-[inset_0_0_0_1px_var(--line)]">
@@ -214,38 +243,41 @@ export function NeuerZugang({ open, onClose, onAngelegt }: { open: boolean; onCl
 }
 
 function Erfolg({ e, beispieldaten }: { e: NeuerKundeErgebnis; beispieldaten: boolean }) {
-  const [zeigePw, setZeigePw] = useState(true);
-  const text = einladungsText({ tenant: e.tenant, admin: e.admin, passwort: e.passwort, beispieldaten });
+  const text = einladungsText({ tenant: e.tenant, user: e.admin, hauptnutzer: true, beispieldaten });
+  return <ZugangsDaten user={e.admin} text={text} passwort={e.passwort} kopf={<>
+    <span className="font-semibold text-fg">{e.admin.name}</span> kann sich ab sofort anmelden und legt dabei ein eigenes Passwort fest. {e.tenant.testBis ? `Test bis ${fmtDate(e.tenant.testBis)}.` : ""}{" "}
+    {beispieldaten ? <Chip tone="green">mit Beispieldaten</Chip> : <Chip tone="outline">leere Kanzlei</Chip>}
+  </>} />;
+}
+
+/**
+ * Zugangsdaten nach dem Anlegen bzw. nach einem neuen Startpasswort – überall gleich vollständig: Anmeldeadresse, E-Mail,
+ * Startpasswort mit eigenem Kopierknopf (getrennt übermitteln) und die Einladung ohne Passwort.
+ */
+export function ZugangsDaten({ user, text, passwort, kopf }: { user: { email: string }; text: string; passwort: string; kopf?: React.ReactNode }) {
   const url = loginUrl();
   const zeilen = [
-    { icon: <Link2 className="size-4" />, label: url ? "Login-URL" : "Anmeldeadresse", wert: url ?? LOGIN_URL_HINWEIS, was: "Login-URL", hinweis: !url },
-    { icon: <Mail className="size-4" />, label: "E-Mail", wert: e.admin.email, was: "E-Mail" },
-    { icon: <KeyRound className="size-4" />, label: "Passwort", wert: e.passwort, was: "Passwort", geheim: true },
+    { icon: <Link2 className="size-4" />, label: url ? "Anmeldeadresse" : "Anmeldeadresse", wert: url ?? LOGIN_URL_HINWEIS, was: "Anmeldeadresse", hinweis: !url },
+    { icon: <Mail className="size-4" />, label: "E-Mail", wert: user.email, was: "E-Mail" },
   ];
   return (
     <div className="grid gap-4">
-      <div className="flex items-center gap-3 rounded-[16px] bg-green-soft p-3.5 text-[13.5px]">
-        <motion.span initial={{ scale: 0.4, rotate: -30 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: "spring", stiffness: 500, damping: 18 }} className="grid size-9 shrink-0 place-items-center rounded-full bg-green text-white">
-          <Check className="size-5" strokeWidth={3} />
-        </motion.span>
-        <span className="text-fg-2">
-          <span className="font-semibold text-fg">{e.admin.name}</span> kann sich ab sofort anmelden und legt dabei ein eigenes Passwort fest. {e.tenant.testBis ? `Test bis ${fmtDate(e.tenant.testBis)}.` : ""}{" "}
-          {beispieldaten ? <Chip tone="green">mit Beispieldaten</Chip> : <Chip tone="outline">leere Kanzlei</Chip>}
-        </span>
-      </div>
+      {kopf && (
+        <div className="flex items-center gap-3 rounded-[16px] bg-green-soft p-3.5 text-[13.5px]">
+          <motion.span initial={{ scale: 0.4, rotate: -30 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: "spring", stiffness: 500, damping: 18 }} className="grid size-9 shrink-0 place-items-center rounded-full bg-green text-white">
+            <Check className="size-5" strokeWidth={3} />
+          </motion.span>
+          <span className="text-fg-2">{kopf}</span>
+        </div>
+      )}
       <ul className="sheet divide-y divide-[var(--line)] overflow-hidden rounded-[18px]">
         {zeilen.map((z) => (
           <li key={z.label} className="flex items-center gap-3 px-3.5 py-2.5">
             <span className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-ink-soft text-ink">{z.icon}</span>
             <span className="min-w-0 flex-1">
-              <span className="block text-[11.5px] font-medium text-fg-3">{z.label}</span>
-              <span className={z.hinweis ? "block text-[13px] text-fg-2" : "mono block truncate text-[13.5px] font-medium"}>{z.geheim && !zeigePw ? "•".repeat(z.wert.length) : z.wert}</span>
+              <span className="block text-[12.5px] font-medium text-fg-3">{z.label}</span>
+              <span className={z.hinweis ? "block text-[13px] text-fg-2" : "mono block truncate text-[13.5px] font-medium"}>{z.wert}</span>
             </span>
-            {z.geheim && (
-              <button type="button" className="icon-btn !size-8" onClick={() => setZeigePw((v) => !v)} aria-label={zeigePw ? "Passwort verbergen" : "Passwort anzeigen"}>
-                {zeigePw ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </button>
-            )}
             {!z.hinweis && (
               <Button size="sm" variant="secondary" icon={<Copy className="size-3.5" />} onClick={() => void kopieren(z.wert, z.was)} aria-label={`${z.was} kopieren`} title={`${z.was} kopieren`}>
                 <span className="hidden sm:inline">Kopieren</span>
@@ -254,14 +286,15 @@ function Erfolg({ e, beispieldaten }: { e: NeuerKundeErgebnis; beispieldaten: bo
           </li>
         ))}
       </ul>
+      <StartpasswortKarte passwort={passwort} kompakt />
       <div>
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <span className="label !mb-0">Einladung – fertig zum Versenden</span>
-          <Button size="sm" variant="primary" icon={<Send className="size-3.5" />} onClick={() => void kopieren(text, "Einladungstext")}>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+          <span className="label !mb-0">Einladung – vollständig, ohne Passwort</span>
+          <Button size="sm" variant="primary" icon={<Send className="size-3.5" />} onClick={() => void kopieren(text, "Einladung")}>
             Einladung kopieren
           </Button>
         </div>
-        <pre className="paper max-h-[260px] overflow-auto whitespace-pre-wrap p-4 font-[inherit] text-[13px] leading-relaxed">{text}</pre>
+        <pre className="paper max-h-[260px] overflow-auto whitespace-pre-wrap p-4 font-[inherit] text-[13px] leading-relaxed" tabIndex={0} role="region" aria-label="Einladungstext">{text}</pre>
       </div>
     </div>
   );

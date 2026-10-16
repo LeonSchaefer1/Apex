@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUp, Mic, MicOff, Volume2, VolumeX, X, RotateCcw, Square, Phone, Wrench, ArrowRight } from "lucide-react";
+import { ArrowUp, Mic, MicOff, Volume2, VolumeX, X, RotateCcw, Square, Phone, Wrench, ArrowRight, Check, CalendarPlus, Pencil, Undo2, ChevronRight, FolderOpen, StickyNote } from "lucide-react";
 import { useUI } from "@/store/ui";
 import { useKanzlei } from "@/store/session";
 import { DEMO_KI_NAME, useAiStatus } from "@/ai/status";
-import { ansprechBitte, frageAssistent, vorschlaege, type AssistentLink } from "@/ai/assistent";
+import { ansprechBitte, frageAssistent, pruefeDatum, vorschlaege, vorschlagArtName, vorschlagEintragen, vorschlagZuruecknehmen, type AssistentLink, type AuswahlKnopf, type Eintragung, type SchreibVorschlag } from "@/ai/assistent";
+import { fmtDateWd } from "@/core/dates";
+import { RUECKRUF_SIMULIERT } from "@/core/rueckruf";
+import { gruss } from "@/lib/rollen";
+import { toast } from "@/store/ui";
 import { useData } from "@/store/data";
 import type { LlmMessage } from "@/ai/llm";
 import { hoeren, sprechen, spracheingabeVerfuegbar, sprachausgabeVerfuegbar } from "@/lib/speech";
@@ -21,13 +25,17 @@ interface Msg {
   werkzeuge?: string[];
   laedt?: boolean;
   fehler?: boolean;
+  auswahl?: AuswahlKnopf[];
+  vorschlag?: SchreibVorschlag;
+  /** Zustand der Bestätigungskarte */
+  karte?: { status: "offen" | "eingetragen" | "verworfen" | "zurueckgenommen"; eintragung?: Eintragung };
 }
 
 let mid = 0;
 
 /** Apex Assistent: sprechender KI-Avatar für Live-Support und Kanzleiarbeit (unten rechts). */
 export function AssistantDock() {
-  const { assistentOffen, oeffneAssistent, schliesseAssistent, konsumierePrompt, assistentPrompt } = useUI();
+  const { assistentOffen, oeffneAssistent, schliesseAssistent, konsumierePrompt, assistentPrompt, kugel, kugelEingeklappt, setKugelEingeklappt } = useUI();
   const sitzung = useKanzlei();
   const ai = useAiStatus();
   const nav = useNavigate();
@@ -111,7 +119,7 @@ export function AssistantDock() {
           onText: (t) => setMsgs((m) => m.map((x) => (x.id === antwortId ? { ...x, text: t } : x))),
           onTool: (label) => setMsgs((m) => m.map((x) => (x.id === antwortId ? { ...x, werkzeuge: [...new Set([...(x.werkzeuge ?? []), label])] } : x))),
         });
-        setMsgs((m) => m.map((x) => (x.id === antwortId ? { ...x, text: r.text, links: r.links, werkzeuge: r.werkzeuge, laedt: false } : x)));
+        setMsgs((m) => m.map((x) => (x.id === antwortId ? { ...x, text: r.text, links: r.links, werkzeuge: r.werkzeuge, auswahl: r.auswahl, vorschlag: r.vorschlag, karte: r.vorschlag ? { status: "offen" } : undefined, laedt: false } : x)));
         if (perSprache || ton) vorlesen(r.text);
         else setZustand("ruhe");
       } catch (e) {
@@ -200,32 +208,77 @@ export function AssistantDock() {
     return () => obs.disconnect();
   }, [assistentOffen, schliesseAssistent]);
 
-  const vorname = sitzung.user.name.replace(/^(Dr\.|Prof\.)\s+/, "").split(" ")[0];
+  const begruessung = gruss(sitzung.user);
+  const setKarte = (id: number, karte: Msg["karte"], vorschlag?: SchreibVorschlag) => setMsgs((m) => m.map((x) => (x.id === id ? { ...x, karte, vorschlag: vorschlag ?? x.vorschlag } : x)));
+  const eintragen = (m: Msg, v: SchreibVorschlag) => {
+    try {
+      const e = vorschlagEintragen(v, sitzung);
+      setKarte(m.id, { status: "eingetragen", eintragung: e }, v);
+      toast(`${vorschlagArtName(v)} eingetragen`, { text: `${v.aktenzeichen} · ${v.titel}${v.datum ? ` · ${fmtDateWd(v.datum)}` : ""}`, ton: "erfolg" });
+    } catch (e) {
+      toast("Eintragen nicht möglich", { text: e instanceof Error ? e.message : "Bitte versuchen Sie es erneut.", ton: "fehler" });
+    }
+  };
+  const zuruecknehmen = (m: Msg) => {
+    if (!m.vorschlag || !m.karte?.eintragung) return;
+    const ok = vorschlagZuruecknehmen(m.vorschlag, m.karte.eintragung, sitzung);
+    setKarte(m.id, { status: "zurueckgenommen" });
+    toast(ok ? "Rückgängig gemacht" : "Bereits entfernt", { text: ok ? `${vorschlagArtName(m.vorschlag)} „${m.vorschlag.titel}“ wurde wieder entfernt und protokolliert.` : "Der Eintrag war schon nicht mehr vorhanden.", ton: "info" });
+  };
   const statusText = zustand === "hoert" ? "Ich höre zu …" : zustand === "denkt" ? "Denkt nach …" : zustand === "spricht" ? "Spricht …" : ai.quelle === "demo" ? DEMO_KI_NAME : "Live · Claude";
 
   return (
     <>
-      {/* Avatar-Knopf */}
+      {/* Avatar-Knopf (ab Tablet; auf dem Smartphone sitzt die Kugel in der Tab-Leiste). Einklappbar zu einem Griff am Rand,
+          abschaltbar unter Einstellungen → Darstellung – der Assistent bleibt über Strg+K bzw. das Menü erreichbar. */}
       <AnimatePresence>
-        {!assistentOffen && (
-          <motion.button
-            type="button"
+        {!assistentOffen && !mobile && kugel && !kugelEingeklappt && (
+          <motion.div
+            key="kugel"
             initial={{ scale: 0.6, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.6, opacity: 0 }}
-            whileHover={{ scale: 1.06 }}
-            whileTap={{ scale: 0.94 }}
             transition={{ type: "spring", stiffness: 420, damping: 24 }}
-            onClick={() => oeffneAssistent()}
-            className="group fixed z-50 grid place-items-center rounded-full bottom-[calc(88px+env(safe-area-inset-bottom))] right-[max(16px,env(safe-area-inset-right))] md:bottom-6 md:right-6"
-            aria-label="Apex Assistent öffnen – per Sprache oder Text fragen"
-            title="Apex Assistent – fragen Sie per Sprache oder Text"
+            className="group fixed bottom-6 right-6 z-50"
           >
-            <ApexOrb size={mobile ? 54 : 60} />
-            <span className="pointer-events-none absolute right-[calc(100%+10px)] hidden whitespace-nowrap rounded-full bg-[#0b0e18]/90 px-3 py-1.5 text-[12px] font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 md:block">
+            <motion.button
+              type="button"
+              whileHover={{ scale: 1.06 }}
+              whileTap={{ scale: 0.94 }}
+              onClick={() => oeffneAssistent()}
+              className="grid place-items-center rounded-full"
+              aria-label="Apex Assistent öffnen – per Sprache oder Text fragen"
+              title="Apex Assistent – fragen Sie per Sprache oder Text"
+            >
+              <ApexOrb size={60} />
+            </motion.button>
+            <button
+              type="button"
+              onClick={() => setKugelEingeklappt(true)}
+              className="absolute -left-2 -top-2 grid size-6 place-items-center rounded-full bg-[var(--surface)] text-fg-2 opacity-0 shadow ring-1 ring-[var(--line-strong)] transition-opacity hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"
+              aria-label="Assistent-Kugel an den Rand einklappen"
+              title="An den Rand einklappen"
+            >
+              <ChevronRight className="size-3.5" />
+            </button>
+            <span className="pointer-events-none absolute right-[calc(100%+10px)] top-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-[#0b0e18]/90 px-3 py-1.5 text-[13px] font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
               Apex Assistent fragen
             </span>
-          </motion.button>
+          </motion.div>
+        )}
+        {!assistentOffen && !mobile && kugel && kugelEingeklappt && (
+          <motion.button
+            key="griff"
+            type="button"
+            initial={{ x: 20, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: 20, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 420, damping: 30 }}
+            onClick={() => setKugelEingeklappt(false)}
+            className="ai-fill fixed bottom-10 right-0 z-50 h-14 w-3.5 rounded-l-full shadow-[0_6px_18px_-6px_rgba(60,40,200,.6)] ring-1 ring-white/30 transition-[width] hover:w-5 focus-visible:w-5"
+            aria-label="Assistent-Kugel wieder einblenden"
+            title="Apex Assistent einblenden"
+          />
         )}
       </AnimatePresence>
 
@@ -253,7 +306,7 @@ export function AssistantDock() {
                 <ApexOrb size={40} zustand={zustand} pegel={pegel} />
                 <div className="min-w-0 flex-1">
                   <div className="text-[14.5px] font-semibold tracking-[-0.01em]">Apex Assistent</div>
-                  <div className="flex items-center gap-1.5 text-[11.5px] text-fg-3">
+                  <div className="flex items-center gap-1.5 text-[12.5px] text-fg-3">
                     <span className={cn("size-1.5 rounded-full", ai.quelle === "demo" ? "bg-amber" : "bg-green")} />
                     {statusText}
                   </div>
@@ -277,7 +330,7 @@ export function AssistantDock() {
                   <div className="flex h-full flex-col">
                     <div className="flex flex-col items-center pt-4 text-center">
                       <ApexOrb size={96} zustand={zustand} pegel={pegel} />
-                      <div className="mt-5 text-[19px] font-semibold tracking-[-0.02em]">Hallo {vorname}, wie kann ich helfen?</div>
+                      <div className="mt-5 text-[19px] font-semibold tracking-[-0.02em]">{begruessung} – wie kann ich helfen?</div>
                       <p className="mt-1.5 max-w-[30ch] text-[13px] leading-snug text-fg-3">Fragen Sie {spracheingabeVerfuegbar() ? "per Sprache oder Text" : "per Text"} – zu Ihren Akten, Fristen oder zur Bedienung von AnwaltApex.</p>
                     </div>
                     <div className="mt-6 flex flex-wrap justify-center gap-2">
@@ -306,9 +359,10 @@ export function AssistantDock() {
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block text-[13px] font-semibold">Lieber mit einem Menschen sprechen?</span>
-                          <span className="block truncate text-[12px] text-fg-3">
+                          <span className="block truncate text-[13px] text-fg-3">
                             {sitzung.tenant.ansprechpartner.name} · {sitzung.tenant.ansprechpartner.telefon}
                           </span>
+                          <span className="block text-[12.5px] text-fg-3">Rückruf {RUECKRUF_SIMULIERT}</span>
                         </span>
                       </button>
                     </div>
@@ -324,7 +378,7 @@ export function AssistantDock() {
                             {m.werkzeuge && m.werkzeuge.length > 0 && (
                               <div className="mb-1.5 flex flex-wrap gap-1">
                                 {m.werkzeuge.map((w) => (
-                                  <motion.span key={w} initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} className="inline-flex items-center gap-1 rounded-full bg-violet-soft px-2 py-0.5 text-[11px] font-medium text-violet">
+                                  <motion.span key={w} initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} className="inline-flex items-center gap-1 rounded-full bg-violet-soft px-2 py-0.5 text-[12.5px] font-medium text-violet">
                                     <Wrench className="size-3" />
                                     {w}
                                   </motion.span>
@@ -334,6 +388,36 @@ export function AssistantDock() {
                             <div className={cn("rounded-[20px] rounded-bl-[6px] px-3.5 py-2.5 text-[13.5px] leading-relaxed", m.fehler ? "bg-seal-soft text-seal" : "bg-[var(--surface)] text-fg ring-1 ring-[var(--line)]")}>
                               {m.laedt && !m.text ? <Tippen /> : <Rich text={m.text} />}
                             </div>
+                            {m.auswahl && m.auswahl.length > 0 && (
+                              <div className="mt-2 grid gap-1.5" role="group" aria-label="Bitte wählen Sie">
+                                {m.auswahl.map((a) => (
+                                  <button
+                                    key={a.frage}
+                                    type="button"
+                                    disabled={beschaeftigt}
+                                    onClick={() => void senden(a.frage)}
+                                    className="flex items-center gap-2.5 rounded-[14px] bg-[var(--surface)] px-3 py-2 text-left ring-1 ring-[var(--line)] transition-colors hover:bg-ink-softer disabled:opacity-50"
+                                  >
+                                    <FolderOpen className="size-4 shrink-0 text-ink" />
+                                    <span className="min-w-0 flex-1">
+                                      <span className="block truncate text-[13px] font-medium">{a.label}</span>
+                                      {a.sub && <span className="block truncate text-[12.5px] text-fg-3">{a.sub}</span>}
+                                    </span>
+                                    <ArrowRight className="size-3.5 shrink-0 text-fg-3" />
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            {m.vorschlag && m.karte && (
+                              <BestaetigungsKarte
+                                v={m.vorschlag}
+                                status={m.karte.status}
+                                land={sitzung.tenant.bundesland}
+                                onEintragen={(v) => eintragen(m, v)}
+                                onVerwerfen={() => setKarte(m.id, { status: "verworfen" })}
+                                onRueckgaengig={() => zuruecknehmen(m)}
+                              />
+                            )}
                             {m.links && m.links.length > 0 && (
                               <div className="mt-1.5 flex flex-wrap gap-1.5">
                                 {m.links.map((l) => (
@@ -344,7 +428,7 @@ export function AssistantDock() {
                                       nav(l.to);
                                       if (mobile) schliesseAssistent();
                                     }}
-                                    className="inline-flex items-center gap-1 rounded-full bg-ink-soft px-2.5 py-1 text-[12px] font-medium text-ink transition-colors hover:bg-[var(--ink)] hover:text-white"
+                                    className="inline-flex items-center gap-1 rounded-full bg-ink-soft px-2.5 py-1 text-[12.5px] font-medium text-ink transition-colors hover:bg-[var(--ink)] hover:text-white"
                                   >
                                     {l.label}
                                     <ArrowRight className="size-3" />
@@ -369,7 +453,11 @@ export function AssistantDock() {
                   </motion.div>
                 )}
               </AnimatePresence>
-              {hinweis && <div className="mx-4 mb-2 rounded-[14px] bg-amber-soft px-3 py-2 text-[12px] text-fg-2">{hinweis}</div>}
+              {hinweis && (
+                <div role="status" className="mx-4 mb-2 rounded-[14px] bg-amber-soft px-3 py-2 text-[13px] text-fg-2">
+                  {hinweis}
+                </div>
+              )}
 
               {/* Eingabe */}
               <form
@@ -463,6 +551,95 @@ function Rich({ text }: { text: string }) {
           <p key={i}>{teile}</p>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * Bestätigungskarte für schreibende Aktionen des Assistenten: Akte, Titel, Datum mit Wochentag (bei Wochenende/Feiertag mit
+ * Vorschlag des nächsten Werktags) – „Eintragen“, „Ändern“, „Verwerfen“. Nach dem Eintragen: „Rückgängig“.
+ */
+function BestaetigungsKarte({ v, status, land, onEintragen, onVerwerfen, onRueckgaengig }: {
+  v: SchreibVorschlag;
+  status: "offen" | "eingetragen" | "verworfen" | "zurueckgenommen";
+  land: import("@/core/types").Bundesland;
+  onEintragen: (v: SchreibVorschlag) => void;
+  onVerwerfen: () => void;
+  onRueckgaengig: () => void;
+}) {
+  const [aendern, setAendern] = useState(false);
+  const [titel, setTitel] = useState(v.art === "notiz" ? v.text ?? "" : v.titel);
+  const [datum, setDatum] = useState(v.datum ?? "");
+  const notiz = v.art === "notiz";
+  const p = !notiz && datum ? pruefeDatum(datum, land) : { werktag: true as const };
+  const aktuell: SchreibVorschlag = notiz ? { ...v, text: titel.trim() || v.text } : { ...v, titel: titel.trim() || v.titel, datum };
+  const Icon = notiz ? StickyNote : CalendarPlus;
+  return (
+    <div className="mt-2 overflow-hidden rounded-[18px] bg-[var(--surface)] ring-1 ring-[var(--line-strong)]" role="group" aria-label={`${vorschlagArtName(v)} bestätigen`}>
+      <div className="flex items-center gap-2 border-b border-[var(--line)] bg-[var(--ink-softer)] px-3 py-2 text-[12.5px] font-semibold text-ink">
+        <Icon className="size-3.5" /> {vorschlagArtName(v)} – {status === "offen" ? "bitte bestätigen" : status === "eingetragen" ? "eingetragen" : status === "verworfen" ? "verworfen" : "rückgängig gemacht"}
+      </div>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2.5 text-[13px]">
+        <dt className="text-fg-3">Akte</dt>
+        <dd className="min-w-0 truncate font-medium">
+          {v.aktenzeichen} · {v.akteTitel}
+        </dd>
+        <dt className="text-fg-3">{notiz ? "Text" : "Titel"}</dt>
+        <dd className="min-w-0">
+          {aendern && status === "offen" ? (
+            <input aria-label={notiz ? "Text der Notiz" : "Titel"} value={titel} onChange={(e) => setTitel(e.target.value)} className="field !h-8 w-full !py-1 !text-[13px]" />
+          ) : (
+            <span className="font-medium">{notiz ? aktuell.text : aktuell.titel}</span>
+          )}
+        </dd>
+        {!notiz && (
+          <>
+            <dt className="text-fg-3">Datum</dt>
+            <dd className="min-w-0">
+              {aendern && status === "offen" ? (
+                <input type="date" aria-label="Datum" value={datum} onChange={(e) => setDatum(e.target.value)} className="field !h-8 !py-1 !text-[13px]" />
+              ) : (
+                <span className="font-medium">{datum ? fmtDateWd(datum) : "–"}</span>
+              )}
+            </dd>
+          </>
+        )}
+      </dl>
+      {!p.werktag && "naechster" in p && p.naechster && status === "offen" && (
+        <div className="mx-3 mb-2 flex flex-wrap items-center gap-2 rounded-[12px] bg-amber-soft px-2.5 py-1.5 text-[12.5px] text-fg-2">
+          {fmtDateWd(datum)} ist kein Werktag.
+          <button type="button" className="font-semibold text-ink underline-offset-2 hover:underline" onClick={() => setDatum(p.naechster!)}>
+            Auf {fmtDateWd(p.naechster)} legen
+          </button>
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-1.5 border-t border-[var(--line)] px-3 py-2">
+        {status === "offen" && (
+          <>
+            <button type="button" onClick={() => onEintragen(aktuell)} className="inline-flex h-8 items-center gap-1.5 rounded-full bg-ink px-3 text-[13px] font-semibold text-white hover:opacity-90">
+              <Check className="size-3.5" /> Eintragen
+            </button>
+            <button type="button" onClick={() => setAendern((x) => !x)} aria-pressed={aendern} className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium text-fg-2 ring-1 ring-[var(--line-strong)] hover:bg-ink-softer">
+              <Pencil className="size-3.5" /> {aendern ? "Fertig" : "Ändern"}
+            </button>
+            <button type="button" onClick={onVerwerfen} className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium text-fg-3 hover:bg-ink-softer hover:text-fg">
+              <X className="size-3.5" /> Verwerfen
+            </button>
+          </>
+        )}
+        {status === "eingetragen" && (
+          <>
+            <span className="inline-flex items-center gap-1 text-[13px] font-medium text-green">
+              <Check className="size-3.5" /> {notiz ? "In der Akte gespeichert" : "Im Fristenkalender"}
+            </span>
+            <button type="button" onClick={onRueckgaengig} className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-semibold text-ink ring-1 ring-[var(--line-strong)] hover:bg-ink-softer">
+              <Undo2 className="size-3.5" /> Rückgängig
+            </button>
+          </>
+        )}
+        {status === "verworfen" && <span className="text-[13px] text-fg-3">Nichts eingetragen.</span>}
+        {status === "zurueckgenommen" && <span className="text-[13px] text-fg-3">Wieder entfernt – im Protokoll vermerkt.</span>}
+      </div>
     </div>
   );
 }

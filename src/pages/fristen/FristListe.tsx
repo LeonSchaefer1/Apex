@@ -38,7 +38,7 @@ function gruppiere(fristen: Frist[], heute: string, land: Bundesland): Gruppe[] 
 }
 
 export function FristListe({
-  fristen, akten, team, user, heute, land, gefiltert, ohneHorizont, markiert,
+  fristen, akten, team, user, heute, land, gefiltert, ohneHorizont, markiert, vertretungFuer,
 }: {
   fristen: Frist[];
   akten: Map<string, Akte>;
@@ -51,6 +51,8 @@ export function FristListe({
   ohneHorizont?: boolean;
   /** Per Deep-Link angesprungener Tag: Gruppe hervorheben und hinscrollen */
   markiert?: string;
+  /** Vertretene Personen (heute abwesend, ich bin Vertretung): ID → Name */
+  vertretungFuer?: Map<string, string>;
 }) {
   const [alle, setAlle] = useState(false);
   const gruppen = useMemo(() => gruppiere(fristen, heute, land), [fristen, heute, land]);
@@ -97,14 +99,14 @@ export function FristListe({
             >
               <div className="mb-2 flex items-baseline gap-2.5 px-1">
                 <h3 className={cn("title-md", g.ton === "seal" && "text-seal", g.ton === "ink" && "text-ink", g.ton === "green" && "text-green")}>{g.titel}</h3>
-                {g.sub && <span className="num truncate text-[12.5px] text-fg-3">{g.sub}</span>}
-                <span className="num ml-auto rounded-full bg-[var(--ink-softer)] px-2 py-0.5 text-[11.5px] font-medium text-fg-3">{g.items.length}</span>
+                {g.sub && <span className="num min-w-0 text-[12.5px] text-fg-3">{g.sub}</span>}
+                <span className="num ml-auto rounded-full bg-[var(--ink-softer)] px-2 py-0.5 text-[12.5px] font-medium text-fg-3">{g.items.length}</span>
               </div>
               <Card padded={false} className={cn("overflow-hidden", g.ton === "seal" && "ring-1 ring-[color-mix(in_oklab,var(--seal)_25%,transparent)]")}>
                 <div className="divide-y divide-[var(--line)]">
                   <AnimatePresence initial={false}>
                     {g.items.map((f, i) => (
-                      <FristZeile key={f.id} f={f} akte={akten.get(f.akteId)} team={team} user={user} index={start + i} zeigeDatum={g.key === "ueber" || g.key === "erledigt"} />
+                      <FristZeile key={f.id} f={f} akte={akten.get(f.akteId)} team={team} user={user} index={start + i} zeigeDatum={g.key === "ueber" || g.key === "erledigt"} vertretungFuer={vertretungFuer?.get(f.verantwortlichId)} />
                     ))}
                   </AnimatePresence>
                 </div>

@@ -12,8 +12,13 @@ export const KFZ_VERSICHERER = ["Elbtal Versicherung AG", "Isarwerk Versicherung
 
 export type StadtKey = "berlin" | "muenchen" | "hamburg";
 
+/** Gerichtsgröße am Ort – begrenzt Kammer- und Abteilungsnummern in den Demodaten (Paderborn hat keine 60. Kammer). */
+export type Gerichtsgroesse = "gross" | "mittel" | "klein";
+
 export interface StadtDaten {
   ort: string;
+  /** Größe der Gerichte am Ort (Standard: groß) */
+  groesse?: Gerichtsgroesse;
   vorwahl: string;
   strassen: string[];
   plz: string[];
@@ -203,10 +208,14 @@ export function ortsSchluessel(stadt: string): string {
 const HERO_ORTE: Record<string, StadtKey> = { berlin: "berlin", muenchen: "muenchen", munchen: "muenchen", hamburg: "hamburg" };
 const HERO_LAND: Record<StadtKey, Bundesland> = { berlin: "BE", muenchen: "BY", hamburg: "HH" };
 
-function ausStandort(s: Standort): StadtDaten {
+/** Großstädte mit großen Gerichten (viele Kammern/Abteilungen); übrige bekannte Standorte mittel, unbekannte Orte klein. */
+const GROSSE_GERICHTSORTE = new Set(["Köln", "Düsseldorf", "Dortmund", "Essen", "Duisburg", "Frankfurt am Main", "Stuttgart", "Nürnberg", "Hannover", "Bremen", "Leipzig", "Dresden"]);
+
+function ausStandort(s: Standort, bekannt = true): StadtDaten {
   const L = LAND[s.land];
   return {
     ort: s.ort,
+    groesse: GROSSE_GERICHTSORTE.has(s.ort) ? "gross" : bekannt ? "mittel" : "klein",
     vorwahl: s.vorwahl,
     strassen: s.strassen ?? ALLGEMEINE_STRASSEN,
     plz: s.plz,
@@ -247,5 +256,12 @@ export function stadtDatenFuer(stadt: string | undefined, bundesland: Bundesland
   }
   const hs = LAND[bundesland].hauptstadt;
   const basis = HERO_ORTE[hs] ? { vorwahl: STAEDTE[HERO_ORTE[hs]].vorwahl, plz: STAEDTE[HERO_ORTE[hs]].plz } : { vorwahl: STANDORTE[hs].vorwahl, plz: STANDORTE[hs].plz };
-  return ausStandort({ land: bundesland, ort: name, vorwahl: basis.vorwahl, plz: basis.plz });
+  return ausStandort({ land: bundesland, ort: name, vorwahl: basis.vorwahl, plz: basis.plz }, false);
 }
+
+/** Höchste Kammer- bzw. Abteilungsnummer je Gericht nach Gerichtsgröße (Großstädte wie bisher). */
+export const KAMMERN: Record<Gerichtsgroesse, { arbg: [number, number]; ag: [number, number]; fam: [number, number]; lg: [number, number]; straf: [number, number]; sta: [number, number] }> = {
+  gross: { arbg: [1, 60], ag: [1, 240], fam: [270, 290], lg: [2, 35], straf: [200, 290], sta: [200, 290] },
+  mittel: { arbg: [1, 12], ag: [1, 40], fam: [1, 15], lg: [1, 14], straf: [1, 30], sta: [1, 60] },
+  klein: { arbg: [1, 4], ag: [1, 20], fam: [1, 8], lg: [1, 6], straf: [1, 12], sta: [1, 30] },
+};

@@ -5,7 +5,7 @@ import { useData } from "@/store/data";
 import { useSession } from "@/store/session";
 import { istConsole } from "@/lib/backend";
 import { nowLocal } from "@/core/dates";
-import { laufFaellig, zeitplan } from "@/core/automationen";
+import { ersparnisMinuten, laufFaellig, zeitplan } from "@/core/automationen";
 import type { Akte, Automation } from "@/core/types";
 
 interface MotorState {
@@ -21,13 +21,21 @@ export const useMotorStore = create<MotorState>((set) => ({
   },
 }));
 
-const TEXTE: Record<string, (az: string) => string> = {
-  "zuordnung": (az) => `Nachricht der Akte ${az} zugeordnet`,
-  "vorfristen": (az) => `Vorfrist gesetzt – Akte ${az}`,
-  "mandanten-update": (az) => `Mandanten-Update versendet – Akte ${az}`,
-  "zeiterfassung": () => `3 Zeiteinträge vorgeschlagen`,
-  "bankabgleich": () => `Kontoumsätze abgerufen und geprüft`,
-  "posteingang-fristen": (az) => `Posteingang geprüft – Akte ${az}`,
+/** Ein simulierter Lauf: Text und Zahl der tatsächlich bearbeiteten Vorgänge (gespart wird nur je Vorgang). */
+const LAEUFE: Record<string, (az: string) => { text: string; vorgaenge: number }> = {
+  "zuordnung": (az) => ({ text: `Nachricht der Akte ${az} zugeordnet (Vorschlag)`, vorgaenge: 1 }),
+  "vorfristen": (az) => ({ text: `Vorfrist gesetzt – Akte ${az}`, vorgaenge: 1 }),
+  "mandanten-update": (az) => ({ text: `Mandanten-Update zur Freigabe vorgelegt – Akte ${az}`, vorgaenge: 1 }),
+  "zeiterfassung": () => {
+    const n = 2 + Math.floor(Math.random() * 4);
+    return { text: `${n} Zeiteinträge vorgeschlagen`, vorgaenge: n };
+  },
+  // Stündlicher Abruf: Minuten nur für zugeordnete Umsätze – ein Abruf ohne neue Zahlung spart nichts
+  "bankabgleich": () => {
+    const n = Math.random() < 0.45 ? 0 : 1 + Math.floor(Math.random() * 2);
+    return { text: n ? `Bankabgleich: ${n} ${n === 1 ? "Zahlung" : "Zahlungen"} zugeordnet` : "Kontoumsätze abgerufen – keine neue Zahlung", vorgaenge: n };
+  },
+  "posteingang-fristen": (az) => ({ text: `Posteingang geprüft – Akte ${az}, keine neue Frist`, vorgaenge: 0 }),
 };
 
 /** Läufe ohne Aktenbezug (Kanzlei-weit). */
@@ -44,11 +52,12 @@ function zufall<T>(liste: T[]): T {
  */
 function lauf(a: Automation, akte: Akte) {
   const st = useData.getState();
-  const text = TEXTE[a.key](akte.aktenzeichen);
+  const { text, vorgaenge } = LAEUFE[a.key](akte.aktenzeichen);
+  const minuten = ersparnisMinuten(a.key, vorgaenge);
   const system = { system: true };
   st.patch("automationen", a.id, { laeufe: a.laeufe + 1, letzterLauf: nowLocal() }, system);
-  st.log({ akteur: "automation", automationKey: a.key, akteId: OHNE_AKTE.includes(a.key) ? undefined : akte.id, text, minutenGespart: a.minutenProLauf }, system);
-  useMotorStore.getState().zeige(text, a.minutenProLauf);
+  st.log({ akteur: "automation", automationKey: a.key, akteId: OHNE_AKTE.includes(a.key) ? undefined : akte.id, text, minutenGespart: minuten || undefined }, system);
+  useMotorStore.getState().zeige(text, minuten);
 }
 
 export function useMotor(enabled: boolean) {
@@ -61,7 +70,7 @@ export function useMotor(enabled: boolean) {
           const st = useData.getState();
           const sitzung = useSession.getState().sitzung;
           const land = sitzung && !istConsole(sitzung) ? sitzung.tenant.bundesland : undefined;
-          const autos = st.data.automationen.filter((a) => a.aktiv && TEXTE[a.key]);
+          const autos = st.data.automationen.filter((a) => a.aktiv && LAEUFE[a.key]);
           const akten = st.data.akten.filter((a) => a.status === "offen");
           if (autos.length && akten.length) {
             // Zeitgesteuerte Automationen (Mandanten-Update freitags 14:00 Uhr, Zeiterfassung werktags 18:00 Uhr) laufen nur zu

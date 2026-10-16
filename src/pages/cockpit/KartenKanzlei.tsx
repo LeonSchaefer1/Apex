@@ -6,10 +6,11 @@ import { AiChip, AnimatedNumber, Button, Chip, ProgressRing, Sparkline } from "@
 import { useUI } from "@/store/ui";
 import { diffDays, fmtDateShort, fmtNum, relTime, wochentagName } from "@/core/dates";
 import { istKritisch } from "@/core/fristenLage";
+import { stufeWort } from "@/core/einschaetzung";
 import { cn } from "@/lib/cn";
 import { schlagwortAnzeige } from "@/pages/akten/helfer";
 import { BentoKarte, KartenKopf } from "./Basis";
-import { ZIEL_STUNDEN, artLabel, euro, type CockpitDaten } from "./daten";
+import { ARBEITSWOCHEN, WERT_PRO_STUNDE, ZIEL_STUNDEN, artLabel, euro, type CockpitDaten } from "./daten";
 
 /** Aktualisiert relative Zeitangaben („vor 3 Min.") regelmäßig. */
 function useJetzt(ms = 30000) {
@@ -28,21 +29,31 @@ export function MotorKarte({ d, i, className }: { d: CockpitDaten; i: number; cl
   const anteil = m.stunden / ZIEL_STUNDEN;
   const erreicht = anteil >= 1;
   return (
-    <BentoKarte i={i} label="38h-Motor: gesparte Zeit in den letzten 7 Tagen" className={className}>
-      <KartenKopf icon={<Zap />} ton="green" titel="38h-Motor" unter="Automatisch erledigt · letzte 7 Tage" mehr={{ to: "/automatisierung", label: "Details" }} />
+    <BentoKarte i={i} label="38h-Motor: gesparte Zeit in den letzten 7 Tagen – Beispielwerte (Demo)" className={className}>
+      <KartenKopf
+        icon={<Zap />}
+        ton="green"
+        titel="38h-Motor"
+        unter={
+          <>
+            <span className="font-semibold text-amber">Beispielwerte (Demo)</span> · letzte 7 Tage
+          </>
+        }
+        mehr={{ to: "/automatisierung", label: "Details" }}
+      />
       <div className="relative z-[1] flex items-center gap-4">
         <ProgressRing value={anteil} size={104} stroke={9} color="var(--green)">
           <div className="text-center leading-none">
             <AnimatedNumber value={m.stunden} format={(n) => fmtNum(n, 1)} className="text-[24px] font-semibold tracking-[-0.03em]" />
-            <div className="mt-1 text-[10.5px] font-medium text-fg-3">von {ZIEL_STUNDEN} Std.</div>
+            <div className="mt-1 text-[12px] font-medium text-fg-3">von {ZIEL_STUNDEN} Std.</div>
           </div>
         </ProgressRing>
         <div className="min-w-0 flex-1">
-          <div className="text-[12px] font-medium text-fg-3">Wert der letzten 7 Tage</div>
+          <div className="text-[12.5px] font-medium text-fg-3">Wert der letzten 7 Tage</div>
           <div className="text-[24px] font-semibold leading-tight tracking-[-0.03em]">
             <AnimatedNumber value={m.euroWoche} format={(n) => euro(n)} />
           </div>
-          <div className="mt-0.5 text-[12px] text-fg-3">
+          <div className="mt-0.5 text-[12.5px] text-fg-3">
             hochgerechnet <span className="num font-semibold text-green">≈ {euro(Math.round(m.euroJahr / 1000) * 1000)}</span> pro Jahr
           </div>
           {erreicht && (
@@ -54,7 +65,7 @@ export function MotorKarte({ d, i, className }: { d: CockpitDaten; i: number; cl
       </div>
       <div className="relative z-[1] mt-3">
         <Sparkline values={m.tage} width={300} height={46} color="var(--green)" className="h-[46px] w-full" />
-        <div className="mt-0.5 flex justify-between px-1 text-[10px] font-medium text-fg-4">
+        <div className="mt-0.5 flex justify-between px-1 text-[12px] font-medium text-fg-3">
           {m.tagLabels.map((t, k) => (
             <span key={k} className={cn(k === m.tagLabels.length - 1 && "text-fg-2")}>
               {t}
@@ -62,13 +73,16 @@ export function MotorKarte({ d, i, className }: { d: CockpitDaten; i: number; cl
           ))}
         </div>
       </div>
+      <p className="relative z-[1] mt-2 text-[12.5px] leading-snug text-fg-3">
+        Hochrechnung: Std. der letzten 7 Tage × {ARBEITSWOCHEN} Wochen × interner Kostensatz ({fmtNum(WERT_PRO_STUNDE, 2)} €/Std.) –{" "}
+        <Link to="/automatisierung" className="font-medium text-ink underline-offset-2 hover:underline">
+          So rechnen wir
+        </Link>
+      </p>
       <div className="relative z-[1] mt-3 border-t border-[var(--line)] pt-3">
         <div className="mb-1.5 flex items-center gap-2">
-          <span className="relative flex size-2">
-            <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--green)] opacity-60 [animation-duration:2.2s]" />
-            <span className="relative inline-flex size-2 rounded-full bg-[var(--green)]" />
-          </span>
-          <span className="eyebrow !text-[10.5px]">Gerade erledigt</span>
+          <span className="relative inline-flex size-2 rounded-full bg-[var(--green)]" aria-hidden />
+          <span className="eyebrow">Zuletzt erledigt</span>
         </div>
         {m.zuletzt.length === 0 && <p className="px-1 text-[12.5px] text-fg-3">Der Motor legt los, sobald Akten, Fristen und Post eingehen – jede erledigte Routine erscheint hier.</p>}
         <ul className="grid gap-1">
@@ -88,9 +102,9 @@ export function MotorKarte({ d, i, className }: { d: CockpitDaten; i: number; cl
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="line-clamp-2 text-[12.5px] leading-snug text-fg-2">{a.text}</span>
-                  <span className="text-[11px] text-fg-4">{relTime(a.zeit, jetzt)}</span>
+                  <span className="text-[12.5px] text-fg-3">{relTime(a.zeit, jetzt)}</span>
                 </span>
-                {a.minutenGespart ? <span className="num shrink-0 text-[11.5px] font-semibold text-green">+{a.minutenGespart} Min.</span> : null}
+                {a.minutenGespart ? <span className="num shrink-0 text-[12.5px] font-semibold text-green">+{a.minutenGespart} Min.</span> : null}
               </motion.li>
             ))}
           </AnimatePresence>
@@ -122,7 +136,7 @@ export function FinanzenKarte({ d, i, className }: { d: CockpitDaten; i: number;
           <motion.span className="h-full bg-seal" initial={{ width: 0 }} animate={{ width: `${anteilUeber * 100}%` }} transition={{ duration: 1, ease: [0.16, 1, 0.3, 1], delay: 0.3 }} />
           <motion.span className="h-full bg-ink" initial={{ width: 0 }} animate={{ width: `${(1 - anteilUeber) * 100}%` }} transition={{ duration: 1, ease: [0.16, 1, 0.3, 1], delay: 0.4 }} />
         </div>
-        <div className="mt-1.5 flex justify-between text-[11px] text-fg-4">
+        <div className="mt-1.5 flex justify-between text-[12.5px] text-fg-3">
           <span>{Math.round(anteilUeber * 100)} % überfällig</span>
           <span>{Math.round((1 - anteilUeber) * 100)} % im Zahlungsziel</span>
         </div>
@@ -134,7 +148,7 @@ export function FinanzenKarte({ d, i, className }: { d: CockpitDaten; i: number;
             <span className={cn("grid size-8 shrink-0 place-items-center rounded-[10px]", kachel[z.ton])}>{z.icon}</span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[13px] font-medium text-fg-2">{z.label}</span>
-              <span className="block truncate text-[11.5px] text-fg-4">{z.sub}</span>
+              <span className="block truncate text-[12.5px] text-fg-3">{z.sub}</span>
             </span>
             <span className={cn("num shrink-0 text-[15px] font-semibold tracking-[-0.01em]", wertTon[z.ton])}>
               <AnimatedNumber value={z.wert} format={(n) => euro(n)} />
@@ -144,7 +158,7 @@ export function FinanzenKarte({ d, i, className }: { d: CockpitDaten; i: number;
       </ul>
       {f.aelteste.length > 0 && (
         <div className="relative z-[1] mt-2 border-t border-[var(--line)] pt-2.5">
-          <div className="eyebrow mb-1 px-1 !text-[10.5px]">Am längsten überfällig</div>
+          <div className="eyebrow mb-1 px-1">Am längsten überfällig</div>
           <ul className="flex flex-col">
             {f.aelteste.map((r) => {
               const a = d.akten.get(r.akteId);
@@ -152,7 +166,7 @@ export function FinanzenKarte({ d, i, className }: { d: CockpitDaten; i: number;
                 <li key={r.id}>
                   <Link to={`/akten/${r.akteId}`} className="flex items-center gap-2 rounded-[10px] px-1 py-1 text-[12.5px] transition-colors hover:bg-ink-softer">
                     <span className="mono shrink-0 text-fg-2">{r.nummer}</span>
-                    <span className="min-w-0 flex-1 truncate text-fg-4">{a?.titel}</span>
+                    <span className="min-w-0 flex-1 truncate text-fg-3">{a?.titel}</span>
                     <span className="shrink-0 font-medium text-seal" title={`seit ${r.tage} ${r.tage === 1 ? "Tag" : "Tagen"} überfällig`}>{r.tage}&nbsp;{r.tage === 1 ? "Tag" : "Tage"}</span>
                     <span className="num w-[68px] shrink-0 text-right font-semibold">{euro(r.betrag)}</span>
                   </Link>
@@ -206,24 +220,24 @@ export function KiKarte({ d, i, className }: { d: CockpitDaten; i: number; class
       </header>
       <div className="relative z-[1] flex flex-1 flex-col">
         <p className="text-[16px] font-semibold leading-snug tracking-[-0.015em]">
-          {analyse ? `Fallanalyse liegt vor: Erfolgsaussicht ${analyse.prozent} %` : "KI-Fallanalyse bereit: Erfolgsaussicht prüfen"}
+          {analyse ? `Fallanalyse liegt vor: ${stufeWort(analyse.stufe, analyse.prozent)}` : "KI-Fallanalyse bereit: Erfolgsaussicht prüfen"}
         </p>
         <Link to={`/akten/${a.id}`} className="mt-1.5 block truncate text-[13px] text-fg-2 hover:text-ink">
           <span className="mono font-semibold text-ink">{a.aktenzeichen}</span> · {a.titel}
         </Link>
         <p className="mt-2 line-clamp-3 text-[12.5px] leading-relaxed text-fg-3">{a.beschreibung}</p>
         <div className="mt-2.5 flex flex-wrap gap-1.5">
-          <Chip tone="violet" className="!h-[20px] !text-[10.5px]">
+          <Chip tone="violet" className="!h-[22px] !text-[12.5px]">
             {a.sachgebiet}
           </Chip>
           {a.schlagworte.slice(0, 3).map((s) => (
-            <Chip key={s} tone="outline" className="!h-[20px] !text-[10.5px]">
+            <Chip key={s} tone="outline" className="!h-[22px] !text-[12.5px]">
               {schlagwortAnzeige(s)}
             </Chip>
           ))}
         </div>
         {f && (
-          <div className={cn("mt-3 flex items-start gap-2 rounded-[12px] px-2.5 py-2 text-[12px]", istKritisch(f) || tage <= 2 ? "bg-seal-soft text-seal" : "bg-amber-soft text-amber")}>
+          <div className={cn("mt-3 flex items-start gap-2 rounded-[12px] px-2.5 py-2 text-[12.5px]", istKritisch(f) || tage <= 2 ? "bg-seal-soft text-seal" : "bg-amber-soft text-amber")}>
             <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
             <span className="min-w-0">
               <span className="block font-semibold">{f.titel}</span>
@@ -239,7 +253,7 @@ export function KiKarte({ d, i, className }: { d: CockpitDaten; i: number; class
         )}
         {!analyse && (
           <ul className="mt-3 grid gap-1.5 text-[12.5px] text-fg-2">
-            {["Erfolgsaussicht in Prozent – mit Begründung", "Passende Präzedenzfälle aus der Fall-Datenbank", "Risiken, Gegenargumente und nächste Schritte"].map((t) => (
+            {["Einschätzung der Erfolgsaussicht – mit Begründung und Quellen", "Passende Präzedenzfälle aus der Fall-Datenbank", "Risiken, Gegenargumente und nächste Schritte"].map((t) => (
               <li key={t} className="flex items-start gap-2">
                 <span className="mt-[5px] size-1.5 shrink-0 rounded-full ai-fill" />
                 <span>{t}</span>
@@ -251,7 +265,7 @@ export function KiKarte({ d, i, className }: { d: CockpitDaten; i: number; class
           <Button variant="ai" className="w-full" icon={<Sparkles className="size-4" />} iconRight={<ArrowRight className="size-4" />} onClick={() => nav(`/ki?akte=${encodeURIComponent(a.id)}&start=1`)}>
             {analyse ? "Analyse öffnen" : "Fallanalyse starten"}
           </Button>
-          <p className="mt-2 text-center text-[11px] text-fg-4">Mit Präzedenzfällen aus der Fall-Datenbank · Sie entscheiden</p>
+          <p className="mt-2 text-center text-[12.5px] text-fg-3">Mit Präzedenzfällen aus der Fall-Datenbank · Sie entscheiden</p>
         </div>
       </div>
     </BentoKarte>
@@ -275,11 +289,11 @@ function StartKarte({ i, className }: { i: number; className?: string }) {
             <button type="button" onClick={() => nav(x.to)} className="group flex w-full items-center gap-3 rounded-[14px] p-2 text-left transition-colors hover:bg-ink-softer">
               <span className="relative grid size-9 shrink-0 place-items-center rounded-[11px] bg-ink-soft text-ink">
                 {x.icon}
-                <span className="num absolute -right-1 -top-1 grid size-4 place-items-center rounded-full bg-ink text-[9px] font-bold text-[var(--on-ink)]">{k + 1}</span>
+                <span className="num absolute -right-1.5 -top-1.5 grid size-[18px] place-items-center rounded-full bg-ink text-[11px] font-bold text-[var(--on-ink)]">{k + 1}</span>
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-[13.5px] font-semibold group-hover:text-ink">{x.t}</span>
-                <span className="block truncate text-[12px] text-fg-3">{x.s}</span>
+                <span className="block truncate text-[12.5px] text-fg-3">{x.s}</span>
               </span>
               <ArrowRight className="size-4 text-fg-4 transition-transform group-hover:translate-x-0.5" />
             </button>
@@ -316,9 +330,9 @@ export function Schnellaktionen() {
           <span className={cn("relative z-[1] grid size-9 shrink-0 place-items-center rounded-[11px]", a.ai ? "ai-fill text-white shadow-[0_6px_14px_-6px_var(--ai-2)]" : "bg-ink-soft text-ink")}>{a.icon}</span>
           <span className="relative z-[1] min-w-0 flex-1">
             <span className="block truncate text-[13.5px] font-semibold">{a.label}</span>
-            <span className="block truncate text-[11.5px] text-fg-3">{a.hint}</span>
+            <span className="block truncate text-[12.5px] text-fg-3">{a.hint}</span>
           </span>
-          {a.kbd && <span className="kbd relative z-[1] hidden !text-[10.5px] @5xl:inline-grid">{a.kbd}</span>}
+          {a.kbd && <span className="kbd relative z-[1] hidden @5xl:inline-grid">{a.kbd}</span>}
         </motion.button>
       ))}
     </nav>

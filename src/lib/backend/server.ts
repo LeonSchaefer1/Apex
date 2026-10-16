@@ -1,6 +1,6 @@
 // Server-Betrieb: echte Mehrmandanten-Instanz mit Anmeldung, Datenhaltung je Kanzlei und KI-Proxy.
 import type { CollectionKey, Tenant, TenantData } from "@/core/types";
-import { CODE_SITZUNG_GEWECHSELT, PasswortWechselNoetig, istConsole, type AiStreamRequest, type AiStreamResult, type Backend, type BackendInfo, type Sitzung } from "./types";
+import { CODE_SITZUNG_GEWECHSELT, PasswortWechselNoetig, ZweiFaktorNoetig, istConsole, type AiStreamRequest, type AiStreamResult, type Backend, type BackendInfo, type Sitzung, type ZweiFaktorEinrichtung, type ZweiFaktorStatus } from "./types";
 import { meldeSitzungsproblem } from "./ereignisse";
 
 const NICHT_ERREICHBAR = "Der Server ist gerade nicht erreichbar. Bitte prüfen Sie die Verbindung und versuchen Sie es erneut.";
@@ -37,17 +37,20 @@ async function api<T>(path: string, init: RequestInit = {}, gebunden = false): P
   if (!res.ok) {
     let msg = res.status === 413 ? "Die Daten sind zu groß zum Speichern." : res.status >= 500 ? "Auf dem Server ist ein Fehler aufgetreten. Bitte versuchen Sie es erneut." : `Fehler ${res.status}`;
     let wechsel: string | null = null;
+    let zweiFaktor: { email: string; vorgang: string } | null = null;
     let code: unknown;
     try {
       const body = await res.json();
       if (body?.fehler) msg = body.fehler;
       if (body?.passwortWechsel) wechsel = String(body.email ?? "");
+      if (body?.zweiFaktor && typeof body.vorgang === "string") zweiFaktor = { email: String(body.email ?? ""), vorgang: body.vorgang };
       code = body?.code;
     } catch {
       /* keine JSON-Antwort */
     }
     if (gebunden) pruefeSitzungsfehler(res.status, code);
     if (wechsel !== null) throw new PasswortWechselNoetig(wechsel);
+    if (zweiFaktor) throw new ZweiFaktorNoetig(zweiFaktor.email, zweiFaktor.vorgang);
     throw Object.assign(new Error(msg), { status: res.status, code });
   }
   if (res.status === 204) return undefined as T;
@@ -74,7 +77,9 @@ export function createServerBackend(): Backend {
     info: () => api("/info"),
     schnellLogins: () => api("/auth/schnell"),
     login: (email, passwort) => api("/auth/login", { method: "POST", body: JSON.stringify({ email, passwort }) }),
+    zweiFaktorAnmelden: (vorgang, code) => api<Sitzung>("/auth/zweifaktor", { method: "POST", body: JSON.stringify({ vorgang, code }) }),
     passwortErsetzen: (email, startPasswort, neuesPasswort) => api<Sitzung>("/auth/passwort", { method: "POST", body: JSON.stringify({ email, passwort: startPasswort, neuesPasswort }) }),
+    entsperren: (passwort) => api("/auth/entsperren", { method: "POST", body: JSON.stringify({ passwort }) }, true),
     // null nur, wenn der Server „nicht angemeldet“ meldet – Netz- und Serverfehler werfen, damit ein kurzer Aussetzer niemanden abmeldet.
     me: async () => {
       try {
@@ -94,11 +99,19 @@ export function createServerBackend(): Backend {
     resetData: () => api<TenantData>("/data/reset", { method: "POST" }, true),
     kanzlei: {
       profilSpeichern: (p) => api<Tenant>("/kanzlei/profil", { method: "PUT", body: JSON.stringify(p) }, true),
+      sicherheitSpeichern: (x) => api<Tenant>("/kanzlei/sicherheit", { method: "PUT", body: JSON.stringify(x) }, true),
+    },
+    zweiFaktor: {
+      status: () => api<ZweiFaktorStatus>("/zweifaktor", {}, true),
+      einrichten: () => api<ZweiFaktorEinrichtung>("/zweifaktor/einrichten", { method: "POST" }, true),
+      bestaetigen: (code) => api<{ wiederherstellungscodes: string[] }>("/zweifaktor/bestaetigen", { method: "POST", body: JSON.stringify({ code }) }, true),
+      deaktivieren: (code) => api("/zweifaktor/deaktivieren", { method: "POST", body: JSON.stringify({ code }) }, true),
     },
     team: {
       add: (input) => api("/team", { method: "POST", body: JSON.stringify(input) }, true),
       remove: (id) => api(`/team/${encodeURIComponent(id)}`, { method: "DELETE" }, true),
       neuesPasswort: async (id) => (await api<{ passwort: string }>(`/team/${encodeURIComponent(id)}/passwort`, { method: "POST" }, true)).passwort,
+      aendern: (id, a) => api(`/team/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(a) }, true),
     },
     console: {
       list: () => api("/console/kunden"),

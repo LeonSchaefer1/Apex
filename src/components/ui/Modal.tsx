@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { X } from "lucide-react";
@@ -17,21 +17,44 @@ function useDialogZaehlung(open: boolean) {
 }
 export const useDialogOffen = () => useDialoge((s) => s.offen > 0);
 
-function useEsc(open: boolean, onClose: () => void) {
+/**
+ * Ebenen-Stapel für Escape: Dialoge, Seitenpanels und Menüs melden sich beim Öffnen an. Escape schließt nur die
+ * zuletzt geöffnete Ebene – ein Auskunftsdialog über dem Kontakt-Drawer schließt allein, der Drawer bleibt offen.
+ */
+let ebenen: number[] = [];
+let naechsteEbene = 1;
+export function useEscEbene(open: boolean, onClose: () => void) {
+  const schliessen = useRef(onClose);
+  useEffect(() => {
+    schliessen.current = onClose;
+  });
   useEffect(() => {
     if (!open) return;
-    const h = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const id = naechsteEbene++;
+    ebenen.push(id);
+    const h = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || ebenen[ebenen.length - 1] !== id) return;
+      // Der Stapel ändert sich erst nach diesem Tastendruck – darunterliegende Ebenen reagieren im selben Ereignis nicht.
+      e.preventDefault();
+      schliessen.current();
+    };
     window.addEventListener("keydown", h);
-    return () => window.removeEventListener("keydown", h);
-  }, [open, onClose]);
+    return () => {
+      window.removeEventListener("keydown", h);
+      ebenen = ebenen.filter((x) => x !== id);
+    };
+  }, [open]);
 }
+const useEsc = useEscEbene;
 
 export function Modal({ open, onClose, title, subtitle, children, footer, size = "md", icon }: { open: boolean; onClose: () => void; title: ReactNode; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode; size?: "sm" | "md" | "lg" | "xl"; icon?: ReactNode }) {
   useEsc(open, onClose);
   useDialogZaehlung(open);
   const ref = useRef<HTMLDivElement>(null);
+  const titelId = useId();
   useEffect(() => {
-    if (open) setTimeout(() => ref.current?.querySelector<HTMLElement>("input,textarea,select,button[data-autofocus]")?.focus(), 60);
+    // Fokus in den Dialog: erstes Eingabefeld bzw. markierter Knopf, sonst der Inhaltsbereich (Tastatur und Vorlesen starten im Dialog)
+    if (open) setTimeout(() => (ref.current?.querySelector<HTMLElement>("input,textarea,select,button[data-autofocus]") ?? ref.current?.querySelector<HTMLElement>("[data-dialog-inhalt]"))?.focus(), 60);
   }, [open]);
   return createPortal(
     <AnimatePresence>
@@ -42,6 +65,7 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
             ref={ref}
             role="dialog"
             aria-modal="true"
+            aria-labelledby={titelId}
             initial={{ opacity: 0, y: 40, scale: 0.96, filter: "blur(6px)" }}
             animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
             exit={{ opacity: 0, y: 24, scale: 0.97, filter: "blur(4px)" }}
@@ -58,14 +82,14 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
             <div className="flex items-start gap-3 px-6 pb-3 pt-5">
               {icon && <div className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">{icon}</div>}
               <div className="min-w-0 flex-1">
-                <h2 className="title-lg">{title}</h2>
+                <h2 id={titelId} className="title-lg">{title}</h2>
                 {subtitle && <p className="mt-1 text-[13px] text-fg-3">{subtitle}</p>}
               </div>
               <button aria-label="Schließen" onClick={onClose} className="icon-btn -mr-2 -mt-1">
                 <X className="size-[18px]" />
               </button>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-5">{children}</div>
+            <div tabIndex={0} data-dialog-inhalt className="min-h-0 flex-1 overflow-y-auto px-6 pb-5 outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--focus)]">{children}</div>
             {footer && <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--line)] px-6 py-4 pb-[max(16px,env(safe-area-inset-bottom))]">{footer}</div>}
           </motion.div>
         </div>
@@ -78,6 +102,7 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
 export function Drawer({ open, onClose, title, subtitle, children, footer, width = 560, icon }: { open: boolean; onClose: () => void; title: ReactNode; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode; width?: number; icon?: ReactNode }) {
   useEsc(open, onClose);
   useDialogZaehlung(open);
+  const titelId = useId();
   return createPortal(
     <AnimatePresence>
       {open && (
@@ -86,6 +111,7 @@ export function Drawer({ open, onClose, title, subtitle, children, footer, width
           <motion.aside
             role="dialog"
             aria-modal="true"
+            aria-labelledby={titelId}
             initial={{ x: "105%" }}
             animate={{ x: 0 }}
             exit={{ x: "105%" }}
@@ -96,14 +122,14 @@ export function Drawer({ open, onClose, title, subtitle, children, footer, width
             <div className="flex items-start gap-3 px-6 pb-3 pt-5">
               {icon && <div className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">{icon}</div>}
               <div className="min-w-0 flex-1">
-                <h2 className="title-lg">{title}</h2>
+                <h2 id={titelId} className="title-lg">{title}</h2>
                 {subtitle && <p className="mt-1 text-[13px] text-fg-3">{subtitle}</p>}
               </div>
               <button aria-label="Schließen" onClick={onClose} className="icon-btn -mr-2 -mt-1">
                 <X className="size-[18px]" />
               </button>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">{children}</div>
+            <div tabIndex={0} className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--focus)]">{children}</div>
             {footer && <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--line)] px-6 py-4">{footer}</div>}
           </motion.aside>
         </div>
@@ -118,6 +144,8 @@ interface ConfirmReq {
   titel: string;
   text?: string;
   bestaetigen?: string;
+  /** Beschriftung des Abbrechen-Knopfs (Standard „Abbrechen“), z. B. „Weiter bearbeiten“. */
+  abbrechen?: string;
   gefahr?: boolean;
   resolve: (ok: boolean) => void;
 }
@@ -142,7 +170,7 @@ export function ConfirmHost() {
       footer={
         <>
           <Button variant="ghost" onClick={() => close(false)}>
-            Abbrechen
+            {req?.abbrechen ?? "Abbrechen"}
           </Button>
           <Button data-autofocus variant={req?.gefahr ? "danger" : "primary"} onClick={() => close(true)}>
             {req?.bestaetigen ?? "Bestätigen"}

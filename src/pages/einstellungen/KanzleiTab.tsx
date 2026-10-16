@@ -84,7 +84,7 @@ export function KanzleiTab() {
               <div className="flex flex-wrap items-center gap-3 rounded-[12px] border border-[var(--line)] bg-[var(--surface-2)] px-3.5 py-2.5 text-[13.5px]">
                 <MapPin className="size-4 text-ink" />
                 <span className="font-medium">{bundeslandName(tenant.bundesland)}</span>
-                <span className="text-[12.5px] text-fg-3">Fristen berücksichtigen die Feiertage dieses Bundeslands (§ 222 Abs. 2 ZPO).</span>
+                <span className="text-[12.5px] text-fg-3">Voreinstellung für den Fristenrechner – maßgeblich bleiben die Feiertage am Ort des Gerichts (§ 222 Abs. 2 ZPO).</span>
               </div>
             </Field>
           </div>
@@ -120,7 +120,7 @@ export function KanzleiTab() {
           )}
 
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-4">
-            <span className="flex min-w-0 flex-1 basis-[220px] items-center gap-1.5 text-[12px] text-fg-3">
+            <span className="flex min-w-0 flex-1 basis-[220px] items-center gap-1.5 text-[12.5px] text-fg-3">
               <Info className="size-3.5 shrink-0" />
               {darf ? "Änderungen gelten sofort für Seitenleiste, Briefkopf, Rechnungen und Schriftsätze." : "Das Kanzleiprofil ändern Partner und Administration Ihrer Kanzlei."}
             </span>
@@ -147,12 +147,12 @@ export function KanzleiTab() {
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="truncate text-[15px] font-semibold tracking-[-0.01em]">{p.name || "Name der Kanzlei"}</div>
-                <div className="truncate text-[11px] opacity-70">{p.schwerpunkte.slice(0, 3).join(" · ") || "Schwerpunkte"}</div>
+                <div className="truncate text-[12px] opacity-70">{p.schwerpunkte.slice(0, 3).join(" · ") || "Schwerpunkte"}</div>
               </div>
               <span className="size-6 shrink-0 rounded-[7px]" style={{ background: tenant.farbe }} aria-hidden />
             </div>
             <div className="my-3 h-px bg-current opacity-[0.12]" />
-            <div className="text-[10.5px] leading-relaxed opacity-70">{p.adresse || "Anschrift"}</div>
+            <div className="text-[12px] leading-relaxed opacity-70">{p.adresse || "Anschrift"}</div>
             <div className="mt-4 space-y-1.5" aria-hidden>
               <div className="h-1.5 w-3/4 rounded-full bg-current opacity-[0.12]" />
               <div className="h-1.5 w-full rounded-full bg-current opacity-[0.12]" />
@@ -172,7 +172,7 @@ export function KanzleiTab() {
             <dt className="text-fg-3">Kanzleifarbe</dt>
             <dd className="flex items-center justify-end gap-2" title={`Farbwert ${tenant.farbe}`}>
               <span className="size-3.5 rounded-full ring-1 ring-[var(--line)]" style={{ background: tenant.farbe }} />
-              <span className="text-[12px] text-fg-3">im Briefkopf</span>
+              <span className="text-[12.5px] text-fg-3">im Briefkopf</span>
             </dd>
           </dl>
         </div>

@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, Building2, Database, Globe, Library, Search, SearchX, ShieldCheck, Sparkles, X, Zap } from "lucide-react";
 import { ENTSCHEIDUNGEN, GERICHTSEBENEN, RECHTSPRECHUNG_HINWEIS } from "@/core/rechtsprechung";
 import { search } from "@/core/search";
-import { fmtNum } from "@/core/dates";
+import { fmtDate, fmtNum } from "@/core/dates";
 import type { Entscheidung } from "@/core/types";
 import { useData } from "@/store/data";
 import { findePraezedenzfaelle, relevanzProzent } from "@/ai/kontext";
@@ -122,7 +122,7 @@ export default function FallDatenbank() {
           {modus === "stichwort" ? (
             <>
               <div className="relative mt-4 sm:mt-5">
-                <Search className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-fg-4 sm:left-5" />
+                <Search className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-fg-3 sm:left-5" />
                 <input
                   ref={inputRef}
                   id="falldb-suche"
@@ -200,7 +200,7 @@ export default function FallDatenbank() {
                   })}
                   {EBENEN_SPAETER.length > 0 && (
                     <span
-                      className="w-[150px] shrink-0 pl-1.5 text-[11.5px] leading-tight text-fg-3"
+                      className="w-[150px] shrink-0 pl-1.5 text-[12.5px] leading-tight text-fg-3"
                       title={`${EBENEN_SPAETER.join(", ")}: im Demo-Auszug nicht enthalten – die Produktivversion bindet die Instanzrechtsprechung über Open Legal Data an.`}
                     >
                       + {EBENEN_SPAETER.join(", ")} in der Produktivversion
@@ -332,7 +332,7 @@ function FilterChip({ aktiv, onClick, children, disabled, title, anzahl }: { akt
       )}
     >
       {children}
-      {anzahl !== undefined && anzahl > 0 && <span className={cn("num text-[10.5px]", aktiv ? "text-[var(--on-ink)]/80" : "text-fg-4")}>{anzahl}</span>}
+      {anzahl !== undefined && anzahl > 0 && <span className={cn("num text-[12.5px]", aktiv ? "text-[var(--on-ink)]/80" : "text-fg-3")}>{anzahl}</span>}
     </button>
   );
 }
@@ -390,7 +390,7 @@ function Uebersicht({ onOpen, onGebiet }: { onOpen: (id: string) => void; onGebi
                             <GerichtSiegel e={t.entscheidung} groesse="sm" />
                             <span className="min-w-0 flex-1">
                               <span className="block truncate text-[13px] font-medium">{t.entscheidung.titel}</span>
-                              <span className="mono block truncate text-[11px] text-fg-3">{t.entscheidung.az}</span>
+                              <span className="mono block truncate text-[12.5px] text-fg-3">{t.entscheidung.az}</span>
                             </span>
                             <span className="num shrink-0 text-[12px] font-semibold text-ink">{t.prozent} %</span>
                           </button>
@@ -418,7 +418,7 @@ function Uebersicht({ onOpen, onGebiet }: { onOpen: (id: string) => void; onGebi
               <div key={g.gebiet} className="min-w-0">
                 <div className="mb-2.5 flex items-center gap-2">
                   <h3 className="text-[14px] font-semibold tracking-[-0.01em]">{g.gebiet}</h3>
-                  <span className="num text-[12px] text-fg-4">{g.list.length}</span>
+                  <span className="num text-[12px] text-fg-3">{g.list.length}</span>
                   {!g.sammel && (
                     <button type="button" onClick={() => onGebiet(g.gebiet)} className="ml-auto inline-flex items-center gap-1 text-[12px] font-medium text-ink hover:underline">
                       Nur {g.gebiet} <ArrowRight className="size-3.5" />
@@ -460,6 +460,9 @@ const QUELLEN = [
   { icon: <Building2 className="size-4" />, name: "Lizenzierte Verlagsdatenbanken", umfang: "Kommentierte Rechtsprechung und Fachzeitschriften", wie: "Über die bestehenden Lizenzen Ihrer Kanzlei" },
 ];
 
+/** Datenstand des Demo-Auszugs (zuletzt redaktionell geprüft). */
+const STAND_AUSZUG = "2026-10-16";
+
 /** Ehrliche Einordnung: was heute im Demo-Auszug steckt und was die Produktivversion anbindet. */
 function QuellenKarte() {
   return (
@@ -473,6 +476,9 @@ function QuellenKarte() {
           </Chip>
           <span className="text-[12.5px] font-semibold text-fg">Demo-Auszug</span>
         </div>
+        <p className="num mt-2 text-[12.5px] font-medium text-fg">
+          Stand: {fmtDate(STAND_AUSZUG)} · Demo-Auszug mit {ENTSCHEIDUNGEN.length} Leitentscheidungen
+        </p>
         <p className="mt-2 text-[12.5px] leading-snug text-fg-2">
           <span className="num font-semibold">{ENTSCHEIDUNGEN.length}</span> echte Leitentscheidungen von {GERICHTE_IM_AUSZUG} Gerichten (BVerfG, EuGH und Bundesgerichte). {RECHTSPRECHUNG_HINWEIS.replace(/^Demo-Auszug aus der Fall-Datenbank: echte Entscheidungen, /, "")}
         </p>
@@ -485,17 +491,17 @@ function QuellenKarte() {
             <span className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-ink-soft text-ink">{q.icon}</span>
             <span className="min-w-0 flex-1">
               <span className="block text-[13px] font-semibold leading-snug">{q.name}</span>
-              <span className="block text-[12px] leading-snug text-fg-2">{q.umfang}</span>
-              <span className="block text-[11.5px] leading-snug text-fg-3">{q.wie}</span>
+              <span className="block text-[12.5px] leading-snug text-fg-2">{q.umfang}</span>
+              <span className="block text-[12.5px] leading-snug text-fg-3">{q.wie}</span>
             </span>
-            <Chip tone="outline" className="shrink-0 !text-[10.5px]">
+            <Chip tone="outline" className="shrink-0">
               geplant
             </Chip>
           </motion.li>
         ))}
       </ul>
 
-      <div className="mt-4 flex items-start gap-2 border-t border-[var(--line)] pt-3.5 text-[12px] leading-snug text-fg-3">
+      <div className="mt-4 flex items-start gap-2 border-t border-[var(--line)] pt-3.5 text-[12.5px] leading-snug text-fg-3">
         <ShieldCheck className="mt-px size-4 shrink-0 text-green" />
         <span>Die Suche läuft lokal. Auch künftig wird der Index in Ihre Infrastruktur importiert – Suchanfragen und Akteninhalte verlassen die Kanzlei nicht.</span>
       </div>
