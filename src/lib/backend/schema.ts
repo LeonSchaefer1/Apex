@@ -1,6 +1,7 @@
 // Mindestschema für gespeicherte Kanzleidokumente – der Server weist fehlerhafte Dokumente ab (400) und überspringt beim Laden
 // beschädigte Altbestände, statt die ganze Kanzlei mit einem Fehler zu blockieren. Bewusst nur Pflichtfelder: Die Oberfläche
-// darf neue optionale Felder ergänzen, ohne dass der Server angepasst werden muss.
+// darf neue optionale Felder ergänzen, ohne dass der Server angepasst werden muss. Optionale Felder mit fester Form (Freigabestatus,
+// Portalfreigabe, Fristkorrekturen, Bankvorschläge) werden nur geprüft, wenn sie vorhanden sind – Altbestände ohne sie bleiben gültig.
 import type { CollectionKey } from "@/core/types";
 
 type Art = "text" | "zahl" | "wahr" | "liste" | "datum" | "zeit" | "objekt";
@@ -20,6 +21,17 @@ const PFLICHT: Record<CollectionKey, [string, Art][]> = {
   notizen: [["text", "text"], ["zeit", "zeit"]],
   umzugLaeufe: [["datum", "zeit"], ["system", "text"], ["undo", "objekt"]],
 };
+
+/** Optionale Felder: fehlen darf, vorhanden muss die Form stimmen (Text-Auswahl als Liste erlaubter Werte). */
+const OPTIONAL: Partial<Record<CollectionKey, [string, Art | readonly string[]][]>> = {
+  dokumente: [["status", ["entwurf", "freigegeben", "versandt"]], ["portal", "objekt"]],
+  fristen: [["erledigtNachweis", "objekt"], ["korrekturAngefordert", "objekt"], ["korrekturen", "liste"]],
+  transaktionen: [["vorschlag", "objekt"], ["abgelehnt", "liste"]],
+  umzugLaeufe: [["abgebrochen", "wahr"]],
+};
+
+/** Erlaubte Nachweisarten der Ausgangskontrolle (Frist.erledigtNachweis.art). */
+const NACHWEIS_ARTEN = ["bea", "fax", "bote", "post", "persoenlich", "ueberweisung", "gestrichen", "sonstiges"];
 
 function passt(v: unknown, art: Art): boolean {
   switch (art) {
@@ -49,6 +61,21 @@ export function pruefeDokument(col: CollectionKey, doc: unknown): string | null 
   if (!regeln) return "Unbekannte Sammlung.";
   for (const [feld, art] of regeln) {
     if (!passt(d[feld], art)) return `Pflichtfeld „${feld}“ fehlt oder hat ein ungültiges Format.`;
+  }
+  for (const [feld, art] of OPTIONAL[col] ?? []) {
+    const v = d[feld];
+    if (v === undefined || v === null) continue;
+    const ok = typeof art === "string" ? passt(v, art) : typeof v === "string" && art.includes(v);
+    if (!ok) return `Feld „${feld}“ hat ein ungültiges Format.`;
+  }
+  if (col === "fristen" && d.erledigtNachweis) {
+    const n = d.erledigtNachweis as Record<string, unknown>;
+    if (n.art !== undefined && (typeof n.art !== "string" || !NACHWEIS_ARTEN.includes(n.art))) return "Feld „erledigtNachweis.art“ hat einen unbekannten Wert.";
+    if (n.versandAm !== undefined && !passt(n.versandAm, "zeit")) return "Feld „erledigtNachweis.versandAm“ ist keine Zeitangabe.";
+  }
+  if (col === "dokumente" && d.portal) {
+    const p = d.portal as Record<string, unknown>;
+    if (!passt(p.am, "zeit") || typeof p.vonId !== "string") return "Feld „portal“ braucht Zeitpunkt (am) und Person (vonId).";
   }
   return null;
 }

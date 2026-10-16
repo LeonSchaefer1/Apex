@@ -96,7 +96,7 @@ export function einladungsText(p: { tenant: Tenant; user: User; hauptnutzer?: bo
     "Bei der ersten Anmeldung legen Sie ein eigenes Passwort fest.",
     "",
     tenant.status === "test" && tenant.testBis ? `Ihr Testzugang ist bis zum ${fmtDate(tenant.testBis)} freigeschaltet.` : tenant.status === "test" ? "Ihr Testzugang ist ab sofort und ohne festes Enddatum freigeschaltet." : "Ihr Zugang ist ab sofort freigeschaltet.",
-    "Die Daten Ihrer Kanzlei sind strikt von allen anderen Kanzleien getrennt – nur Ihr Team hat Zugriff.",
+    "Die Daten Ihrer Kanzlei sind strikt von allen anderen Kanzleien getrennt. Der Anbieter sieht keine Akteninhalte. Ein neues Startpasswort vergibt er nur auf Ihren Wunsch; jeder solche Vorgang steht in Ihrem Protokoll.",
     "",
     `Bei Fragen erreichen Sie ${ihre} ${ap.name} direkt unter ${ap.telefon} oder ${ap.email} (${ap.verfuegbar}).`,
     "",

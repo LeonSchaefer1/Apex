@@ -16,12 +16,15 @@ import { AiChip, Button, Chip, Field, Input, Modal, ProgressRing, Select, Textar
 import { cn } from "@/lib/cn";
 import {
   EEB_ERKLAERUNG, SCHRITTE, ablegbareAnhaenge, alsErledigt, anhaengeAblegen, anhaengeAbgelegt, darfEebAbgeben, eebAbgeben, eebProtokoll, eebVorlegen, fristAenderungText,
-  fristenUebernehmen, fristenZumZustellungsdatum, istGerichtspost, istNotiert, terminEintragen, zuordnen, type KiAnsicht,
+  fristenAusNachricht, fristenUebernehmen, fristenZumZustellungsdatum, gerichtsAzKonflikt, istGerichtspost, istNotiert, terminEintragen, zuordnen, type KiAnsicht, type ZuordnenOptionen,
 } from "./analyse";
+import { istAbwesend, vertretungFuer } from "@/core/vertretung";
 import { TYP_META } from "@/pages/fristen/logik";
 import { fristArtZu } from "@/core/fristen";
 
 const spring = { type: "spring", stiffness: 460, damping: 36 } as const;
+/** Empfehlung „Empfangsbekenntnis abgeben …“ bzw. „eEB …“ */
+const EEB_SCHRITT = /empfangsbekenntnis|\beEB\b/i;
 
 function ScanPapier() {
   return (
@@ -211,10 +214,15 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
   const vorschlagId = n.akteId ?? ansicht?.akteId ?? "";
   const [wahl, setWahl] = useState(vorschlagId);
   const [andere, setAndere] = useState(false);
+  // Widerspruch Gerichts-Az. ↔ gewählte Akte: Pflichtbestätigung vor Zuordnen bzw. Fristübernahme
+  const [konfliktOk, setKonfliktOk] = useState(false);
+  // Umhängen einer bereits zugeordneten Nachricht: Rückfrage zu Fristen aus der Nachricht bzw. nach eEB-Abgabe
+  const [umhaengen, setUmhaengen] = useState<null | { danach: "zuordnen" | "fristen" }>(null);
   useEffect(() => {
     setWahl(vorschlagId);
     setAndere(false);
   }, [n.id, vorschlagId]);
+  useEffect(() => setKonfliktOk(false), [n.id, wahl]);
 
   const offeneAkten = useMemo(() => akten.filter((a) => a.status !== "abgeschlossen").sort((a, b) => b.aktenzeichen.localeCompare(a.aktenzeichen, "de", { numeric: true })), [akten]);
   const ziel = akten.find((a) => a.id === wahl);
@@ -236,6 +244,11 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
   const nurEigene = unkontrolliert > 0 && offeneKontrollen.every((f) => f.verantwortlichId === user.id);
   const anhaenge = ablegbareAnhaenge(n);
   const anhaengeDa = zugeordnet && anhaengeAbgelegt(n, ziel?.id, dokumente);
+  const konflikt = ziel && ansicht ? gerichtsAzKonflikt(n, ziel, akten) : undefined;
+  const konfliktOffen = !!konflikt && !konfliktOk;
+  /** Bisherige Zuordnung, falls die Nachricht in eine andere Akte umgehängt werden soll */
+  const bisher = n.akteId && ziel && n.akteId !== ziel.id ? akten.find((a) => a.id === n.akteId) : undefined;
+  const bisherFristen = bisher ? fristenAusNachricht(n, bisher.id, fristen).haupt : [];
 
   /** Zeile unter der Akte – vollständig und umbrechend (z. B. der ganze Erkennungsgrund). */
   const zielHinweis = !ansicht || !ziel
@@ -246,15 +259,29 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
         ? `Zugeordnet · in der E-Akte abgelegt (${istGerichtspost(n) ? "Gericht" : "Korrespondenz"})`
         : ansicht.akteId === ziel.id
           ? `${Math.round(ansicht.sicherheit * 100)} % sicher · erkannt über ${ansicht.akteGrund ?? "Inhalt"}`
-          : "Von Ihnen gewählt";
+          : bisher
+            ? `Von Ihnen gewählt – bisher zugeordnet: ${bisher.aktenzeichen}`
+            : "Von Ihnen gewählt";
+  /** KI-Vorschlag nur als Nebenzeile, wenn die tatsächliche bzw. gewählte Akte davon abweicht */
+  const kiNebenzeile = ansicht && vorgeschlagen && ziel && vorgeschlagen.id !== ziel.id ? `KI-Vorschlag: ${vorgeschlagen.aktenzeichen} (${Math.round(ansicht.sicherheit * 100)} %)` : undefined;
+  // Empfohlene Schritte am Status: Nach der eEB-Abgabe entfällt die eEB-Empfehlung (das Ergebnis zeigt der Abschnitt „Empfangsbekenntnis“).
+  const schritte = (ansicht?.aktionen ?? []).filter((a) => !(n.eebAbgegeben && EEB_SCHRITT.test(a)));
 
   const quelleText = ansicht?.frisch
     ? `${ansicht.quelle === "demo" ? DEMO_KI_NAME : "Claude · live"}${ansicht.dauerMs ? ` · ${(ansicht.dauerMs / 1000).toFixed(1).replace(".", ",")} s` : ""}`
     : "Gespeicherter KI-Vorschlag";
 
-  const uebernehmen = () => {
-    if (!ziel || !ansicht) return;
-    const { anzahl, rueckgaengig } = fristenUebernehmen(n, ziel, user, ansicht, fristen);
+  /** Vor dem Umhängen nachfragen: Fristen aus der Nachricht in der bisherigen Akte bzw. eEB bereits abgegeben. */
+  const brauchtRueckfrage = !!bisher && (bisherFristen.length > 0 || !!n.eebAbgegeben);
+  const konfliktOpt = (): Pick<ZuordnenOptionen, "konflikt"> => (konflikt && konfliktOk ? { konflikt: { az: konflikt.az, akteAz: konflikt.akte.aktenzeichen } } : {});
+
+  const uebernehmen = (opts: Pick<ZuordnenOptionen, "fristen"> = {}) => {
+    if (!ziel || !ansicht || konfliktOffen) return;
+    if (brauchtRueckfrage && !opts.fristen) return setUmhaengen({ danach: "fristen" });
+    // Umhängen vor der Übernahme: mit der Entscheidung zu den bisherigen Fristen
+    if (bisher) zuordnen(n, ziel, user, ansicht, { leise: true, fristen: opts.fristen, ...konfliktOpt() });
+    const aktuell = useData.getState().data;
+    const { anzahl, rueckgaengig } = fristenUebernehmen(aktuell.nachrichten.find((x) => x.id === n.id) ?? n, ziel, user, ansicht, aktuell.fristen);
     toast(anzahl === 1 ? "Frist eingetragen" : `${anzahl} Fristen eingetragen`, {
       text: `In Akte ${ziel.aktenzeichen} mit Vorfristen notiert. Vier-Augen-Kontrolle offen.`,
       ton: "erfolg",
@@ -271,14 +298,24 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
     });
   };
 
-  const zuordnenKlick = () => {
-    if (!ziel) return;
-    const r = zuordnen(n, ziel, user, ansicht);
+  const zuordnenKlick = (opts: Pick<ZuordnenOptionen, "fristen"> = {}) => {
+    if (!ziel || konfliktOffen) return;
+    if (brauchtRueckfrage && !opts.fristen) return setUmhaengen({ danach: "zuordnen" });
+    const r = zuordnen(n, ziel, user, ansicht, { ...opts, ...konfliktOpt() });
     setAndere(false);
-    toast("Akte zugeordnet", {
-      text: `In ${ziel.aktenzeichen} · Ordner „${r.ordner}“ abgelegt${r.anhaenge ? `, ${r.anhaenge} ${r.anhaenge === 1 ? "Anhang" : "Anhänge"} in „${r.anhangOrdner}“` : ""}.`,
+    toast(r.vorher ? "Zuordnung geändert" : "Akte zugeordnet", {
+      text: r.vorher
+        ? `Jetzt ${ziel.aktenzeichen}${r.vorher.akte ? ` statt ${r.vorher.akte.aktenzeichen}` : ""} · ${r.vorher.dokumente} ${r.vorher.dokumente === 1 ? "Dokument" : "Dokumente"} verschoben${r.vorher.fristen ? `, ${r.vorher.fristen} ${r.vorher.fristen === 1 ? "Frist" : "Fristen"} mit umgezogen` : ""}${r.vorher.fristenBelassen ? `, ${r.vorher.fristenBelassen} ${r.vorher.fristenBelassen === 1 ? "Frist bleibt" : "Fristen bleiben"} in ${r.vorher.akte?.aktenzeichen ?? "der bisherigen Akte"}` : ""} – in beiden Verläufen protokolliert.`
+        : `In ${ziel.aktenzeichen} · Ordner „${r.ordner}“ abgelegt${r.anhaenge ? `, ${r.anhaenge} ${r.anhaenge === 1 ? "Anhang" : "Anhänge"} in „${r.anhangOrdner}“` : ""}.`,
       ton: "erfolg",
     });
+  };
+
+  const umhaengenBestaetigt = (fristenWahl: "mitnehmen" | "lassen") => {
+    const danach = umhaengen?.danach;
+    setUmhaengen(null);
+    if (danach === "fristen") uebernehmen({ fristen: fristenWahl });
+    else zuordnenKlick({ fristen: fristenWahl });
   };
 
   const anhaengeKlick = () => {
@@ -404,6 +441,7 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
                               </div>
                             )}
                             <div className="mt-0.5 break-words text-[12.5px] leading-snug text-fg-2">{zielHinweis}</div>
+                            {kiNebenzeile && <div className="mt-0.5 break-words text-[12.5px] leading-snug text-fg-3">{kiNebenzeile}</div>}
                           </div>
                         </div>
                       ) : (
@@ -433,10 +471,32 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
                           </Select>
                         </motion.div>
                       )}
+                      {konflikt && ziel && (
+                        <div role="alert" className="mt-3 grid gap-2 rounded-[14px] bg-seal-soft p-3 text-[12.5px] leading-relaxed text-seal">
+                          <div className="flex gap-2">
+                            <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+                            <span>
+                              <strong className="font-semibold">
+                                {konflikt.az} gehört laut Bestand zu {konflikt.akte.aktenzeichen} – trotzdem {ziel.aktenzeichen}?
+                              </strong>{" "}
+                              {konflikt.akte.titel}. {ansicht.fristen.length ? "Eine Notfrist in der falschen Akte wird leicht übersehen; " : ""}Dokumente einer fremden Akte können im Mandantenportal sichtbar werden.
+                            </span>
+                          </div>
+                          <label className="flex items-start gap-2 font-medium">
+                            <input type="checkbox" className="mt-0.5 size-4 accent-[var(--seal)]" checked={konfliktOk} onChange={(e) => setKonfliktOk(e.target.checked)} />
+                            <span>Geprüft: Die Nachricht gehört trotzdem zu {ziel.aktenzeichen}.</span>
+                          </label>
+                          {!zugeordnet && (
+                            <button type="button" className="justify-self-start rounded-full px-1 font-medium text-ink hover:underline" onClick={() => setWahl(konflikt.akte.id)}>
+                              Stattdessen {konflikt.akte.aktenzeichen} wählen
+                            </button>
+                          )}
+                        </div>
+                      )}
                       <div className="mt-3 flex flex-wrap items-center gap-2">
                         {ziel && !zugeordnet && (
-                          <Button size="sm" variant={ansicht.fristen.length ? "secondary" : "primary"} icon={<FolderInput className="size-4" />} onClick={zuordnenKlick}>
-                            Akte zuordnen
+                          <Button size="sm" variant={ansicht.fristen.length ? "secondary" : "primary"} icon={<FolderInput className="size-4" />} onClick={() => zuordnenKlick()} disabled={konfliktOffen} title={konfliktOffen ? "Erst den Widerspruch zum Gerichtsaktenzeichen bestätigen" : undefined}>
+                            {bisher ? `Nach ${ziel.aktenzeichen} umhängen` : "Akte zuordnen"}
                           </Button>
                         )}
                         {!andere && ziel && (
@@ -482,10 +542,19 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
                         </div>
                       ) : (
                         <>
-                          <Button variant="primary" icon={<CalendarPlus className="size-4" />} onClick={uebernehmen} disabled={!ziel}>
+                          <Button
+                            variant="primary"
+                            icon={<CalendarPlus className="size-4" />}
+                            onClick={() => uebernehmen()}
+                            disabled={!ziel || konfliktOffen}
+                            data-kuerzel="u"
+                            aria-keyshortcuts="U"
+                            title={konfliktOffen ? "Erst den Widerspruch zum Gerichtsaktenzeichen bestätigen" : "Fristen übernehmen (Taste U)"}
+                          >
                             {ansicht.fristen.length === 1 ? "Frist übernehmen" : "Fristen übernehmen"}
+                            <kbd className="kbd ml-1 hidden sm:inline-flex">U</kbd>
                           </Button>
-                          <span className="text-[12.5px] text-fg-3">{ziel ? `inkl. Vorfristen in ${ziel.aktenzeichen}` : "Bitte zuerst eine Akte wählen"}</span>
+                          <span className="text-[12.5px] text-fg-3">{!ziel ? "Bitte zuerst eine Akte wählen" : konfliktOffen ? `Erst den Widerspruch zu ${konflikt!.az} bestätigen` : `inkl. Vorfristen in ${ziel.aktenzeichen}`}</span>
                         </>
                       )}
                     </div>
@@ -518,10 +587,11 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
                         <Button
                           size="sm"
                           icon={<CalendarPlus className="size-4" />}
-                          disabled={!ziel}
+                          disabled={!ziel || konfliktOffen || brauchtRueckfrage}
+                          title={brauchtRueckfrage ? "Erst die Akte umhängen (mit Rückfrage zu den Fristen)" : konfliktOffen ? "Erst den Widerspruch zum Gerichtsaktenzeichen bestätigen" : undefined}
                           onClick={() => {
                             if (!ziel || !ansicht.termin) return;
-                            if (n.akteId !== ziel.id) zuordnen(n, ziel, user, ansicht, { leise: true });
+                            if (n.akteId !== ziel.id) zuordnen(n, ziel, user, ansicht, { leise: true, ...konfliktOpt() });
                             terminEintragen(n, ziel, user, ansicht.termin);
                             toast("Termin eingetragen", { text: `${fmtDateWd(ansicht.termin.datum)}${ansicht.termin.uhrzeit ? `, ${ansicht.termin.uhrzeit} Uhr` : ""} · ${ziel.aktenzeichen}`, ton: "erfolg" });
                           }}
@@ -541,14 +611,14 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
                 )}
 
                 {/* Aktionen */}
-                {ansicht.aktionen.length > 0 && (
+                {schritte.length > 0 && (
                   <Abschnitt titel="Empfohlene nächste Schritte" icon={<ListChecks />} delay={0.18}>
                     <ul className="space-y-2">
-                      {ansicht.aktionen.map((a, i) => {
+                      {schritte.map((a, i) => {
                         const anhangSchritt = /anh(a|ä)ng/i.test(a);
                         const erledigt = anhangSchritt
                           ? anhaengeDa
-                          : (/empfangsbekenntnis/i.test(a) && !!n.eebAbgegeben) ||
+                          : (EEB_SCHRITT.test(a) && !!n.eebAbgegeben) ||
                             (/frist eintragen/i.test(a) && alleNotiert) ||
                             (/termin in den kalender/i.test(a) && terminDa) ||
                             (/akte anlegen|mandatsaufnahme/i.test(a) && !!n.akteId) ||
@@ -601,7 +671,72 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
           </AnimatePresence>
         </div>
       </div>
+      <UmhaengenDialog
+        offen={!!umhaengen}
+        n={n}
+        bisher={bisher}
+        ziel={ziel}
+        fristenBisher={bisherFristen.length}
+        onClose={() => setUmhaengen(null)}
+        onWahl={umhaengenBestaetigt}
+      />
     </div>
+  );
+}
+
+/**
+ * Rückfrage beim Umhängen: Aus der Nachricht wurden in der bisherigen Akte schon Fristen bzw. Termine notiert, oder das
+ * eEB ist bereits abgegeben. „Mit umziehen“ ist empfohlen; die Entscheidung wird in beiden Verläufen protokolliert.
+ */
+function UmhaengenDialog({ offen, n, bisher, ziel, fristenBisher, onClose, onWahl }: { offen: boolean; n: Nachricht; bisher?: Akte; ziel?: Akte; fristenBisher: number; onClose: () => void; onWahl: (w: "mitnehmen" | "lassen") => void }) {
+  if (!bisher || !ziel) return null;
+  const k = fristenBisher;
+  return (
+    <Modal
+      open={offen}
+      onClose={onClose}
+      title={`Nach ${ziel.aktenzeichen} umhängen?`}
+      icon={<FolderInput className="size-[18px]" />}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Abbrechen
+          </Button>
+          {k > 0 && (
+            <Button variant="secondary" onClick={() => onWahl("lassen")}>
+              In {bisher.aktenzeichen} lassen
+            </Button>
+          )}
+          <Button variant="primary" icon={<FolderInput className="size-4" />} onClick={() => onWahl("mitnehmen")}>
+            {k > 0 ? "Mit umziehen (empfohlen)" : "Trotzdem umhängen"}
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-3 text-[13.5px] leading-relaxed text-fg-2">
+        <p>
+          Die Nachricht „{n.betreff}“ ist {bisher.aktenzeichen} ({bisher.titel}) zugeordnet. Alle daraus abgelegten Dokumente ziehen nach {ziel.aktenzeichen} um; eine Freigabe im Mandantenportal von{" "}
+          {bisher.aktenzeichen} entfällt.
+        </p>
+        {k > 0 && (
+          <p className="rounded-[14px] bg-amber-soft px-3.5 py-3 text-[13px] text-fg">
+            <strong className="font-semibold">
+              In {bisher.aktenzeichen} {k === 1 ? "wurde 1 Frist bzw. Termin" : `wurden ${k} Fristen bzw. Termine`} aus dieser Nachricht notiert.
+            </strong>{" "}
+            Mit umziehen (empfohlen) – samt Vorfristen und Stand der Vier-Augen-Kontrolle – oder bewusst in {bisher.aktenzeichen} lassen.
+          </p>
+        )}
+        {n.eebAbgegeben && (
+          <p role="alert" className="flex gap-2 rounded-[14px] bg-seal-soft px-3.5 py-3 text-[13px] text-seal">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+            <span>
+              Das eEB ist bereits abgegeben ({fmtDate(n.eebAbgegeben.slice(0, 10))}, {fmtTime(n.eebAbgegeben)} Uhr) – die Fristen laufen. Prüfen Sie nach dem Umhängen den Fristenkalender beider Akten.
+            </span>
+          </p>
+        )}
+        <p className="text-[12.5px] text-fg-3">Beide Verläufe halten den Wechsel fest (Rücknahme in {bisher.aktenzeichen}, Zuordnung in {ziel.aktenzeichen}).</p>
+      </div>
+    </Modal>
   );
 }
 
@@ -657,12 +792,14 @@ function EebAbschnitt({ n, ansicht, ziel, eebFrei, offeneKontrollen }: { n: Nach
           )}
         </div>
         {darf ? (
-          <Button size="sm" variant={eebFrei ? "primary" : "secondary"} icon={<ShieldCheck className="size-4" />} disabled={!eebFrei} onClick={() => setAbgabe(true)} title={eebFrei ? "Elektronisches Empfangsbekenntnis abgeben" : "Erst Frist notieren, dann eEB"}>
+          <Button size="sm" variant={eebFrei ? "primary" : "secondary"} icon={<ShieldCheck className="size-4" />} disabled={!eebFrei} onClick={() => setAbgabe(true)} data-kuerzel="e" aria-keyshortcuts="E" title={eebFrei ? "Elektronisches Empfangsbekenntnis abgeben (Taste E)" : "Erst Frist notieren, dann eEB"}>
             eEB abgeben
+            <kbd className="kbd ml-1 hidden sm:inline-flex">E</kbd>
           </Button>
         ) : (
-          <Button size="sm" variant={eebFrei && !vorgelegt ? "primary" : "secondary"} icon={<Send className="size-4" />} disabled={!eebFrei} onClick={() => setVorlage(true)} title={eebFrei ? "Der Anwältin bzw. dem Anwalt zur Abgabe vorlegen" : "Erst Frist notieren, dann eEB"}>
+          <Button size="sm" variant={eebFrei && !vorgelegt ? "primary" : "secondary"} icon={<Send className="size-4" />} disabled={!eebFrei} onClick={() => setVorlage(true)} data-kuerzel="e" aria-keyshortcuts="E" title={eebFrei ? "Der Anwältin bzw. dem Anwalt zur Abgabe vorlegen (Taste E)" : "Erst Frist notieren, dann eEB"}>
             {vorgelegt ? "Erneut vorlegen" : "Zur eEB-Abgabe vorlegen"}
+            <kbd className="kbd ml-1 hidden sm:inline-flex">E</kbd>
           </Button>
         )}
       </div>
@@ -674,8 +811,23 @@ function EebAbschnitt({ n, ansicht, ziel, eebFrei, offeneKontrollen }: { n: Nach
 
 function VorlageDialog({ open, onClose, n, ziel }: { open: boolean; onClose: () => void; n: Nachricht; ziel?: Akte }) {
   const { user, team } = useKanzlei();
+  const heute = today();
   const berufstraeger = team.filter((u) => darfEebAbgeben(u) && !u.deaktiviert);
-  const standard = (ziel && berufstraeger.find((u) => u.id === ziel.bearbeiterId)?.id) ?? berufstraeger[0]?.id ?? "";
+  // Abwesende kennzeichnen und ihre Vertretung vorschlagen (§ 53 BRAO)
+  const abwesendText = (u: (typeof team)[number]) => {
+    if (!istAbwesend(u, heute)) return "";
+    const v = vertretungFuer(team, u.id, heute);
+    return ` – abwesend${u.abwesenheit?.bis ? ` bis ${fmtDate(u.abwesenheit.bis.slice(0, 10)).slice(0, 6)}` : ""}${v ? `, Vertretung: ${v.name}` : ""}`;
+  };
+  const bearbeitung = ziel ? berufstraeger.find((u) => u.id === ziel.bearbeiterId) : undefined;
+  const vertretung = bearbeitung && istAbwesend(bearbeitung, heute) ? vertretungFuer(team, bearbeitung.id, heute) : undefined;
+  const anwesend = berufstraeger.find((u) => !istAbwesend(u, heute));
+  const standard =
+    (vertretung && berufstraeger.some((u) => u.id === vertretung.id) ? vertretung.id : undefined) ??
+    (bearbeitung && !istAbwesend(bearbeitung, heute) ? bearbeitung.id : undefined) ??
+    anwesend?.id ??
+    berufstraeger[0]?.id ??
+    "";
   const [an, setAn] = useState(standard);
   const [notiz, setNotiz] = useState("");
   useEffect(() => {
@@ -710,15 +862,35 @@ function VorlageDialog({ open, onClose, n, ziel }: { open: boolean; onClose: () 
     >
       <p className="rounded-[14px] bg-[var(--ink-softer)] px-3.5 py-3 text-[13px] leading-relaxed text-fg-2">{EEB_ERKLAERUNG}</p>
       <div className="mt-4 grid gap-3">
-        <Field label="Vorlegen an" htmlFor="eeb-vorlage-an" hint={ziel ? `Vorbelegt: Bearbeitung der Akte ${ziel.aktenzeichen}` : undefined}>
+        <Field
+          label="Vorlegen an"
+          htmlFor="eeb-vorlage-an"
+          hint={
+            vertretung && bearbeitung
+              ? `Vorbelegt: ${vertretung.name} als Vertretung von ${bearbeitung.name} (abwesend${bearbeitung.abwesenheit?.bis ? ` bis ${fmtDate(bearbeitung.abwesenheit.bis.slice(0, 10))}` : ""})`
+              : ziel && bearbeitung && !istAbwesend(bearbeitung, heute)
+                ? `Vorbelegt: Bearbeitung der Akte ${ziel.aktenzeichen}`
+                : undefined
+          }
+        >
           <Select id="eeb-vorlage-an" value={an} onChange={(e) => setAn(e.target.value)}>
             {berufstraeger.map((u) => (
               <option key={u.id} value={u.id}>
                 {u.name}
+                {abwesendText(u)}
               </option>
             ))}
           </Select>
         </Field>
+        {empfaenger && istAbwesend(empfaenger, heute) && (
+          <p role="status" className="flex gap-2 rounded-[12px] bg-amber-soft px-3 py-2 text-[12.5px] leading-relaxed text-fg-2">
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber" aria-hidden />
+            <span>
+              {empfaenger.name} ist abwesend{empfaenger.abwesenheit?.bis ? ` bis ${fmtDate(empfaenger.abwesenheit.bis.slice(0, 10))}` : ""}
+              {vertretungFuer(team, empfaenger.id, heute) ? ` – Vertretung: ${vertretungFuer(team, empfaenger.id, heute)!.name}` : ""}. Das eEB sollte heute abgegeben werden.
+            </span>
+          </p>
+        )}
         <Field label="Notiz (optional)" htmlFor="eeb-vorlage-notiz">
           <Textarea id="eeb-vorlage-notiz" rows={3} value={notiz} onChange={(e) => setNotiz(e.target.value)} placeholder="z. B. Berufung und Begründung notiert, Kontrolle durch Jonas Brandt offen" />
         </Field>

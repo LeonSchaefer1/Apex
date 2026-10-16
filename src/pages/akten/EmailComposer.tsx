@@ -1,7 +1,7 @@
 // E-Mail bzw. beA-Nachricht direkt aus der Akte – nach dem Senden bleibt man in der Akte.
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { AtSign, Mail, Paperclip, Send, ShieldCheck, X } from "lucide-react";
+import { AtSign, Globe, Mail, Paperclip, Send, ShieldCheck, X } from "lucide-react";
 import type { Akte, Dokument, Kontakt, Nachricht } from "@/core/types";
 import { nowLocal, uid } from "@/core/dates";
 import { useCol, useData } from "@/store/data";
@@ -12,6 +12,7 @@ import { cn } from "@/lib/cn";
 import { KontaktAvatar } from "@/pages/kontakte/kontaktHelfer";
 import { beruehreAkte, useKontaktMap } from "./helfer";
 import { DiktatKnopf } from "./Diktat";
+import { portalSperrgrund, setzePortal } from "./Mandantenportal";
 
 /** Betreff nach Empfängerrolle: Mandant „Ihre Angelegenheit …“, Gericht/Gegenanwalt/Versicherung mit „Ihr Zeichen/Unser Zeichen“. */
 export function betreffFuer(rolle: string | undefined, akte: Akte): string {
@@ -71,6 +72,8 @@ export function EmailComposer({ akte, open, onClose, onGesendet }: { akte: Akte;
   const [bea, setBea] = useState(false);
   const [anhaenge, setAnhaenge] = useState<string[]>([]);
   const [sendet, setSendet] = useState(false);
+  // Versand an den Mandanten: auch im Mandantenportal bereitstellen (Standard aus – nie automatisch)
+  const [insPortal, setInsPortal] = useState(false);
 
   const signatur = `Mit freundlichen Grüßen\n\n${user.name}\n${user.titel}\n${tenant.name}\n${tenant.adresse}`;
   const brief = (k?: Kontakt) => `${anrede(k)}\n\n\n\n${signatur}`;
@@ -85,6 +88,7 @@ export function EmailComposer({ akte, open, onClose, onGesendet }: { akte: Akte;
     setBea(false);
     setAnhaenge([]);
     setSendet(false);
+    setInsPortal(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, akte.id]);
 
@@ -112,6 +116,8 @@ export function EmailComposer({ akte, open, onClose, onGesendet }: { akte: Akte;
   };
 
   const gewaehlt = kontaktId ? kontakte.get(kontaktId) : undefined;
+  const anMandant = !!gewaehlt && gewaehlt.id === akte.mandantId;
+  const portalMoeglich = anMandant && !!akte.mandantenportal;
   const emailOk = bea ? !!an.trim() : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(an.trim());
   const kannSenden = emailOk && !!betreff.trim() && !!text.trim() && !sendet;
 
@@ -136,11 +142,21 @@ export function EmailComposer({ akte, open, onClose, onGesendet }: { akte: Akte;
       };
       st.upsert("dokumente", dok);
       st.log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `${bea ? "beA-Nachricht" : "E-Mail"} an ${gewaehlt?.name ?? an.trim()} gesendet: „${betreff.trim()}“ – ${akte.aktenzeichen}` });
+      // Ausdrücklich gewählt: Nachricht und (freigegebene) Anlagen auch im Mandantenportal bereitstellen
+      let imPortal = 0;
+      const gesperrt: string[] = [];
+      if (portalMoeglich && insPortal) {
+        for (const x of [dok, ...anhangDoks]) {
+          const grund = portalSperrgrund(x);
+          if (grund) gesperrt.push(`${x.name} (${grund})`);
+          else if (setzePortal(x, akte, user.id, true, "mit dem Versand an den Mandanten")) imPortal++;
+        }
+      }
       beruehreAkte(akte.id);
       onClose();
       toast("Gesendet – Sie bleiben in der Akte", {
         ton: "erfolg",
-        text: `${bea ? "beA-Nachricht" : "E-Mail"} an ${gewaehlt?.name ?? an.trim()} · abgelegt in „Korrespondenz“`,
+        text: `${bea ? "beA-Nachricht" : "E-Mail"} an ${gewaehlt?.name ?? an.trim()} · abgelegt in „Korrespondenz“${imPortal ? ` · ${imPortal} ${imPortal === 1 ? "Dokument" : "Dokumente"} im Mandantenportal bereitgestellt` : ""}${gesperrt.length ? ` · nicht im Portal: ${gesperrt.join(", ")}` : ""}`,
         aktion: { label: "Ansehen", onClick: () => onGesendet(dok.id) },
       });
     }, 650);
@@ -275,6 +291,18 @@ export function EmailComposer({ akte, open, onClose, onGesendet }: { akte: Akte;
             {anhaenge.length === 0 && <span className="text-[12.5px] text-fg-3">Keine Anlagen.</span>}
           </div>
         </div>
+
+        {portalMoeglich && (
+          <label className="flex items-start gap-2.5 rounded-[14px] bg-ink-softer px-3.5 py-3 text-[13px] text-fg-2 ring-1 ring-inset ring-[var(--line)]">
+            <input type="checkbox" className="mt-0.5 size-4 accent-[var(--ink)]" checked={insPortal} onChange={(e) => setInsPortal(e.target.checked)} />
+            <span>
+              <span className="inline-flex items-center gap-1.5 font-medium text-fg">
+                <Globe className="size-3.5 text-ink" aria-hidden /> Auch im Mandantenportal bereitstellen
+              </span>
+              <span className="block text-[12.5px] text-fg-3">Nachricht und Anlagen erscheinen dann für {gewaehlt?.name} im Portal – Entwürfe nie. Der Vorgang steht im Verlauf.</span>
+            </span>
+          </label>
+        )}
       </div>
     </Drawer>
   );

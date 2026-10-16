@@ -60,7 +60,10 @@ interface Kollision {
   fuer: string;
 }
 
-/** Entwurf der Mandatsaufnahme – bleibt bis zum Abschluss in sessionStorage. */
+/**
+ * Entwurf der Mandatsaufnahme – je Person, bis zum Abschluss: sessionStorage und eine Kopie im localStorage dieses Browsers
+ * (übersteht Neuladen und geschlossene Fenster, höchstens 24 Stunden; gelöscht mit Abschluss oder „Neu beginnen“).
+ */
 interface Entwurf {
   gespeichert: string;
   nachrichtId: string | null;
@@ -75,29 +78,44 @@ interface Entwurf {
   kollision: Kollision;
 }
 
-const ENTWURF_KEY = "apex.mandatsaufnahme.entwurf";
-function ladeEntwurf(): Entwurf | null {
+const entwurfKey = (userId: string) => `apex.mandatsaufnahme.entwurf.${userId}`;
+const ENTWURF_MAX_MS = 24 * 60 * 60 * 1000;
+const SPEICHER = [() => sessionStorage, () => localStorage];
+function liesEntwurf(speicher: () => Storage, userId: string): Entwurf | null {
   try {
-    const raw = sessionStorage.getItem(ENTWURF_KEY);
+    const raw = speicher().getItem(entwurfKey(userId));
     if (!raw) return null;
     const e = JSON.parse(raw) as Entwurf;
-    return e && typeof e.schritt === "number" && e.sache && e.entwurf ? e : null;
+    if (!e || typeof e.schritt !== "number" || !e.sache || !e.entwurf) return null;
+    return Date.now() - new Date(e.gespeichert).getTime() > ENTWURF_MAX_MS ? null : e;
   } catch {
     return null;
   }
 }
-function speichereEntwurf(e: Entwurf) {
-  try {
-    sessionStorage.setItem(ENTWURF_KEY, JSON.stringify(e));
-  } catch {
-    /* Speicher nicht verfügbar – der Entwurf lebt dann nur im Dialog */
+/** Offener Entwurf der Person (auch für den Hinweis „Mandatsaufnahme fortsetzen“ in der Aktenliste). */
+export function ladeMandatsEntwurf(userId: string): { gespeichert: string; schritt: number } | null {
+  return ladeEntwurf(userId);
+}
+function ladeEntwurf(userId: string): Entwurf | null {
+  return liesEntwurf(SPEICHER[0], userId) ?? liesEntwurf(SPEICHER[1], userId);
+}
+function speichereEntwurf(userId: string, e: Entwurf) {
+  for (const s of SPEICHER) {
+    try {
+      s().setItem(entwurfKey(userId), JSON.stringify(e));
+    } catch {
+      /* Speicher nicht verfügbar – der Entwurf lebt dann nur im Dialog */
+    }
   }
 }
-function loescheEntwurf() {
-  try {
-    sessionStorage.removeItem(ENTWURF_KEY);
-  } catch {
-    /* ignorieren */
+function loescheEntwurf(userId: string) {
+  for (const s of SPEICHER) {
+    try {
+      s().removeItem(entwurfKey(userId));
+      s().removeItem("apex.mandatsaufnahme.entwurf"); // früherer Schlüssel ohne Person
+    } catch {
+      /* ignorieren */
+    }
   }
 }
 
@@ -232,7 +250,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
       setBereits({ nachricht: n, akte: st.akten.find((a) => a.id === n.akteId) });
       return;
     }
-    setOffenerEntwurf(ladeEntwurf());
+    setOffenerEntwurf(ladeEntwurf(user.id));
     if (n) {
       setQuelle(n);
       const adresse = n.vonAdresse?.trim().toLowerCase();
@@ -276,7 +294,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
   useEffect(() => {
     if (!open || erfolg || bereits || offenerEntwurf || startJson.current === null) return;
     if (formJson === startJson.current) return;
-    speichereEntwurf({ gespeichert: nowLocal(), nachrichtId: quelle?.id ?? null, schritt, modus, mandantId, entwurf, sache, rsv, portalWahl, kschg, kollision });
+    speichereEntwurf(user.id, { gespeichert: nowLocal(), nachrichtId: quelle?.id ?? null, schritt, modus, mandantId, entwurf, sache, rsv, portalWahl, kschg, kollision });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formJson, schritt, open, erfolg, bereits, offenerEntwurf]);
 
@@ -299,7 +317,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
     setOffenerEntwurf(null);
   };
   const neuBeginnen = () => {
-    loescheEntwurf();
+    loescheEntwurf(user.id);
     setOffenerEntwurf(null);
   };
 
@@ -319,7 +337,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
     window.setTimeout(() => (fragtRef.current = false), 0);
   };
   const verwerfen = () => {
-    loescheEntwurf();
+    loescheEntwurf(user.id);
     setVerwerfenFrage(false);
     window.setTimeout(() => (fragtRef.current = false), 0);
     onClose();
@@ -458,7 +476,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
       userId: user.id,
       text: `Mandat abgelehnt – Interessenkollision (§ 43a Abs. 4 BRAO): ${mandantName || "Mandant"}${sache.gegner.trim() ? ` ./. ${sache.gegner.trim()}` : ""} · Treffer: ${treffer.join("; ")}${vermerk ? ` · Vermerk: ${vermerk}` : ""} · keine Akte angelegt`,
     });
-    loescheEntwurf();
+    loescheEntwurf(user.id);
     onClose();
     toast("Mandat abgelehnt – keine Akte angelegt", { text: "Die Entscheidung mit den Kollisionstreffern steht im Protokoll.", ton: "info" });
   };
@@ -606,7 +624,8 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
     if (akte.rsv) {
       paket.push(
         dok({
-          name: `Deckungsanfrage ${akte.rsv.versicherung}`, art: "brief", ordner: "Korrespondenz", format: "docx",
+          // Entwurf des 38h-Motors: erst nach anwaltlicher Freigabe versandt (Beteiligte → „Freigeben und versenden“), nie im Portal
+          name: `Deckungsanfrage ${akte.rsv.versicherung}`, art: "brief", ordner: "Korrespondenz", format: "docx", status: "entwurf",
           inhalt: `${akte.rsv.versicherung}\nSchadenabteilung\n\n${ort}, ${fmtDate(heute)}\n\nVersicherungsnehmer: ${m.name}\nVersicherungsnummer: ${akte.rsv.versicherungsnummer || "wird nachgereicht"}${akte.rsv.schadennummer ? `\nSchadennummer: ${akte.rsv.schadennummer}` : ""}\nUnser Zeichen: ${aktenzeichen}\n\nDeckungsanfrage – ${akte.titel}\n\nSehr geehrte Damen und Herren,\n\nwir zeigen an, dass uns Ihr Versicherungsnehmer mit der Wahrnehmung seiner rechtlichen Interessen beauftragt hat, und bitten um Erteilung der Deckungszusage für die außergerichtliche und gegebenenfalls gerichtliche Tätigkeit (${akte.sachgebiet}).\n\nSachverhalt:\n${akte.beschreibung || "Die ausführliche Sachverhaltsschilderung reichen wir kurzfristig nach."}${gName ? `\n\nGegner: ${gName}` : ""}\nGegenstandswert (vorläufig): ${fmtEUR(akte.gegenstandswert)}\n\nFür eine kurzfristige Bestätigung wären wir dankbar.\n\n${gruss}`,
         }),
       );
@@ -689,7 +708,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
         ...(quelle ? [{ text: "Anfrage aus dem Posteingang zugeordnet", sub: `„${quelle.betreff}“ – abgelegt in „Korrespondenz“` }] : []),
       ],
     });
-    loescheEntwurf();
+    loescheEntwurf(user.id);
   };
 
   // Nach Erfolg automatisch in die Akte wechseln
@@ -807,7 +826,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                       ]}
                     />
                     {modus === "bestehend" ? (
-                      <KontaktAuswahl id="ma-mandant" value={mandantId} onSelect={(k) => setMandantId(k.id)} bevorzugt={["mandant"]} hoehe={260} />
+                      <KontaktAuswahl id="ma-mandant" value={mandantId} onSelect={(k) => setMandantId(k.id)} bevorzugt={["mandant"]} nurRollen={["mandant"]} hoehe={260} />
                     ) : (
                       <>
                         {dublette && (
@@ -1127,7 +1146,7 @@ function EntwurfFrage({ e, kontakte }: { e: Entwurf; kontakte: Kontakt[] }) {
           </dl>
         </div>
       </div>
-      <p className="px-1 text-[12.5px] text-fg-3">Der Entwurf liegt nur in diesem Browserfenster, bis die Akte angelegt ist. „Neu beginnen“ verwirft ihn.</p>
+      <p className="px-1 text-[12.5px] text-fg-3">Der Entwurf liegt nur in diesem Browser – höchstens 24 Stunden, bis die Akte angelegt ist. „Neu beginnen“ verwirft ihn.</p>
     </div>
   );
 }

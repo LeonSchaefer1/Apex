@@ -108,27 +108,28 @@ export function KundenKarte({ k, i, aktionen, beschaeftigt }: { k: ConsoleKunde;
           </div>
           <ul className="flex min-w-0 flex-col gap-1">
             {k.users.map((u) => (
-              <li key={u.id} className="group flex min-w-0 items-center gap-2.5 rounded-[12px] px-1.5 py-1.5 transition-colors hover:bg-ink-softer">
+              <li key={u.id} className="group flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 rounded-[12px] px-1.5 py-1.5 transition-colors hover:bg-ink-softer">
                 <Avatar initialen={u.initialen} farbe={u.farbe} size={28} />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] font-medium">
+                <span className="min-w-0 flex-1 basis-[200px]">
+                  <span className="block text-[13px] font-medium [overflow-wrap:anywhere]">
                     {u.name} <span className="font-normal text-fg-3">· {rollenLabel(u)}</span>
                   </span>
-                  <span className="flex min-w-0 items-center gap-1 text-[12px] text-fg-3">
-                    <Mail className="size-3 shrink-0" />
-                    <span className="mono truncate">{u.email}</span>
+                  <span className="flex min-w-0 items-start gap-1 text-[12px] text-fg-3">
+                    <Mail className="mt-[3px] size-3 shrink-0" />
+                    <span className="mono min-w-0 [overflow-wrap:anywhere]">{u.email}</span>
                   </span>
                 </span>
+                <span className="ml-auto flex flex-wrap items-center justify-end gap-0.5">
                 {DEMO_NUTZER_IDS.has(u.id) && (
                   <button
                     type="button"
                     onClick={() => aktionen.standardPasswort(k, u)}
                     className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-medium text-fg-3 transition-colors hover:bg-ink-soft hover:text-ink"
-                    title={`Standardpasswort der Beispielkanzleien für ${u.name} wiederherstellen`}
-                    aria-label={`Standardpasswort für ${u.name} wiederherstellen`}
+                    title={`Setzt für ${u.name} wieder das öffentliche Passwort der Präsentationskanzleien – z. B. nach einer Vorführung, in der es geändert wurde.`}
+                    aria-label={`Demo-Passwort für ${u.name} wiederherstellen`}
                   >
                     <Undo2 className="size-3.5" />
-                    <span className="hidden sm:inline">Standard</span>
+                    <span className="hidden sm:inline">Demo-Passwort wiederherstellen</span>
                   </button>
                 )}
                 <button
@@ -150,6 +151,7 @@ export function KundenKarte({ k, i, aktionen, beschaeftigt }: { k: ConsoleKunde;
                   <KeyRound className="size-3.5" />
                   <span className="hidden sm:inline">Neues Passwort</span>
                 </button>
+                </span>
               </li>
             ))}
           </ul>

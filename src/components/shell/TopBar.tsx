@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { Bell, Search, Sun, Moon, MonitorSmartphone, LogOut, Settings, LifeBuoy, Building2, Sparkles, Zap, User as UserIcon, Keyboard } from "lucide-react";
+import { Bell, Search, Sun, Moon, MonitorSmartphone, LogOut, Settings, LifeBuoy, Building2, Sparkles, Zap, User as UserIcon, Keyboard, ShieldAlert } from "lucide-react";
 import { navFor } from "@/app/nav";
 import { useUI, type ThemeWahl } from "@/store/ui";
 import { useKanzlei, useSession } from "@/store/session";
@@ -12,6 +12,7 @@ import { ApexIsland } from "./ApexIsland";
 import { cn } from "@/lib/cn";
 import { useAiStatus } from "@/ai/status";
 import { rollenLabel } from "@/lib/rollen";
+import { darfVerwalten } from "@/lib/backend";
 
 /** Im Prototyp sind beA, E-Mail und Bank simuliert – einheitlicher Wortlaut mit Posteingang, Bankabgleich und Systemstatus. */
 import { SIMULIERT_STATUS } from "@/lib/betriebsstatus";
@@ -51,7 +52,9 @@ export function TopBar() {
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
   const naechstesTheme: ThemeWahl = theme === "system" ? "light" : theme === "light" ? "dark" : "system";
-  const meldungen = akt.filter((a) => a.akteur !== "nutzer").slice(0, 8);
+  // Anmeldeereignisse gehören ins Kanzleiprotokoll – in die Glocke nur der Hinweis auf gehäufte Fehlversuche (für Partner/Administration)
+  const verwalten = darfVerwalten(user.rolle);
+  const meldungen = akt.filter((a) => a.akteur !== "nutzer" && (a.kategorie !== "anmeldung" || (a.meldung && verwalten))).slice(0, 8);
   // Gelesen-Zustand der Glocke: Zeitpunkt der neuesten gesehenen Meldung je Person (nur in diesem Browser).
   const gesehenKey = `aa:meldungen-gesehen:${user.id}`;
   const [gesehen, setGesehen] = useState(() => {
@@ -101,7 +104,8 @@ export function TopBar() {
           <ApexIsland />
         </div>
 
-        <button type="button" className="icon-btn md:hidden" aria-label="Suchen" onClick={() => setPalette(true)}>
+        {/* Mobil (< 640 px): Bedienflächen der Kopfleiste mindestens 44 × 44 px (Daumen, WCAG 2.5.5) */}
+        <button type="button" className="icon-btn md:hidden max-sm:!size-11" aria-label="Suchen" onClick={() => setPalette(true)}>
           <Search className="size-[18px]" />
         </button>
 
@@ -125,11 +129,11 @@ export function TopBar() {
                 if (!open) alsGelesenMarkieren();
                 toggle();
               }}
-              className="icon-btn relative"
+              className="icon-btn relative max-sm:!size-11"
               aria-label={ungelesen ? `Benachrichtigungen – ${ungelesen} neu` : "Benachrichtigungen"}
             >
               <Bell className="size-[18px]" />
-              {ungelesen > 0 && <span className="absolute right-2 top-2 size-2 rounded-full bg-seal ring-2 ring-[var(--glass-strong)]" />}
+              {ungelesen > 0 && <span className="absolute right-2 top-2 size-2 rounded-full bg-seal ring-2 ring-[var(--glass-strong)] max-sm:right-2.5 max-sm:top-2.5" />}
             </button>
           )}
           items={[
@@ -143,8 +147,8 @@ export function TopBar() {
                   </span>
                 </span>
               ),
-              icon: m.akteur === "ki" ? <Sparkles /> : <Zap />,
-              onClick: () => (m.akteId ? nav(`/akten/${m.akteId}`) : nav("/automatisierung")),
+              icon: m.kategorie === "anmeldung" ? <ShieldAlert /> : m.akteur === "ki" ? <Sparkles /> : <Zap />,
+              onClick: () => (m.kategorie === "anmeldung" ? nav("/einstellungen?tab=datenschutz&abschnitt=protokoll") : m.akteId ? nav(`/akten/${m.akteId}`) : nav("/automatisierung")),
             })),
             "sep" as const,
             { label: "Alle Aktivitäten im 38h-Motor", icon: <Zap />, onClick: () => nav("/automatisierung") },
@@ -157,7 +161,7 @@ export function TopBar() {
 
         <Menu
           trigger={({ toggle }) => (
-            <button type="button" onClick={toggle} className="ml-0.5 flex shrink-0 items-center gap-2 rounded-full p-0.5 pr-0.5 transition-colors hover:bg-ink-softer xl:pr-3" aria-label="Benutzermenü">
+            <button type="button" onClick={toggle} className="ml-0.5 flex shrink-0 items-center justify-center gap-2 rounded-full p-0.5 pr-0.5 transition-colors hover:bg-ink-softer max-sm:size-11 xl:pr-3" aria-label="Benutzermenü">
               <Avatar initialen={user.initialen} farbe={user.farbe} size={34} />
               <span className="kopf-optional hidden text-left leading-tight xl:block">
                 <span className="block max-w-[150px] truncate text-[13px] font-semibold">{user.name}</span>

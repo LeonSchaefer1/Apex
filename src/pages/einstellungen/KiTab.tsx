@@ -8,7 +8,7 @@ import { toast } from "@/store/ui";
 import { AiChip, Chip, Switch } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { FLOW_CSS } from "@/pages/motor/shared";
-import { VERARBEITUNGSORT } from "@/content/datenschutz";
+import { DRITTLAND, VERARBEITUNGSORT } from "@/content/datenschutz";
 import { Abschnitt, Zeile } from "./teile";
 
 const QUELLE_TEXT = { server: "Claude (Anthropic-API) über Ihren Kanzlei-Server", artefakt: "Claude (Anthropic) über die Vorschau-Laufzeit", demo: "Arbeitet nach festen Regeln vollständig in Ihrem Browser" } as const;
@@ -19,7 +19,7 @@ const GRUNDSAETZE = [
   { icon: <Calculator className="size-4" />, t: "Die KI erkennt, der Fristenrechner berechnet", s: "Fristen berechnet ausschließlich der geprüfte Rechenkern nach §§ 187 ff. BGB und der jeweiligen Verfahrensordnung (z. B. § 222 ZPO, § 43 StPO) – mit Rechenweg." },
   { icon: <UserCheck className="size-4" />, t: "Vorschläge statt Entscheidungen", s: "Jede Übernahme bestätigen Sie. KI-erkannte Fristen gehen immer in die Vier-Augen-Kontrolle." },
   { icon: <Quote className="size-4" />, t: "Quellen statt Behauptungen", s: "Präzedenzfälle übernimmt AnwaltApex nur aus der Fall-Datenbank – mit Gericht, Datum und Aktenzeichen zum Nachprüfen. KI-Texte bleiben Entwürfe zur anwaltlichen Prüfung." },
-  { icon: <Eye className="size-4" />, t: "Klar gekennzeichnet", s: "Was die KI erstellt hat, trägt den KI-Schimmer – im Posteingang, in der Akte und in Entwürfen." },
+  { icon: <Eye className="size-4" />, t: "Klar gekennzeichnet", s: "Was die KI erstellt hat, trägt das Etikett „KI“ – im Posteingang, in der Akte und in Entwürfen." },
 ];
 
 export function KiTab() {
@@ -91,7 +91,7 @@ export function KiTab() {
           <Verarbeitungsort live={live} />
           <div className="mt-3 rounded-[14px] bg-[var(--ink-softer)] px-3.5 py-3 text-[12.5px] leading-relaxed text-fg-2">
             <span className="font-semibold text-fg">Vor dem Live-Betrieb:</span> Anthropic verarbeitet Mandatsinhalte als Dienstleister. Erforderlich sind ein Vertrag nach § 43e BRAO (Verschwiegenheit, Zugriff nur soweit nötig) und eine Auftragsverarbeitung nach
-            Art. 28 DSGVO; bei Verarbeitung außerhalb der EU zusätzlich § 43e Abs. 4 BRAO und Art. 44 ff. DSGVO. Die Anbindung sendet nur aufgabenbezogene Inhalte und ist so eingerichtet, dass sie nicht zu Trainingszwecken verwendet werden –
+            Art. 28 DSGVO. {DRITTLAND} Die Anbindung sendet nur aufgabenbezogene Inhalte und ist so eingerichtet, dass sie nicht zu Trainingszwecken verwendet werden –
             maßgeblich sind die Vereinbarungen mit dem Anbieter.
           </div>
         </Abschnitt>
@@ -128,11 +128,12 @@ function Datenfluss({ live, quelle }: { live: boolean; quelle: "server" | "artef
         const aktiv = live || i === 0;
         return (
           <Fragment key={k.t}>
-            <div className={cn("flex min-w-0 flex-1 items-center gap-3 rounded-[16px] p-3 ring-1 ring-[var(--line)] transition-opacity sm:flex-col sm:text-center", aktiv ? "bg-[var(--surface-2)]" : "opacity-45")}>
-              <span className={cn("grid size-10 shrink-0 place-items-center rounded-[12px]", i === 2 ? "bg-violet-soft text-violet" : "bg-ink-soft text-ink")}>{k.icon}</span>
+            <div className={cn("flex min-w-0 flex-1 items-center gap-3 rounded-[16px] p-3 ring-1 sm:flex-col sm:text-center", aktiv ? "bg-[var(--surface-2)] ring-[var(--line)]" : "border border-dashed border-[var(--line-strong)] bg-transparent ring-transparent")}>
+              <span className={cn("grid size-10 shrink-0 place-items-center rounded-[12px]", !aktiv ? "bg-[var(--ink-softer)] text-fg-2" : i === 2 ? "bg-violet-soft text-violet" : "bg-ink-soft text-ink")}>{k.icon}</span>
               <span className="min-w-0">
-                <span className="block text-[13px] font-semibold">{k.t}</span>
-                <span className="block text-[12.5px] leading-snug text-fg-3">{k.s}</span>
+                <span className="block text-[13px] font-semibold text-fg">{k.t}</span>
+                <span className="block text-[12.5px] leading-snug text-fg-2">{k.s}</span>
+                {!aktiv && <span className="mt-1 inline-block rounded-full bg-[var(--ink-softer)] px-2 py-px text-[12px] font-semibold text-fg-2 ring-1 ring-[var(--line)]">nicht aktiv</span>}
               </span>
             </div>
             {i < knoten.length - 1 && (

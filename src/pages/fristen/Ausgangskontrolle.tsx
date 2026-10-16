@@ -1,10 +1,13 @@
 // Ausgangskontrolle am Abend: alle fälligen Notfristen und Fristen des Tages mit Status „versandt – Nachweis …“ oder „offen“.
-// Dazu die Druckansicht „Fristen heute und morgen“ (papierweiß, schwarz) mit der Zeile „Ausgangskontrolle durchgeführt: ____“.
+// Dazu die Druckansicht „Fristen heute und nächster Arbeitstag“ (papierweiß, schwarz) mit der Zeile „Ausgangskontrolle durchgeführt: ____“.
+// „Nächster Arbeitstag“ statt „morgen“: Freitagabend zeigt Montag (bzw. den Tag nach einem Feiertag am Kanzleisitz).
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { CheckCircle2, CircleAlert, Printer, ShieldCheck, Trash2, XCircle } from "lucide-react";
-import { addDays, fmtDate, fmtDateWd } from "@/core/dates";
+import { fmtDate, fmtDateWd, wochentagName } from "@/core/dates";
 import { fristArtZu } from "@/core/fristen";
+import { naechsterArbeitstag } from "@/core/feiertage";
+import { useKanzlei } from "@/store/session";
 import type { Akte, Frist, User } from "@/core/types";
 import { useCol } from "@/store/data";
 import { Avatar, Button, Card, Chip, Empty, Modal, Segmented } from "@/components/ui";
@@ -78,10 +81,15 @@ function AusgangsZeile({ f, akte, team, user, heute }: { f: Frist; akte?: Akte; 
   );
 }
 
+/** „Mo, 19.10.“ */
+export const kurzTag = (iso: string) => `${wochentagName(iso, true)}, ${fmtDate(iso).slice(0, 6)}`;
+
 export function Ausgangskontrolle({ fristen, akten, team, user, heute }: { fristen: Frist[]; akten: Map<string, Akte>; team: User[]; user: User; heute: string }) {
-  const [wann, setWann] = useState<"heute" | "morgen">("heute");
+  const { tenant } = useKanzlei();
+  const [wann, setWann] = useState<"heute" | "naechster">("heute");
   const [druck, setDruck] = useState(false);
-  const tag = wann === "heute" ? heute : addDays(heute, 1);
+  const naechster = naechsterArbeitstag(heute, tenant.bundesland);
+  const tag = wann === "heute" ? heute : naechster;
   const liste = useMemo(() => ausgangsListe(fristen, tag, heute), [fristen, tag, heute]);
   const zahl = (s: ReturnType<typeof statusVon>) => liste.filter((f) => statusVon(f) === s).length;
   const offen = zahl("offen");
@@ -99,7 +107,7 @@ export function Ausgangskontrolle({ fristen, akten, team, user, heute }: { frist
             onChange={setWann}
             options={[
               { value: "heute", label: "Heute" },
-              { value: "morgen", label: "Morgen" },
+              { value: "naechster", label: `Nächster Arbeitstag (${kurzTag(naechster)})` },
             ]}
           />
           <Button variant="secondary" icon={<Printer className="size-4" />} onClick={() => setDruck(true)}>
@@ -119,7 +127,7 @@ export function Ausgangskontrolle({ fristen, akten, team, user, heute }: { frist
       </Card>
       {liste.length === 0 ? (
         <Card>
-          <Empty icon={<ShieldCheck className="size-6" />} title={`${wann === "heute" ? "Heute" : "Morgen"} keine fälligen Fristen`} text="Wiedervorlagen und Termine erscheinen im Kalender – die Ausgangskontrolle betrifft Notfristen und Fristen." />
+          <Empty icon={<ShieldCheck className="size-6" />} title={`${wann === "heute" ? "Heute" : `Am nächsten Arbeitstag (${kurzTag(naechster)})`} keine fälligen Fristen`} text="Wiedervorlagen und Termine erscheinen im Kalender – die Ausgangskontrolle betrifft Notfristen und Fristen." />
         </Card>
       ) : (
         <Card padded={false} className="overflow-hidden">
@@ -135,22 +143,25 @@ export function Ausgangskontrolle({ fristen, akten, team, user, heute }: { frist
   );
 }
 
-/** Druckansicht „Fristen heute und morgen“ – Vorschau im Dialog, gedruckt wird nur das Blatt (print-CSS). */
+/** Druckansicht „Fristen heute und nächster Arbeitstag“ – Vorschau im Dialog, gedruckt wird nur das Blatt (print-CSS). */
 export function Druckansicht({ open, onClose, fristen, akten, team, heute }: { open: boolean; onClose: () => void; fristen: Frist[]; akten: Map<string, Akte>; team: User[]; heute: string }) {
   const nachrichten = useCol("nachrichten");
-  const morgen = addDays(heute, 1);
+  const transaktionen = useCol("transaktionen");
+  const { tenant } = useKanzlei();
+  // Nächster Arbeitstag am Kanzleisitz (Freitag → Montag); dazwischen liegende Tage (Wochenende, Feiertag) mitnehmen
+  const morgen = naechsterArbeitstag(heute, tenant.bundesland);
   const zeilen = useMemo(
     () =>
       fristen
-        .filter((f) => f.typ !== "vorfrist" && (f.datum === heute || f.datum === morgen || (f.status === "offen" && f.datum < heute)))
+        .filter((f) => f.typ !== "vorfrist" && ((f.datum >= heute && f.datum <= morgen) || (f.status === "offen" && f.datum < heute)))
         .sort((a, b) => a.datum.localeCompare(b.datum) || (a.uhrzeit ?? "").localeCompare(b.uhrzeit ?? "")),
     [fristen, heute, morgen],
   );
   const blatt = (
     <div className="druck-blatt">
-      <h1>Fristen heute und morgen</h1>
+      <h1>Fristen heute und nächster Arbeitstag</h1>
       <p className="druck-unter">
-        {fmtDateWd(heute)} und {fmtDateWd(morgen)} · Stand {fmtDate(heute)}
+        {fmtDateWd(heute)} und nächster Arbeitstag {fmtDateWd(morgen)} · Stand {fmtDate(heute)}
       </p>
       <table>
         <thead>
@@ -177,7 +188,7 @@ export function Druckansicht({ open, onClose, fristen, akten, team, heute }: { o
                 <td>{f.titel}</td>
                 <td>{art}</td>
                 <td>{team.find((u) => u.id === f.verantwortlichId)?.name ?? "–"}</td>
-                <td>{f.status === "offen" ? "offen" : erfordertNachweis(f) ? nachweisText(f, team, nachrichten) : "erledigt"}</td>
+                <td>{f.status === "offen" ? "offen" : erfordertNachweis(f) ? nachweisText(f, team, nachrichten, transaktionen) : "erledigt"}</td>
               </tr>
             );
           })}
@@ -211,7 +222,7 @@ export function Druckansicht({ open, onClose, fristen, akten, team, heute }: { o
         open={open}
         onClose={onClose}
         size="xl"
-        title="Druckansicht: Fristen heute und morgen"
+        title="Druckansicht: Fristen heute und nächster Arbeitstag"
         subtitle="Papierweiß, schwarz – mit Zeile für die abendliche Ausgangskontrolle"
         icon={<Printer className="size-[18px]" />}
         footer={

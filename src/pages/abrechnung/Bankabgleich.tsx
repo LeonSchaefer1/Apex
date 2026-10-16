@@ -11,7 +11,7 @@ import { fmtDate, fmtDateShort, fmtEUR, fmtTime, nowLocal, round2 } from "@/core
 import { automationDef, ersparnisMinuten } from "@/core/automationen";
 import type { Transaktion } from "@/core/types";
 import { cn } from "@/lib/cn";
-import { AUTO_SCHWELLE, bucheTreffer, gleicheAb, loeseZuordnung, REGELN, zuordnungsProtokoll, type Treffer } from "./abgleich";
+import { AUTO_SCHWELLE, bucheTreffer, gleicheAb, lehneVorschlagAb, loeseZuordnung, REGELN, speichereVorschlag, trefferAusVorschlag, zuordnungsProtokoll, type Treffer } from "./abgleich";
 import { istOffen, offenerBetrag } from "./lib";
 import { AkteLabel, TabKopf, useLookups } from "./ui";
 
@@ -19,6 +19,35 @@ type Zustand = "gebucht" | "vorschlag" | "kosten" | "keine" | "bestaetigt" | "ab
 type Ergebnis = Treffer & { zustand: Zustand };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Ergebnis des letzten Abgleichs (je Kanzlei, nur Zahlen) – nach Reiterwechsel, Neuladen oder Neustart des Browsers sichtbar; gebucht ist sofort beim Start. */
+interface LaufStand {
+  am: string;
+  gebucht: number;
+  vorschlaege: number;
+  kosten: number;
+  fremd: number;
+  keine: number;
+  gespart: number;
+  /** false = Anzeige wurde unterbrochen (Seitenwechsel, Neuladen) – die Buchungen sind trotzdem vollständig */
+  angezeigt: boolean;
+}
+const laufKey = (tenantId: string) => `apex.bankabgleich.lauf.${tenantId}`;
+function ladeLauf(tenantId: string): LaufStand | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(laufKey(tenantId)) ?? "null") as LaufStand | null;
+    return v && typeof v.am === "string" ? v : null;
+  } catch {
+    return null;
+  }
+}
+function speichereLauf(tenantId: string, l: LaufStand) {
+  try {
+    localStorage.setItem(laufKey(tenantId), JSON.stringify(l));
+  } catch {
+    /* ohne Speicher: Ergebnis nur bis zum Neuladen sichtbar – die Buchungen selbst sind gespeichert */
+  }
+}
 /** Minuten manuelle Zuordnung je automatisch zugeordnetem Umsatz – aus der Automatik-Definition (je Vorgang gezählt). */
 const MIN_JE_UMSATZ = automationDef("bankabgleich")?.minutenProLauf ?? 3;
 const plural = (n: number, eins: string, mehr: string) => `${n} ${n === 1 ? eins : mehr}`;
@@ -122,7 +151,7 @@ export function BankabgleichTab() {
   const rechnungen = useCol("rechnungen");
   const aktivitaeten = useCol("aktivitaeten");
   const { akten, kontakte, users } = useLookups();
-  const { user } = useKanzlei();
+  const { user, tenant } = useKanzlei();
   const nav = useNavigate();
   const [ansicht, setAnsicht] = useState<"offen" | "gebucht">("offen");
   const [gespartLauf, setGespartLauf] = useState(0);
@@ -131,6 +160,7 @@ export function BankabgleichTab() {
   const [aktuell, setAktuell] = useState(-1);
   const [ergebnisse, setErgebnisse] = useState<Record<string, Ergebnis>>({});
   const [manuell, setManuell] = useState<Record<string, string>>({});
+  const [letzterLauf, setLetzterLauf] = useState<LaufStand | null>(() => ladeLauf(tenant.id));
   const alive = useRef(true);
   const fileRef = useRef<HTMLInputElement>(null);
   const zeilenRef = useRef<Record<string, HTMLLIElement | null>>({});
@@ -162,6 +192,10 @@ export function BankabgleichTab() {
     bestaetigt: werte.filter((e) => e.zustand === "bestaetigt" || e.zustand === "manuell").length,
   };
 
+  /**
+   * Abgleich: Alle Entscheidungen werden sofort gebucht bzw. als Vorschlag am Umsatz gespeichert – erst danach läuft die
+   * Anzeige Umsatz für Umsatz ab. Ein Reiterwechsel oder Neuladen unterbricht so nur die Anzeige, nie die Buchung.
+   */
   const starten = async () => {
     const st = useData.getState();
     const offeneT = sortiert(st.data.transaktionen.filter((t) => t.status === "offen"));
@@ -170,23 +204,14 @@ export function BankabgleichTab() {
       return;
     }
     const treffer = gleicheAb({ transaktionen: offeneT, rechnungen: st.data.rechnungen, akten: st.data.akten, kontakte: st.data.kontakte });
-    setAnsicht("offen");
-    setReihenfolge(offeneT.map((t) => t.id));
-    setErgebnisse({});
-    setManuell({});
-    setPhase("laeuft");
     let gebucht = 0;
     let vorschlaege = 0;
     let kosten = 0;
     let fremd = 0;
-    for (let i = 0; i < offeneT.length; i++) {
-      const t = offeneT[i];
+    let keine = 0;
+    const ergebnisAlle: Record<string, Ergebnis> = {};
+    offeneT.forEach((t, i) => {
       const tr = treffer[i];
-      if (alive.current) {
-        setAktuell(i);
-        zeilenRef.current[t.id]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-        await sleep(560);
-      }
       let zustand: Zustand;
       if (tr.art === "kosten") {
         bucheTreffer(t, tr, "auto");
@@ -196,47 +221,75 @@ export function BankabgleichTab() {
         bucheTreffer(t, tr, "auto");
         zustand = "gebucht";
         gebucht++;
-      } else if (tr.art === "rechnung") {
+      } else if (tr.art === "rechnung" || tr.art === "fremdgeld") {
+        // Vorschlag bzw. Fremdgeld (nie automatisch buchen oder weiterleiten) – am Umsatz gespeichert bis zur Entscheidung
+        speichereVorschlag(t, tr);
         zustand = "vorschlag";
-        vorschlaege++;
-      } else if (tr.art === "fremdgeld") {
-        // Fremdgeld nie automatisch buchen oder weiterleiten – nur markieren
-        zustand = "vorschlag";
-        fremd++;
-      } else zustand = "keine";
-      if (alive.current) {
-        setErgebnisse((e) => ({ ...e, [t.id]: { ...tr, zustand } }));
-        await sleep(300);
+        if (tr.art === "fremdgeld") fremd++;
+        else vorschlaege++;
+      } else {
+        zustand = "keine";
+        keine++;
       }
-    }
-    if (alive.current) {
-      setAktuell(-1);
-      setPhase("fertig");
-    }
-    // Ersparnis je Vorgang: nur automatisch zugeordnete Umsätze zählen (je Umsatz ca. MIN_JE_UMSATZ Min.)
-    const gespart = ersparnisMinuten("bankabgleich", gebucht + kosten);
-    if (alive.current) setGespartLauf(gespart);
+      ergebnisAlle[t.id] = { ...tr, zustand };
+    });
+    // Ersparnis je Vorgang: nur automatisch erledigte Umsätze zählen (je Umsatz ca. MIN_JE_UMSATZ Min.); ein Lauf ohne Zuordnung zählt 0
+    const vorgaenge = gebucht + kosten;
+    const gespart = ersparnisMinuten("bankabgleich", vorgaenge);
     const auto = st.data.automationen.find((a) => a.key === "bankabgleich");
-    if (auto) useData.getState().patch("automationen", auto.id, { laeufe: auto.laeufe + 1, letzterLauf: nowLocal() });
+    if (auto) useData.getState().patch("automationen", auto.id, { laeufe: auto.laeufe + vorgaenge, letzterLauf: nowLocal() });
     useData.getState().log({
       akteur: "automation",
       automationKey: "bankabgleich",
       text: `Bankabgleich: ${plural(gebucht, "Zahlung", "Zahlungen")} automatisch gebucht, ${plural(vorschlaege, "Vorschlag", "Vorschläge")} zur Prüfung, ${kosten} Kanzleikosten erfasst${fremd ? `, ${fremd} Fremdgeld markiert` : ""}`,
       ...(gespart ? { minutenGespart: gespart } : {}),
     });
+    const stand: LaufStand = { am: nowLocal(), gebucht, vorschlaege, kosten, fremd, keine, gespart, angezeigt: false };
+    speichereLauf(tenant.id, stand);
+    setLetzterLauf(stand);
+    setGespartLauf(gespart);
     toast("Bankabgleich abgeschlossen", { text: `${gebucht} gebucht · ${plural(vorschlaege, "Vorschlag", "Vorschläge")} · ${kosten} Kanzleikosten${fremd ? ` · ${fremd} Fremdgeld` : ""}`, ton: "erfolg" });
+
+    // Anzeige: Umsatz für Umsatz
+    setAnsicht("offen");
+    setReihenfolge(offeneT.map((t) => t.id));
+    setErgebnisse({});
+    setManuell({});
+    setPhase("laeuft");
+    for (let i = 0; i < offeneT.length; i++) {
+      if (!alive.current) break;
+      const t = offeneT[i];
+      setAktuell(i);
+      zeilenRef.current[t.id]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      await sleep(560);
+      if (!alive.current) break;
+      setErgebnisse((e) => ({ ...e, [t.id]: ergebnisAlle[t.id] }));
+      await sleep(300);
+    }
+    if (alive.current) {
+      setAktuell(-1);
+      setPhase("fertig");
+      const fertig = { ...stand, angezeigt: true };
+      speichereLauf(tenant.id, fertig);
+      setLetzterLauf(fertig);
+    }
   };
 
-  const setZustand = (id: string, zustand: Zustand, patch: Partial<Ergebnis> = {}) => setErgebnisse((e) => (e[id] ? { ...e, [id]: { ...e[id], ...patch, zustand } } : e));
 
   const zahlungsToast = (titel: string, t: Transaktion, nummer: string, erg: ReturnType<typeof bucheTreffer>) =>
     erg && erg.guthaben > 0
       ? toast(`${titel} – mit Überzahlung`, { text: `${fmtEUR(erg.verrechnet)} auf ${nummer} verrechnet · ${fmtEUR(erg.guthaben)} als Guthaben der Mandantschaft im Aktenkonto (erstatten oder verrechnen)`, ton: "warnung" })
       : toast(titel, { text: `${fmtEUR(t.betrag)} auf ${nummer}`, ton: "erfolg" });
 
+  const ablehnen = (t: Transaktion, e: Ergebnis) => {
+    lehneVorschlagAb(t, e, user.id);
+    setErgebnisse((x) => ({ ...x, [t.id]: { ...e, zustand: "abgelehnt" } }));
+    toast("Vorschlag abgelehnt", { text: "Wird bei künftigen Abgleichen nicht erneut vorgeschlagen – jetzt von Hand zuordnen oder offen lassen.", ton: "info" });
+  };
+
   const bestaetigen = (t: Transaktion, e: Ergebnis) => {
     const erg = bucheTreffer(t, e, "manuell", user.id);
-    setZustand(t.id, "bestaetigt");
+    setErgebnisse((x) => ({ ...x, [t.id]: { ...e, zustand: "bestaetigt" } }));
     if (e.art === "fremdgeld") {
       const a = e.akteId ? akten.get(e.akteId) : undefined;
       toast("Als Fremdgeld gebucht", {
@@ -276,9 +329,26 @@ export function BankabgleichTab() {
     toast("Zuordnung gelöst", { text, ton: "info" });
   };
 
+  /** Handzuordnung – ohne Lauf: Rechnung (Zahlungseingang), Akte (Fremdgeld) oder Kanzleikosten (Ausgang). */
   const zuordnen = (t: Transaktion) => {
-    const rid = manuell[t.id];
-    const r = rid ? rById.get(rid) : undefined;
+    const wahl = manuell[t.id] ?? "";
+    if (wahl.startsWith("akte:")) {
+      const akteId = wahl.slice(5);
+      const a = akten.get(akteId);
+      const tr: Treffer = { transaktionId: t.id, art: "fremdgeld", regel: "fremdgeld", sicherheit: 1, grund: "Manuell als Fremdgeld zugeordnet", akteId };
+      bucheTreffer(t, tr, "manuell", user.id);
+      setErgebnisse((e) => ({ ...e, [t.id]: { ...tr, zustand: "bestaetigt" } }));
+      toast("Als Fremdgeld gebucht", { text: `${fmtEUR(t.betrag)}${a ? ` · ${a.aktenzeichen}` : ""} – bitte unverzüglich weiterleiten (§ 43a Abs. 7 BRAO)`, ton: "warnung" });
+      return;
+    }
+    if (wahl === "kosten") {
+      const tr: Treffer = { transaktionId: t.id, art: "kosten", regel: "kosten", sicherheit: 1, grund: "Manuell als Kanzleikosten erfasst", kategorie: "Kanzleikosten" };
+      bucheTreffer(t, tr, "manuell", user.id);
+      setErgebnisse((e) => ({ ...e, [t.id]: { ...tr, zustand: "kosten" } }));
+      toast("Als Kanzleikosten erfasst", { text: `${fmtEUR(t.betrag)} · ${t.gegenpartei}`, ton: "erfolg" });
+      return;
+    }
+    const r = wahl ? rById.get(wahl) : undefined;
     if (!r) return;
     const ueber = round2(t.betrag - offenerBetrag(r));
     const tr: Treffer = {
@@ -302,9 +372,22 @@ export function BankabgleichTab() {
     if (fileRef.current) fileRef.current.value = "";
   };
 
+  /** Ergebnis eines Umsatzes: aus dem laufenden Abgleich, sonst aus dem am Umsatz gespeicherten Vorschlag bzw. der Ablehnung. */
+  const ergebnisVon = (t: Transaktion): Ergebnis | undefined => {
+    const lokal = ergebnisse[t.id];
+    if (lokal) return lokal;
+    if (phase === "laeuft" && reihenfolge.includes(t.id)) return undefined;
+    const v = trefferAusVorschlag(t);
+    if (v) return { ...v, zustand: "vorschlag" };
+    if (t.status === "offen" && t.abgelehnt?.length) return { transaktionId: t.id, art: "keine", regel: "keine", sicherheit: 0, grund: "Vorschlag abgelehnt", zustand: "abgelehnt" };
+    return undefined;
+  };
+
   const zielInhalt = (t: Transaktion, e: Ergebnis | undefined, idx: number) => {
     const scannt = phase === "laeuft" && idx === aktuell;
     const wartet = phase === "laeuft" && idx > aktuell && !e;
+    if (wartet)
+      return <div className="flex min-h-[76px] items-center rounded-[18px] border border-dashed border-[var(--line)] px-3.5 text-[12.5px] text-fg-3">wartet …</div>;
     if (scannt)
       return (
         <Ziel gestrichelt>
@@ -316,11 +399,7 @@ export function BankabgleichTab() {
       );
     if (!e) {
       if (t.status !== "offen") return historieZiel(t);
-      return (
-        <div className={cn("min-h-[76px] items-center rounded-[18px] border border-dashed border-[var(--line)] px-3.5 text-[12.5px] text-fg-3", wartet ? "flex" : "hidden 2xl:flex")}>
-          {wartet ? "wartet …" : "Noch nicht abgeglichen"}
-        </div>
-      );
+      return handZiel(t, "Noch nicht abgeglichen – von Hand zuordnen oder Abgleich starten");
     }
     if (e.art === "kosten")
       return (
@@ -358,7 +437,7 @@ export function BankabgleichTab() {
                   <Button size="sm" variant="primary" icon={<Check className="size-4" />} onClick={() => bestaetigen(t, e)}>
                     Als Fremdgeld buchen
                   </Button>
-                  <Button size="sm" variant="ghost" icon={<X className="size-4" />} onClick={() => setZustand(t.id, "abgelehnt")}>
+                  <Button size="sm" variant="ghost" icon={<X className="size-4" />} onClick={() => ablehnen(t, e)}>
                     Ablehnen
                   </Button>
                 </>
@@ -376,11 +455,19 @@ export function BankabgleichTab() {
     if (e.art === "rechnung" && r && e.zustand !== "abgelehnt") {
       const ton = tonVon(e.zustand);
       const farbe = ton === "green" ? "var(--green)" : "var(--amber)";
+      // Menschliche Entscheidung: kein Prozentring, sondern ein Haken
+      const mensch = e.zustand === "bestaetigt" || e.zustand === "manuell";
       return (
         <Ziel ton={ton}>
-          <ProgressRing value={e.sicherheit} size={44} stroke={4} color={farbe}>
-            <span className="num text-[11px] font-semibold">{Math.round(e.sicherheit * 100)}%</span>
-          </ProgressRing>
+          {mensch ? (
+            <span className="grid size-11 shrink-0 place-items-center rounded-full bg-green-soft text-green">
+              <Check className="size-5" strokeWidth={2.5} />
+            </span>
+          ) : (
+            <ProgressRing value={e.sicherheit} size={44} stroke={4} color={farbe}>
+              <span className="num text-[11px] font-semibold">{Math.round(e.sicherheit * 100)}%</span>
+            </ProgressRing>
+          )}
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className="mono text-[12.5px] font-semibold">{r.nummer}</span>
@@ -389,11 +476,12 @@ export function BankabgleichTab() {
                   Automatisch gebucht
                 </Chip>
               )}
-              {(e.zustand === "bestaetigt" || e.zustand === "manuell") && (
+              {mensch && (
                 <Chip tone="green" icon={<Check className="size-3" />}>
-                  {e.zustand === "manuell" ? "Manuell zugeordnet" : "Bestätigt"}
+                  {e.zustand === "manuell" ? `manuell – ${user.name}` : `bestätigt – ${user.name}`}
                 </Chip>
               )}
+              {e.zustand === "bestaetigt" && e.sicherheit < 1 && <span className="text-[12.5px] text-fg-3">Vorschlag war {Math.round(e.sicherheit * 100)} %</span>}
               {e.zustand === "vorschlag" && <Chip tone="amber">Vorschlag</Chip>}
               {e.teilzahlung && <Chip tone="outline">Teilzahlung</Chip>}
               {e.ueberzahlung && <Chip tone="amber">Überzahlung {fmtEUR(e.ueberzahlung)}</Chip>}
@@ -405,7 +493,7 @@ export function BankabgleichTab() {
                 <Button size="sm" variant="primary" icon={<Check className="size-4" />} onClick={() => bestaetigen(t, e)}>
                   Bestätigen
                 </Button>
-                <Button size="sm" variant="ghost" icon={<X className="size-4" />} onClick={() => setZustand(t.id, "abgelehnt")}>
+                <Button size="sm" variant="ghost" icon={<X className="size-4" />} onClick={() => ablehnen(t, e)}>
                   Ablehnen
                 </Button>
               </div>
@@ -415,27 +503,53 @@ export function BankabgleichTab() {
       );
     }
     // keine Zuordnung / abgelehnt → manuell zuordnen
-    const gewaehlt = manuell[t.id] ? rById.get(manuell[t.id]) : undefined;
+    return handZiel(t, e.zustand === "abgelehnt" ? "Vorschlag abgelehnt – von Hand zuordnen" : "Keine passende Rechnung – von Hand zuordnen");
+  };
+
+  /** Handzuordnung: Rechnung (Eingang), Akte als Fremdgeld (Eingang) oder Kanzleikosten (Ausgang) – in zwei Schritten. */
+  const handZiel = (t: Transaktion, titel: string) => {
+    const wahl = manuell[t.id] ?? "";
+    const gewaehlt = wahl && !wahl.startsWith("akte:") && wahl !== "kosten" ? rById.get(wahl) : undefined;
     const mehr = gewaehlt ? round2(t.betrag - offenerBetrag(gewaehlt)) : 0;
+    const selId = `zuordnen-${t.id}`;
     return (
       <Ziel gestrichelt>
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-medium">{e.zustand === "abgelehnt" ? "Vorschlag abgelehnt – manuell zuordnen" : "Keine passende Rechnung"}</div>
+          <label htmlFor={selId} className="text-[13px] font-medium">
+            {titel}
+          </label>
           {gewaehlt && mehr > 0.004 && (
             <p className="mt-1 text-[12.5px] leading-snug text-amber">
               Der Umsatz übersteigt den offenen Rest von {gewaehlt.nummer} um {fmtEUR(mehr)} – der Mehrbetrag wird als Guthaben der Mandantschaft gebucht.
             </p>
           )}
           <div className="mt-2 flex flex-wrap gap-2">
-            <Select aria-label="Rechnung wählen" value={manuell[t.id] ?? ""} onChange={(ev) => setManuell((m) => ({ ...m, [t.id]: ev.target.value }))} className="!h-8 min-w-0 flex-1 !rounded-[10px] !text-[12.5px]">
-              <option value="">Rechnung wählen …</option>
-              {offeneRechnungen.map((x) => (
-                <option key={x.id} value={x.id}>
-                  {x.nummer} · {fmtEUR(offenerBetrag(x))} · {kontakte.get(x.empfaengerId)?.name ?? ""}
-                </option>
-              ))}
+            <Select id={selId} value={wahl} onChange={(ev) => setManuell((m) => ({ ...m, [t.id]: ev.target.value }))} className="!h-9 min-w-0 flex-1 !rounded-[10px] !text-[12.5px]">
+              <option value="">Zuordnen zu …</option>
+              {t.betrag > 0 && (
+                <optgroup label="Offene Rechnungen">
+                  {offeneRechnungen.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.nummer} · {fmtEUR(offenerBetrag(x))} · {kontakte.get(x.empfaengerId)?.name ?? ""}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {t.betrag > 0 && (
+                <optgroup label="Fremdgeld für Akte (§ 43a Abs. 7 BRAO)">
+                  {[...akten.values()]
+                    .filter((a) => a.status === "offen")
+                    .sort((a, b) => b.aktenzeichen.localeCompare(a.aktenzeichen, "de", { numeric: true }))
+                    .map((a) => (
+                      <option key={a.id} value={`akte:${a.id}`}>
+                        {a.aktenzeichen} · {a.titel}
+                      </option>
+                    ))}
+                </optgroup>
+              )}
+              {t.betrag < 0 && <option value="kosten">Kanzleikosten (ohne Rechnung)</option>}
             </Select>
-            <Button size="sm" variant="secondary" disabled={!manuell[t.id]} onClick={() => zuordnen(t)}>
+            <Button size="sm" variant="secondary" className="!h-9" disabled={!wahl} onClick={() => zuordnen(t)}>
               Zuordnen
             </Button>
           </div>
@@ -462,11 +576,16 @@ export function BankabgleichTab() {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[13px] font-medium">{t.status === "ignoriert" ? "Kanzleikosten" : fremd ? "Fremdgeld" : <span className="mono">{r?.nummer ?? "Rechnung"}</span>}</span>
-            {z && (
-              <Chip tone="ink">
-                {Math.round(z.sicherheit * 100)} % · {z.durch === "auto" ? "automatisch" : "manuell"}
-              </Chip>
-            )}
+            {z &&
+              (z.durch === "auto" ? (
+                <Chip tone="ink">{Math.round(z.sicherheit * 100)} % · automatisch</Chip>
+              ) : (
+                <Chip tone="green" icon={<Check className="size-3" />}>
+                  manuell{wer && wer !== "System" ? ` – ${wer}` : ""}
+                  {zeit ? `, ${fmtTime(zeit)} Uhr` : ""}
+                </Chip>
+              ))}
+            {z && z.durch === "manuell" && z.sicherheit < 1 && <span className="text-[12.5px] text-fg-3">Vorschlag war {Math.round(z.sicherheit * 100)} %</span>}
           </div>
           {a && <AkteLabel akte={a} className="mt-0.5 text-[12.5px]" />}
           <div className="mt-0.5 break-words text-[12.5px] text-fg-3">{z?.grund ?? "Ohne Rechnungsbezug"}</div>
@@ -539,6 +658,22 @@ export function BankabgleichTab() {
             />
             <Stat label="Automatisch zugeordnet" icon={<Link2 className="size-4" />} tone="green" value={<AnimatedNumber value={autoGesamt} />} sub="Umsätze insgesamt" />
           </div>
+
+          {phase === "bereit" && letzterLauf && (
+            <div role="status" className="flex flex-wrap items-start gap-2.5 rounded-[16px] bg-ink-softer px-4 py-3 text-[12.5px] leading-relaxed text-fg-2 ring-1 ring-inset ring-[var(--line)]">
+              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-green" aria-hidden />
+              <span className="min-w-0 flex-1">
+                <strong className="font-semibold text-fg">
+                  Letzter Abgleich {fmtDate(letzterLauf.am.slice(0, 10))}, {fmtTime(letzterLauf.am)} Uhr:
+                </strong>{" "}
+                {letzterLauf.gebucht} gebucht · {plural(letzterLauf.vorschlaege, "Vorschlag", "Vorschläge")} · {letzterLauf.kosten} Kanzleikosten
+                {letzterLauf.fremd ? ` · ${letzterLauf.fremd} Fremdgeld` : ""} · ≈ {letzterLauf.gespart} Min. gespart.{" "}
+                {letzterLauf.angezeigt
+                  ? "Offene Vorschläge stehen unten bis zu Ihrer Entscheidung."
+                  : "Die Anzeige wurde unterbrochen – Buchungen und Vorschläge sind trotzdem vollständig gespeichert."}
+              </span>
+            </div>
+          )}
 
           <AnimatePresence>
             {phase === "fertig" && (
@@ -639,7 +774,7 @@ export function BankabgleichTab() {
                 {liste.map((id, idx) => {
                   const t = tById.get(id);
                   if (!t) return null;
-                  const e = ergebnisse[id];
+                  const e = ergebnisVon(t);
                   const scannt = phase === "laeuft" && idx === aktuell;
                   return (
                     <motion.li

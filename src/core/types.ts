@@ -56,7 +56,11 @@ export interface User {
   /** Förmliche Anrede („Sehr geehrte Frau …“, „Guten Tag, Frau …“). Fehlt = keine Anrede bestimmbar. */
   anrede?: "Frau" | "Herr";
   /** Abwesenheit mit Vertretung (§ 53 BRAO). */
-  abwesenheit?: { von: ISODate; bis: ISODate; vertretungId?: ID; grund?: string };
+  /**
+   * Abwesenheit (§ 53 BRAO): `vertretungId` vertritt – bei Berufsträgern nur Partner oder Rechtsanwälte;
+   * `sachbearbeitungId` übernimmt optional die Sachbearbeitung (z. B. eine Fachangestellte).
+   */
+  abwesenheit?: { von: ISODate; bis: ISODate; vertretungId?: ID; sachbearbeitungId?: ID; grund?: string };
   /** Zugang vorübergehend gesperrt (umkehrbar) – Anmeldung und Sitzung verweigert. */
   deaktiviert?: boolean;
 }
@@ -173,11 +177,19 @@ export interface Frist {
   createdAt: ISODateTime;
   /** Ausgangskontrolle: Nachweis bzw. Grund der Erledigung. */
   erledigtNachweis?: {
-    art: "bea" | "fax" | "bote" | "post" | "persoenlich" | "gestrichen" | "sonstiges";
+    art: "bea" | "fax" | "bote" | "post" | "persoenlich" | "ueberweisung" | "gestrichen" | "sonstiges";
     text?: string;
     nachrichtId?: ID;
     kontrolleOffenBestaetigt?: boolean;
+    /** Tatsächliche Versand- bzw. Zahlungszeit (nicht die Zeit des Eintrags). */
+    versandAm?: ISODateTime;
+    /** Nachweis über einen Bankumsatz (z. B. Weiterleitung von Fremdgeld). */
+    transaktionId?: ID;
   };
+  /** Vier-Augen-Kontrolle: Korrektur der notierten Frist angefordert (mit Grund). */
+  korrekturAngefordert?: { vonId: ID; am: ISODateTime; grund: string };
+  /** Korrekturen der notierten Frist mit vorherigem Stand (nachvollziehbar, nicht überschrieben). */
+  korrekturen?: { am: ISODateTime; vonId: ID; grund: string; vorher: { datum: ISODate; ereignisDatum?: ISODate; regelKey?: string; titel: string } }[];
   /** Herkunft aus einem Umzugslauf (für Rückgängig). */
   umzugLaufId?: string;
 }
@@ -221,6 +233,10 @@ export interface Dokument {
   umzugLaufId?: string;
   /** Entwurf aus der KI-Fallanalyse vom … (Zeitstempel `erstelltAm` der Analyse) – erkennt „schon gespeichert“ und neue Versionen. */
   kiAnalyseVom?: string;
+  /** Bearbeitungsstand eigener Dokumente. Fehlt = abgeschlossen bzw. eingegangen. */
+  status?: "entwurf" | "freigegeben" | "versandt";
+  /** Im Mandantenportal freigegeben (wann, von wem). Nur Dokumente mit diesem Feld sieht der Mandant. */
+  portal?: { am: ISODateTime; vonId: ID };
 }
 
 export interface Anhang {
@@ -354,6 +370,10 @@ export interface Transaktion {
   status: "offen" | "zugeordnet" | "ignoriert";
   /** Zuordnung im Bankabgleich – mit Zeitpunkt (`am`) und Person (`von`, bei manueller Zuordnung) für den Reiter „Gebucht“. */
   zuordnung?: { rechnungId?: ID; akteId?: ID; sicherheit: number; durch: "auto" | "manuell"; grund: string; am?: ISODateTime; von?: ID };
+  /** Gespeicherter Zuordnungsvorschlag des Bankabgleichs (übersteht Reiterwechsel und Neuladen). */
+  vorschlag?: { rechnungId?: ID; akteId?: ID; sicherheit: number; grund: string; am: ISODateTime };
+  /** Abgelehnte Vorschläge – werden nicht erneut angeboten. */
+  abgelehnt?: { rechnungId?: ID; akteId?: ID; am: ISODateTime; von?: ID }[];
 }
 
 export interface Zeiteintrag {
@@ -398,6 +418,10 @@ export interface Aktivitaet {
   icon?: string;
   /** Beispieleintrag aus den Demodaten – nicht von einer echten Person ausgelöst. */
   beispiel?: boolean;
+  /** Kategorie im Kanzleiprotokoll – „anmeldung“: Anmeldungen, Abmeldungen, Fehlversuche, Sperre wegen Inaktivität. */
+  kategorie?: "anmeldung";
+  /** Zusätzlich als Benachrichtigung (Glocke) für Partner und Administration, z. B. „3 fehlgeschlagene Anmeldungen für …“. */
+  meldung?: boolean;
 }
 
 export interface Notiz {
@@ -430,6 +454,8 @@ export interface UmzugLauf {
   /** Angelegte Datensätze und vorheriger Stand aktualisierter Akten/Kontakte (nach dem Rückgängigmachen geleert). */
   undo: { erstellt: { col: CollectionKey; id: ID }[]; vorher: { col: "akten" | "kontakte"; doc: Akte | Kontakt }[] };
   rueckgaengig?: { am: ISODateTime; von: ID };
+  /** Unterbrochener Lauf (Fenster geschlossen oder neu geladen): vollständig zurückgenommen, nichts übernommen. */
+  abgebrochen?: boolean;
 }
 
 export interface TenantData {

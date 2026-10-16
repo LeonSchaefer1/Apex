@@ -23,7 +23,7 @@ import {
 } from "../src/lib/backend/types";
 import { pruefeDokument } from "../src/lib/backend/schema";
 import { sicheresPasswort, zufallsZahl } from "../src/lib/backend/zufall";
-import { VORGANG, letzteEchteAktivitaet, mischeVorgaenge, vorgang, zeitBerlin } from "../src/lib/backend/protokoll";
+import { ANMELDE_WARN_SCHWELLE, VORGANG, anmeldeVorgang, letzteEchteAktivitaet, mischeVorgaenge, vorgang, zaehleFehlversuch, zeitBerlin, type FehlGrund } from "../src/lib/backend/protokoll";
 import { festeAnsprechperson, rollenLabel } from "../src/lib/rollen";
 
 // ───────────── Konfiguration ─────────────
@@ -93,6 +93,10 @@ if (!(db.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((
   const neu: [string, string][] = [["mfa_secret", "TEXT"], ["mfa_aktiv", "INTEGER NOT NULL DEFAULT 0"], ["mfa_codes", "TEXT"], ["mfa_seit", "TEXT"], ["mfa_schritt", "INTEGER"]];
   for (const [name, typ] of neu) if (!spalten.includes(name)) db.exec(`ALTER TABLE users ADD COLUMN ${name} ${typ}`);
 }
+// Hash des zuletzt ersetzten Startpassworts – nur, um im Protokoll „Startpasswort nicht mehr gültig“ statt „falsches Passwort“ zu nennen
+if (!(db.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "pw_start_alt")) {
+  db.exec("ALTER TABLE users ADD COLUMN pw_start_alt TEXT");
+}
 // Kanzleiprotokoll: echte Vorgänge (Anmeldung, Passwortvergaben, Anbieter-Eingriffe) – getrennt von den Beispieldaten, überdauern das Neuerzeugen
 db.exec("CREATE TABLE IF NOT EXISTS vorgaenge (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, zeit TEXT NOT NULL, json TEXT NOT NULL)");
 db.exec("CREATE INDEX IF NOT EXISTS vorgaenge_tenant ON vorgaenge (tenant_id, zeit)");
@@ -131,7 +135,7 @@ function audit(aktion: string, detail: string, tenantId?: string | null, userId?
 
 type TenantRow = { id: string; json: string; profil: string; demo: number; leer: number };
 type UserRow = {
-  id: string; tenant_id: string; email: string; pw_hash: string; json: string; last_login: string | null; pw_wechsel: number;
+  id: string; tenant_id: string; email: string; pw_hash: string; json: string; last_login: string | null; pw_wechsel: number; pw_start_alt?: string | null;
   mfa_secret: string | null; mfa_aktiv: number; mfa_codes: string | null; mfa_seit: string | null; mfa_schritt: number | null;
 };
 
@@ -578,6 +582,9 @@ app.post("/api/auth/login", async (c) => {
   if (!u || !ok) {
     grenze.fehlversuch();
     audit("login.fehlgeschlagen", email, u?.tenant_id, u?.id);
+    // zweite Prüfung immer (auch ohne Konto) – gleiche Laufzeit; erkennt das ersetzte Startpasswort fürs Protokoll
+    const altesStart = pruefePw(pw, u?.pw_start_alt ?? DUMMY_HASH) && !!u?.pw_start_alt;
+    if (u) protokolliereFehlversuch(u, altesStart ? "startpasswort" : "passwort");
     return fehler(c, 401, ANMELDUNG_FALSCH);
   }
   grenze.erfolg();
@@ -591,10 +598,25 @@ app.post("/api/auth/login", async (c) => {
   return c.json(anmelden(c, u));
 });
 
-/** Sitzung anlegen und die erste Anmeldung einer Person im Kanzleiprotokoll festhalten. */
+/** Fehlversuche je Konto für den Hinweis an Partner und Administration (nur im Arbeitsspeicher). */
+const kontoFehler = new Map<string, number[]>();
+
+/**
+ * Fehlgeschlagene Anmeldung im Kanzleiprotokoll – nur für bestehende Konten der Kanzlei, nie mit Passwort. Beim dritten
+ * Fehlversuch innerhalb von 15 Minuten zusätzlich ein Hinweis für Partner und Administration (Glocke).
+ */
+function protokolliereFehlversuch(u: UserRow, grund: FehlGrund) {
+  const name = userJson(u).name;
+  protokolliere(u.tenant_id, anmeldeVorgang(VORGANG.anmeldungFehlgeschlagen(name, grund), { akteur: "system", userId: u.id }));
+  if (zaehleFehlversuch(kontoFehler, u.id) === ANMELDE_WARN_SCHWELLE) {
+    protokolliere(u.tenant_id, anmeldeVorgang(VORGANG.fehlversucheWarnung(name, ANMELDE_WARN_SCHWELLE), { akteur: "system", userId: u.id, meldung: true }));
+  }
+}
+
+/** Sitzung anlegen und die Anmeldung im Kanzleiprotokoll festhalten (erste Anmeldung gesondert). */
 function anmelden(c: Context, u: UserRow): KanzleiSitzung | null {
   const name = userJson(u).name;
-  if (!u.last_login) protokolliere(u.tenant_id, vorgang(VORGANG.ersteAnmeldung(name), { akteur: "nutzer", userId: u.id }));
+  protokolliere(u.tenant_id, anmeldeVorgang(u.last_login ? VORGANG.anmeldung(name) : VORGANG.ersteAnmeldung(name), { akteur: "nutzer", userId: u.id }));
   db.prepare("UPDATE users SET last_login = ? WHERE id = ?").run(new Date().toISOString(), u.id);
   const s = { kind: "tenant" as const, userId: u.id, tenantId: u.tenant_id };
   neueSitzung(c, s);
@@ -651,6 +673,7 @@ app.post("/api/auth/zweifaktor", async (c) => {
   if (!art) {
     grenze.fehlversuch();
     audit("zweifaktor.fehlgeschlagen", u.email, u.tenant_id, u.id);
+    protokolliereFehlversuch(u, "zweifaktor");
     return fehler(c, 401, "Der Code stimmt nicht. Bitte geben Sie den aktuellen 6-stelligen Code aus Ihrer Authenticator-App ein (er wechselt alle 30 Sekunden) – oder einen Ihrer Wiederherstellungscodes.");
   }
   grenze.erfolg();
@@ -672,6 +695,7 @@ app.post("/api/auth/passwort", async (c) => {
   if (!u || !ok) {
     grenze.fehlversuch();
     audit("passwort.fehlgeschlagen", email, u?.tenant_id, u?.id);
+    if (u) protokolliereFehlversuch(u, "startpasswort");
     return fehler(c, 401, "Das Startpasswort stimmt nicht mehr (z. B. inzwischen neu vergeben). Bitte melden Sie sich erneut mit dem zuletzt erhaltenen Startpasswort an.");
   }
   grenze.erfolg();
@@ -680,7 +704,7 @@ app.post("/api/auth/passwort", async (c) => {
   if (userJson(u).deaktiviert) return fehler(c, 403, ZUGANG_DEAKTIVIERT);
   const regel = pruefeNeuesPasswort(neu, pw);
   if (regel) return fehler(c, 400, regel);
-  db.prepare("UPDATE users SET pw_hash = ?, pw_wechsel = 0 WHERE id = ?").run(hashPw(neu), u.id);
+  db.prepare("UPDATE users SET pw_hash = ?, pw_wechsel = 0, pw_start_alt = ? WHERE id = ?").run(hashPw(neu), hashPw(pw), u.id);
   db.prepare("DELETE FROM sessions WHERE user_id = ?").run(u.id);
   audit("passwort.eigenes", u.email, u.tenant_id, u.id);
   const name = userJson(u).name;
@@ -713,6 +737,17 @@ app.post("/api/auth/entsperren", async (c) => {
   return c.body(null, 204);
 });
 
+// Sperre wegen Inaktivität (die Sperre selbst setzt der Browser) – nur protokollieren, für die angemeldete Person
+app.post("/api/auth/sperre", (c) => {
+  const s = kanzleiZugriff(c, { zweiFaktorEinrichtung: true });
+  if (s instanceof Response) return s;
+  const u = db.prepare("SELECT json FROM users WHERE id = ? AND tenant_id = ?").get(s.userId, s.tenantId) as { json: string } | undefined;
+  if (!u) return fehler(c, 401, "Sitzung ungültig – bitte melden Sie sich erneut an.");
+  const a = anmeldeVorgang(VORGANG.sperreInaktivitaet(userJson(u).name), { akteur: "system", userId: s.userId });
+  protokolliere(s.tenantId, a);
+  return c.json(a);
+});
+
 app.get("/api/auth/me", (c) => {
   const s = sitzung(c);
   if (!s) return fehler(c, 401, "Nicht angemeldet");
@@ -723,6 +758,11 @@ app.get("/api/auth/me", (c) => {
 
 app.post("/api/auth/logout", (c) => {
   const token = getCookie(c, "aa_sid");
+  const s = sitzung(c);
+  if (s && s.kind === "tenant") {
+    const u = db.prepare("SELECT json FROM users WHERE id = ? AND tenant_id = ?").get(s.userId, s.tenantId) as { json: string } | undefined;
+    if (u) protokolliere(s.tenantId, anmeldeVorgang(VORGANG.abmeldung(userJson(u).name), { akteur: "nutzer", userId: s.userId }));
+  }
   if (token) db.prepare("DELETE FROM sessions WHERE token = ?").run(token);
   deleteCookie(c, "aa_sid", { path: "/" });
   return c.body(null, 204);
@@ -803,14 +843,17 @@ app.put("/api/kanzlei/profil", async (c) => {
   if (s instanceof Response) return s;
   const me = sessionInfo(s);
   if (!me || !darfVerwalten(me.user)) return fehler(c, 403, "Nur Partner und Administration dürfen das Kanzleiprofil ändern.");
-  const b = (await c.req.json().catch(() => ({}))) as { name?: unknown; kurzname?: unknown; adresse?: unknown; stadt?: unknown; schwerpunkte?: unknown };
+  const b = (await c.req.json().catch(() => ({}))) as { name?: unknown; kurzname?: unknown; adresse?: unknown; stadt?: unknown; schwerpunkte?: unknown; bundesland?: unknown };
   const name = text(b.name, 160);
   const adresse = text(b.adresse, 200);
   if (!name || !adresse) return fehler(c, 400, "Bitte Name und Anschrift der Kanzlei angeben.");
+  if (b.bundesland !== undefined && !BUNDESLAENDER.includes(b.bundesland as Bundesland)) return fehler(c, 400, "Bitte wählen Sie ein Bundesland aus der Liste.");
+  const bundesland = b.bundesland !== undefined ? (b.bundesland as Bundesland) : me.tenant.bundesland;
   const schwerpunkte = Array.isArray(b.schwerpunkte) ? b.schwerpunkte.map((x) => text(x, 60)).filter(Boolean).slice(0, 12) : me.tenant.schwerpunkte;
-  const tenant: Tenant = { ...me.tenant, name, kurzname: text(b.kurzname, 60) || name.slice(0, 60), adresse, stadt: text(b.stadt, 80), schwerpunkte };
+  const tenant: Tenant = { ...me.tenant, name, kurzname: text(b.kurzname, 60) || name.slice(0, 60), adresse, stadt: text(b.stadt, 80), schwerpunkte, bundesland };
   db.prepare("UPDATE tenants SET json = ? WHERE id = ?").run(JSON.stringify(tenant), s.tenantId);
   audit("kanzlei.profil", tenant.name, s.tenantId, s.userId);
+  if (bundesland !== me.tenant.bundesland) audit("kanzlei.bundesland", `${me.tenant.bundesland} → ${bundesland}`, s.tenantId, s.userId);
   return c.json(tenant);
 });
 
@@ -989,7 +1032,13 @@ app.patch("/api/team/:id", async (c) => {
   if (b.abwesenheit === null) a.abwesenheit = null;
   else if (b.abwesenheit && typeof b.abwesenheit === "object") {
     const x = b.abwesenheit as Record<string, unknown>;
-    a.abwesenheit = { von: text(x.von, 10), bis: text(x.bis, 10), ...(text(x.vertretungId, 80) ? { vertretungId: text(x.vertretungId, 80) } : {}), ...(text(x.grund, 200) ? { grund: text(x.grund, 200) } : {}) };
+    a.abwesenheit = {
+      von: text(x.von, 10),
+      bis: text(x.bis, 10),
+      ...(text(x.vertretungId, 80) ? { vertretungId: text(x.vertretungId, 80) } : {}),
+      ...(text(x.sachbearbeitungId, 80) ? { sachbearbeitungId: text(x.sachbearbeitungId, 80) } : {}),
+      ...(text(x.grund, 200) ? { grund: text(x.grund, 200) } : {}),
+    };
   }
   if (typeof b.deaktiviert === "boolean") a.deaktiviert = b.deaktiviert;
   if (b.zweiFaktorZuruecksetzen === true) a.zweiFaktorZuruecksetzen = true;

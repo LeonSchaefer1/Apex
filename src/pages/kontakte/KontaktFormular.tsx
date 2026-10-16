@@ -1,5 +1,5 @@
 // Kontakt anlegen & auswählen – gemeinsam genutzt von Kontakte, Mandatsaufnahme und Beteiligte.
-import { useMemo, useState } from "react";
+import { useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { motion } from "motion/react";
 import { Check } from "lucide-react";
 import type { Kontakt, KontaktRolle } from "@/core/types";
@@ -125,11 +125,30 @@ export function KontaktFelder({ value, onChange, idPrefix, typWaehlbar = true }:
 /** Durchsuchbare Kontaktliste zur Auswahl (bevorzugte Rollen zuerst). */
 const LEER: never[] = [];
 
-export function KontaktAuswahl({ value, onSelect, bevorzugt = LEER, id, hoehe = 300, ausblenden = LEER }: { value?: string; onSelect: (k: Kontakt) => void; bevorzugt?: KontaktRolle[]; id: string; hoehe?: number; ausblenden?: string[] }) {
+/**
+ * Kontakt suchen und wählen – ein einziger Tab-Stopp: Im Suchfeld wandern ↑/↓ durch die Liste, Enter übernimmt den
+ * markierten (bzw. bei einer Suche den ersten) Treffer, Escape leert die Suche. Die Liste ist eine Listbox
+ * (aria-activedescendant), Klick wählt wie bisher.
+ */
+export function KontaktAuswahl({
+  value, onSelect, bevorzugt = LEER, id, hoehe = 300, ausblenden = LEER, nurRollen,
+}: {
+  value?: string;
+  onSelect: (k: Kontakt) => void;
+  bevorzugt?: KontaktRolle[];
+  id: string;
+  hoehe?: number;
+  ausblenden?: string[];
+  /** blendet Kontakte aus, die keine dieser Rollen haben, aber nur Gericht oder Versicherung sind (z. B. Mandantenauswahl) */
+  nurRollen?: KontaktRolle[];
+}) {
   const kontakte = useCol("kontakte");
   const [q, setQ] = useState("");
+  const [markiert, setMarkiert] = useState(-1);
   const liste = useMemo(() => {
-    const basis = kontakte.filter((k) => !ausblenden.includes(k.id));
+    const passt = (k: Kontakt) =>
+      !nurRollen || nurRollen.some((r) => k.rollen.includes(r)) || !k.rollen.length || !k.rollen.every((r) => r === "gericht" || r === "versicherung");
+    const basis = kontakte.filter((k) => !ausblenden.includes(k.id) && passt(k));
     if (q.trim()) {
       return search(basis, q, [
         { get: (k) => k.name, weight: 3 },
@@ -139,48 +158,114 @@ export function KontaktAuswahl({ value, onSelect, bevorzugt = LEER, id, hoehe = 
     }
     const rang = (k: Kontakt) => (bevorzugt.some((r) => k.rollen.includes(r)) ? 0 : 1);
     return [...basis].sort((a, b) => rang(a) - rang(b) || a.name.localeCompare(b.name, "de")).slice(0, 60);
-  }, [kontakte, q, bevorzugt, ausblenden]);
+  }, [kontakte, q, bevorzugt, ausblenden, nurRollen]);
+
+  const listId = `${id}-liste`;
+  const optId = (k: Kontakt) => `${id}-opt-${k.id}`;
+  const aktivIndex = markiert >= 0 && markiert < liste.length ? markiert : -1;
+  const aktiv = aktivIndex >= 0 ? liste[aktivIndex] : undefined;
+
+  const markiere = (i: number) => {
+    setMarkiert(i);
+    const k = liste[i];
+    if (k) document.getElementById(optId(k))?.scrollIntoView({ block: "nearest" });
+  };
+  const taste = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!liste.length) return;
+      const start = aktivIndex >= 0 ? aktivIndex : Math.max(-1, liste.findIndex((k) => k.id === value));
+      markiere(e.key === "ArrowDown" ? Math.min(liste.length - 1, start + 1) : Math.max(0, start < 0 ? 0 : start - 1));
+    } else if (e.key === "Enter") {
+      const k = aktiv ?? (q.trim() ? liste[0] : undefined);
+      if (!k) return;
+      e.preventDefault();
+      onSelect(k);
+    } else if (e.key === "Escape" && (q || aktivIndex >= 0)) {
+      e.preventDefault();
+      e.stopPropagation();
+      setQ("");
+      setMarkiert(-1);
+    }
+  };
 
   return (
     <div className="grid grid-cols-1 gap-2.5">
-      <SearchField id={id} value={q} onChange={setQ} placeholder="Name, E-Mail oder Ort suchen …" />
-      <div className="overflow-y-auto rounded-[16px] bg-ink-softer p-1 shadow-[inset_0_0_0_1px_var(--line)]" style={{ maxHeight: hoehe }}>
-        {liste.length === 0 ? (
-          <div className="px-4 py-8 text-center text-[13px] text-fg-3">Kein Kontakt gefunden. Legen Sie einen neuen an.</div>
-        ) : (
-          liste.map((k) => {
-            const aktiv = k.id === value;
-            return (
-              <button
-                key={k.id}
-                type="button"
-                onClick={() => onSelect(k)}
-                className={cn("relative flex w-full items-center gap-3 rounded-[12px] px-2.5 py-2 text-left transition-colors", aktiv ? "" : "hover:bg-[var(--surface)]")}
-                aria-pressed={aktiv}
-              >
-                {aktiv && (
-                  <motion.span layoutId={`${id}-wahl`} transition={{ type: "spring", stiffness: 520, damping: 38 }} className="absolute inset-0 -z-0 rounded-[12px] bg-[var(--surface)] shadow-[0_0_0_1.5px_var(--ink),0_6px_16px_-10px_var(--ink)]" />
-                )}
-                <KontaktAvatar k={k} size={32} className="relative" />
-                <span className="relative min-w-0 flex-1">
-                  <span className="block truncate text-[13.5px] font-medium">
-                    <Highlight text={k.name} q={q} />
+      <SearchField
+        id={id}
+        role="combobox"
+        aria-expanded
+        aria-controls={listId}
+        aria-autocomplete="list"
+        aria-activedescendant={aktiv ? optId(aktiv) : undefined}
+        aria-describedby={`${id}-tipp`}
+        autoComplete="off"
+        value={q}
+        onChange={(v) => {
+          setQ(v);
+          setMarkiert(-1);
+        }}
+        onKeyDown={taste}
+        placeholder="Name, E-Mail oder Ort suchen …"
+        leerenFokussierbar={false}
+      />
+      <p id={`${id}-tipp`} className="-mt-1 px-1 text-[12px] text-fg-3">
+        ↑/↓ wählt, Enter übernimmt{q.trim() ? " – ohne Auswahl den ersten Treffer" : ""}, Escape leert die Suche.
+      </p>
+      {liste.length === 0 ? (
+        <div className="rounded-[16px] bg-ink-softer px-4 py-8 text-center text-[13px] text-fg-3 shadow-[inset_0_0_0_1px_var(--line)]" role="status">
+          Kein Kontakt gefunden. Legen Sie einen neuen an.
+        </div>
+      ) : (
+        // Der scrollbare Bereich ist selbst die Listbox (wie die Fristart-Auswahl): ein Tab-Stopp im Suchfeld, die Liste ist per Pfeiltasten bedienbar
+        <div id={listId} role="listbox" aria-label="Kontakte" tabIndex={-1} className="overflow-y-auto rounded-[16px] bg-ink-softer p-1 shadow-[inset_0_0_0_1px_var(--line)] outline-none" style={{ maxHeight: hoehe }}>
+          <ul role="presentation">
+            {liste.map((k, i) => {
+              const gewaehlt = k.id === value;
+              const markiertHier = i === aktivIndex;
+              return (
+                <li
+                  key={k.id}
+                  id={optId(k)}
+                  role="option"
+                  aria-selected={gewaehlt}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    setMarkiert(i);
+                    onSelect(k);
+                    document.getElementById(id)?.focus();
+                  }}
+                  className={cn(
+                    "relative flex w-full cursor-pointer items-center gap-3 rounded-[12px] px-2.5 py-2 text-left transition-colors",
+                    !gewaehlt && "hover:bg-[var(--surface)]",
+                    markiertHier && !gewaehlt && "bg-[var(--surface)] shadow-[inset_0_0_0_1.5px_var(--line-strong)]",
+                    markiertHier && gewaehlt && "outline outline-2 outline-offset-1 outline-[var(--ink)]",
+                  )}
+                >
+                  {gewaehlt && (
+                    <motion.span layoutId={`${id}-wahl`} transition={{ type: "spring", stiffness: 520, damping: 38 }} className="absolute inset-0 -z-0 rounded-[12px] bg-[var(--surface)] shadow-[0_0_0_1.5px_var(--ink),0_6px_16px_-10px_var(--ink)]" />
+                  )}
+                  <KontaktAvatar k={k} size={32} className="relative" />
+                  <span className="relative min-w-0 flex-1">
+                    <span className="block truncate text-[13.5px] font-medium">
+                      <Highlight text={k.name} q={q} />
+                    </span>
+                    <span className="block truncate text-[12px] text-fg-3">{[k.email, k.ort].filter(Boolean).join(" · ") || "Keine Kontaktdaten"}</span>
                   </span>
-                  <span className="block truncate text-[12px] text-fg-3">{[k.email, k.ort].filter(Boolean).join(" · ") || "Keine Kontaktdaten"}</span>
-                </span>
-                <span className="relative hidden gap-1 sm:flex">
-                  {k.rollen.slice(0, 2).map((r) => (
-                    <Chip key={r} tone={r === "mandant" ? "ink" : "neutral"}>
-                      {ROLLE_LABEL[r]}
-                    </Chip>
-                  ))}
-                </span>
-                {aktiv && <Check className="relative size-4 shrink-0 text-ink" />}
-              </button>
-            );
-          })
-        )}
-      </div>
+                  <span className="relative hidden gap-1 sm:flex">
+                    {k.rollen.slice(0, 2).map((r) => (
+                      <Chip key={r} tone={r === "mandant" ? "ink" : "neutral"}>
+                        {ROLLE_LABEL[r]}
+                      </Chip>
+                    ))}
+                  </span>
+                  {gewaehlt && <Check className="relative size-4 shrink-0 text-ink" aria-hidden />}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

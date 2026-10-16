@@ -1,7 +1,7 @@
 // KI-Fallanalyse: Sachverhalt → Rechtsfragen → Präzedenzfälle → Erfolgsaussicht → nächste Schritte → Entwurf.
 import { addDays, diffDays, fmtDate, fmtEUR, today } from "@/core/dates";
 import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
-import { deckungsanfrageStatus, deckungsText, stufeAusProzent } from "@/core/einschaetzung";
+import { deckungsanfrageStatus, deckungsSatz, deckungsText, stufeAusProzent } from "@/core/einschaetzung";
 import type { Akte, Frist, Kontakt, TenantData } from "@/core/types";
 import { forderungskonto, type ForderungsVorgang } from "@/core/zinsen";
 import { istConsole } from "@/lib/backend";
@@ -37,16 +37,23 @@ function stufe(p: number): "hoch" | "mittel" | "gering" {
   return stufeAusProzent(p);
 }
 
-/** Echter Stand der Deckung statt „läuft automatisch“: Zusage, Entwurf zur Freigabe, versandt am … von … */
+const teamName = (id: string) => {
+  const sz = useSession.getState().sitzung;
+  return sz && !istConsole(sz) ? sz.team.find((u) => u.id === id)?.name : undefined;
+};
+
+/** Ein Satz zum Rechtsschutz (für Risiken u. Ä.) – derselbe Stand wie in den nächsten Schritten (src/core/einschaetzung.ts). */
+export function rechtsschutzSatz(akte: Akte, data: TenantData): string {
+  return deckungsSatz(akte.rsv, deckungsanfrageStatus(akte.id, data.aktivitaeten, data.dokumente), teamName, (iso) => fmtDate(iso.slice(0, 10)));
+}
+
+/** Echter Stand der Deckung statt „läuft automatisch“: Zusage, vorbereitet (noch nicht versandt), versandt am … von … */
 export function deckungsDetail(akte: Akte, data: TenantData): string {
   const vers = akte.rsv?.versicherung ?? "der Rechtsschutzversicherung";
-  if (akte.rsv?.deckung === "erteilt") return `Deckungszusage von ${vers} liegt vor.`;
+  if (akte.rsv?.deckung === "erteilt") return `${rechtsschutzSatz(akte, data)} – ${vers}.`;
   if (akte.rsv?.deckung === "abgelehnt") return `${vers} hat die Deckung abgelehnt – Mandantschaft informieren, ggf. Stichentscheid (§ 128 VVG) prüfen.`;
   const s = deckungsanfrageStatus(akte.id, data.aktivitaeten, data.dokumente);
-  const name = (id: string) => {
-    const sz = useSession.getState().sitzung;
-    return sz && !istConsole(sz) ? sz.team.find((u) => u.id === id)?.name : undefined;
-  };
+  const name = teamName;
   const wv = data.fristen.find((f) => f.akteId === akte.id && f.status === "offen" && f.typ === "wiedervorlage" && /deckung/i.test(f.titel));
   const wvText = wv ? ` Wiedervorlage am ${fmtDate(wv.datum)} gesetzt.` : "";
   if (s.status === "keine") return `Deckungsanfrage an ${vers}: ${deckungsText(s)} – das Mandatsaufnahme-Paket bereitet sie zur Freigabe vor.${wvText}`;
@@ -162,7 +169,7 @@ function demoAnalyse(akte: Akte, data: TenantData, treffer: Treffer[], verfasser
       argumentePro: [
         "14 Jahre beanstandungsfreie Betriebszugehörigkeit – hohes „Vertrauenskapital“ (BAG 2 AZR 541/09).",
         "Geringer Wert (8,97 €), Ware war beschädigt und zur Entsorgung bestimmt – kein echter Vermögensschaden (Kündigungsschreiben).",
-        "Duldung durch den Schichtleiter: Mandant durfte annehmen, die Mitnahme sei erlaubt (Zeuge: Kollege Pohl; Gesprächsnotiz Erstberatung).",
+        "Duldung durch den Schichtleiter: Mandant durfte annehmen, die Mitnahme sei erlaubt (Zeuge: Kollege Seifert; Gesprächsnotiz Erstberatung).",
         "Keine vorherige Abmahnung, keine Anhörung des Mandanten (Gesprächsnotiz Erstberatung).",
         "Soziale Gesichtspunkte: 52 Jahre, zwei unterhaltsberechtigte Kinder (Gesprächsnotiz Erstberatung).",
       ],
@@ -179,17 +186,17 @@ function demoAnalyse(akte: Akte, data: TenantData, treffer: Treffer[], verfasser
       naechsteSchritte: [
         { titel: `Kündigungsschutzklage beim Arbeitsgericht einreichen`, detail: `${fristText ?? "Klagefrist nach § 4 KSchG beachten"} – Entwurf liegt unten bereit.` },
         { titel: "Betriebsratsanhörung anfordern", detail: "Im Gütetermin vollständige Unterlagen zur Anhörung nach § 102 BetrVG verlangen; Fehler führen zur Unwirksamkeit." },
-        { titel: "Zeugen benennen", detail: "Kollege Pohl und Schichtleiter zur gelebten Praxis bei Bruchware befragen." },
+        { titel: "Zeugen benennen", detail: "Kollege Seifert und Schichtleiter zur gelebten Praxis bei Bruchware befragen." },
         meldeSchritt,
         { titel: "Deckungszusage der Rechtsschutzversicherung", detail: deckungsDetail(akte, data) },
       ],
       risiken: [
-        "Kostenrisiko gering: In der 1. Instanz trägt jede Partei ihre Anwaltskosten selbst (§ 12a Abs. 1 S. 1 ArbGG); Rechtsschutz angefragt.",
+        `Kostenrisiko gering: In der 1. Instanz trägt jede Partei ihre Anwaltskosten selbst (§ 12a Abs. 1 S. 1 ArbGG); Rechtsschutz: ${rechtsschutzSatz(akte, data)}.`,
         "Bei Vergleich: Abfindung realistisch 0,5–1,0 Bruttomonatsgehälter je Beschäftigungsjahr (rund 23.800–47.600 €).",
       ],
       entwurf: {
         titel: "Kündigungsschutzklage (Entwurf)",
-        text: `An das\nArbeitsgericht Berlin\n\nKlage\n\ndes Herrn Thomas Weber, Seestraße 41, 13353 Berlin\n– Kläger –\nProzessbevollmächtigte: Hartmann & Partner Rechtsanwälte\n\ngegen\n\ndie Kröger Logistik GmbH, Am Juliusturm 12, 13599 Berlin\n– Beklagte –\n\nwegen: Kündigungsschutz\nStreitwert (vorläufig): 13.600,00 € (Bestandsschutz: drei Bruttomonatsentgelte, § 42 Abs. 2 S. 1 GKG; Weiterbeschäftigung: ein Bruttomonatsentgelt)\n\nNamens und in Vollmacht des Klägers erheben wir Klage und werden beantragen:\n\n1. Es wird festgestellt, dass das Arbeitsverhältnis der Parteien durch die außerordentliche Kündigung der Beklagten${kuendigungVom}${zugegangen} nicht aufgelöst worden ist.\n2. Es wird festgestellt, dass das Arbeitsverhältnis auch nicht durch die hilfsweise erklärte ordentliche Kündigung${kuendigungVom} aufgelöst wird.\n3. Die Beklagte wird verurteilt, den Kläger bis zum rechtskräftigen Abschluss des Verfahrens zu unveränderten Arbeitsbedingungen als Lagerist weiterzubeschäftigen.\n\nBegründung:\n\nI. Der 52-jährige Kläger ist seit dem 01.04.2012 bei der Beklagten als Lagerist beschäftigt, zuletzt zu einem Bruttomonatsentgelt von 3.400,00 €. Er ist verheiratet und zwei Kindern zum Unterhalt verpflichtet. Das Arbeitsverhältnis verlief in 14 Jahren beanstandungsfrei; eine Abmahnung wurde nie ausgesprochen.\n\nII. Die Beklagte stützt die Kündigung darauf, der Kläger habe drei beschädigte, zur Entsorgung bestimmte Kaffeepackungen im Wert von 8,97 € mitgenommen. Die Mitnahme von Bruchware wurde im Betrieb seit Jahren praktiziert und vom Schichtleiter geduldet.\nBeweis: Zeugnis des Herrn Pohl, zu laden über die Beklagte.\n\nIII. Ein wichtiger Grund im Sinne des § 626 Abs. 1 BGB liegt nicht vor. Nach der Rechtsprechung des Bundesarbeitsgerichts ist bei der Interessenabwägung die durch langjährige, ungestörte Zusammenarbeit entstandene Vertrauensposition zu berücksichtigen (BAG, Urt. v. 10.06.2010 – 2 AZR 541/09). Angesichts des minimalen Werts, der Duldung durch Vorgesetzte und der 14-jährigen Betriebszugehörigkeit wäre eine Abmahnung als milderes Mittel ausreichend gewesen.\n\nIV. Die ordnungsgemäße Anhörung des Betriebsrats nach § 102 BetrVG wird mit Nichtwissen bestritten.\n\n${unterschrift(verfasser)}`,
+        text: `An das\nArbeitsgericht Berlin\n\nKlage\n\ndes Herrn Thomas Weber, Seestraße 41, 13353 Berlin\n– Kläger –\nProzessbevollmächtigte: Hartmann & Partner Rechtsanwälte\n\ngegen\n\ndie Kröger Logistik GmbH, Am Juliusturm 12, 13599 Berlin\n– Beklagte –\n\nwegen: Kündigungsschutz\nStreitwert (vorläufig): 13.600,00 € (Bestandsschutz: drei Bruttomonatsentgelte, § 42 Abs. 2 S. 1 GKG; Weiterbeschäftigung: ein Bruttomonatsentgelt)\n\nNamens und in Vollmacht des Klägers erheben wir Klage und werden beantragen:\n\n1. Es wird festgestellt, dass das Arbeitsverhältnis der Parteien durch die außerordentliche Kündigung der Beklagten${kuendigungVom}${zugegangen} nicht aufgelöst worden ist.\n2. Es wird festgestellt, dass das Arbeitsverhältnis auch nicht durch die hilfsweise erklärte ordentliche Kündigung${kuendigungVom} aufgelöst wird.\n3. Die Beklagte wird verurteilt, den Kläger bis zum rechtskräftigen Abschluss des Verfahrens zu unveränderten Arbeitsbedingungen als Lagerist weiterzubeschäftigen.\n\nBegründung:\n\nI. Der 52-jährige Kläger ist seit dem 01.04.2012 bei der Beklagten als Lagerist beschäftigt, zuletzt zu einem Bruttomonatsentgelt von 3.400,00 €. Er ist verheiratet und zwei Kindern zum Unterhalt verpflichtet. Das Arbeitsverhältnis verlief in 14 Jahren beanstandungsfrei; eine Abmahnung wurde nie ausgesprochen.\n\nII. Die Beklagte stützt die Kündigung darauf, der Kläger habe drei beschädigte, zur Entsorgung bestimmte Kaffeepackungen im Wert von 8,97 € mitgenommen. Die Mitnahme von Bruchware wurde im Betrieb seit Jahren praktiziert und vom Schichtleiter geduldet.\nBeweis: Zeugnis des Herrn Seifert, zu laden über die Beklagte.\n\nIII. Ein wichtiger Grund im Sinne des § 626 Abs. 1 BGB liegt nicht vor. Nach der Rechtsprechung des Bundesarbeitsgerichts ist bei der Interessenabwägung die durch langjährige, ungestörte Zusammenarbeit entstandene Vertrauensposition zu berücksichtigen (BAG, Urt. v. 10.06.2010 – 2 AZR 541/09). Angesichts des minimalen Werts, der Duldung durch Vorgesetzte und der 14-jährigen Betriebszugehörigkeit wäre eine Abmahnung als milderes Mittel ausreichend gewesen.\n\nIV. Die ordnungsgemäße Anhörung des Betriebsrats nach § 102 BetrVG wird mit Nichtwissen bestritten.\n\n${unterschrift(verfasser)}`,
       },
     };
   }

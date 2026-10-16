@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { motion } from "motion/react";
 import { CheckCircle2, Inbox, Landmark, Loader2, Mail, Paperclip } from "lucide-react";
 import { fmtTime, relTime, today } from "@/core/dates";
@@ -93,9 +94,41 @@ export function NachrichtenListe({
         text={gefiltert ? "Ändern Sie den Filter oder die Suche, um weitere Nachrichten zu sehen." : "Neue beA-Nachrichten und E-Mails erscheinen hier automatisch – die KI ordnet sie Ihren Akten zu."}
       />
     );
+  return <Liste items={items} selectedId={selectedId} onSelect={onSelect} akten={akten} laufend={laufend} q={q} />;
+}
+
+/**
+ * Nachrichtenliste als Listbox mit „roving tabindex“: ein einziger Tab-Stopp, ↑/↓ (bzw. Pos1/Ende) wandern durch die
+ * Nachrichten, Enter oder Leertaste öffnet. J/K (nächste/vorige) wirken seitenweit, siehe Posteingang.
+ */
+function Liste({ items, selectedId, onSelect, akten, laufend, q }: { items: Nachricht[]; selectedId: string | null; onSelect: (id: string) => void; akten: Map<string, Akte>; laufend: Record<string, number>; q: string }) {
+  const [fokusId, setFokusId] = useState<string | null>(selectedId);
+  const refs = useRef<Record<string, HTMLLIElement | null>>({});
+  // Tab-Stopp folgt der geöffneten Nachricht; ohne Auswahl die erste
+  useEffect(() => {
+    if (selectedId) setFokusId(selectedId);
+  }, [selectedId]);
+  const aktivId = fokusId && items.some((n) => n.id === fokusId) ? fokusId : (items[0]?.id ?? null);
+  const fokussiere = (id: string) => {
+    setFokusId(id);
+    refs.current[id]?.focus();
+  };
+  const taste = (e: KeyboardEvent<HTMLUListElement>) => {
+    const i = items.findIndex((n) => n.id === aktivId);
+    const ziel =
+      e.key === "ArrowDown" ? items[Math.min(items.length - 1, i + 1)] : e.key === "ArrowUp" ? items[Math.max(0, i - 1)] : e.key === "Home" ? items[0] : e.key === "End" ? items[items.length - 1] : undefined;
+    if (ziel) {
+      e.preventDefault();
+      fokussiere(ziel.id);
+      return;
+    }
+    if ((e.key === "Enter" || e.key === " ") && aktivId) {
+      e.preventDefault();
+      onSelect(aktivId);
+    }
+  };
   return (
-    // Schlichte Liste mit Schaltflächen (ul > li > button) – die geöffnete Nachricht trägt aria-current.
-    <ul className="space-y-0.5 p-1.5" aria-label="Nachrichten">
+    <ul role="listbox" aria-label="Nachrichten" aria-describedby="posteingang-tipp" className="space-y-0.5 p-1.5" onKeyDown={taste}>
       {items.map((n, i) => {
         const akte = n.akteId ? akten.get(n.akteId) : undefined;
         const neu = n.status === "neu";
@@ -104,16 +137,22 @@ export function NachrichtenListe({
         return (
           <motion.li
             key={n.id}
+            ref={(el) => {
+              refs.current[n.id] = el;
+            }}
+            role="option"
+            aria-selected={sel}
+            tabIndex={n.id === aktivId ? 0 : -1}
+            data-nachricht={n.id}
+            onFocus={() => setFokusId(n.id)}
+            onClick={() => onSelect(n.id)}
             layout="position"
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ type: "spring", stiffness: 480, damping: 36, delay: Math.min(i, 10) * 0.03 }}
+            className="cursor-pointer rounded-[16px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--ink)]"
           >
-            <button
-              type="button"
-              data-nachricht={n.id}
-              aria-current={sel ? "true" : undefined}
-              onClick={() => onSelect(n.id)}
+            <div
               className={cn(
                 "group relative isolate flex w-full gap-3 rounded-[16px] px-3 py-3 pl-4 text-left transition-colors",
                 !sel && "hover:bg-[var(--ink-softer)]",
@@ -169,7 +208,7 @@ export function NachrichtenListe({
                   )}
                 </div>
               </div>
-            </button>
+            </div>
           </motion.li>
         );
       })}

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { X } from "lucide-react";
@@ -47,14 +47,130 @@ export function useEscEbene(open: boolean, onClose: () => void) {
 }
 const useEsc = useEscEbene;
 
+/**
+ * Fokusfalle für Modal und Drawer (WCAG 2.4.3, 2.4.11): Tab und Umschalt+Tab bleiben im obersten Dialog, der App-Hintergrund
+ * (`#app-inhalt`) und tiefer liegende Dialoge sind solange inert. Beim Schließen kehrt der Fokus auf das auslösende Element zurück.
+ */
+let fallen: { id: number; el: () => HTMLElement | null }[] = [];
+let naechsteFalle = 1;
+/** Sperrbildschirm aktiv: Fokusfallen ruhen, alle Dialoge sind inert, der App-Rahmen bleibt für die Entsperrung bedienbar. */
+let pausiert = false;
+
+/** Vom App-Rahmen beim Sperren und Entsperren aufgerufen (Sperrbildschirm liegt über offenen Dialogen). */
+export function pausiereDialoge(an: boolean) {
+  if (pausiert === an) return;
+  pausiert = an;
+  aktualisiereHintergrund();
+}
+
+const FOKUSSIERBAR =
+  'a[href], area[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), iframe, summary, [tabindex], [contenteditable]:not([contenteditable="false"]), audio[controls], video[controls]';
+
+/** Per Tab erreichbare Elemente eines Dialogs in Dokumentreihenfolge (sichtbar, nicht deaktiviert, nicht inert). */
+export function fokussierbareIn(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(FOKUSSIERBAR)).filter((el) => {
+    if (el.tabIndex < 0 || el.closest("[inert]") || el.getAttribute("aria-hidden") === "true") return false;
+    if (el.getClientRects().length === 0) return false;
+    const st = getComputedStyle(el);
+    return st.visibility !== "hidden" && st.display !== "none";
+  });
+}
+
+function setzeInert(el: Element | null | undefined, an: boolean) {
+  if (!el) return;
+  if (an) el.setAttribute("inert", "");
+  else el.removeAttribute("inert");
+}
+
+/** Hintergrund und tiefer liegende Dialoge inert setzen – nur der oberste Dialog bleibt bedienbar. */
+function aktualisiereHintergrund() {
+  if (typeof document === "undefined") return;
+  setzeInert(document.getElementById("app-inhalt"), fallen.length > 0 && !pausiert);
+  fallen.forEach((f, i) => setzeInert(f.el()?.parentElement, pausiert || i < fallen.length - 1));
+}
+
+function useFokusfalle(open: boolean, ref: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    if (!open) return;
+    const id = naechsteFalle++;
+    const ausloeser = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+    fallen.push({ id, el: () => ref.current });
+    aktualisiereHintergrund();
+    // Gestapelt (z. B. Schnellhilfe über einem Dialog): die neue Ebene liegt auch sichtbar oben.
+    const huelle = ref.current?.parentElement;
+    if (huelle && fallen.length > 1) huelle.style.zIndex = String(80 + fallen.length * 2);
+    const h = (e: KeyboardEvent) => {
+      if (e.key !== "Tab" || e.defaultPrevented || pausiert || fallen[fallen.length - 1]?.id !== id) return;
+      const root = ref.current;
+      if (!root) return;
+      const liste = fokussierbareIn(root);
+      const akt = document.activeElement as HTMLElement | null;
+      const drin = !!akt && root.contains(akt);
+      if (liste.length === 0) {
+        e.preventDefault();
+        root.focus();
+        return;
+      }
+      const erstes = liste[0];
+      const letztes = liste[liste.length - 1];
+      if (e.shiftKey) {
+        if (!drin || akt === erstes || akt === root) {
+          e.preventDefault();
+          letztes.focus();
+        }
+      } else if (!drin || akt === letztes) {
+        e.preventDefault();
+        erstes.focus();
+      }
+    };
+    // Fokus, der den obersten Dialog verlässt (z. B. per Klick auf eine Meldung bleibt erlaubt), wird nur aus dem inerten Hintergrund zurückgeholt.
+    const zurueck = (e: FocusEvent) => {
+      if (pausiert || fallen[fallen.length - 1]?.id !== id) return;
+      const root = ref.current;
+      const ziel = e.target as Node | null;
+      if (!root || !ziel || root.contains(ziel)) return;
+      if (document.getElementById("app-inhalt")?.contains(ziel)) (fokussierbareIn(root)[0] ?? root).focus();
+    };
+    document.addEventListener("keydown", h, true);
+    document.addEventListener("focusin", zurueck, true);
+    return () => {
+      document.removeEventListener("keydown", h, true);
+      document.removeEventListener("focusin", zurueck, true);
+      const root = ref.current;
+      const fokusImDialog = !document.activeElement || document.activeElement === document.body || (!!root && root.contains(document.activeElement));
+      fallen = fallen.filter((f) => f.id !== id);
+      aktualisiereHintergrund();
+      // Fokus zurück auf das auslösende Element – sofern es noch da ist und der Fokus nicht bewusst woanders hin gewandert ist.
+      if (fokusImDialog && ausloeser && ausloeser.isConnected && !ausloeser.closest("[inert]")) ausloeser.focus({ preventScroll: true });
+    };
+  }, [open, ref]);
+}
+
+/** Erstes Fokusziel: Element mit `data-autofocus` (auch Eingabefelder) vor dem ersten Eingabefeld, sonst `fallback`. */
+function setzeAnfangsfokus(root: HTMLElement | null, mitEingabe: boolean) {
+  if (!root) return;
+  const markiert = Array.from(root.querySelectorAll<HTMLElement>("[data-autofocus]")).find((el) => el.getClientRects().length > 0 && !(el as HTMLButtonElement).disabled);
+  if (markiert) return markiert.focus();
+  // Schon per autoFocus im Dialog gelandet? Dann bleibt der Fokus dort.
+  const akt = document.activeElement;
+  if (akt && akt !== root && root.contains(akt)) return;
+  const feld = mitEingabe
+    ? Array.from(root.querySelectorAll<HTMLElement>("input:not([type=hidden]):not([disabled]),textarea:not([disabled]),select:not([disabled])")).find((el) => el.getClientRects().length > 0)
+    : undefined;
+  (feld ?? root.querySelector<HTMLElement>("[data-dialog-inhalt]") ?? root).focus();
+}
+
 export function Modal({ open, onClose, title, subtitle, children, footer, size = "md", icon }: { open: boolean; onClose: () => void; title: ReactNode; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode; size?: "sm" | "md" | "lg" | "xl"; icon?: ReactNode }) {
   useEsc(open, onClose);
   useDialogZaehlung(open);
   const ref = useRef<HTMLDivElement>(null);
+  useFokusfalle(open, ref);
   const titelId = useId();
   useEffect(() => {
-    // Fokus in den Dialog: erstes Eingabefeld bzw. markierter Knopf, sonst der Inhaltsbereich (Tastatur und Vorlesen starten im Dialog)
-    if (open) setTimeout(() => (ref.current?.querySelector<HTMLElement>("input,textarea,select,button[data-autofocus]") ?? ref.current?.querySelector<HTMLElement>("[data-dialog-inhalt]"))?.focus(), 60);
+    // Fokus in den Dialog: markiertes Element (data-autofocus), sonst erstes Eingabefeld, sonst der Inhaltsbereich
+    if (!open) return;
+    const t = setTimeout(() => setzeAnfangsfokus(ref.current, true), 60);
+    return () => clearTimeout(t);
   }, [open]);
   return createPortal(
     <AnimatePresence>
@@ -66,12 +182,13 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
             role="dialog"
             aria-modal="true"
             aria-labelledby={titelId}
+            tabIndex={-1}
             initial={{ opacity: 0, y: 40, scale: 0.96, filter: "blur(6px)" }}
             animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
             exit={{ opacity: 0, y: 24, scale: 0.97, filter: "blur(4px)" }}
             transition={{ type: "spring", stiffness: 420, damping: 34 }}
             className={cn(
-              "glass-strong relative flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-[28px] sm:rounded-[28px]",
+              "glass-strong relative flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-[28px] outline-none sm:rounded-[28px]",
               size === "sm" && "sm:max-w-md",
               size === "md" && "sm:max-w-xl",
               size === "lg" && "sm:max-w-3xl",
@@ -102,21 +219,31 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
 export function Drawer({ open, onClose, title, subtitle, children, footer, width = 560, icon }: { open: boolean; onClose: () => void; title: ReactNode; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode; width?: number; icon?: ReactNode }) {
   useEsc(open, onClose);
   useDialogZaehlung(open);
+  const ref = useRef<HTMLElement>(null);
+  useFokusfalle(open, ref);
   const titelId = useId();
+  useEffect(() => {
+    // Fokus ins Seitenpanel: markiertes Element (data-autofocus), sonst der Inhaltsbereich
+    if (!open) return;
+    const t = setTimeout(() => setzeAnfangsfokus(ref.current, false), 60);
+    return () => clearTimeout(t);
+  }, [open]);
   return createPortal(
     <AnimatePresence>
       {open && (
         <div className="fixed inset-0 z-[75]">
           <motion.div className="absolute inset-0 bg-[var(--scrim)]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
           <motion.aside
+            ref={ref}
             role="dialog"
             aria-modal="true"
             aria-labelledby={titelId}
+            tabIndex={-1}
             initial={{ x: "105%" }}
             animate={{ x: 0 }}
             exit={{ x: "105%" }}
             transition={{ type: "spring", stiffness: 380, damping: 40 }}
-            className="glass-strong absolute bottom-2 right-2 top-2 flex w-[calc(100%-16px)] flex-col overflow-hidden rounded-[28px]"
+            className="glass-strong absolute bottom-2 right-2 top-2 flex w-[calc(100%-16px)] flex-col overflow-hidden rounded-[28px] outline-none"
             style={{ maxWidth: width, boxShadow: "var(--glass-shadow-lg)" }}
           >
             <div className="flex items-start gap-3 px-6 pb-3 pt-5">
@@ -129,7 +256,7 @@ export function Drawer({ open, onClose, title, subtitle, children, footer, width
                 <X className="size-[18px]" />
               </button>
             </div>
-            <div tabIndex={0} className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--focus)]">{children}</div>
+            <div tabIndex={0} data-dialog-inhalt className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--focus)]">{children}</div>
             {footer && <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--line)] px-6 py-4">{footer}</div>}
           </motion.aside>
         </div>
@@ -169,10 +296,11 @@ export function ConfirmHost() {
       size="sm"
       footer={
         <>
-          <Button variant="ghost" onClick={() => close(false)}>
+          {/* Bei gefährlichen Aktionen liegt der Anfangsfokus auf der sicheren Wahl – Enter verwirft nichts versehentlich. */}
+          <Button data-autofocus={req?.gefahr ? true : undefined} variant="ghost" onClick={() => close(false)}>
             {req?.abbrechen ?? "Abbrechen"}
           </Button>
-          <Button data-autofocus variant={req?.gefahr ? "danger" : "primary"} onClick={() => close(true)}>
+          <Button data-autofocus={req?.gefahr ? undefined : true} variant={req?.gefahr ? "danger" : "primary"} onClick={() => close(true)}>
             {req?.bestaetigen ?? "Bestätigen"}
           </Button>
         </>

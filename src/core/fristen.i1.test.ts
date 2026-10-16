@@ -55,7 +55,7 @@ test("T18 Fall 3b: Paderborner Kanzlei, Hessisches LAG – Allerheiligen nur am 
 
 test("Rechenweg nennt immer Land und Gerichtsort – ohne Normzitat, StPO ohne BGB/ZPO", () => {
   const ohne = berechneNachRegel("berufung", "2026-10-16", "NW");
-  assert.equal(zeile(ohne.rechenweg, "Feiertage am Gerichtsort"), "Feiertage am Gerichtsort geprüft: Nordrhein-Westfalen (Kanzleisitz)");
+  assert.equal(zeile(ohne.rechenweg, "Gerichtsort noch offen"), "Gerichtsort noch offen – geprüft mit den Feiertagen am Kanzleisitz (Nordrhein-Westfalen)");
   assert.ok(!ohne.rechenweg.some((s) => s.includes("§ 222 Abs. 2 ZPO")));
   assert.equal(ohne.feiertagsOrt, "Kanzleisitz");
   const stpo = berechneNachRegel("einspruch_strafbefehl", "2026-10-17", "BE", undefined, { kanzleiLand: "NW" });
@@ -101,7 +101,7 @@ test("Widerrufsfrist (Vergleich): Dauer ab Verkündung oder festes Datum laut Ve
   const fest = berechneNachRegel("widerruf_vergleich", "2026-10-16", "NW", undefined, { festesEnde: "2026-11-06" });
   assert.equal(fest.ende, "2026-11-06");
   assert.ok(fest.rechenweg.some((s) => s.includes("Fristende laut Vergleich (festes Datum)")));
-  assert.ok(fest.rechenweg.some((s) => s.startsWith("Feiertage am Gerichtsort geprüft")));
+  assert.ok(fest.rechenweg.some((s) => s.includes("Kanzleisitz (Nordrhein-Westfalen)")));
   // Vereinbarte Frist mit festem Datum am Sonntag: Datum bleibt, Hinweis auf § 193 BGB
   const v = berechneNachRegel("vereinbart_datum", "2026-10-16", "NW", undefined, { festesEnde: "2026-11-08" });
   assert.equal(v.ende, "2026-11-08");
@@ -121,4 +121,45 @@ test("Vertragliche Ausschlussfrist: drei Monate ab Fälligkeit (§§ 187, 188, 1
   assert.match(r.regel.hinweis!, /^Vertragliche Ausschlussfrist – Anspruchsverlust bei Versäumung/);
   assert.ok(r.rechenweg.some((s) => s.includes("§ 187 Abs. 1 BGB")));
   assert.equal(fristArt(r.regel).kurz, "Vertragliche Ausschlussfrist – Anspruchsverlust bei Versäumung");
+});
+
+// ───────────── Iteration 2 (A-15): neue Fristarten, Normzitat, Text ohne Gericht ─────────────
+
+test("Entfristungsklage § 17 S. 1 TzBfG: 3 Wochen nach dem vereinbarten Ende, nicht verlängerbar, §§ 5–7 KSchG", () => {
+  const r = regel("entfristungsklage")!;
+  assert.equal(r.grundlage, "§ 17 S. 1 TzBfG");
+  assert.equal(r.unverlaengerbar, true);
+  assert.equal(fristArt(r).kritisch, true);
+  assert.match(r.versaeumnis, /§ 17 S\. 2 TzBfG i\. V\. m\. § 7 KSchG/);
+  assert.match(r.versaeumnis, /§ 5 KSchG/);
+  assert.match(r.hinweis!, /§ 17 S\. 3 TzBfG/);
+  // vereinbartes Ende Fr 30.10.2026 → Fr 20.11.2026
+  assert.equal(berechneNachRegel("entfristungsklage", "2026-10-30", "BE").ende, "2026-11-20");
+  // Ende Sa 31.10.2026 → Sa 21.11.2026 → Mo 23.11.2026 (§ 193 BGB)
+  const sa = berechneNachRegel("entfristungsklage", "2026-10-31", "BE");
+  assert.equal(sa.ende, "2026-11-23");
+  assert.ok(r.stichworte.includes("entfristungsklage") && r.stichworte.includes("befristung"));
+});
+
+test("Entschädigungsklage § 61b Abs. 1 ArbGG: 3 Monate nach schriftlicher Geltendmachung, nicht verlängerbar", () => {
+  const r = regel("entschaedigung_agg")!;
+  assert.equal(r.grundlage, "§ 61b Abs. 1 ArbGG");
+  assert.equal(fristArt(r).kritisch, true);
+  assert.equal(fristArt(r).art, "Gesetzliche Klagefrist (§ 61b Abs. 1 ArbGG) – nicht verlängerbar.");
+  assert.match(r.ereignis, /§ 15 Abs\. 4 AGG/);
+  // Geltendmachung Di 15.09.2026 → Di 15.12.2026
+  assert.equal(berechneNachRegel("entschaedigung_agg", "2026-09-15", "BE").ende, "2026-12-15");
+  // 30.11.2026 + 3 Monate → 28.02.2027 (So) → Mo 01.03.2027
+  assert.equal(berechneNachRegel("entschaedigung_agg", "2026-11-30", "BE").ende, "2027-03-01");
+  assert.ok(r.stichworte.includes("entschädigungsklage") && r.stichworte.includes("agg"));
+});
+
+test("Berufungsbegründungsfrist zitiert § 520 Abs. 2 S. 1 ZPO; ohne Gericht „Gerichtsort noch offen“", () => {
+  assert.equal(regel("berufungsbegruendung")!.grundlage, "§ 520 Abs. 2 S. 1 ZPO");
+  const r = berechneNachRegel("berufungsbegruendung", "2026-10-16", "BB");
+  assert.ok(r.rechenweg.includes("Gerichtsort noch offen – geprüft mit den Feiertagen am Kanzleisitz (Brandenburg)"), r.rechenweg.join(" | "));
+  assert.ok(!r.rechenweg.some((s) => s.startsWith("Feiertage am Gerichtsort geprüft")));
+  // mit Gericht bleibt die bisherige Zeile
+  const mit = berechneNachRegel("berufungsbegruendung", "2026-10-16", "BE", undefined, { feiertagsOrt: "Kammergericht, Berufungsgericht" });
+  assert.ok(mit.rechenweg.includes("Feiertage am Gerichtsort geprüft: Berlin (Kammergericht, Berufungsgericht)"));
 });

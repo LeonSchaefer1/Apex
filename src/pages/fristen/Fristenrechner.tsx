@@ -1,22 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { motion } from "motion/react";
-import { AlertTriangle, ArrowRightLeft, Calculator, CalendarPlus, Check, Info, Landmark, ShieldAlert } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, Calculator, CalendarPlus, Check, Info, Landmark, Lock, ShieldAlert, X } from "lucide-react";
 import { berechneNachRegel, FRIST_REGELN, fristArt, gerichtsortDerAkte, type Einheit, type FristRegel } from "@/core/fristen";
 import { BUNDESLAENDER, bundeslandAusGericht, bundeslandAusOrt, bundeslandName } from "@/core/feiertage";
 import { fmtDateLong, relDays, today, wochentagName, fmtDateWd } from "@/core/dates";
-import { normalize } from "@/core/search";
 import type { Bundesland } from "@/core/types";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
-import { Button, Chip, Field, Input, Modal, SearchField, Segmented, Select } from "@/components/ui";
+import { Button, Chip, Field, Input, Modal, Segmented, Select, Switch } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { RechenwegListe } from "./FristZeile";
 import { MiniKalender } from "./MiniKalender";
 import { legeFristAn, rohesEnde } from "./logik";
-
-const GEBIETE: FristRegel["gebiet"][] = ["Zivilprozess", "Arbeitsrecht", "Familienrecht", "Mahnverfahren", "Strafrecht", "Verwaltungsrecht", "Materielles Recht", "Vertraglich vereinbart"];
+import { FristartAuswahl } from "./FristartAuswahl";
+import { sucheFristarten } from "./fristartSuche";
 
 function einheitLabelVon(einheit: Einheit, n: number) {
   if (einheit === "tage") return n === 1 ? "Tag" : "Tage";
@@ -63,6 +62,14 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
   const [gericht, setGericht] = useState("");
   // Von Hand gewähltes Bundesland ("" = keines) – keine stille Vorbelegung mit dem Kanzleisitz.
   const [landWahl, setLandWahl] = useState<Bundesland | "">("");
+  // Ist ein Gericht mit bekanntem Land erkannt, ist das Bundesland gesperrt („aus dem Gericht abgeleitet“). Abweichen nur
+  // bewusst: Schalter „Abweichenden Gerichtsort wählen“ mit Warnung und Pflichtbestätigung (I2-T18-04).
+  const [abweichend, setAbweichend] = useState(false);
+  const [abweichendBestaetigt, setAbweichendBestaetigt] = useState(false);
+  // Gericht der Akte für diese Berechnung nicht verwenden („Gericht entfernen“)
+  const [ohneAktenGericht, setOhneAktenGericht] = useState(false);
+  // Reihenfolge Land → Gericht: das Gericht gewinnt; die ersetzte Auswahl wird genannt
+  const [ersetzteWahl, setErsetzteWahl] = useState<Bundesland | "">("");
   const [akteId, setAkteId] = useState(startAkteId ?? "");
   const [eingetragen, setEingetragen] = useState<string | null>(null);
 
@@ -71,6 +78,10 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
     setEingetragen(null);
     setLandWahl("");
     setGericht("");
+    setAbweichend(false);
+    setAbweichendBestaetigt(false);
+    setOhneAktenGericht(false);
+    setErsetzteWahl("");
     if (startAkteId) setAkteId(startAkteId);
     if (startRegel && FRIST_REGELN.some((r) => r.key === startRegel)) {
       setKey(startRegel);
@@ -81,30 +92,7 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
     if (istIsoDatum(startEreignis)) setEreignis(startEreignis);
   }, [open, startAkteId, startRegel, startEreignis]);
 
-  // Vorgewählte Fristart in der Liste sichtbar machen (nur innerhalb der Liste scrollen)
-  const listeRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const t = setTimeout(() => {
-      const box = listeRef.current;
-      const el = box?.querySelector<HTMLElement>('[aria-selected="true"]');
-      if (!box || !el) return;
-      const r = el.getBoundingClientRect();
-      const b = box.getBoundingClientRect();
-      if (r.top >= b.top + 30 && r.bottom <= b.bottom) return;
-      // Gebietsüberschrift mit anzeigen; bei langen Gebieten direkt unter der (klebenden) Überschrift einordnen
-      const g = el.parentElement?.getBoundingClientRect();
-      const ziel = g && r.bottom - g.top + 6 <= b.height ? g.top - b.top - 6 : r.top - b.top - 34;
-      box.scrollTop += ziel;
-    }, 220);
-    return () => clearTimeout(t);
-  }, [open, startRegel]);
-
-  const gefiltert = useMemo(() => {
-    const q = normalize(suche.trim());
-    if (!q) return FRIST_REGELN;
-    return FRIST_REGELN.filter((r) => normalize([r.titel, r.grundlage, r.ereignis, r.gebiet, ...r.stichworte].join(" ")).includes(q));
-  }, [suche]);
+  const gefiltert = useMemo(() => sucheFristarten(suche, FRIST_REGELN), [suche]);
   // Gewählt ist nur eine Fristart, die in der (gefilterten) Liste steht – nie ein altes Ergebnis stehen lassen.
   const gewaehlt = gefiltert.find((r) => r.key === key);
   const regel = gewaehlt ?? FRIST_REGELN.find((r) => r.key === key) ?? FRIST_REGELN[0];
@@ -114,21 +102,34 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
   const einheit: Einheit = regel.dauerPflicht && regel.einheit !== "jahresende" ? einheitWahl : regel.einheit;
   const gueltig = /^\d{4}-\d{2}-\d{2}$/.test(ereignis);
   const akte = akten.find((a) => a.id === akteId);
-  const gerichtsort = useMemo(() => gerichtsortDerAkte(akte, kontakte), [akte, kontakte]);
+  const aktenGerichtsort = useMemo(() => gerichtsortDerAkte(akte, kontakte), [akte, kontakte]);
+  const gerichtsort = ohneAktenGericht ? undefined : aktenGerichtsort;
   const ausGericht = useMemo(() => {
     const t = gericht.trim();
     if (t.length < 3) return undefined;
     return bundeslandAusGericht(t)?.land ?? bundeslandAusOrt(t.replace(/^(?:amts|land|oberlandes|arbeits|landesarbeits|sozial|verwaltungs)gericht\s+/i, ""));
   }, [gericht]);
-  /** Bundesland samt Herkunft: Ort der Handlung > Auswahl von Hand > Gericht (Eingabe) > Gericht der Akte > (nur ohne Pflicht) Kanzleisitz */
-  const ort = useMemo((): { land: Bundesland; label: string; quelle: "handlung" | "wahl" | "gericht" | "akte" | "kanzlei" } | undefined => {
+  /** Gericht mit bekanntem Land: eingegebenes Gericht, sonst (ohne Eingabe) das Gericht der Akte. */
+  const gerichtLand = useMemo((): { land: Bundesland; label: string; gericht: string; quelle: "gericht" | "akte" } | undefined => {
+    if (ausGericht) return { land: ausGericht, label: gericht.trim(), gericht: gericht.trim(), quelle: "gericht" };
+    if (!gericht.trim() && gerichtsort) return { land: gerichtsort.land, label: `${gerichtsort.gericht} – laut Akte`, gericht: gerichtsort.gericht, quelle: "akte" };
+    return undefined;
+  }, [ausGericht, gericht, gerichtsort]);
+  /**
+   * Bundesland samt Herkunft: Ort der Handlung > Gericht mit bekanntem Land (gesperrt) > bewusst abweichende bzw. von Hand
+   * gewählte Auswahl > (nur ohne Pflicht) Kanzleisitz.
+   */
+  const ort = useMemo((): { land: Bundesland; label: string; quelle: "handlung" | "wahl" | "abweichend" | "gericht" | "akte" | "kanzlei" } | undefined => {
     if (regel.handlungsort) return { land: regel.handlungsort.land, label: `Ort der Handlung: ${regel.handlungsort.ort}`, quelle: "handlung" };
+    if (gerichtLand && !(abweichend && landWahl)) return gerichtLand;
+    if (gerichtLand && landWahl && landWahl !== gerichtLand.land) return { land: landWahl, label: `abweichend gewählt – ${gerichtLand.gericht} liegt in ${bundeslandName(gerichtLand.land)}`, quelle: "abweichend" };
     if (landWahl) return { land: landWahl, label: gericht.trim() ? `${gericht.trim()} – Bundesland gewählt` : "Bundesland gewählt", quelle: "wahl" };
-    if (ausGericht) return { land: ausGericht, label: gericht.trim(), quelle: "gericht" };
-    if (gerichtsort) return { land: gerichtsort.land, label: `${gerichtsort.gericht} – laut Akte`, quelle: "akte" };
     if (istRechtsmittelfrist(regel)) return undefined;
     return { land: tenant.bundesland, label: "Kanzleisitz – kein Gericht angegeben", quelle: "kanzlei" };
-  }, [regel, landWahl, gericht, ausGericht, gerichtsort, tenant.bundesland]);
+  }, [regel, landWahl, gericht, gerichtLand, abweichend, tenant.bundesland]);
+  /** Bundesland weicht bewusst vom erkannten Gericht ab – Eintragen erst nach Bestätigung. */
+  const widerspruch = ort?.quelle === "abweichend";
+  const landGesperrt = !!gerichtLand && !abweichend && !regel.handlungsort;
   const effLand = ort?.land;
   const fehlt = !gewaehlt
     ? "Bitte Fristart wählen"
@@ -159,12 +160,33 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
     : ort?.quelle === "akte"
       ? `Gerichtsort laut Akte: ${gerichtsort?.gericht}.`
       : ort?.quelle === "gericht"
-        ? `Aus dem Gericht erkannt${ort.land !== tenant.bundesland ? ` – abweichend vom Kanzleisitz (${bundeslandName(tenant.bundesland)})` : ""}.`
-        : ort?.quelle === "wahl"
+        ? `Aus dem Gericht abgeleitet${ort.land !== tenant.bundesland ? ` – abweichend vom Kanzleisitz (${bundeslandName(tenant.bundesland)})` : ""}.`
+        : ort?.quelle === "abweichend"
+          ? `Abweichend vom Gericht (${bundeslandName(gerichtLand?.land ?? ort.land)}) – nur nach Bestätigung eintragbar.`
+          : ort?.quelle === "wahl"
           ? `Von Hand gewählt${ort.land !== tenant.bundesland ? ` – abweichend vom Kanzleisitz (${bundeslandName(tenant.bundesland)})` : ""}.`
           : istRechtsmittelfrist(regel)
             ? "Pflichtangabe bei Rechtsmitteln: Maßgeblich sind die Feiertage am Ort des Gerichts."
             : `Ohne Angabe gelten die Feiertage am Kanzleisitz (${bundeslandName(tenant.bundesland)}).`;
+  const gerichtAendern = (wert: string) => {
+    const neuLand = wert.trim().length >= 3 ? (bundeslandAusGericht(wert.trim())?.land ?? bundeslandAusOrt(wert.trim().replace(/^(?:amts|land|oberlandes|arbeits|landesarbeits|sozial|verwaltungs)gericht\s+/i, ""))) : undefined;
+    // Land → Gericht: Das Gericht gewinnt; eine abweichende Auswahl von Hand wird ersetzt und genannt.
+    if (neuLand && landWahl && landWahl !== neuLand) setErsetzteWahl(landWahl);
+    else if (!neuLand) setErsetzteWahl("");
+    if (neuLand) setLandWahl("");
+    setGericht(wert);
+    setAbweichend(false);
+    setAbweichendBestaetigt(false);
+    setEingetragen(null);
+  };
+  const gerichtEntfernen = () => {
+    if (gericht.trim()) setGericht("");
+    else setOhneAktenGericht(true);
+    setAbweichend(false);
+    setAbweichendBestaetigt(false);
+    setErsetzteWahl("");
+    setEingetragen(null);
+  };
   const gerichtVorschlaege = useMemo(
     () => [...new Set([...kontakte.filter((k) => k.rollen.includes("gericht")).map((k) => k.name), "Hessisches LAG", "LAG Hessen Frankfurt", "OLG Brandenburg", "Kammergericht", "Landesarbeitsgericht Hamm", "Oberlandesgericht Hamm"])].sort((a, b) => a.localeCompare(b, "de")),
     [kontakte],
@@ -175,7 +197,7 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
   const kritisch = art.kritisch;
 
   const eintragen = () => {
-    if (!erg || !akte) return;
+    if (!erg || !akte || (widerspruch && !abweichendBestaetigt)) return;
     const titel = mitDatum
       ? `${regel.titel} (bis ${fmtDateWd(festesEnde)})`
       : dauerNum && (dauerNum !== regel.dauer || regel.dauerPflicht)
@@ -194,9 +216,14 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
       quelle: "manuell",
       verantwortlichId: akte.bearbeiterId,
       vorfristVerantwortlichId: akte.sachbearbeiterId ?? akte.bearbeiterId,
-      notiz: effLand && ort ? `Berechnet mit den Feiertagen in ${bundeslandName(effLand)} (${ort.label}).` : undefined,
+      notiz: effLand && ort ? `Berechnet mit den Feiertagen in ${bundeslandName(effLand)} (${ort.label})${widerspruch ? " – Abweichung vom Gerichtsort bestätigt" : ""}.` : undefined,
     });
-    useData.getState().log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `${titel} mit Fristenrechner eingetragen: ${fmtDateWd(erg.ende)} (Vorfrist ${fmtDateWd(erg.vorfrist)})` });
+    useData.getState().log({
+      akteur: "nutzer",
+      userId: user.id,
+      akteId: akte.id,
+      text: `${titel} mit Fristenrechner eingetragen: ${fmtDateWd(erg.ende)} (Vorfrist ${fmtDateWd(erg.vorfrist)})${widerspruch && gerichtLand ? ` – Feiertage ${bundeslandName(ort!.land)} abweichend vom Gerichtsort ${gerichtLand.gericht} (${bundeslandName(gerichtLand.land)}) bestätigt` : ""}`,
+    });
     setEingetragen(frist.id);
     toast("Frist eingetragen", {
       text: `${titel} bis ${fmtDateWd(erg.ende)} in ${akte.aktenzeichen} – inkl. Vorfrist.`,
@@ -235,7 +262,7 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
               Eingetragen · Schließen
             </Button>
           ) : (
-            <Button variant="primary" icon={<CalendarPlus className="size-4" />} disabled={!akte || !erg} onClick={eintragen}>
+            <Button variant="primary" icon={<CalendarPlus className="size-4" />} disabled={!akte || !erg || (widerspruch && !abweichendBestaetigt)} onClick={eintragen} title={widerspruch && !abweichendBestaetigt ? "Erst die Abweichung vom Gerichtsort bestätigen" : undefined}>
               Als Frist in Akte eintragen
             </Button>
           )}
@@ -245,57 +272,21 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
       <div className="grid gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
         {/* Eingaben */}
         <div className="min-w-0 space-y-4">
-          <div>
-            <label className="label" htmlFor="rechner-suche">
-              Fristart
-            </label>
-            <SearchField id="rechner-suche" value={suche} onChange={setSuche} placeholder="z. B. Berufung, Kündigung, 517, Mahnbescheid …" />
-            <div ref={listeRef} className="mt-2 max-h-[220px] overflow-y-auto rounded-[16px] sm:max-h-[300px] bg-[var(--ink-softer)] p-1.5 ring-1 ring-inset ring-[var(--line)]" role="listbox" aria-label="Fristarten">
-              {GEBIETE.map((g) => {
-                const regeln = gefiltert.filter((r) => r.gebiet === g);
-                if (!regeln.length) return null;
-                return (
-                  <div key={g} role="group" aria-label={g} className="mb-1 last:mb-0">
-                    <div aria-hidden className="eyebrow sticky top-0 z-10 rounded-[10px] bg-[color-mix(in_oklab,var(--surface)_88%,transparent)] px-2.5 py-1.5 backdrop-blur">{g}</div>
-                    {regeln.map((r) => {
-                      const aktiv = r.key === key;
-                      return (
-                        <button
-                          key={r.key}
-                          type="button"
-                          role="option"
-                          aria-selected={aktiv}
-                          onClick={() => {
-                            setKey(r.key);
-                            setDauer("");
-                            setFestesEnde("");
-                            setModus(r.festesDatum === "pflicht" ? "datum" : "dauer");
-                            if (r.einheit !== "jahresende") setEinheitWahl(r.einheit);
-                            setEingetragen(null);
-                          }}
-                          className={cn("relative isolate flex w-full items-center gap-2 rounded-[12px] px-2.5 py-2 text-left", !aktiv && "hover:bg-[var(--ink-softer)]")}
-                        >
-                          {aktiv && <motion.span layoutId="rechner-regel" className="absolute inset-0 -z-10 rounded-[12px] bg-surface shadow-[0_2px_10px_-4px_rgba(20,30,80,0.2),0_0_0_1px_var(--line)]" transition={{ type: "spring", stiffness: 520, damping: 38 }} />}
-                          <div className="min-w-0 flex-1">
-                            <div className={cn("text-[13px] leading-snug", aktiv ? "font-semibold text-fg" : "font-medium text-fg-2")}>{r.titel}</div>
-                            <div className="text-[12.5px] leading-snug text-fg-3">
-                              {r.grundlage} · {dauerText(r)}
-                            </div>
-                          </div>
-                          {fristArt(r).kritisch && <ShieldAlert className="size-3.5 shrink-0 text-seal" aria-label={r.typ === "notfrist" ? "Notfrist" : "nicht verlängerbar"} />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-              {!gefiltert.length && (
-                <div role="option" aria-selected={false} aria-disabled className="px-3 py-6 text-center text-[12.5px] text-fg-3">
-                  Keine Fristart gefunden. Tipp: „Frei bestimmte Frist“ für richterliche Fristen, „FamFG“ für Familiensachen.
-                </div>
-              )}
-            </div>
-          </div>
+          <FristartAuswahl
+            id="rechner-suche"
+            suche={suche}
+            onSuche={setSuche}
+            value={gewaehlt ? key : ""}
+            naechstesFeldId="rechner-ereignis"
+            onWaehle={(r) => {
+              setKey(r.key);
+              setDauer("");
+              setFestesEnde("");
+              setModus(r.festesDatum === "pflicht" ? "datum" : "dauer");
+              if (r.einheit !== "jahresende") setEinheitWahl(r.einheit);
+              setEingetragen(null);
+            }}
+          />
           {regel.festesDatum === "moeglich" && (
             <Segmented
               size="sm"
@@ -336,39 +327,113 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
             )}
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Gericht (Gerichtsort)" htmlFor="rechner-gericht" hint={regel.handlungsort ? `Feste Stelle: ${regel.handlungsort.ort}` : gerichtsort && !gericht ? `Laut Akte: ${gerichtsort.gericht}` : "Suche oder Freitext, z. B. „Hessisches LAG“"}>
-              <Input
-                id="rechner-gericht"
-                list="rechner-gerichte"
-                value={gericht}
-                disabled={!!regel.handlungsort}
-                placeholder={gerichtsort?.gericht ?? "z. B. OLG Brandenburg"}
-                onChange={(e) => { setGericht(e.target.value); setLandWahl(""); setEingetragen(null); }}
-              />
+            <Field
+              label="Gericht (Gerichtsort)"
+              htmlFor="rechner-gericht"
+              hint={regel.handlungsort ? `Feste Stelle: ${regel.handlungsort.ort}` : gerichtsort && !gericht ? `Laut Akte: ${gerichtsort.gericht}` : aktenGerichtsort && ohneAktenGericht && !gericht ? "Gericht der Akte entfernt – Gericht eingeben oder Bundesland wählen" : "Suche oder Freitext, z. B. „Hessisches LAG“"}
+            >
+              <div className="relative">
+                <Input
+                  id="rechner-gericht"
+                  list="rechner-gerichte"
+                  value={gericht}
+                  disabled={!!regel.handlungsort}
+                  placeholder={gerichtsort?.gericht ?? "z. B. OLG Brandenburg"}
+                  onChange={(e) => gerichtAendern(e.target.value)}
+                  className={gerichtLand && !regel.handlungsort ? "!pr-10" : undefined}
+                />
+                {gerichtLand && !regel.handlungsort && (
+                  <button
+                    type="button"
+                    onClick={gerichtEntfernen}
+                    aria-label={gerichtLand.quelle === "akte" ? "Gericht der Akte für diese Berechnung entfernen" : "Gericht entfernen"}
+                    title="Gericht entfernen"
+                    className="absolute right-1.5 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-full text-fg-3 hover:bg-ink-softer hover:text-fg"
+                  >
+                    <X className="size-4" />
+                  </button>
+                )}
+              </div>
               <datalist id="rechner-gerichte">
                 {gerichtVorschlaege.map((g) => (
                   <option key={g} value={g} />
                 ))}
               </datalist>
             </Field>
-            <Field label="Bundesland (Gerichtsort)" htmlFor="rechner-land" hint={landHinweis}>
+            <Field
+              label="Bundesland (Gerichtsort)"
+              htmlFor="rechner-land"
+              hint={
+                landGesperrt ? (
+                  <span className="inline-flex items-start gap-1">
+                    <Lock className="mt-0.5 size-3 shrink-0" aria-hidden />
+                    <span>Aus dem Gericht abgeleitet – {gerichtLand!.gericht}. Abweichen nur über „Gericht entfernen“ oder den Schalter unten.</span>
+                  </span>
+                ) : (
+                  landHinweis
+                )
+              }
+            >
               <Select
                 id="rechner-land"
-                value={landWahl || effLand || ""}
-                disabled={!!regel.handlungsort}
-                aria-invalid={!ort}
-                onChange={(e) => { setLandWahl(e.target.value as Bundesland | ""); setEingetragen(null); }}
+                value={landGesperrt ? gerichtLand!.land : landWahl || effLand || ""}
+                disabled={!!regel.handlungsort || landGesperrt}
+                aria-invalid={!ort || widerspruch}
+                onChange={(e) => { setLandWahl(e.target.value as Bundesland | ""); setAbweichendBestaetigt(false); setErsetzteWahl(""); setEingetragen(null); }}
               >
                 <option value="">{istRechtsmittelfrist(regel) ? "Bitte wählen …" : `Kanzleisitz (${bundeslandName(tenant.bundesland)})`}</option>
                 {BUNDESLAENDER.map((b) => (
                   <option key={b.code} value={b.code}>
                     {b.name}
-                    {ort?.land === b.code && ort.quelle === "gericht" && !landWahl ? " – aus Gericht erkannt" : ""}
+                    {gerichtLand?.land === b.code ? " – aus dem Gericht abgeleitet" : ""}
                   </option>
                 ))}
               </Select>
             </Field>
           </div>
+          {ersetzteWahl && gerichtLand && !abweichend && (
+            <div role="status" className="flex gap-2 rounded-[14px] bg-ink-softer p-3 text-[12.5px] leading-relaxed text-fg-2 ring-1 ring-inset ring-[var(--line)]">
+              <Info className="mt-0.5 size-3.5 shrink-0 text-ink" />
+              <span>
+                Das Gericht gewinnt: Bundesland {bundeslandName(gerichtLand.land)} aus „{gerichtLand.gericht}“ übernommen – Ihre Auswahl {bundeslandName(ersetzteWahl)} gilt nicht mehr.
+              </span>
+            </div>
+          )}
+          {gerichtLand && !regel.handlungsort && (
+            <div className="grid gap-2">
+              <div className="flex items-center gap-3">
+                <label htmlFor="rechner-abweichend" className="flex-1 text-[13px] text-fg-2">
+                  Abweichenden Gerichtsort wählen
+                </label>
+                <Switch
+                  id="rechner-abweichend"
+                  checked={abweichend}
+                  label="Abweichenden Gerichtsort wählen"
+                  onChange={(v) => {
+                    setAbweichend(v);
+                    setAbweichendBestaetigt(false);
+                    setErsetzteWahl("");
+                    if (!v) setLandWahl("");
+                    setEingetragen(null);
+                  }}
+                />
+              </div>
+              {widerspruch && gerichtLand && ort && (
+                <div role="alert" className="grid gap-2 rounded-[14px] bg-seal-soft p-3 text-[12.5px] leading-relaxed text-seal">
+                  <div className="flex gap-2">
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+                    <span>
+                      <strong className="font-semibold">Achtung – Feiertage passen nicht zum Gericht.</strong> {gerichtLand.gericht} liegt in {bundeslandName(gerichtLand.land)}; gerechnet wird mit den Feiertagen in {bundeslandName(ort.land)}. Maßgeblich sind die Feiertage am Ort des Gerichts (§ 222 Abs. 2 ZPO) – ein abweichendes Fristende kann die Frist versäumen lassen.
+                    </span>
+                  </div>
+                  <label className="flex items-start gap-2 font-medium">
+                    <input type="checkbox" className="mt-0.5 size-4 accent-[var(--seal)]" checked={abweichendBestaetigt} onChange={(e) => setAbweichendBestaetigt(e.target.checked)} />
+                    <span>Ich habe geprüft: Der Gerichtsort liegt tatsächlich in {bundeslandName(ort.land)}.</span>
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
           {regel.hinweis && (
             <div className="flex gap-2 rounded-[14px] bg-ink-softer p-3 text-[12.5px] leading-relaxed text-fg-2 ring-1 ring-inset ring-[var(--line)]">
               <Info className="mt-0.5 size-3.5 shrink-0 text-ink" />
@@ -402,11 +467,11 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
                 <div className={cn("mt-2 text-[15px] font-medium", kritisch ? "text-seal" : "text-ink")}>{wochentagName(erg.ende)}</div>
                 <div className={cn("text-[clamp(26px,3.6vw,36px)] font-bold leading-[1.05] tracking-[-0.035em]", kritisch ? "text-seal" : "text-fg")}>{fmtDateLong(erg.ende)}</div>
                 <div className="num mt-1.5 text-[13px] text-fg-2">24:00 Uhr · {relDays(erg.ende)}</div>
-                <div className="mt-2 flex items-start gap-1.5 text-[12.5px] font-medium text-fg-2">
-                  <Landmark className="mt-0.5 size-3.5 shrink-0" />
+                <div className={cn("mt-2 flex items-start gap-1.5 text-[12.5px] font-medium", widerspruch ? "text-seal" : "text-fg-2")}>
+                  {widerspruch ? <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden /> : <Landmark className="mt-0.5 size-3.5 shrink-0" aria-hidden />}
                   <span>
                     Feiertage: {bundeslandName(ort.land)} (
-                    {ort.quelle === "handlung" ? ort.label : ort.quelle === "kanzlei" ? "Kanzleisitz – kein Gericht angegeben" : `Gerichtsort: ${ort.label.replace(/ – (laut Akte|Bundesland gewählt)$/, "")}`})
+                    {ort.quelle === "handlung" ? ort.label : ort.quelle === "kanzlei" ? "Kanzleisitz – kein Gericht angegeben" : ort.quelle === "abweichend" ? ort.label : `Gerichtsort: ${ort.label.replace(/ – (laut Akte|Bundesland gewählt)$/, "")}`})
                   </span>
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-3 border-t border-[color-mix(in_oklab,var(--fg)_10%,transparent)] pt-3.5 text-[12.5px]">

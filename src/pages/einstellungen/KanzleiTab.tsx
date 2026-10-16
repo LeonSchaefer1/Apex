@@ -1,22 +1,23 @@
 import { useEffect, useState } from "react";
 import { Building2, Check, Info, MapPin } from "lucide-react";
 import { motion } from "motion/react";
-import type { Sachgebiet, Tenant } from "@/core/types";
-import { bundeslandName } from "@/core/feiertage";
+import type { Bundesland, Sachgebiet, Tenant } from "@/core/types";
+import { BUNDESLAENDER, bundeslandAusOrt, bundeslandName } from "@/core/feiertage";
 import { fmtDate } from "@/core/dates";
 import { darfVerwalten, getBackend, istConsole } from "@/lib/backend";
 import { useData } from "@/store/data";
 import { useKanzlei, useSession } from "@/store/session";
 import { toast } from "@/store/ui";
-import { Button, Field, Input } from "@/components/ui";
+import { Button, Field, Input, Select, confirmDialog } from "@/components/ui";
+import { VORGANG } from "@/lib/backend/protokoll";
 import { cn } from "@/lib/cn";
 import { Abschnitt } from "./teile";
 
 const SACHGEBIETE: Sachgebiet[] = ["Arbeitsrecht", "Mietrecht", "Verkehrsrecht", "Familienrecht", "Erbrecht", "Strafrecht", "Forderungseinzug", "Vertragsrecht", "Baurecht", "Verwaltungsrecht"];
 
-type Profil = Pick<Tenant, "name" | "kurzname" | "adresse" | "stadt"> & { schwerpunkte: string[] };
+type Profil = Pick<Tenant, "name" | "kurzname" | "adresse" | "stadt" | "bundesland"> & { schwerpunkte: string[] };
 
-const profilAus = (t: Tenant): Profil => ({ name: t.name, kurzname: t.kurzname, adresse: t.adresse, stadt: t.stadt, schwerpunkte: t.schwerpunkte });
+const profilAus = (t: Tenant): Profil => ({ name: t.name, kurzname: t.kurzname, adresse: t.adresse, stadt: t.stadt, bundesland: t.bundesland, schwerpunkte: t.schwerpunkte });
 
 export function KanzleiTab() {
   const { tenant, user } = useKanzlei();
@@ -34,6 +35,9 @@ export function KanzleiTab() {
   }, [stand]);
 
   const set = <K extends keyof Profil>(k: K, v: Profil[K]) => setP((x) => ({ ...x, [k]: v }));
+  // Stadt → Bundesland: Vorschlag, wenn die Stadt in einem anderen Land liegt („Potsdam liegt in Brandenburg – übernehmen?“)
+  const ausStadt = p.stadt.trim() ? bundeslandAusOrt(p.stadt) : undefined;
+  const abweichend = !!ausStadt && ausStadt !== p.bundesland;
   const toggle = (sg: string) => set("schwerpunkte", p.schwerpunkte.includes(sg) ? p.schwerpunkte.filter((x) => x !== sg) : [...p.schwerpunkte, sg]);
 
   const speichern = async () => {
@@ -41,12 +45,22 @@ export function KanzleiTab() {
     if (!p.name.trim()) return setFehler("Bitte geben Sie den Namen der Kanzlei an – er erscheint auf Schriftsätzen und Rechnungen.");
     if (!p.adresse.trim()) return setFehler("Bitte geben Sie die Anschrift an.");
     setFehler(null);
+    const landGeaendert = p.bundesland !== tenant.bundesland;
+    if (landGeaendert) {
+      const ok = await confirmDialog({
+        titel: `Bundesland auf ${bundeslandName(p.bundesland)} ändern?`,
+        text: `Ändert die Voreinstellung der Feiertage im Fristenrechner (bisher ${bundeslandName(tenant.bundesland)}). Bestehende Fristen bleiben unverändert; maßgeblich bleiben die Feiertage am Ort des Gerichts (§ 222 Abs. 2 ZPO).`,
+        bestaetigen: "Bundesland ändern",
+      });
+      if (!ok) return;
+    }
     setLaedt(true);
     try {
       const neu = await getBackend().kanzlei.profilSpeichern({ ...p, name: p.name.trim(), kurzname: p.kurzname.trim(), adresse: p.adresse.trim(), stadt: p.stadt.trim() });
       const s = useSession.getState().sitzung;
       if (s && !istConsole(s)) useSession.getState().setSitzung({ ...s, tenant: neu });
       setP(profilAus(neu));
+      if (landGeaendert) useData.getState().log({ akteur: "nutzer", userId: user.id, text: VORGANG.bundeslandGeaendert(bundeslandName(tenant.bundesland), bundeslandName(neu.bundesland)) });
       useData.getState().log({ akteur: "nutzer", userId: user.id, text: "Kanzleiprofil bearbeitet" });
       toast("Kanzleiprofil gespeichert", { text: "Gilt ab sofort für Seitenleiste, Briefkopf, Rechnungen und Schriftsätze.", ton: "erfolg" });
     } catch (e) {
@@ -80,12 +94,37 @@ export function KanzleiTab() {
             <Field label="Anschrift" htmlFor="k-adresse" className="md:col-span-2">
               <Input id="k-adresse" value={p.adresse} onChange={(e) => set("adresse", e.target.value)} autoComplete="street-address" />
             </Field>
-            <Field label="Bundesland" className="md:col-span-2">
-              <div className="flex flex-wrap items-center gap-3 rounded-[12px] border border-[var(--line)] bg-[var(--surface-2)] px-3.5 py-2.5 text-[13.5px]">
-                <MapPin className="size-4 text-ink" />
-                <span className="font-medium">{bundeslandName(tenant.bundesland)}</span>
-                <span className="text-[12.5px] text-fg-3">Voreinstellung für den Fristenrechner – maßgeblich bleiben die Feiertage am Ort des Gerichts (§ 222 Abs. 2 ZPO).</span>
-              </div>
+            <Field
+              label="Bundesland (Kanzleisitz)"
+              htmlFor="k-land"
+              className="md:col-span-2"
+              hint={
+                <span className="flex items-start gap-1.5">
+                  <MapPin className="mt-0.5 size-3.5 shrink-0 text-ink" />
+                  Voreinstellung für den Fristenrechner – maßgeblich sind die Feiertage am Ort des Gerichts (§ 222 Abs. 2 ZPO).
+                </span>
+              }
+            >
+              <Select id="k-land" value={p.bundesland} onChange={(e) => set("bundesland", e.target.value as Bundesland)} aria-describedby={abweichend ? "k-land-vorschlag" : undefined}>
+                {BUNDESLAENDER.map((b) => (
+                  <option key={b.code} value={b.code}>
+                    {b.name}
+                  </option>
+                ))}
+              </Select>
+              {abweichend && ausStadt && (
+                <div id="k-land-vorschlag" role="status" className="mt-2 flex flex-wrap items-center gap-2 rounded-[12px] bg-amber-soft px-3 py-2 text-[13px] text-fg-2">
+                  <Info className="size-4 shrink-0 text-amber" />
+                  <span className="min-w-0 flex-1">
+                    {p.stadt.trim()} liegt in {bundeslandName(ausStadt)}, gewählt ist {bundeslandName(p.bundesland)}.
+                  </span>
+                  {darf && (
+                    <Button size="sm" onClick={() => set("bundesland", ausStadt)}>
+                      {bundeslandName(ausStadt)} übernehmen
+                    </Button>
+                  )}
+                </div>
+              )}
             </Field>
           </div>
 

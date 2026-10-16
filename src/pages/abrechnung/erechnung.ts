@@ -1,8 +1,8 @@
 // E-Rechnung nach EN 16931: XRechnung (UBL 2.1, CIUS XRechnung 3.0) und ZUGFeRD/Factur-X (CII, Profil EN 16931).
 // Erzeugt die strukturierten Daten einer Rechnung zum Abrufen; im Prototyp ohne Versand und ohne PDF/A-3-Container.
-import type { Akte, Kontakt, Rechnung, RechnungsPosition, Tenant } from "@/core/types";
+import type { Akte, Kontakt, Rechnung, RechnungsPosition, Tenant, Zeiteintrag } from "@/core/types";
 import { round2 } from "@/core/dates";
-import { leistungszeitraum } from "./lib";
+import { leistungszeitraum, satzAusPosition } from "./lib";
 
 const x = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const b = (n: number) => round2(n).toFixed(2);
@@ -30,7 +30,7 @@ function adresse(text: string): { strasse: string; plz: string; ort: string } {
 /** Position als Menge × Preis: Zeit in Stunden (HUR), sonst 1 Stück; negative Beträge (Anrechnung) mit Menge −1. */
 function zeile(p: RechnungsPosition): { menge: number; einheit: string; preis: number; betrag: number; name: string } {
   const name = p.vv === "Std" ? p.bezeichnung : /^\d{4}$/.test(p.vv) ? `Nr. ${p.vv} VV RVG – ${p.bezeichnung}` : `${p.vv} ${p.bezeichnung}`.trim();
-  if (p.vv === "Std" && p.menge) return { menge: p.menge, einheit: "HUR", preis: round2(Math.abs(p.betrag) / p.menge), betrag: p.betrag, name };
+  if (p.vv === "Std" && p.menge) return { menge: p.menge, einheit: "HUR", preis: satzAusPosition(p) || round2(Math.abs(p.betrag) / p.menge), betrag: p.betrag, name };
   return { menge: p.betrag < 0 ? -1 : 1, einheit: "C62", preis: Math.abs(p.betrag), betrag: p.betrag, name };
 }
 
@@ -39,11 +39,13 @@ interface Kontext {
   empfaenger?: Kontakt;
   tenant: Tenant;
   hinweise?: string[];
+  /** Zeiten der Kanzlei – Leistungszeitraum einer Zeitrechnung vom ersten bis zum letzten abgerechneten Eintrag */
+  zeiten?: Zeiteintrag[];
 }
 
 /** XRechnung (UBL 2.1) – als XML-Datei abrufbar. */
-export function xrechnungXml(r: Rechnung, { akte, empfaenger, tenant, hinweise = [] }: Kontext): string {
-  const [von, bis] = leistungszeitraum(akte, r);
+export function xrechnungXml(r: Rechnung, { akte, empfaenger, tenant, hinweise = [], zeiten = [] }: Kontext): string {
+  const [von, bis] = leistungszeitraum(akte, r, zeiten);
   const st = steuerKennung(tenant);
   const sitz = adresse(tenant.adresse);
   const zeilen = r.positionen.map(zeile);
@@ -119,8 +121,8 @@ ${zeilen
 }
 
 /** ZUGFeRD / Factur-X (CII, Profil EN 16931) – das XML, das in die PDF/A-3 eingebettet wird. */
-export function zugferdXml(r: Rechnung, { akte, empfaenger, tenant, hinweise = [] }: Kontext): string {
-  const [von, bis] = leistungszeitraum(akte, r);
+export function zugferdXml(r: Rechnung, { akte, empfaenger, tenant, hinweise = [], zeiten = [] }: Kontext): string {
+  const [von, bis] = leistungszeitraum(akte, r, zeiten);
   const st = steuerKennung(tenant);
   const sitz = adresse(tenant.adresse);
   const d = (iso: string) => `<udt:DateTimeString format="102">${iso.replace(/-/g, "")}</udt:DateTimeString>`;

@@ -8,7 +8,7 @@ import type { Akte, Bundesland, Frist } from "@/core/types";
 import { Button, Card, Chip, IconButton } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { TypChip } from "./FristZeile";
-import { TYP_META, streifenFarbe, wochenStart } from "./logik";
+import { TYP_META, kalenderMeta, streifenFarbe, wochenStart } from "./logik";
 import { sortiereTag } from "./WochenAnsicht";
 
 const WT = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
@@ -118,18 +118,22 @@ export function MonatsAnsicht({
                   {ft && <div className={cn("mt-0.5 hidden truncate text-[12px] font-semibold sm:block", ft.teilweise ? "text-amber" : "text-fg-2")}>{ft.name}</div>}
                   {/* Pillen (breit) */}
                   <div className="mt-1 hidden space-y-1 xl:block">
-                    {items.slice(0, 3).map((f) => (
-                      <div key={f.id} className={cn("truncate rounded-[6px] px-1.5 py-0.5 text-[12px] font-semibold", TYP_META[f.typ].pill, f.status === "erledigt" && "line-through opacity-50")}>
-                        {f.titel.replace(/^Vorfrist: /, "")}
-                      </div>
-                    ))}
+                    {items.slice(0, 3).map((f) => {
+                      const k = kalenderMeta(f);
+                      return (
+                        <div key={f.id} className={cn("rounded-[6px] px-1.5 py-0.5 text-[12px] font-semibold", k.pill, f.status === "erledigt" && "line-through opacity-50")}>
+                          {k.kritisch && <div className="truncate text-[10.5px] font-bold uppercase tracking-[0.04em]">{k.kritisch}</div>}
+                          <div className="truncate">{f.titel.replace(/^Vorfrist: /, "")}</div>
+                        </div>
+                      );
+                    })}
                     {items.length > 3 && <div className="px-1.5 text-[12px] font-medium text-fg-3">+{items.length - 3} weitere</div>}
                   </div>
                   {/* Punkte (schmal) */}
                   {items.length > 0 && (
                     <div className="mt-auto flex flex-wrap gap-[3px] pt-1 xl:hidden">
                       {items.slice(0, 5).map((f) => (
-                        <span key={f.id} className={cn("size-1.5 rounded-full", TYP_META[f.typ].dot)} />
+                        <span key={f.id} className={cn("size-1.5 rounded-full", kalenderMeta(f).dot)} />
                       ))}
                     </div>
                   )}
@@ -142,7 +146,7 @@ export function MonatsAnsicht({
           {(["notfrist", "frist", "vorfrist", "wiedervorlage", "termin"] as const).map((t) => (
             <span key={t} className="inline-flex items-center gap-1.5">
               <span className={cn("size-2 rounded-full", TYP_META[t].dot)} />
-              {TYP_META[t].label}
+              {t === "notfrist" ? "Notfrist / nicht verlängerbar" : TYP_META[t].label}
             </span>
           ))}
           <span className="inline-flex items-center gap-1.5">

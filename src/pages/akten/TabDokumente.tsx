@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import {
-  FileText, Files, FolderInput, Gavel, Mail, MoreHorizontal, Paperclip, PenLine, Receipt, Send, StickyNote, Trash2, Upload, FileSignature, FileSearch, X, FileUp,
+  FileText, Files, FolderInput, Gavel, Globe, Mail, MoreHorizontal, Paperclip, PenLine, Receipt, Send, StickyNote, Trash2, Upload, FileSignature, FileSearch, X, FileUp,
 } from "lucide-react";
 import type { Akte, Dokument } from "@/core/types";
 import { fmtDate, nowLocal, uid } from "@/core/dates";
@@ -14,8 +14,10 @@ import { toast } from "@/store/ui";
 import { AiChip, Button, Card, Checkbox, Chip, Empty, Menu, SearchField, confirmDialog } from "@/components/ui";
 import { Highlight } from "@/components/Highlight";
 import { cn } from "@/lib/cn";
-import { DOK_ART_LABEL, ORDNER, ORDNER_ICON, QUELLE_LABEL, beruehreAkte, fmtKb } from "./helfer";
+import { useMedia } from "@/lib/useMedia";
+import { DOK_ART_LABEL, DOK_STATUS_INFO, MOBIL_TREFFER, ORDNER, ORDNER_ICON, QUELLE_LABEL, beruehreAkte, fmtKb } from "./helfer";
 import { DokumentVorschau } from "./DokumentVorschau";
+import { imPortal, portalSperrgrund, setzePortal } from "./Mandantenportal";
 
 type Ordner = Dokument["ordner"];
 const DND_TYP = "application/x-apex-dokumente";
@@ -70,6 +72,7 @@ export function TabDokumente({ akte }: { akte: Akte }) {
   const [q, setQ] = useState("");
   const [auswahl, setAuswahl] = useState<Set<string>>(new Set());
   const [umbenennen, setUmbenennen] = useState<string | null>(null);
+  const feinZeiger = useMedia("(pointer: fine)");
   const [dropZiel, setDropZiel] = useState<string | null>(null);
   const [zieht, setZieht] = useState<string[]>([]);
   const [dateiDrag, setDateiDrag] = useState(false);
@@ -244,6 +247,19 @@ export function TabDokumente({ akte }: { akte: Akte }) {
     });
   };
 
+  /** Im Mandantenportal bereitstellen bzw. herausnehmen – nur bei freigeschaltetem Portal; Entwürfe erst nach Freigabe. */
+  const portalUmschalten = (d: Dokument) => {
+    const an = !imPortal(d);
+    const grund = portalSperrgrund(d);
+    if (an && grund) return toast("Nicht im Portal bereitstellbar", { text: `„${d.name}“: ${grund}.`, ton: "warnung" });
+    setzePortal(d, akte, user.id, an);
+    toast(an ? "Im Mandantenportal bereitgestellt" : "Aus dem Portal genommen", {
+      text: d.name,
+      ton: "erfolg",
+      aktion: { label: "Rückgängig", onClick: () => setzePortal(d, akte, user.id, !an) },
+    });
+  };
+
   const ladeHoch = async (files: FileList | File[], zielOrdner?: Ordner) => {
     const list = Array.from(files);
     if (!list.length) return;
@@ -356,7 +372,7 @@ export function TabDokumente({ akte }: { akte: Akte }) {
   const ordnerListe: { key: Ordner | "alle"; label: string; Icon: typeof Files }[] = [{ key: "alle", label: "Alle Dokumente", Icon: Files }, ...ORDNER.map((o) => ({ key: o, label: o, Icon: ORDNER_ICON[o] }))];
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-[230px_minmax(0,1fr)]">
+    <div className={cn("grid grid-cols-1 gap-4 md:grid-cols-[230px_minmax(0,1fr)] max-sm:[&_input.field]:!h-11", MOBIL_TREFFER)}>
       {/* Ordner */}
       <div className="min-w-0">
         <Card padded={false} className="p-2 md:sticky md:top-[84px]">
@@ -375,7 +391,7 @@ export function TabDokumente({ akte }: { akte: Akte }) {
                     }}
                     {...(key !== "alle" ? ordnerDnD(key) : {})}
                     className={cn(
-                      "relative flex h-10 w-full items-center gap-2.5 rounded-[12px] px-3 text-left text-[13px] font-medium transition-[color,transform,box-shadow] duration-200",
+                      "relative flex h-10 w-full items-center gap-2.5 rounded-[12px] px-3 text-left text-[13px] font-medium transition-[color,transform,box-shadow] duration-200 max-sm:h-11",
                       aktiv ? "text-fg" : "text-fg-2 hover:bg-ink-softer hover:text-fg",
                       ziel && "scale-[1.03] bg-ink-soft text-ink shadow-[0_0_0_2px_var(--ink)]",
                     )}
@@ -391,7 +407,7 @@ export function TabDokumente({ akte }: { akte: Akte }) {
               );
             })}
           </ul>
-          <p className="hidden px-3 pb-2 pt-3 text-[12.5px] leading-snug text-fg-3 md:block">Dokumente auf einen Ordner ziehen, um sie zu verschieben. Doppelklick auf einen Namen benennt um.</p>
+          {feinZeiger && <p className="hidden px-3 pb-2 pt-3 text-[12.5px] leading-snug text-fg-3 md:block">Dokumente auf einen Ordner ziehen, um sie zu verschieben. Doppelklick auf einen Namen benennt um.</p>}
         </Card>
       </div>
 
@@ -469,7 +485,7 @@ export function TabDokumente({ akte }: { akte: Akte }) {
                 </>
               )}
             </span>
-            <span className="text-[12.5px] text-fg-3">Tipp: Umschalt-Klick wählt einen Bereich</span>
+            {feinZeiger && <span className="text-[12.5px] text-fg-3">Tipp: Umschalt-Klick wählt einen Bereich</span>}
           </div>
         )}
 
@@ -477,7 +493,7 @@ export function TabDokumente({ akte }: { akte: Akte }) {
           <Empty
             icon={q.trim() ? <FileSearch className="size-6" /> : <FileUp className="size-6" />}
             title={q.trim() ? "Kein Dokument enthält diesen Begriff" : ordner === "alle" ? "Noch keine Dokumente" : `Ordner „${ordner}“ ist leer`}
-            text={q.trim() ? "Die Suche durchsucht Namen, Volltext (OCR) und KI-Zusammenfassungen aller Dokumente dieser Akte." : "Dateien hierher ziehen oder hochladen. Textdateien sind sofort durchsuchbar, PDFs nach der Texterkennung."}
+            text={q.trim() ? "Die Suche durchsucht Namen, Volltext (OCR) und KI-Zusammenfassungen aller Dokumente dieser Akte." : `${feinZeiger ? "Dateien hierher ziehen oder hochladen." : "Dateien hochladen."} Textdateien sind sofort durchsuchbar, PDFs nach der Texterkennung.`}
             action={
               !q.trim() ? (
                 <Button variant="secondary" icon={<Upload className="size-4" />} onClick={() => inputRef.current?.click()}>
@@ -563,10 +579,22 @@ export function TabDokumente({ akte }: { akte: Akte }) {
                             <Highlight text={d.name} q={q} />
                           </div>
                         )}
-                        <div className="mt-0.5 text-[12.5px] text-fg-3">
-                          {DOK_ART_LABEL[d.art]} · {fmtDate(d.createdAt.slice(0, 10))}
-                          {d.seiten ? ` · ${d.seiten} ${d.seiten === 1 ? "Seite" : "Seiten"}` : ""} · {fmtKb(d.groesseKb)}
-                          {d.version > 1 ? ` · Version ${d.version}` : ""}
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12.5px] text-fg-3">
+                          <span>
+                            {DOK_ART_LABEL[d.art]} · {fmtDate(d.createdAt.slice(0, 10))}
+                            {d.seiten ? ` · ${d.seiten} ${d.seiten === 1 ? "Seite" : "Seiten"}` : ""} · {fmtKb(d.groesseKb)}
+                            {d.version > 1 ? ` · Version ${d.version}` : ""}
+                          </span>
+                          {d.status && d.status !== "freigegeben" && (
+                            <Chip tone={DOK_STATUS_INFO[d.status].tone} className="!h-5 !px-1.5 !text-[11.5px]">
+                              {DOK_STATUS_INFO[d.status].label}
+                            </Chip>
+                          )}
+                          {akte.mandantenportal && imPortal(d) && (
+                            <Chip tone="green" icon={<Globe className="size-3" />} className="!h-5 !px-1.5 !text-[11.5px]" title="Für den Mandanten im Portal sichtbar">
+                              im Portal
+                            </Chip>
+                          )}
                         </div>
                         {q.trim() && (
                           <div className="mt-1 line-clamp-2 text-[12.5px] leading-snug text-fg-2">
@@ -581,13 +609,25 @@ export function TabDokumente({ akte }: { akte: Akte }) {
                       </div>
                       <Menu
                         trigger={({ toggle: t }) => (
-                          <button type="button" onClick={t} className="icon-btn !size-8 text-fg-3 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100" aria-label={`Aktionen für ${d.name}`}>
+                          <button type="button" onClick={t} className="icon-btn !size-8 text-fg-3 opacity-100 transition-opacity max-sm:!size-11 md:pointer-fine:opacity-0 md:pointer-fine:group-hover:opacity-100 md:pointer-fine:focus-visible:opacity-100" aria-label={`Aktionen für ${d.name}`}>
                             <MoreHorizontal className="size-4" />
                           </button>
                         )}
                         items={[
                           { label: "Vorschau öffnen", icon: <FileText />, onClick: () => oeffne(d.id) },
                           { label: "Umbenennen", icon: <PenLine />, onClick: () => setUmbenennen(d.id) },
+                          ...(akte.mandantenportal
+                            ? [
+                                {
+                                  label: imPortal(d) ? "Aus dem Portal nehmen" : portalSperrgrund(d) ? `Im Portal bereitstellen (${portalSperrgrund(d)})` : "Im Mandantenportal bereitstellen",
+                                  icon: <Globe />,
+                                  // Gesperrt (Entwurf, offene Platzhalter): sichtbar mit Grund, aber deaktiviert
+                                  disabled: !imPortal(d) && !!portalSperrgrund(d),
+                                  title: !imPortal(d) ? portalSperrgrund(d) : undefined,
+                                  onClick: () => portalUmschalten(d),
+                                },
+                              ]
+                            : []),
                           "sep",
                           // „Verschieben nach …“ auch im Einzelmenü
                           ...ORDNER.filter((o) => o !== d.ordner).map((o) => {

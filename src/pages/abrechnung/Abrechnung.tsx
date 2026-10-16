@@ -40,6 +40,16 @@ export default function Abrechnung() {
     [setParams],
   );
 
+  // Direktlink auf die Sammelabrechnung: /abrechnung?aktion=sammelabrechnung öffnet den Dialog (Parameter danach entfernt)
+  const aktion = params.get("aktion");
+  useEffect(() => {
+    if (aktion !== "sammelabrechnung") return;
+    setSammel(true);
+    const p = new URLSearchParams(params);
+    p.delete("aktion");
+    setParams(p, { replace: true });
+  }, [aktion]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Direktlink auf eine Rechnung: /abrechnung?tab=rechnungen&rechnung=<id>
   const linkRechnung = params.get("rechnung");
   useEffect(() => {

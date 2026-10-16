@@ -150,13 +150,13 @@ export default function ConsolePage() {
     standardPasswort: (k, u) =>
       void (async () => {
         const ok = await confirmDialog({
-          titel: `Standardpasswort für ${u.name} wiederherstellen?`,
+          titel: `Demo-Passwort für ${u.name} wiederherstellen?`,
           text: `Nur für Präsentationskanzleien: Ein zuvor vergebenes Passwort und eine eingerichtete Zwei-Faktor-Anmeldung werden ungültig. Danach gilt wieder das öffentliche Demo-Passwort ${DEMO_PASSWORT} – auch für die Schnellanmeldung. Die Kanzlei sieht diesen Vorgang in ihrem Protokoll (Einstellungen → Datenschutz).`,
-          bestaetigen: "Standardpasswort wiederherstellen",
+          bestaetigen: "Demo-Passwort wiederherstellen",
         });
         if (!ok) return;
         if (!(await mitSperre(k.tenant.id, () => getBackend().console.standardPasswort(u.id)))) return;
-        toast("Standardpasswort wiederhergestellt", { text: `${u.name} meldet sich wieder mit ${DEMO_PASSWORT} an.`, ton: "erfolg" });
+        toast("Demo-Passwort wiederhergestellt", { text: `${u.name} meldet sich wieder mit ${DEMO_PASSWORT} an.`, ton: "erfolg" });
       })(),
     einladung: (k, u) => void kopieren(einladungsText({ tenant: k.tenant, user: u, hauptnutzer: k.users[0]?.id === u.id, beispieldaten: k.stats.akten > 0 ? true : undefined }), "Einladung"),
   };

@@ -31,7 +31,8 @@ test("Arbeitsvertrag Weber (142/26): Ausschlussfrist erkannt, Fälligkeit erfrag
   assert.equal(f.regelKey, "ausschlussfrist_vertrag");
   assert.equal(f.typ, "frist");
   assert.ok(f.rechenweg.some((s) => s.includes("§ 187 Abs. 1 BGB")));
-  assert.ok(f.rechenweg.some((s) => s.startsWith("Feiertage am Gerichtsort geprüft: Berlin")));
+  // ohne Gericht: ehrlich „Gerichtsort noch offen“ (I2-T04-02)
+  assert.ok(f.rechenweg.some((s) => s === "Gerichtsort noch offen – geprüft mit den Feiertagen am Kanzleisitz (Berlin)"), f.rechenweg.join(" | "));
 });
 
 test("Ausschluss- und Verfallklauseln: Zahlwörter, Ziffern, zweite Stufe, Vertragsparagraph", () => {
@@ -65,8 +66,10 @@ test("Urteil 28 O 211/26: Tenor vollständig mit Kostenquote 25/75 und Ergebnis 
   assert.match(a.zusammenfassung, /Ergebnis für Mandant Michael Neumann \(Kläger\): überwiegend erfolgreich/);
   // Rechtsmittelgericht laut Rechtsbehelfsbelehrung
   assert.equal(a.rechtsmittel?.text, "Berufung einzulegen beim Kammergericht, § 519 Abs. 1 ZPO");
-  // Rechenweg nennt den Gerichtsort
-  assert.ok(a.fristen[0].rechenweg.some((s) => s === "Feiertage am Gerichtsort geprüft: Berlin (Landgericht Berlin II – laut Schreiben)"), a.fristen[0].rechenweg.join(" | "));
+  // Rechenweg nennt den Gerichtsort: das Berufungsgericht, bei dem die Frist zu wahren ist (§ 519 Abs. 1 ZPO; I2-T02-03)
+  assert.ok(a.fristen[0].rechenweg.some((s) => s === "Feiertage am Gerichtsort geprüft: Berlin (Kammergericht, Berufungsgericht)"), a.fristen[0].rechenweg.join(" | "));
+  assert.equal(a.fristen[1].grundlage, "§ 520 Abs. 2 S. 1 ZPO");
+  assert.ok(a.fristen[1].rechenweg.some((s) => s === "Feiertage am Gerichtsort geprüft: Berlin (Kammergericht, Berufungsgericht)"), a.fristen[1].rechenweg.join(" | "));
 });
 
 test("Rechtsmittelgericht aus dem Instanzenzug: LG → OLG/KG, AG → LG, ArbG → LAG", () => {

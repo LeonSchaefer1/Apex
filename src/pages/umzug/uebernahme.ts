@@ -4,7 +4,7 @@ import type { Akte, Aktivitaet, Bundesland, CollectionKey, Dokument, Frist, Kont
 import { addDays, fmtDate, nowLocal, today, uid } from "@/core/dates";
 import { istWerktag } from "@/core/feiertage";
 import { useData } from "@/store/data";
-import { ORG, grundlageAus, imUmfang, normName, type DateiDublettenAktion, type DublettenAktion, type MigZeile, type Umfang } from "./zuordnung";
+import { ORG, grundlageAus, imUmfang, normName, ohneAbschlussdatum, type DateiDublettenAktion, type DublettenAktion, type MigZeile, type OhneDatumAktion, type Umfang } from "./zuordnung";
 
 export type Entitaet = "kontakte" | "akten" | "fristen" | "dokumente";
 
@@ -68,12 +68,155 @@ function vorfristFuer(datum: string, land: Bundesland, heute: string): string | 
 
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Entscheidungen, nach denen die Übernahme Zeilen auswählt – dieselben für Vorschau (Schritt 3 und 4) und Lauf. */
+export interface AuswahlRegeln {
+  aktionFuer: (z: MigZeile) => DublettenAktion;
+  dateiAktionFuer: (z: MigZeile) => DateiDublettenAktion;
+  umfang: Umfang;
+  heute: string;
+  ohneDatumAktionFuer?: (z: MigZeile) => OhneDatumAktion | undefined;
+}
+
+/** Ergebnis der Auswahl: übernommene Zeilen (abgeschlossen ohne Datum + „übernehmen“ als ruhend), angehängte Dateidubletten, Zähler. */
+export interface Auswahl {
+  rein: MigZeile[];
+  angehaengt: Map<number, MigZeile[]>;
+  fehlerhaft: number;
+  ausserhalb: number;
+  uebersprungen: number;
+  zusammengefuehrt: number;
+  /** abgeschlossen ohne Abschlussdatum (Umfang „letzte 6 Jahre“) – zur Entscheidung vorgelegt */
+  ohneDatum: MigZeile[];
+}
+
+/**
+ * Wählt die Zeilen so aus, wie die Übernahme sie anlegt: Umfang (mit Entscheidung für Akten ohne Abschlussdatum),
+ * Dubletten der Datei (zusammenführen, beide behalten, überspringen) und Dubletten im Bestand (überspringen, überschreiben).
+ */
+export function waehleZeilen(zeilen: MigZeile[], p: AuswahlRegeln): Auswahl {
+  const a: Auswahl = { rein: [], angehaengt: new Map(), fehlerhaft: 0, ausserhalb: 0, uebersprungen: 0, zusammengefuehrt: 0, ohneDatum: [] };
+  for (const z of zeilen) {
+    if (z.fehler) {
+      a.fehlerhaft++;
+      continue;
+    }
+    let zeile = z;
+    if (ohneAbschlussdatum(z, p.umfang)) {
+      a.ohneDatum.push(z);
+      const e = p.ohneDatumAktionFuer?.(z);
+      if (!e || e === "auslassen") {
+        a.ausserhalb++;
+        continue;
+      }
+      // „übernehmen“: als ruhend zur Prüfung anlegen (nicht still archivieren), „als Archiv“: abgeschlossen
+      if (e === "uebernehmen") zeile = { ...z, status: "ruhend", statusRoh: `${z.statusRoh} – ohne Abschlussdatum, ruhend zur Prüfung` };
+    } else if (!imUmfang(z, p.umfang, p.heute)) {
+      a.ausserhalb++;
+      continue;
+    }
+    if (z.dateiDublette) {
+      const d = p.dateiAktionFuer(z);
+      if (d === "skip") {
+        a.uebersprungen++;
+        continue;
+      }
+      if (d === "merge") {
+        a.angehaengt.set(z.dateiDublette.nr, [...(a.angehaengt.get(z.dateiDublette.nr) ?? []), z]);
+        a.zusammengefuehrt++;
+        continue;
+      }
+    }
+    if (z.dublette && p.aktionFuer(z) === "skip") {
+      a.uebersprungen++;
+      continue;
+    }
+    a.rein.push(zeile);
+  }
+  return a;
+}
+
+/**
+ * Fristen und Wiedervorlagen so zählen wie die Übernahme: nach Umfang, Dubletten und Zusammenführung – eine
+ * zusammengeführte Dublette bringt ihre Frist nur mit, wenn sie abweicht; eine überschriebene Bestandsakte nur Fristen,
+ * die sie noch nicht hat. Schritt 3, 4 und 5 zeigen dieselben Zahlen.
+ */
+export function fristenPlan(zeilen: MigZeile[], p: AuswahlRegeln & { bestand?: Pick<Frist, "akteId" | "datum" | "titel">[] }, auswahl: Auswahl = waehleZeilen(zeilen, p)): { fristen: number; wiedervorlagen: number } {
+  const gesehen = new Set<string>();
+  let fristen = 0;
+  let wiedervorlagen = 0;
+  for (const z of auswahl.rein)
+    for (const x of [z, ...(auswahl.angehaengt.get(z.nr) ?? [])]) {
+      if (!x.fristDatum) continue;
+      const titel = normName(x.fristTitel || "Frist aus Altsystem");
+      const key = `${z.nr}|${x.fristDatum}|${titel}`;
+      if (gesehen.has(key)) continue;
+      gesehen.add(key);
+      const ziel = z.dublette && p.aktionFuer(z) === "overwrite" ? z.dublette.akteId : undefined;
+      if (ziel && p.bestand?.some((f) => f.akteId === ziel && f.datum === x.fristDatum && normName(f.titel) === titel)) continue;
+      if (x.fristTyp === "notfrist" || x.fristTyp === "frist") fristen++;
+      else wiedervorlagen++;
+    }
+  return { fristen, wiedervorlagen };
+}
+
+/** Vorschau der Übernahme (Schritt 3 und 4) – zählt genau wie `fuehreUmzugAus`. */
+export interface UmzugPlan {
+  akten: number;
+  archiv: number;
+  /** abgeschlossen ohne Abschlussdatum, „übernehmen“ – als ruhend zur Prüfung */
+  ruhendPruefung: number;
+  aktualisieren: number;
+  ueberspringen: number;
+  zusammengefuehrt: number;
+  ausserhalb: number;
+  ohneDatum: MigZeile[];
+  ohneDatumOffen: number;
+  fristen: number;
+  wiedervorlagen: number;
+  /** Kontakte aus den übernommenen Zeilen (neu + vorhandene) */
+  kontakte: number;
+  kontakteVorhanden: number;
+}
+
+export function umzugPlan(zeilen: MigZeile[], p: AuswahlRegeln & { kontakte: Pick<Kontakt, "name">[]; bestand?: Pick<Frist, "akteId" | "datum" | "titel">[] }): UmzugPlan {
+  const a = waehleZeilen(zeilen, p);
+  const ueberschreiben = (z: MigZeile) => !!z.dublette && p.aktionFuer(z) === "overwrite";
+  const neu = a.rein.filter((z) => !ueberschreiben(z));
+  const namen = new Set<string>();
+  for (const z of a.rein) for (const n of [z.mandant, z.gegner]) if (normName(n)) namen.add(normName(n));
+  const vorhanden = new Set(p.kontakte.map((k) => normName(k.name)));
+  // ohne Mandant legt die Übernahme je neuer Akte einen Mandanten aus der Bezeichnung an
+  const ersatzMandanten = neu.filter((z) => !normName(z.mandant)).length;
+  const f = fristenPlan(zeilen, p, a);
+  const ohneDatumOffen = a.ohneDatum.filter((z) => !p.ohneDatumAktionFuer?.(z)).length;
+  return {
+    akten: neu.length,
+    archiv: neu.filter((z) => z.status === "abgeschlossen").length,
+    ruhendPruefung: neu.filter((z) => z.status === "ruhend" && a.ohneDatum.some((o) => o.nr === z.nr)).length,
+    aktualisieren: a.rein.length - neu.length,
+    ueberspringen: a.uebersprungen,
+    zusammengefuehrt: a.zusammengefuehrt,
+    // noch nicht entschiedene Akten ohne Abschlussdatum zählen nicht als „außerhalb“ – sie stehen zur Entscheidung
+    ausserhalb: a.ausserhalb - ohneDatumOffen,
+    ohneDatum: a.ohneDatum,
+    ohneDatumOffen,
+    fristen: f.fristen,
+    wiedervorlagen: f.wiedervorlagen,
+    kontakte: namen.size + ersatzMandanten,
+    kontakteVorhanden: [...namen].filter((n) => vorhanden.has(n)).length,
+  };
+}
+
 export async function fuehreUmzugAus(opts: {
   zeilen: MigZeile[];
   aktionFuer: (z: MigZeile) => DublettenAktion;
   /** Dubletten innerhalb der Datei: zusammenführen (Standard), beide behalten, überspringen */
   dateiAktionFuer?: (z: MigZeile) => DateiDublettenAktion;
   umfang?: Umfang;
+  /** Abgeschlossene Akten ohne Abschlussdatum (Umfang „letzte 6 Jahre“): übernehmen (ruhend), als Archiv, auslassen */
+  ohneDatumAktionFuer?: (z: MigZeile) => OhneDatumAktion | undefined;
+  /** Zwischenstand nach jedem Abschnitt – hält Zahlen und Rückgängig-Daten fest, falls das Fenster geschlossen wird */
+  onZwischenstand?: (e: Ergebnis) => void;
   laufId?: string;
   system: string;
   user: User;
@@ -96,35 +239,15 @@ export async function fuehreUmzugAus(opts: {
   const refa = team.find((u) => u.rolle === "refa");
   const heuteTag = today();
 
-  // Dubletten innerhalb der Datei: „zusammenführen“ hängt die Zeile an die erste an (Frist nur, wenn sie abweicht)
-  const angehaengt = new Map<number, MigZeile[]>();
-  const zuImportieren = zeilen.filter((z) => {
-    if (z.fehler) {
-      e.fehlerhaft++;
-      return false;
-    }
-    if (!imUmfang(z, umfang, heuteTag)) {
-      e.ausserhalbUmfang++;
-      return false;
-    }
-    if (z.dateiDublette) {
-      const a = dateiAktionFuer(z);
-      if (a === "skip") {
-        e.uebersprungen++;
-        return false;
-      }
-      if (a === "merge") {
-        angehaengt.set(z.dateiDublette.nr, [...(angehaengt.get(z.dateiDublette.nr) ?? []), z]);
-        e.zusammengefuehrt++;
-        return false;
-      }
-    }
-    if (z.dublette && aktionFuer(z) === "skip") {
-      e.uebersprungen++;
-      return false;
-    }
-    return true;
-  });
+  // Auswahl wie in der Vorschau: Umfang, Entscheidung „ohne Abschlussdatum“, Dubletten der Datei und im Bestand.
+  // „zusammenführen“ hängt eine Dateidublette an die erste Zeile an (Frist nur, wenn sie abweicht).
+  const auswahl = waehleZeilen(zeilen, { aktionFuer, dateiAktionFuer, umfang, heute: heuteTag, ohneDatumAktionFuer: opts.ohneDatumAktionFuer });
+  const { angehaengt } = auswahl;
+  const zuImportieren = auswahl.rein;
+  e.fehlerhaft = auswahl.fehlerhaft;
+  e.ausserhalbUmfang = auswahl.ausserhalb;
+  e.uebersprungen = auswahl.uebersprungen;
+  e.zusammengefuehrt = auswahl.zusammengefuehrt;
 
   // 1 · Kontakte (Zusammenführung über den normalisierten Namen)
   const namen = new Map<string, { name: string; rollen: Set<"mandant" | "gegner"> }>();
@@ -150,6 +273,8 @@ export async function fuehreUmzugAus(opts: {
       const fehlend = [...rollen].filter((r) => !ex.rollen.includes(r));
       if (fehlend.length) {
         undo.vorher.push({ col: "kontakte", doc: structuredClone(ex) });
+        // vorherigen Stand sichern, bevor der vorhandene Kontakt eine Rolle dazubekommt
+        opts.onZwischenstand?.(e);
         st().patch("kontakte", ex.id, { rollen: [...ex.rollen, ...fehlend] });
       }
       kontaktId.set(key, ex.id);
@@ -166,6 +291,8 @@ export async function fuehreUmzugAus(opts: {
     onFortschritt("kontakte", { done: ++kDone, total: kTotal });
     await pause(kPause);
   }
+
+  opts.onZwischenstand?.(e);
 
   // 2 · Akten
   const vergebeneAz = new Set(st().data.akten.map((a) => a.aktenzeichen.trim().toLowerCase()));
@@ -203,6 +330,8 @@ export async function fuehreUmzugAus(opts: {
       const ex = st().data.akten.find((a) => a.id === z.dublette!.akteId);
       if (ex) {
         undo.vorher.push({ col: "akten", doc: structuredClone(ex) });
+        // vorherigen Stand sichern, bevor die Bestandsakte überschrieben wird
+        opts.onZwischenstand?.(e);
         const upd: Partial<Akte> = {
           titel: z.titel || ex.titel,
           sachgebiet: z.sachgebietRoh ? z.sachgebiet : ex.sachgebiet,
@@ -261,6 +390,8 @@ export async function fuehreUmzugAus(opts: {
     await pause(aPause);
   }
 
+  opts.onZwischenstand?.(e);
+
   // 3 · Fristen – Quelle „migration", ohne Kontrollvermerk: zur Vier-Augen-Kontrolle vorgelegt.
   // Zusammengeführte Dubletten bringen ihre Frist nur mit, wenn sie abweicht – nie doppelt.
   const mitFrist = zuImportieren
@@ -303,6 +434,8 @@ export async function fuehreUmzugAus(opts: {
     onFortschritt("fristen", { done: i + 1, total: mitFrist.length });
     await pause(fPause);
   }
+
+  opts.onZwischenstand?.(e);
 
   // 4 · Dokument-Verweise: Datenblatt je Akte mit allen Originalwerten
   const akten = zuImportieren.filter((z) => akteFuer.has(z.nr));
@@ -354,7 +487,7 @@ export async function fuehreUmzugAus(opts: {
   st().log({
     akteur: "system",
     userId: user.id,
-    text: `Umzug aus ${system}: ${e.aktenNeu} Akten neu${e.archiviert ? ` (davon ${e.archiviert} als abgeschlossen)` : ""}, ${e.aktenAktualisiert} aktualisiert, ${e.kontakteNeu} Kontakte, ${e.fristenKontrolle} Fristen zur Kontrolle vorgelegt${e.fristen > e.fristenKontrolle ? `, ${e.fristen - e.fristenKontrolle} ${e.fristen - e.fristenKontrolle === 1 ? "Wiedervorlage/Termin" : "Wiedervorlagen/Termine"}` : ""}${e.zusammengefuehrt ? `, ${e.zusammengefuehrt} Dublette(n) der Datei zusammengeführt` : ""}`,
+    text: `Umzug aus ${system}: ${e.aktenNeu} Akten neu${e.archiviert ? ` (davon ${e.archiviert} als abgeschlossen)` : ""}, ${e.aktenAktualisiert} aktualisiert, ${e.kontakteNeu} Kontakte, ${e.fristenKontrolle} Fristen zur Kontrolle vorgelegt${e.fristen > e.fristenKontrolle ? `, ${e.fristen - e.fristenKontrolle} ${e.fristen - e.fristenKontrolle === 1 ? "Wiedervorlage/Termin" : "Wiedervorlagen/Termine"}` : ""}${e.zusammengefuehrt ? `, ${e.zusammengefuehrt} ${e.zusammengefuehrt === 1 ? "Dublette" : "Dubletten"} der Datei zusammengeführt` : ""}`,
   });
   return e;
 }

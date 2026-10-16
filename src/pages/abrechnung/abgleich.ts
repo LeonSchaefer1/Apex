@@ -79,6 +79,8 @@ export function gleicheAb(input: { transaktionen: Transaktion[]; rechnungen: Rec
     const vz = norm(t.verwendungszweck);
     const gp = norm(t.gegenpartei);
     for (const r of offen) {
+      // Abgelehnte Vorschläge werden nie erneut angeboten (und nie automatisch gebucht)
+      if (t.abgelehnt?.some((a) => a.rechnungId === r.id)) continue;
       const akte = aktenById.get(r.akteId);
       const rest = offenerBetrag(r);
       const exakt = Math.abs(rest - t.betrag) < 0.005;
@@ -125,12 +127,37 @@ export function gleicheAb(input: { transaktionen: Transaktion[]; rechnungen: Rec
     }
     const rechnung = vergeben.get(t.id);
     // Fremdgeld geht schwachen Rechnungstreffern (Teilzahlung, nur Betrag) vor – eine Rechnungsnummer oder ein exakter Treffer bleibt Honorar
-    const fremd = !rechnung || (rechnung.sicherheit < AUTO_SCHWELLE && rechnung.regel !== "nummer") ? fremdgeldTreffer(t, input.akten, kontakteById) : undefined;
-    return fremd ?? rechnung ?? { transaktionId: t.id, art: "keine", regel: "keine", sicherheit: 0, grund: "Keine passende offene Rechnung gefunden" };
+    const fremdRoh = !rechnung || (rechnung.sicherheit < AUTO_SCHWELLE && rechnung.regel !== "nummer") ? fremdgeldTreffer(t, input.akten, kontakteById) : undefined;
+    const fremd = fremdRoh && !t.abgelehnt?.some((a) => !a.rechnungId && a.akteId === fremdRoh.akteId) ? fremdRoh : undefined;
+    return fremd ?? rechnung ?? { transaktionId: t.id, art: "keine", regel: "keine", sicherheit: 0, grund: t.abgelehnt?.length ? "Vorschlag abgelehnt – keine weitere passende Rechnung" : "Keine passende offene Rechnung gefunden" };
   });
 }
 
 export const istAuto = (t: Treffer) => t.art === "kosten" || (t.art === "rechnung" && t.sicherheit >= AUTO_SCHWELLE);
+
+/** Gespeicherter Vorschlag am Umsatz → Treffer (übersteht Reiterwechsel und Neuladen). */
+export function trefferAusVorschlag(t: Transaktion): Treffer | undefined {
+  const v = t.vorschlag;
+  if (!v || t.status !== "offen") return undefined;
+  if (v.rechnungId) return { transaktionId: t.id, art: "rechnung", regel: "keine", sicherheit: v.sicherheit, grund: v.grund, rechnungId: v.rechnungId, akteId: v.akteId };
+  if (v.akteId) return { transaktionId: t.id, art: "fremdgeld", regel: "fremdgeld", sicherheit: v.sicherheit, grund: v.grund, akteId: v.akteId };
+  return undefined;
+}
+
+/** Vorschlag am Umsatz speichern – er steht bis zur Entscheidung (bestätigen, ablehnen, anders zuordnen). */
+export function speichereVorschlag(t: Transaktion, tr: Treffer): void {
+  useData.getState().patch("transaktionen", t.id, { vorschlag: { rechnungId: tr.rechnungId, akteId: tr.akteId, sicherheit: tr.sicherheit, grund: tr.grund, am: nowLocal() } }, { system: true });
+}
+
+/** Vorschlag ablehnen: wird am Umsatz vermerkt und in keinem weiteren Lauf erneut angeboten. Protokolliert. */
+export function lehneVorschlagAb(t: Transaktion, tr: Pick<Treffer, "rechnungId" | "akteId">, userId?: string): void {
+  const st = useData.getState();
+  const aktuell = st.data.transaktionen.find((x) => x.id === t.id) ?? t;
+  st.patch("transaktionen", t.id, { vorschlag: undefined, abgelehnt: [...(aktuell.abgelehnt ?? []), { rechnungId: tr.rechnungId, akteId: tr.akteId, am: nowLocal(), von: userId }] });
+  const r = tr.rechnungId ? st.data.rechnungen.find((x) => x.id === tr.rechnungId) : undefined;
+  const a = tr.akteId ? st.data.akten.find((x) => x.id === tr.akteId) : undefined;
+  st.log({ akteur: "nutzer", userId, akteId: tr.akteId, text: `Vorschlag abgelehnt: ${umsatzKennung(t)} gehört nicht zu ${r ? r.nummer : `Fremdgeld ${a?.aktenzeichen ?? ""}`.trim()} – wird nicht erneut vorgeschlagen` });
+}
 
 /** „Umsatz vom 14.10.2026 · 1.234,56 € · ZAHLER“ – Kennung des Umsatzes im Protokoll (wer und wann zugeordnet). */
 export const umsatzKennung = (t: Pick<Transaktion, "datum" | "betrag" | "gegenpartei">) => `Umsatz vom ${fmtDate(t.datum)} · ${fmtEUR(t.betrag)} · ${t.gegenpartei}`;
@@ -149,7 +176,7 @@ export function bucheTreffer(t: Transaktion, tr: Treffer, durch: "auto" | "manue
   const st = useData.getState();
   const wie = durch === "auto" ? "automatisch" : "manuell";
   if (tr.art === "kosten") {
-    st.patch("transaktionen", t.id, { status: "ignoriert", zuordnung: { sicherheit: tr.sicherheit, durch, grund: tr.grund, am: nowLocal(), von: durch === "manuell" ? userId : undefined } });
+    st.patch("transaktionen", t.id, { status: "ignoriert", vorschlag: undefined, zuordnung: { sicherheit: tr.sicherheit, durch, grund: tr.grund, am: nowLocal(), von: durch === "manuell" ? userId : undefined } });
     st.log({ akteur: durch === "auto" ? "automation" : "nutzer", automationKey: durch === "auto" ? "bankabgleich" : undefined, userId: durch === "manuell" ? userId : undefined, text: `${umsatzKennung(t)} als Kanzleikosten erfasst (${tr.kategorie ?? "ohne Rechnung"}, ${wie})` });
     return;
   }
@@ -163,7 +190,7 @@ export function bucheTreffer(t: Transaktion, tr: Treffer, durch: "auto" | "manue
         id: uid("f"), akteId: akte.id, titel: `Fremdgeld weiterleiten (${fmtEUR(t.betrag)})`, typ: "wiedervorlage", datum: today(), status: "offen",
         verantwortlichId: akte.sachbearbeiterId ?? akte.bearbeiterId, quelle: "automatisch", createdAt: nowLocal(), notiz: "Fremdgeld unverzüglich weiterleiten (§ 43a Abs. 7 BRAO, § 4 BORA).",
       });
-    st.patch("transaktionen", t.id, { status: "zugeordnet", zuordnung: { akteId: tr.akteId, sicherheit: tr.sicherheit, durch, grund: tr.grund, am: nowLocal(), von: userId } });
+    st.patch("transaktionen", t.id, { status: "zugeordnet", vorschlag: undefined, zuordnung: { akteId: tr.akteId, sicherheit: tr.sicherheit, durch, grund: tr.grund, am: nowLocal(), von: userId } });
     st.log({ akteur: "nutzer", userId, akteId: tr.akteId, text: `${umsatzKennung(t)} als Fremdgeld gebucht (${wie}) – weiterleiten im Fremdgeld-Wächter${akte ? ` – ${akte.aktenzeichen}` : ""}` });
     return;
   }
@@ -172,13 +199,14 @@ export function bucheTreffer(t: Transaktion, tr: Treffer, durch: "auto" | "manue
   if (!r) return;
   const erg = erfasseZahlung(r, round2(t.betrag), t.datum, { transaktionId: t.id, text: `Zahlungseingang ${r.nummer} (${t.gegenpartei})`, ueberzahlung: "guthaben" });
   const grund = erg.guthaben > 0 ? `${tr.grund} · ${fmtEUR(erg.guthaben)} Überzahlung als Guthaben gebucht` : tr.grund;
-  st.patch("transaktionen", t.id, { status: "zugeordnet", zuordnung: { rechnungId: r.id, akteId: r.akteId, sicherheit: tr.sicherheit, durch, grund, am: nowLocal(), von: durch === "manuell" ? userId : undefined } });
+  st.patch("transaktionen", t.id, { status: "zugeordnet", vorschlag: undefined, zuordnung: { rechnungId: r.id, akteId: r.akteId, sicherheit: tr.sicherheit, durch, grund, am: nowLocal(), von: durch === "manuell" ? userId : undefined } });
+  // Menschliche Entscheidung ohne Prozentangabe – bei bestätigtem Vorschlag dessen Sicherheit als Hinweis
   st.log({
     akteur: durch === "auto" ? "automation" : "nutzer",
     automationKey: durch === "auto" ? "bankabgleich" : undefined,
     userId: durch === "manuell" ? userId : undefined,
     akteId: r.akteId,
-    text: `${umsatzKennung(t)} ${r.nummer} zugeordnet (${wie}, ${Math.round(tr.sicherheit * 100)} %)`,
+    text: `${umsatzKennung(t)} ${r.nummer} zugeordnet (${durch === "auto" ? `automatisch, ${Math.round(tr.sicherheit * 100)} %` : tr.sicherheit < 1 ? `manuell bestätigt, Vorschlag war ${Math.round(tr.sicherheit * 100)} %` : "manuell"})`,
   });
   return erg;
 }

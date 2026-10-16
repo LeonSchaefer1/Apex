@@ -50,7 +50,7 @@ test("Mandanten-E-Mail: exakt passende Absenderadresse ergibt eine sichere Zuord
   assert.ok(a.akteSicherheit >= 0.95, `Sicherheit ${a.akteSicherheit}`);
   assert.match(a.akteGrund ?? "", /thomas\.weber@posteo\.de/);
   // Die Zusammenfassung nennt den Zeugenhinweis
-  assert.match(a.zusammenfassung, /Pohl/);
+  assert.match(a.zusammenfassung, /Seifert/);
 });
 
 test("Präzedenzfälle: keine fachfremden Treffer über einzelne Wörter aus Dokumenten", () => {
@@ -206,7 +206,8 @@ test("Gerichtsort laut Schreiben: Feiertage des Gerichts, nicht des Kanzleisitze
   const a = analysiereRegelbasiert({ text: "In dem Rechtsstreit Huber ./. Maier wird Ihnen das Urteil vom 09.07.2028 zugestellt. Die Klage wird abgewiesen.", von: "Landgericht München I", eingang: "2028-07-15" }, data, "BE");
   // 15.08.2028 (Di): Mariä Himmelfahrt gilt nur in Teilen Bayerns – keine Verlängerung, aber Hinweis
   assert.equal(a.fristen[0].ende, "2028-08-15");
-  assert.ok(a.fristen[0].rechenweg.some((s) => s.includes("Bayern") && s.includes("Landgericht München I")));
+  // Berufung wird beim Berufungsgericht eingelegt (§ 519 Abs. 1 ZPO) – dessen Feiertage gelten (I2-T02-03)
+  assert.ok(a.fristen[0].rechenweg.some((s) => s.includes("Bayern") && s.includes("Oberlandesgericht München, Berufungsgericht")), a.fristen[0].rechenweg.join(" | "));
   assert.match(a.fristen[0].warnungen.join(" "), /nur in Teilen von Bayern/);
 });
 

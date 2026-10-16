@@ -75,7 +75,7 @@ export function Funktionen() {
         </Kachel>
 
         <Kachel className="lg:col-span-2" i={2}>
-          <KachelKopf icon={<InfinityIcon />} titel="Lifetime-Lizenz (Kauflizenz ohne Laufzeit)" text="Kaufen statt mieten: Sie investieren einmal und erhalten eine unbefristete Lizenz – ohne Abo-Falle und ohne Monatsgebühren. Die Wartung ist optional (Richtwert 15 % des Lizenzpreises pro Jahr, das erste Jahr ist enthalten). Ihre Kanzlei-Software gehört Ihnen." />
+          <KachelKopf icon={<InfinityIcon />} titel="Lifetime-Lizenz (Kauflizenz ohne Laufzeit)" text="Kaufen statt mieten: Sie investieren einmal und erhalten eine unbefristete Lizenz – ohne Abo-Falle und ohne Monatsgebühren. Die Wartung ist optional – Umfang und Preis regelt das Angebot. Ihre Kanzlei-Software gehört Ihnen." />
           <div className="relative z-[1] mt-auto grid grid-cols-2 gap-2 pt-6 text-[12.5px]">
             <div className="rounded-[16px] bg-[var(--ink-softer)] p-3">
               <div className="text-fg-3">Abo-Modell</div>

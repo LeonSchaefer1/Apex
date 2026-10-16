@@ -21,6 +21,7 @@ import { EmailComposer } from "./EmailComposer";
 import { beruehreAkte, listenKontext } from "./helfer";
 import { DiktatKnopf } from "./Diktat";
 import { darfAbrechnung } from "@/lib/backend";
+import { useMedia } from "@/lib/useMedia";
 
 const TABS = ["uebersicht", "dokumente", "fristen", "beteiligte", "aktenkonto", "verlauf", "ki"] as const;
 type TabKey = (typeof TABS)[number];
@@ -33,6 +34,8 @@ export default function AkteDetail() {
   const dokumente = useCol("dokumente");
   const fristen = useCol("fristen");
   const { user } = useKanzlei();
+  // Desktop-Hinweise (Ziehen, Doppelklick, Tastenkürzel) nur mit Maus bzw. Trackpad
+  const feinZeiger = useMedia("(pointer: fine)");
   const [params, setParams] = useSearchParams();
   const roh = params.get("tab") as TabKey | null;
   const tab: TabKey = roh && TABS.includes(roh) && !(roh === "aktenkonto" && !darfAbrechnung(user.rolle)) ? roh : "uebersicht";
@@ -99,7 +102,11 @@ export default function AkteDetail() {
   useEffect(() => {
     if (!ersterReiter.current || !akte) return;
     ersterReiter.current = false;
-    if (tab !== "uebersicht") setTimeout(() => zuTabs(tab, undefined, { sofort: true }), 60);
+    // Ein Deep-Link auf ein Dokument (…&dok=…, ggf. &bearbeiten=1) bleibt erhalten – die Vorschau öffnet sich direkt
+    const dok = params.get("dok");
+    const bearbeiten = params.get("bearbeiten");
+    const extra = { ...(dok ? { dok } : {}), ...(bearbeiten ? { bearbeiten } : {}) };
+    if (tab !== "uebersicht") setTimeout(() => zuTabs(tab, extra, { sofort: true }), 60);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [akte?.id]);
 
@@ -155,7 +162,7 @@ export default function AkteDetail() {
         </AnimatePresence>
       </div>
       <div className="-mb-1 flex items-center gap-2">
-        <Link to={`/akten${listenKontext.suche}`} className="inline-flex h-8 items-center gap-1 rounded-full pl-1.5 pr-3 text-[13px] font-medium text-fg-3 transition-colors hover:bg-ink-softer hover:text-fg">
+        <Link to={`/akten${listenKontext.suche}`} className="inline-flex h-8 items-center gap-1 rounded-full pl-1.5 pr-3 text-[13px] font-medium text-fg-3 transition-colors hover:bg-ink-softer hover:text-fg max-sm:h-11">
           <ChevronLeft className="size-4" /> Alle Akten
         </Link>
       </div>
@@ -170,6 +177,7 @@ export default function AkteDetail() {
             value={tab}
             onChange={(t) => zuTabs(t)}
             className="max-w-full"
+            mobilGross
             options={[
               { value: "uebersicht", label: "Übersicht" },
               { value: "dokumente", label: "Dokumente", count: zahlen.doks },
@@ -181,7 +189,7 @@ export default function AkteDetail() {
             ]}
           />
         </div>
-        <p className="-mt-1 px-1 text-[12.5px] text-fg-3">{TAB_ERKLAERUNG[tab]}</p>
+        <p className="-mt-1 px-1 text-[12.5px] text-fg-3">{tab === "dokumente" && !feinZeiger ? TAB_ERKLAERUNG_TOUCH : TAB_ERKLAERUNG[tab]}</p>
 
         <AnimatePresence mode="wait" initial={false}>
           <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }} className="min-w-0">
@@ -201,7 +209,7 @@ export default function AkteDetail() {
 
       {/* Mobil: feste Aktionsleiste über der Tab-Leiste, rechts mit Abstand zur Assistent-Kugel */}
       <div className="fixed bottom-[calc(88px+env(safe-area-inset-bottom))] left-3 right-[84px] z-30 md:hidden">
-        <div className="glass-strong flex items-center gap-1 rounded-full p-1" style={{ boxShadow: "var(--glass-shadow)" }} role="toolbar" aria-label="Schnellaktionen der Akte">
+        <div className="glass-strong tabbar-deckend flex items-center gap-1 rounded-full p-1" style={{ boxShadow: "var(--glass-shadow)" }} role="toolbar" aria-label="Schnellaktionen der Akte">
           <button type="button" onClick={() => setNotizOffen(true)} className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-full text-[13px] font-medium text-fg-2 hover:bg-ink-softer">
             <StickyNote className="size-4" /> Notiz
           </button>
@@ -217,6 +225,9 @@ export default function AkteDetail() {
     </div>
   );
 }
+
+/** Ohne Maus (Tablet, Telefon): keine Hinweise auf Ziehen und Doppelklick. */
+const TAB_ERKLAERUNG_TOUCH = "Die E-Akte: alle Schriftstücke in Ordnern – durchsuchbar im Volltext; verschieben und umbenennen über das Menü „⋯“ am Dokument.";
 
 const TAB_ERKLAERUNG: Record<TabKey, string> = {
   uebersicht: "Das Wichtigste auf einen Blick: Sachverhalt, anstehende Fristen, neue Dokumente und interne Notizen.",

@@ -4,7 +4,7 @@ import { addDays, fmtDate, fmtDateLong, fmtEUR, today } from "@/core/dates";
 import { istWerktag } from "@/core/feiertage";
 import { berechneRvg, fassungFuerAuftrag } from "@/core/rvg";
 import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
-import type { Akte, Bundesland, Kontakt, Tenant, TenantData, User } from "@/core/types";
+import type { Akte, Bundesland, Dokument, Kontakt, Tenant, TenantData, User } from "@/core/types";
 import { akteAlsText, findePraezedenzfaelle } from "@/ai/kontext";
 import { zitat } from "@/pages/falldb/recherche";
 
@@ -497,22 +497,35 @@ export function entwurfPrompt(art: SchriftsatzArt, ton: Ton, hinweise: string, k
   return { system, user: user_ };
 }
 
-export function dokumentName(art: SchriftsatzArt, akte: Akte, data: TenantData): string {
+/** Name ohne Datum – erkennt frühere Fassungen desselben Schreibens an denselben Empfänger (gleicher Typ, gleicher Empfänger). */
+export function dokumentBasisName(art: SchriftsatzArt, akte: Akte, data: TenantData): string {
   const mandant = kontakt(data, akte.mandantId)?.name;
   const versicherung = akte.rsv?.versicherung;
-  const datum = fmtDate(today());
   switch (art) {
     case "sachstand":
-      return `Sachstandsmitteilung an ${mandant ?? "Mandantschaft"} (${datum})`;
+      return `Sachstandsmitteilung an ${mandant ?? "Mandantschaft"}`;
     case "deckung":
-      return `Deckungsanfrage ${versicherung ?? "Rechtsschutz"} (${datum})`;
+      return `Deckungsanfrage ${versicherung ?? "Rechtsschutz"}`;
     case "aufforderung":
-      return `Aufforderungsschreiben an ${kontakt(data, akte.gegneranwaltId ?? akte.gegnerId)?.name ?? "Gegenseite"} (${datum})`;
+      return `Aufforderungsschreiben an ${kontakt(data, akte.gegneranwaltId ?? akte.gegnerId)?.name ?? "Gegenseite"}`;
     case "klageerwiderung":
-      return `Klageerwiderung – Entwurf (${datum})`;
+      return "Klageerwiderung";
     case "replik":
-      return `Replik – Entwurf (${datum})`;
+      return "Replik";
     case "kosten":
-      return `Kostenhinweis nach § 49b Abs. 5 BRAO (${datum})`;
+      return "Kostenhinweis nach § 49b Abs. 5 BRAO";
   }
+}
+
+/** Name eines neuen KI-Entwurfs: „Deckungsanfrage Nordlicht Rechtsschutz AG (Entwurf vom 16.10.2026)“. */
+export function dokumentName(art: SchriftsatzArt, akte: Akte, data: TenantData): string {
+  return `${dokumentBasisName(art, akte, data)} (Entwurf vom ${fmtDate(today())})`;
+}
+
+/** Frühere, noch nicht versandte Fassung desselben Schreibens in der Akte (neueste Version) – dann Version statt Dublette. */
+export function fruehereFassung(art: SchriftsatzArt, akte: Akte, data: TenantData): Dokument | undefined {
+  const basis = dokumentBasisName(art, akte, data).toLowerCase();
+  return data.dokumente
+    .filter((d) => d.akteId === akte.id && d.quelle === "generiert" && d.status !== "versandt" && d.name.toLowerCase().startsWith(basis))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.version - a.version)[0];
 }

@@ -1,31 +1,33 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { CalendarClock, CalendarPlus, Clock, FolderOpen, MapPin, ShieldAlert, Trash2 } from "lucide-react";
+import { CalendarClock, CalendarPlus, Clock, FolderOpen, MapPin, PenLine, ShieldAlert, Trash2 } from "lucide-react";
 import { fmtDateShort, fmtDateWd, relDays, schuetzeLeerzeichen, wochentagName, fmtDateLong } from "@/core/dates";
 import { fristArtZu } from "@/core/fristen";
 import type { Akte, Frist, User } from "@/core/types";
 import { Avatar, Button, Drawer } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { ErledigtKnopf, KontrolleAktion, KontrollStatus, NachweisZeile, QuelleChip, RechenwegListe, TypChip, useFristAktionen } from "./FristZeile";
-import { TYP_META } from "./logik";
+import { ErledigtKnopf, KontrolleAktion, KontrollStatus, KorrekturHinweis, NachweisZeile, QuelleChip, RechenwegListe, TypChip, korrigierbar, useFristAktionen } from "./FristZeile";
+import { TYP_META, kalenderMeta } from "./logik";
 import { DateiDialog, type AusgabeDatei } from "./dateiAusgabe";
 import { erzeugeIcs, icsDateiname } from "./ics";
 
-/** Kompakte Kalender-Pille (Woche/Monat). */
+/** Kompakte Kalender-Pille (Woche/Monat) – kritische Fristen rot wie Notfristen, mit sichtbarem „nicht verlängerbar“. */
 export function FristPille({ f, akte, onClick, ohneAz }: { f: Frist; akte?: Akte; onClick: () => void; ohneAz?: boolean }) {
+  const k = kalenderMeta(f);
   return (
     <button
       type="button"
       onClick={onClick}
-      title={`${TYP_META[f.typ].label}: ${f.titel}${akte ? ` · ${akte.aktenzeichen} ${akte.titel}` : ""}`}
+      title={`${k.kritisch ?? TYP_META[f.typ].label}: ${f.titel}${akte ? ` · ${akte.aktenzeichen} ${akte.titel}` : ""}`}
       className={cn(
         "flex w-full min-w-0 items-start gap-1 rounded-[9px] px-2 py-1.5 text-left text-[12px] leading-tight transition-[transform,box-shadow] duration-300 ease-[var(--spring)] hover:-translate-y-px hover:shadow-[0_4px_12px_-6px_rgba(20,30,80,0.3)]",
-        TYP_META[f.typ].pill,
+        k.pill,
         f.status === "erledigt" && "opacity-50",
       )}
     >
-      {(f.typ === "notfrist" || (f.typ === "frist" && fristArtZu(f)?.kritisch)) && <ShieldAlert className="mt-px size-3 shrink-0" aria-label={f.typ === "notfrist" ? "Notfrist" : "nicht verlängerbar"} />}
+      {k.kritisch && <ShieldAlert className="mt-px size-3 shrink-0" aria-hidden />}
       <span className="min-w-0 flex-1">
+        {k.kritisch && <span className="block text-[11px] font-bold uppercase tracking-[0.04em]">{k.kritisch}</span>}
         <span className={cn("block truncate font-semibold", f.status === "erledigt" && "line-through")}>
           {f.uhrzeit ? <span className="num font-medium opacity-80">{f.uhrzeit} </span> : null}
           {f.titel.replace(/^Vorfrist: /, "")}
@@ -38,7 +40,7 @@ export function FristPille({ f, akte, onClick, ohneAz }: { f: Frist; akte?: Akte
 
 function DetailInhalt({ f, akte, team, user, onClose }: { f: Frist; akte?: Akte; team: User[]; user: User; onClose: () => void }) {
   const nav = useNavigate();
-  const { erledigt, umschalten, kontrollieren, streichen, dialog } = useFristAktionen(f, user);
+  const { erledigt, umschalten, kontrollieren, streichen, korrigieren, korrekturAnfordern, dialog } = useFristAktionen(f, user);
   const [datei, setDatei] = useState<AusgabeDatei | null>(null);
   const ics = () =>
     setDatei({
@@ -58,6 +60,7 @@ function DetailInhalt({ f, akte, team, user, onClose }: { f: Frist; akte?: Akte;
         <KontrollStatus f={f} team={team} />
         <NachweisZeile f={f} team={team} />
       </div>
+      <KorrekturHinweis f={f} team={team} />
       <div className={cn("rounded-[20px] p-4", kritisch ? "bg-seal-soft" : "bg-[var(--ink-softer)] ring-1 ring-inset ring-[var(--line)]")}>
         <div className={cn("eyebrow", kritisch && "!text-seal")}>{f.typ === "termin" ? "Termin" : f.typ === "vorfrist" ? "Vorfrist" : "Fristende"}</div>
         <div className={cn("mt-1 text-[24px] font-semibold leading-tight tracking-[-0.03em]", kritisch && "text-seal")}>
@@ -140,9 +143,26 @@ function DetailInhalt({ f, akte, team, user, onClose }: { f: Frist; akte?: Akte;
         </p>
       )}
       {f.notiz && <p className="rounded-[14px] bg-[var(--ink-softer)] p-3 text-[12.5px] leading-relaxed text-fg-2">{f.notiz}</p>}
+      {f.korrekturen?.length ? (
+        <div>
+          <div className="eyebrow mb-1.5">Korrekturen</div>
+          <ul className="grid gap-1 text-[12.5px] text-fg-2">
+            {f.korrekturen.map((k) => (
+              <li key={k.am}>
+                {fmtDateShort(k.am.slice(0, 10))}: vorher {fmtDateShort(k.vorher.datum)} – {k.grund}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2 border-t border-[var(--line)] pt-4">
-        {f.status === "offen" && <KontrolleAktion f={f} user={user} kontrollieren={kontrollieren} verantwortlich={v} />}
+        {f.status === "offen" && <KontrolleAktion f={f} user={user} kontrollieren={kontrollieren} verantwortlich={v} anfordern={korrekturAnfordern} />}
         <ErledigtKnopf erledigt={erledigt} onClick={umschalten} />
+        {korrigierbar(f) && (
+          <Button size="sm" variant="ghost" icon={<PenLine className="size-4" />} onClick={korrigieren} title="Datum bzw. Fristart und Ereignisdatum korrigieren – mit Pflichtgrund, protokolliert">
+            Korrigieren …
+          </Button>
+        )}
         {f.status === "offen" && f.typ !== "termin" && f.typ !== "vorfrist" && (
           <Button size="sm" variant="ghost" icon={<Trash2 className="size-4" />} onClick={streichen} title="Streichen – mit Pflichtgrund, protokolliert">
             Streichen

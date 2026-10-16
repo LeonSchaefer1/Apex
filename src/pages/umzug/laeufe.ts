@@ -5,7 +5,7 @@ import type { ISODateTime, UmzugLauf } from "@/core/types";
 import { useData } from "@/store/data";
 import type { Ergebnis } from "./uebernahme";
 import type { CsvErgebnis, DateiInfo } from "./csv";
-import type { DateiDublettenAktion, DublettenAktion, QuellSystem, Umfang, ZielFeld } from "./zuordnung";
+import type { DateiDublettenAktion, DublettenAktion, OhneDatumAktion, QuellSystem, Umfang, ZielFeld } from "./zuordnung";
 
 export type { UmzugLauf };
 
@@ -57,7 +57,10 @@ export function markiereRueckgaengig(id: string, p: { am: ISODateTime; von: stri
   useData.getState().patch("umzugLaeufe", id, { rueckgaengig: p, undo: { erstellt: [], vorher: [] } });
 }
 
-/** Zwischenstand des Assistenten – übersteht ein Neuladen (sessionStorage). */
+/**
+ * Zwischenstand des Assistenten – übersteht ein Neuladen und auch ein geschlossenes Fenster: sessionStorage, dazu eine Kopie
+ * im localStorage dieses Browsers (höchstens 24 Stunden, gelöscht nach der Übernahme oder mit „Neu beginnen“).
+ */
 export interface AssistentStand {
   schritt: number;
   system: QuellSystem | null;
@@ -69,24 +72,92 @@ export interface AssistentStand {
   ausnahmen: Record<number, DublettenAktion>;
   dateiAktionen: Record<number, DateiDublettenAktion>;
   umfang: Umfang;
+  /** Entscheidungen für abgeschlossene Akten ohne Abschlussdatum (Umfang „letzte 6 Jahre“) */
+  ohneDatum?: Record<number, OhneDatumAktion>;
+  /** Zeitpunkt der letzten Sicherung (für „Zwischenstand von … wiederhergestellt“) */
+  gespeichert?: ISODateTime;
 }
+
+const STAND_MAX_MS = 24 * 60 * 60 * 1000;
 
 const standKey = (tenantId: string) => `apex.umzug.assistent.${tenantId}`;
 
-export function ladeStand(tenantId: string): AssistentStand | null {
+function liesStand(speicher: () => Storage, tenantId: string): AssistentStand | null {
   try {
-    const v = JSON.parse(sessionStorage.getItem(standKey(tenantId)) ?? "null") as AssistentStand | null;
-    return v && typeof v.schritt === "number" ? v : null;
+    const v = JSON.parse(speicher().getItem(standKey(tenantId)) ?? "null") as AssistentStand | null;
+    if (!v || typeof v.schritt !== "number") return null;
+    if (v.gespeichert && Date.now() - new Date(v.gespeichert).getTime() > STAND_MAX_MS) return null;
+    return v;
   } catch {
     return null;
   }
 }
 
-export function speichereStand(tenantId: string, s: AssistentStand | null) {
+export function ladeStand(tenantId: string): AssistentStand | null {
+  return liesStand(() => sessionStorage, tenantId) ?? liesStand(() => localStorage, tenantId);
+}
+
+/**
+ * Laufende Übernahme: Kennung im Browserspeicher (localStorage – übersteht auch ein geschlossenes Fenster). Ist sie beim
+ * nächsten Öffnen noch da, wurde der Lauf unterbrochen: Er wird vollständig zurückgenommen und als „abgebrochen – nichts
+ * übernommen“ protokolliert. Gespeichert werden nur Kennung, System und Dateiname – keine Mandantendaten.
+ */
+export interface LaufMarke {
+  laufId: string;
+  datum: ISODateTime;
+  system: string;
+  datei: string;
+  userId: string;
+  /** letzte Sicherung des Zwischenstands – solange frisch, läuft der Lauf wohl noch (z. B. in einem anderen Fenster) */
+  puls?: ISODateTime;
+}
+const markeKey = (tenantId: string) => `apex.umzug.laufend.${tenantId}`;
+export function setzeLaufMarke(tenantId: string, m: LaufMarke | null): void {
   try {
-    if (!s) sessionStorage.removeItem(standKey(tenantId));
-    else sessionStorage.setItem(standKey(tenantId), JSON.stringify(s));
+    if (m) localStorage.setItem(markeKey(tenantId), JSON.stringify(m));
+    else localStorage.removeItem(markeKey(tenantId));
   } catch {
-    /* Speicher voll oder gesperrt – der Assistent beginnt dann nach dem Neuladen neu */
+    /* ohne Speicher keine Erkennung abgebrochener Läufe – das Protokoll zeigt dann den Zwischenstand */
+  }
+}
+export function ladeLaufMarke(tenantId: string): LaufMarke | null {
+  try {
+    const m = JSON.parse(localStorage.getItem(markeKey(tenantId)) ?? "null") as LaufMarke | null;
+    return m && typeof m.laufId === "string" ? m : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Früheres Kennzeichen abgebrochener Läufe (Sonderwert in `rueckgaengig.von`) – nur noch zum Lesen älterer Protokolle. */
+export const ABBRUCH = "abbruch";
+/** Abgebrochener Lauf (zurückgenommen, nichts übernommen) – eigenes Feld `abgebrochen`, ältere Läufe am Sonderwert erkennbar. */
+export const istAbgebrochen = (l: UmzugLauf) => !!l.abgebrochen || l.rueckgaengig?.von === ABBRUCH;
+
+/** Abgebrochenen Lauf im Protokoll festhalten – mit Zwischenstand oder, falls noch keiner gesichert war, als leerer Lauf. */
+export function protokolliereAbbruch(m: Pick<LaufMarke, "laufId" | "datum" | "system" | "datei" | "userId">, am: ISODateTime): void {
+  // Zurückgenommen hat die App selbst beim nächsten Öffnen – „von“ ist die Person, deren Lauf unterbrochen wurde
+  const abbruch = { am, von: m.userId };
+  if (useData.getState().data.umzugLaeufe.some((l) => l.id === m.laufId)) {
+    markiereRueckgaengig(m.laufId, abbruch);
+    useData.getState().patch("umzugLaeufe", m.laufId, { abgebrochen: true });
+  } else
+    speichereLauf({
+      id: m.laufId, datum: m.datum, system: m.system, datei: m.datei, userId: m.userId,
+      zahlen: { aktenNeu: 0, aktenAktualisiert: 0, archiviert: 0, kontakteNeu: 0, fristen: 0, zusammengefuehrt: 0, uebersprungen: 0 },
+      undo: { erstellt: [], vorher: [] },
+      rueckgaengig: abbruch,
+      abgebrochen: true,
+    });
+}
+
+export function speichereStand(tenantId: string, s: AssistentStand | null, jetzt?: ISODateTime) {
+  for (const speicher of [() => sessionStorage, () => localStorage]) {
+    try {
+      if (!s) speicher().removeItem(standKey(tenantId));
+      else speicher().setItem(standKey(tenantId), JSON.stringify({ ...s, gespeichert: jetzt ?? s.gespeichert }));
+    } catch {
+      /* Speicher voll oder gesperrt – der Assistent beginnt dann nach dem Neuladen neu */
+    }
   }
 }

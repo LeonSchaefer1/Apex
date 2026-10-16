@@ -1,16 +1,18 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { Bot, CheckCircle2, ChevronDown, Clock, MapPin, RotateCcw, ShieldAlert, Sparkles, UserCheck, Users } from "lucide-react";
+import { Bot, CheckCircle2, ChevronDown, Clock, MapPin, MoreHorizontal, PanelRightOpen, PenLine, RotateCcw, ShieldAlert, Sparkles, Trash2, Undo2, UserCheck, Users } from "lucide-react";
 import { fmtDate, fmtDateShort, fmtDateWd, schuetzeLeerzeichen, today } from "@/core/dates";
 import { fristArtZu } from "@/core/fristen";
 import type { Akte, Frist, FristTyp, User } from "@/core/types";
 import { toast } from "@/store/ui";
 import { useCol } from "@/store/data";
-import { Avatar, Chip } from "@/components/ui";
+import { useKanzlei } from "@/store/session";
+import { Avatar, Chip, Menu } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { QUELLE_LABEL, QUELLE_TITEL, TYP_META, bestaetigeKontrolle, brauchtKontrolle, darfKontrollieren, durchAssistent, erfordertNachweis, erledigeFrist, nachweisText, oeffneFristWieder, streifenFarbe } from "./logik";
 import { ErledigenDialog } from "./ErledigenDialog";
+import { KorrekturAnfordernDialog, KorrekturDialog } from "./KorrekturDialog";
 
 const spring = { type: "spring", stiffness: 460, damping: 36 } as const;
 
@@ -92,6 +94,9 @@ export function RechenwegListe({ schritte, className }: { schritte: string[]; cl
 export function useFristAktionen(f: Frist, user: User) {
   const [abhaken, setAbhaken] = useState(false);
   const [dialog, setDialog] = useState<false | "erledigen" | "streichen">(false);
+  const [korrektur, setKorrektur] = useState<false | "korrigieren" | "anfordern">(false);
+  const { team } = useKanzlei();
+  const verantwortlich = team.find((u) => u.id === f.verantwortlichId);
   const erledigt = f.status === "erledigt" || abhaken;
   const umschalten = () => {
     if (f.status === "erledigt") {
@@ -114,15 +119,27 @@ export function useFristAktionen(f: Frist, user: User) {
   const kontrollieren = () => {
     if (bestaetigeKontrolle(f, user.id)) toast("Kontrolle bestätigt", { text: `Vier-Augen-Kontrolle erfüllt: ${f.titel} (${fmtDate(f.datum)})`, ton: "erfolg" });
   };
-  const dialogElement = <ErledigenDialog f={f} user={user} open={!!dialog} modus={dialog || "erledigen"} onClose={() => setDialog(false)} />;
-  return { erledigt, umschalten, kontrollieren, streichen, dialog: dialogElement };
+  const korrigieren = () => setKorrektur("korrigieren");
+  const korrekturAnfordern = () => setKorrektur("anfordern");
+  const dialogElement = (
+    <>
+      <ErledigenDialog f={f} user={user} open={!!dialog} modus={dialog || "erledigen"} onClose={() => setDialog(false)} />
+      <KorrekturDialog f={f} user={user} open={korrektur === "korrigieren"} onClose={() => setKorrektur(false)} />
+      <KorrekturAnfordernDialog f={f} user={user} open={korrektur === "anfordern"} onClose={() => setKorrektur(false)} verantwortlich={verantwortlich} />
+    </>
+  );
+  return { erledigt, umschalten, kontrollieren, streichen, korrigieren, korrekturAnfordern, dialog: dialogElement };
 }
+
+/** Darf korrigiert bzw. gestrichen werden? Offene Einträge außer Vorfristen (die folgen ihrer Frist). */
+export const korrigierbar = (f: Frist) => f.status === "offen" && f.typ !== "vorfrist";
 
 /** Status der Ausgangskontrolle einer erledigten Frist („versandt – Nachweis: beA 16:42 Uhr (Dr. Hartmann)“). */
 export function NachweisZeile({ f, team }: { f: Frist; team: User[] }) {
   const nachrichten = useCol("nachrichten");
+  const transaktionen = useCol("transaktionen");
   if (f.status !== "erledigt" || !erfordertNachweis(f)) return null;
-  const text = nachweisText(f, team, nachrichten);
+  const text = nachweisText(f, team, nachrichten, transaktionen);
   const ok = !!f.erledigtNachweis && f.erledigtNachweis.art !== "gestrichen";
   return (
     <span className={cn("inline-flex items-start gap-1 text-[12.5px] font-medium", ok ? "text-green" : f.erledigtNachweis ? "text-fg-2" : "text-amber")}>
@@ -136,18 +153,48 @@ export function NachweisZeile({ f, team }: { f: Frist; team: User[] }) {
  * Aktion zur Vier-Augen-Kontrolle: „Kontrolle bestätigen“ für eine zweite Person. Für die verantwortliche Person selbst
  * gibt es keine Aktion (keine Selbstkontrolle) – den Stand zeigt `KontrollStatus` („Vier-Augen-Kontrolle offen“).
  */
-export function KontrolleAktion({ f, user, kontrollieren, verantwortlich }: { f: Frist; user: User; kontrollieren: () => void; verantwortlich?: User }) {
+export function KontrolleAktion({ f, user, kontrollieren, verantwortlich, anfordern }: { f: Frist; user: User; kontrollieren: () => void; verantwortlich?: User; anfordern?: () => void }) {
   if (!brauchtKontrolle(f) || !darfKontrollieren(f, user.id)) return null;
   return (
-    <button type="button" onClick={kontrollieren} className="btn btn-sm btn-secondary" title={`Datum und Rechenweg der Frist von ${verantwortlich?.name ?? "Kollegin/Kollege"} prüfen und bestätigen (Vier-Augen-Kontrolle)`}>
-      <UserCheck className="size-4 text-ink" />
-      Kontrolle bestätigen
-    </button>
+    <>
+      <button type="button" onClick={kontrollieren} className="btn btn-sm btn-secondary" title={`Datum und Rechenweg der Frist von ${verantwortlich?.name ?? "Kollegin/Kollege"} prüfen und bestätigen (Vier-Augen-Kontrolle)`}>
+        <UserCheck className="size-4 text-ink" />
+        Kontrolle bestätigen
+      </button>
+      {anfordern && !f.korrekturAngefordert && (
+        <button type="button" onClick={anfordern} className="btn btn-sm btn-ghost" title={`Mit Grund an ${verantwortlich?.name ?? "die verantwortliche Person"} zurückgeben`}>
+          <Undo2 className="size-4" />
+          Korrektur anfordern
+        </button>
+      )}
+    </>
+  );
+}
+
+/** „Korrektur angefordert von Mia Becker: …“ – sichtbar an der Frist, bis korrigiert oder bestätigt ist. */
+export function KorrekturHinweis({ f, team }: { f: Frist; team: User[] }) {
+  if (!f.korrekturAngefordert || f.status !== "offen") return null;
+  const von = team.find((u) => u.id === f.korrekturAngefordert!.vonId)?.name ?? "Kontrolle";
+  return (
+    <p className="mt-1.5 flex items-start gap-1.5 rounded-[10px] bg-amber-soft px-2.5 py-1.5 text-[12.5px] leading-snug text-fg-2">
+      <Undo2 className="mt-0.5 size-3.5 shrink-0 text-amber" aria-hidden />
+      <span>
+        <strong className="font-semibold text-fg">Korrektur angefordert von {von}:</strong> {f.korrekturAngefordert.grund}
+      </span>
+    </p>
   );
 }
 
 /** Stand der Vier-Augen-Kontrolle – einheitlich „Vier-Augen-Kontrolle offen“ bzw. „Kontrolliert von …“. */
 export function KontrollStatus({ f, team }: { f: Frist; team: User[] }) {
+  if (f.korrekturAngefordert && f.status === "offen") {
+    const von = team.find((u) => u.id === f.korrekturAngefordert!.vonId);
+    return (
+      <Chip tone="amber" icon={<Undo2 className="size-3" />} title={`Korrektur angefordert: ${f.korrekturAngefordert.grund}`}>
+        Korrektur angefordert{von ? ` von ${von.initialen}` : ""}
+      </Chip>
+    );
+  }
   if (f.kontrolliertVon) {
     const k = team.find((u) => u.id === f.kontrolliertVon);
     return (
@@ -170,9 +217,21 @@ export function KontrollStatus({ f, team }: { f: Frist; team: User[] }) {
 }
 
 /** Eine Frist als Zeile: Ampelstreifen, Typ, Akte, Grundlage, Verantwortlich, Quelle, Aktionen, Rechenweg. */
-export function FristZeile({ f, akte, team, user, index = 0, zeigeDatum, vertretungFuer }: { f: Frist; akte?: Akte; team: User[]; user: User; index?: number; zeigeDatum?: boolean; vertretungFuer?: string }) {
+export function FristZeile({
+  f, akte, team, user, index = 0, zeigeDatum, vertretungFuer, onOpen,
+}: {
+  f: Frist;
+  akte?: Akte;
+  team: User[];
+  user: User;
+  index?: number;
+  zeigeDatum?: boolean;
+  vertretungFuer?: string;
+  /** Klick auf die Zeile öffnet das Fristdetail */
+  onOpen?: (f: Frist) => void;
+}) {
   const [offen, setOffen] = useState(false);
-  const { erledigt, umschalten, kontrollieren, dialog } = useFristAktionen(f, user);
+  const { erledigt, umschalten, kontrollieren, streichen, korrigieren, korrekturAnfordern, dialog } = useFristAktionen(f, user);
   const verantwortlich = team.find((u) => u.id === f.verantwortlichId);
   const hatDetails = !!(f.rechenweg?.length || f.notiz || f.ereignisDatum);
   const art = f.typ === "notfrist" || f.typ === "frist" ? fristArtZu(f) : undefined;
@@ -187,7 +246,14 @@ export function FristZeile({ f, akte, team, user, index = 0, zeigeDatum, vertret
       className="relative overflow-hidden"
     >
       <span className={cn("absolute bottom-3 left-0 top-3 w-[3px] rounded-r-full transition-colors", erledigt ? "bg-green" : streifenFarbe(f))} aria-hidden />
-      <div className="flex flex-wrap items-start gap-x-4 gap-y-3 py-3.5 pl-5 pr-4">
+      <div
+        className={cn("flex flex-wrap items-start gap-x-4 gap-y-3 py-3.5 pl-5 pr-4", onOpen && "cursor-pointer transition-colors hover:bg-ink-softer")}
+        onClick={(e) => {
+          // Klick auf freie Fläche öffnet das Fristdetail – Knöpfe, Links und Menüs behalten ihre Funktion
+          if (!onOpen || (e.target as HTMLElement).closest("button,a,input,select,textarea,[role=menu],[role=menuitem]")) return;
+          onOpen(f);
+        }}
+      >
         <div className="min-w-[220px] flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <TypChip typ={f.typ} regelKey={f.regelKey} />
@@ -218,6 +284,11 @@ export function FristZeile({ f, akte, team, user, index = 0, zeigeDatum, vertret
               </span>
             )}
             <span className="inline-flex flex-wrap items-center gap-1.5">
+              {f.korrekturen?.length ? (
+                <Chip tone="neutral" icon={<PenLine className="size-3" />} title={f.korrekturen.map((k) => `${fmtDate(k.am.slice(0, 10))}: ${k.grund}`).join(" · ")}>
+                  korrigiert
+                </Chip>
+              ) : null}
               {vertretungFuer && (
                 <Chip tone="amber" icon={<Users className="size-3" />} title="Die verantwortliche Person ist heute abwesend und hat Sie als Vertretung eingetragen (§ 53 BRAO)">
                   Vertretung für {vertretungFuer}
@@ -237,7 +308,7 @@ export function FristZeile({ f, akte, team, user, index = 0, zeigeDatum, vertret
         </div>
         <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2">
           {verantwortlich && <Avatar initialen={verantwortlich.initialen} farbe={verantwortlich.farbe} size={28} title={`Verantwortlich: ${verantwortlich.name}`} />}
-          {f.status === "offen" && <KontrolleAktion f={f} user={user} kontrollieren={kontrollieren} verantwortlich={verantwortlich} />}
+          {f.status === "offen" && <KontrolleAktion f={f} user={user} kontrollieren={kontrollieren} verantwortlich={verantwortlich} anfordern={korrekturAnfordern} />}
           {f.status === "offen" ? (
             <ErledigtKnopf erledigt={erledigt} onClick={umschalten} />
           ) : (
@@ -246,7 +317,28 @@ export function FristZeile({ f, akte, team, user, index = 0, zeigeDatum, vertret
               Wieder öffnen
             </button>
           )}
+          {(onOpen || korrigierbar(f)) && (
+            <Menu
+              trigger={({ toggle }) => (
+                <button type="button" onClick={toggle} className="icon-btn !size-9 text-fg-3" aria-label={`Weitere Aktionen für ${f.titel}`} title="Korrigieren, Streichen, Details">
+                  <MoreHorizontal className="size-4" />
+                </button>
+              )}
+              items={[
+                ...(onOpen ? [{ label: "Details öffnen", icon: <PanelRightOpen />, onClick: () => onOpen(f) }] : []),
+                ...(korrigierbar(f)
+                  ? [
+                      { label: "Korrigieren …", icon: <PenLine />, onClick: korrigieren },
+                      ...(f.typ !== "termin" ? [{ label: "Streichen – mit Grund …", icon: <Trash2 />, danger: true, onClick: streichen }] : []),
+                    ]
+                  : []),
+              ]}
+            />
+          )}
         </div>
+      </div>
+      <div className="-mt-2 pb-2 pl-5 pr-4 empty:hidden">
+        <KorrekturHinweis f={f} team={team} />
       </div>
       {dialog}
       <AnimatePresence initial={false}>
@@ -288,6 +380,11 @@ export function FristZeile({ f, akte, team, user, index = 0, zeigeDatum, vertret
                 </p>
               )}
               {f.notiz && <p className="mt-3 text-[12.5px] leading-relaxed text-fg-3">{f.notiz}</p>}
+              {f.korrekturen?.length ? (
+                <p className="mt-3 text-[12.5px] leading-relaxed text-fg-3">
+                  {f.korrekturen.length === 1 ? "1 Korrektur" : `${f.korrekturen.length} Korrekturen`} – zuletzt: {f.korrekturen[f.korrekturen.length - 1].grund} (vorher {fmtDate(f.korrekturen[f.korrekturen.length - 1].vorher.datum)})
+                </p>
+              ) : null}
               {brauchtKontrolle(f) && f.verantwortlichId === user.id && (
                 <p className="mt-3 flex gap-2 text-[12.5px] leading-relaxed text-amber">
                   <Users className="mt-0.5 size-3.5 shrink-0" />

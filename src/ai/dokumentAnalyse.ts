@@ -586,6 +586,17 @@ function fristOrt(typ: string, input: { von?: string; text: string; betreff?: st
   return { land, hinweis: "Kanzleisitz", kanzleiLand: land };
 }
 
+/**
+ * Ort der Fristwahrung bei Rechtsmitteln: das Gericht, bei dem die Frist zu wahren ist (§ 519 Abs. 1 ZPO), nicht das
+ * Ausgangsgericht – z. B. „Berlin (Kammergericht, Berufungsgericht)“. Unbekanntes Berufungsgericht → bisheriger Ort.
+ */
+export function rechtsmittelOrt(rm: Rechtsmittelhinweis | undefined, ort: FristOrt): FristOrt {
+  if (!rm || /^zuständigen\b/.test(rm.gericht)) return ort;
+  const g = bundeslandAusGericht(rm.gericht);
+  if (!g) return ort;
+  return { land: g.land, hinweis: `${rm.gericht}, ${rm.art === "Revision" ? "Revisionsgericht" : "Berufungsgericht"}`, kanzleiLand: ort.kanzleiLand, gericht: ort.gericht };
+}
+
 /** Zustellung später als fünf Monate nach Verkündung? Dann beginnt die Rechtsmittelfrist schon mit Ablauf der fünf Monate. */
 function fuenfMonatsGrenze(n: string, zustellung: ISODate, norm: string): { ereignis: ISODate; label?: string; warnung?: string } {
   const verkuendet = parseDatum(n.match(/urteil vom ([0-9.\s]+\d{2,4}|\d{1,2}\.\s?[a-zä]+\s+\d{4})/)?.[1] ?? "");
@@ -684,8 +695,10 @@ export function analysiereRegelbasiert(input: { text: string; betreff?: string; 
     } else {
       const [ein, begr, norm] = arbeitsgericht ? (["berufung_arbg", "berufungsbegruendung_arbg", "§ 66 Abs. 1 S. 2 ArbGG"] as const) : (["berufung", "berufungsbegruendung", "§ 517 Hs. 2 ZPO"] as const);
       const g = fuenfMonatsGrenze(n, zustellung, norm);
-      fristen.push(vorschlag(ein, g.ereignis, ort, { ereignisLabel: g.label, warnung: g.warnung }), vorschlag(begr, g.ereignis, ort, { ereignisLabel: g.label }));
       rechtsmittel = rechtsmittelgerichtZu(input.text, ort.gericht ?? (arbeitsgericht ? input.von : undefined), { arbeitsgericht });
+      // Berufung und Begründung werden beim Berufungsgericht eingereicht (§ 519 Abs. 1, § 520 Abs. 3 S. 1 ZPO) – dessen Feiertage gelten
+      const rmOrt = rechtsmittelOrt(rechtsmittel, ort);
+      fristen.push(vorschlag(ein, g.ereignis, rmOrt, { ereignisLabel: g.label, warnung: g.warnung }), vorschlag(begr, g.ereignis, rmOrt, { ereignisLabel: g.label }));
       aktionen.push(`Mandanten über das Urteil informieren und Berufung prüfen (${arbeitsgericht ? "Zulassung, Beschwer über 600 € oder Bestandsstreit, § 64 Abs. 2 ArbGG" : "Beschwer über 1.000 € oder Zulassung, § 511 Abs. 2 ZPO"}; Kostenrisiko).`);
     }
   } else if (typ === "Versäumnisurteil") {

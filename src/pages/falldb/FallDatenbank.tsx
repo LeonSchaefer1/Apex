@@ -25,7 +25,12 @@ const RECHTSGEBIETE = Array.from(new Set(ENTSCHEIDUNGEN.map((e) => e.rechtsgebie
 const GERICHTE_IM_AUSZUG = Object.keys(EBENEN_ANZAHL).length;
 /** Filter nur für Gerichte, die im Demo-Auszug vorkommen – leere Filter wirken wie ein Defekt. */
 const EBENEN_IM_AUSZUG = GERICHTSEBENEN.filter((eb) => EBENEN_ANZAHL[eb]);
-const EBENEN_SPAETER = GERICHTSEBENEN.filter((eb) => !EBENEN_ANZAHL[eb]);
+/** Instanzgerichte, die erst die Produktivversion anbindet – ausdrücklich mit den Arbeitsgerichten. */
+const EBENEN_SPAETER = (["OLG", "LG", "AG", "LAG", "ArbG"] as const).filter((eb) => !EBENEN_ANZAHL[eb]);
+/** „OLG, LG, AG, LAG und ArbG“ */
+const EBENEN_SPAETER_TEXT = EBENEN_SPAETER.length > 1 ? `${EBENEN_SPAETER.slice(0, -1).join(", ")} und ${EBENEN_SPAETER[EBENEN_SPAETER.length - 1]}` : EBENEN_SPAETER.join("");
+/** Jüngste Entscheidung im Auszug – statt eines „Stand“-Datums, das nur das heutige Datum wäre. */
+const JUENGSTE_ENTSCHEIDUNG = ENTSCHEIDUNGEN.reduce((max, e) => (e.datum > max ? e.datum : max), "");
 
 /** Fall-Datenbank: Präzedenzfälle in Sekunden – Stichwortsuche mit Live-Treffern und KI-Recherche nach Sachverhalt. */
 export default function FallDatenbank() {
@@ -200,10 +205,10 @@ export default function FallDatenbank() {
                   })}
                   {EBENEN_SPAETER.length > 0 && (
                     <span
-                      className="w-[150px] shrink-0 pl-1.5 text-[12.5px] leading-tight text-fg-3"
-                      title={`${EBENEN_SPAETER.join(", ")}: im Demo-Auszug nicht enthalten – die Produktivversion bindet die Instanzrechtsprechung über Open Legal Data an.`}
+                      className="w-[180px] shrink-0 pl-1.5 text-[12.5px] leading-tight text-fg-3"
+                      title={`${EBENEN_SPAETER_TEXT}: im Demo-Auszug nicht enthalten – die Produktivversion bindet die Instanzrechtsprechung über Open Legal Data an.`}
                     >
-                      + {EBENEN_SPAETER.join(", ")} in der Produktivversion
+                      + {EBENEN_SPAETER_TEXT} in der Produktivversion
                     </span>
                   )}
                 </div>
@@ -460,8 +465,6 @@ const QUELLEN = [
   { icon: <Building2 className="size-4" />, name: "Lizenzierte Verlagsdatenbanken", umfang: "Kommentierte Rechtsprechung und Fachzeitschriften", wie: "Über die bestehenden Lizenzen Ihrer Kanzlei" },
 ];
 
-/** Datenstand des Demo-Auszugs (zuletzt redaktionell geprüft). */
-const STAND_AUSZUG = "2026-10-16";
 
 /** Ehrliche Einordnung: was heute im Demo-Auszug steckt und was die Produktivversion anbindet. */
 function QuellenKarte() {
@@ -477,7 +480,7 @@ function QuellenKarte() {
           <span className="text-[12.5px] font-semibold text-fg">Demo-Auszug</span>
         </div>
         <p className="num mt-2 text-[12.5px] font-medium text-fg">
-          Stand: {fmtDate(STAND_AUSZUG)} · Demo-Auszug mit {ENTSCHEIDUNGEN.length} Leitentscheidungen
+          Auszug, jüngste Entscheidung: {fmtDate(JUENGSTE_ENTSCHEIDUNG)} · {ENTSCHEIDUNGEN.length} Leitentscheidungen
         </p>
         <p className="mt-2 text-[12.5px] leading-snug text-fg-2">
           <span className="num font-semibold">{ENTSCHEIDUNGEN.length}</span> echte Leitentscheidungen von {GERICHTE_IM_AUSZUG} Gerichten (BVerfG, EuGH und Bundesgerichte). {RECHTSPRECHUNG_HINWEIS.replace(/^Demo-Auszug aus der Fall-Datenbank: echte Entscheidungen, /, "")}

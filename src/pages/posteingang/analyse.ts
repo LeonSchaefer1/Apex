@@ -5,6 +5,7 @@ import type { KiQuelle } from "@/ai/status";
 import { fmtDate, fmtDateWd, fmtTime, nowLocal, today, uid } from "@/core/dates";
 import type { Akte, Anhang, Bundesland, Dokument, DokumentArt, Frist, ID, ISODate, Nachricht, TenantData, User } from "@/core/types";
 import { darfEebAbgeben as darfEebAbgebenRolle, istConsole } from "@/lib/backend";
+import { normalize } from "@/core/search";
 import { useData } from "@/store/data";
 import { useSession } from "@/store/session";
 import { legeFristAn, vorfristenZu } from "@/pages/fristen/logik";
@@ -238,7 +239,37 @@ export function ablegbareAnhaenge(n: Nachricht): Anhang[] {
   return n.anhaenge.filter((a) => !/\.xml$/i.test(a.name));
 }
 
-const anhangDokId = (n: Nachricht, i: number) => `dok-${n.id}-anhang-${i + 1}`;
+const anhangDokId = (n: Pick<Nachricht, "id">, i: number) => `dok-${n.id}-anhang-${i + 1}`;
+
+/** Alle Dokumente, die aus dieser Nachricht in einer E-Akte abgelegt wurden: die Nachricht selbst und ihre Anhänge. */
+export function dokumenteAusNachricht(n: Pick<Nachricht, "id">, dokumente: Dokument[]): Dokument[] {
+  const basis = `dok-${n.id}`;
+  return dokumente.filter((d) => d.id === basis || d.id.startsWith(`${basis}-anhang-`));
+}
+
+/**
+ * Fristen, Termine und Wiedervorlagen, die aus dieser Nachricht in der Akte notiert wurden (erkennbar am Vermerk
+ * „… „Betreff“ …“), dazu ihre Vorfristen. `haupt` ohne Vorfristen – für die Rückfrage beim Umhängen.
+ */
+export function fristenAusNachricht(n: Pick<Nachricht, "betreff">, akteId: string, fristen: Frist[]): { haupt: Frist[]; alle: Frist[] } {
+  const marke = `„${n.betreff}“`;
+  const haupt = fristen.filter((f) => f.akteId === akteId && f.typ !== "vorfrist" && !!f.notiz?.includes(marke));
+  const ids = new Set(haupt.map((f) => f.id));
+  const vor = fristen.filter((f) => f.akteId === akteId && f.typ === "vorfrist" && !!f.bezugId && ids.has(f.bezugId));
+  return { haupt, alle: [...haupt, ...vor] };
+}
+
+/**
+ * Widerspruch zwischen Gerichtsaktenzeichen und gewählter Akte: Nennt die Nachricht das Gerichts-Az. einer anderen Akte
+ * (laut Bestand) und nicht das der gewählten, droht eine Notfrist in der falschen Akte zu landen.
+ */
+export function gerichtsAzKonflikt(n: Pick<Nachricht, "betreff" | "text">, ziel: Akte, akten: Akte[]): { az: string; akte: Akte } | undefined {
+  const norm = normalize(`${n.betreff}\n${n.text}`).replace(/\s+/g, " ");
+  const enthaelt = (az?: string) => !!az && norm.includes(normalize(az).replace(/\s+/g, " "));
+  if (enthaelt(ziel.gerichtsAz)) return undefined;
+  const andere = akten.find((a) => a.id !== ziel.id && enthaelt(a.gerichtsAz));
+  return andere ? { az: andere.gerichtsAz!, akte: andere } : undefined;
+}
 
 /** Zielordner für die Anhänge: Gerichtspost → „Gericht“, Post des Mandanten → „Mandant“, sonst „Anlagen“. */
 export function anhangOrdner(n: Nachricht, akte: Akte, data: TenantData): Dokument["ordner"] {
@@ -264,15 +295,26 @@ function anhangArt(name: string, n: Nachricht): DokumentArt {
   return istGerichtspost(n) ? "beschluss" : "anlage";
 }
 
-/** Legt die Anhänge der Nachricht als eigene Dokumente in der E-Akte ab (idempotent). Gibt Anzahl und Ordner zurück. */
-export function anhaengeAblegen(n: Nachricht, akte: Akte, user: User, opts: { leise?: boolean } = {}): { anzahl: number; ordner: Dokument["ordner"] } {
-  const { upsert, log, data } = useData.getState();
+/**
+ * Legt die Anhänge der Nachricht als eigene Dokumente in der E-Akte ab (idempotent). Liegt ein Anhang schon in einer
+ * ANDEREN Akte (frühere Zuordnung), wird er in diese Akte verschoben – samt Entzug einer Portalfreigabe (§ 43a Abs. 2 BRAO).
+ */
+export function anhaengeAblegen(n: Nachricht, akte: Akte, user: User, opts: { leise?: boolean } = {}): { anzahl: number; ordner: Dokument["ordner"]; verschoben: number } {
+  const { upsert, patch, log, data } = useData.getState();
   const ordner = anhangOrdner(n, akte, data);
-  const vorhanden = new Set(data.dokumente.map((d) => d.id));
+  const vorhanden = new Map(data.dokumente.map((d) => [d.id, d]));
   let anzahl = 0;
+  let verschoben = 0;
   ablegbareAnhaenge(n).forEach((a, i) => {
     const id = anhangDokId(n, i);
-    if (vorhanden.has(id)) return;
+    const alt = vorhanden.get(id);
+    if (alt) {
+      if (alt.akteId !== akte.id) {
+        patch("dokumente", id, { akteId: akte.id, ordner, portal: undefined });
+        verschoben++;
+      }
+      return;
+    }
     const endung = a.name.split(".").pop()?.toLowerCase();
     upsert("dokumente", {
       id,
@@ -290,17 +332,52 @@ export function anhaengeAblegen(n: Nachricht, akte: Akte, user: User, opts: { le
     anzahl++;
   });
   if (anzahl && !opts.leise) log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `${anzahl} ${anzahl === 1 ? "Anhang" : "Anhänge"} aus „${n.betreff}“ in der E-Akte abgelegt (${ordner})` });
-  return { anzahl, ordner };
+  return { anzahl, ordner, verschoben };
 }
 
-/** Ordnet die Nachricht einer Akte zu und legt sie samt Anhängen als Dokumente in der E-Akte ab. */
-export function zuordnen(n: Nachricht, akte: Akte, user: User, ansicht: KiAnsicht | null, opts: { leise?: boolean } = {}): { ordner: Dokument["ordner"]; anhaenge: number; anhangOrdner: Dokument["ordner"] } {
-  const { patch, upsert, log } = useData.getState();
+export interface ZuordnenOptionen {
+  leise?: boolean;
+  /** Beim Umhängen: Fristen/Termine aus dieser Nachricht in der bisherigen Akte mitnehmen (empfohlen) oder dort lassen. */
+  fristen?: "mitnehmen" | "lassen";
+  /** Bestätigter Widerspruch zum Gerichtsaktenzeichen (wird protokolliert). */
+  konflikt?: { az: string; akteAz: string };
+}
+
+export interface ZuordnenErgebnis {
+  ordner: Dokument["ordner"];
+  anhaenge: number;
+  anhangOrdner: Dokument["ordner"];
+  /** Umzuordnung: bisherige Akte, verschobene Dokumente und Fristen */
+  vorher?: { akte?: Akte; dokumente: number; fristen: number; fristenBelassen: number };
+}
+
+/**
+ * Ordnet die Nachricht einer Akte zu und legt sie samt Anhängen als Dokumente in der E-Akte ab.
+ * Umzuordnung (Akte gewechselt): ALLE aus der Nachricht abgelegten Dokumente wandern in die neue Akte, eine Portalfreigabe
+ * entfällt, Fristen aus der Nachricht ziehen je nach `opts.fristen` mit um; beide Verläufe halten den Wechsel fest.
+ */
+export function zuordnen(n: Nachricht, akte: Akte, user: User, ansicht: KiAnsicht | null, opts: ZuordnenOptionen = {}): ZuordnenErgebnis {
+  const { patch, upsert, log, data } = useData.getState();
+  const aktuell = data.nachrichten.find((x) => x.id === n.id) ?? n;
+  const vorherId = aktuell.akteId && aktuell.akteId !== akte.id ? aktuell.akteId : undefined;
+  const vorherAkte = vorherId ? data.akten.find((a) => a.id === vorherId) : undefined;
+  // Dokumente aus dieser Nachricht, die (noch) in einer anderen Akte liegen – gleich welche
+  const fremd = dokumenteAusNachricht(n, data.dokumente).filter((d) => d.akteId !== akte.id);
+  // Fristen aus der Nachricht in der bisherigen Akte
+  const ausVorher = vorherId ? fristenAusNachricht(n, vorherId, data.fristen) : { haupt: [], alle: [] };
+  const mitnehmen = ausVorher.haupt.length > 0 && opts.fristen !== "lassen";
+  if (mitnehmen) for (const f of ausVorher.alle) patch("fristen", f.id, { akteId: akte.id });
+  const fristenInZiel = ansicht?.fristen.length ? ansicht.fristen.every((p) => istNotiert(p, akte.id, mitnehmen ? data.fristen.map((f) => (ausVorher.alle.some((x) => x.id === f.id) ? { ...f, akteId: akte.id } : f)) : data.fristen)) : true;
   const ohneFristen = !ansicht || ansicht.fristen.length === 0;
   patch("nachrichten", n.id, {
     akteId: akte.id,
     zugeordnet: true,
-    kiStatus: n.kiStatus === "analysiert" && ohneFristen && ansicht?.akteId === akte.id ? "uebernommen" : n.kiStatus,
+    kiStatus:
+      n.kiStatus === "analysiert" && ohneFristen && ansicht?.akteId === akte.id
+        ? "uebernommen"
+        : vorherId && aktuell.kiStatus === "uebernommen" && !fristenInZiel
+          ? "analysiert"
+          : aktuell.kiStatus,
   });
   const art: DokumentArt = ansicht?.dokumentArt ?? (n.kanal === "bea" ? "bea" : "email");
   const dok: Dokument = {
@@ -317,16 +394,41 @@ export function zuordnen(n: Nachricht, akte: Akte, user: User, ansicht: KiAnsich
     createdAt: n.eingang,
     ki: ansicht ? { zusammenfassung: ansicht.zusammenfassung, erkannteFristen: ansicht.fristen.length } : undefined,
   };
+  // Neu geschrieben (ohne Portalfreigabe) – ersetzt ein in einer anderen Akte abgelegtes Exemplar
   upsert("dokumente", dok);
   const anh = anhaengeAblegen(n, akte, user, { leise: true });
-  if (!opts.leise)
+  const konfliktText = opts.konflikt ? ` – Gerichts-Az. ${opts.konflikt.az} gehört laut Bestand zu ${opts.konflikt.akteAz}; Zuordnung bewusst bestätigt` : "";
+  const nachEeb = aktuell.eebAbgegeben ? " – nach Abgabe des eEB, bestätigt" : "";
+  // Verlauf der bisherigen Akte(n): Rücknahme mit Ziel
+  const vorherIds = [...new Set([...(vorherId ? [vorherId] : []), ...fremd.map((d) => d.akteId)])];
+  for (const id of vorherIds) {
+    const anzahlDoks = fremd.filter((d) => d.akteId === id).length;
+    const fristText =
+      id === vorherId && ausVorher.haupt.length
+        ? mitnehmen
+          ? `; ${ausVorher.haupt.length} ${ausVorher.haupt.length === 1 ? "Frist bzw. Termin" : "Fristen bzw. Termine"} mit umgezogen`
+          : `; ${ausVorher.haupt.length} ${ausVorher.haupt.length === 1 ? "Frist bzw. Termin aus der Nachricht bleibt" : "Fristen bzw. Termine aus der Nachricht bleiben"} bewusst hier`
+        : "";
+    log({
+      akteur: "nutzer",
+      userId: user.id,
+      akteId: id,
+      text: `Zuordnung von „${n.betreff}“ zurückgenommen – ${anzahlDoks ? `${anzahlDoks} ${anzahlDoks === 1 ? "Dokument" : "Dokumente"} nach ${akte.aktenzeichen} verschoben` : `Nachricht gehört zu ${akte.aktenzeichen}`}${fristText}${nachEeb}`,
+    });
+  }
+  if (!opts.leise || vorherIds.length)
     log({
       akteur: "nutzer",
       userId: user.id,
       akteId: akte.id,
-      text: `Nachricht „${n.betreff}“ der Akte ${akte.aktenzeichen} zugeordnet und in der E-Akte abgelegt (${dok.ordner}${anh.anzahl ? `, ${anh.anzahl} ${anh.anzahl === 1 ? "Anhang" : "Anhänge"} in „${anh.ordner}“` : ""})`,
+      text: `Nachricht „${n.betreff}“ der Akte ${akte.aktenzeichen} zugeordnet und in der E-Akte abgelegt (${dok.ordner}${anh.anzahl + anh.verschoben ? `, ${anh.anzahl + anh.verschoben} ${anh.anzahl + anh.verschoben === 1 ? "Anhang" : "Anhänge"} in „${anh.ordner}“` : ""})${vorherAkte ? ` – vorher ${vorherAkte.aktenzeichen}${mitnehmen ? `, ${ausVorher.haupt.length} ${ausVorher.haupt.length === 1 ? "Frist bzw. Termin" : "Fristen bzw. Termine"} mit umgezogen` : ""}` : ""}${konfliktText}${nachEeb}`,
     });
-  return { ordner: dok.ordner, anhaenge: anh.anzahl, anhangOrdner: anh.ordner };
+  return {
+    ordner: dok.ordner,
+    anhaenge: anh.anzahl + anh.verschoben,
+    anhangOrdner: anh.ordner,
+    vorher: vorherIds.length ? { akte: vorherAkte, dokumente: fremd.length, fristen: mitnehmen ? ausVorher.haupt.length : 0, fristenBelassen: mitnehmen ? 0 : ausVorher.haupt.length } : undefined,
+  };
 }
 
 /** Übernimmt die erkannten Fristen (mit Vorfristen) in die Akte. Die Vier-Augen-Kontrolle bleibt offen. */

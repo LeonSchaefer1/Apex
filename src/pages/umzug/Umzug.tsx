@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowLeft, ArrowRight, CalendarClock, Check, Clock, History, Minus, Phone, RefreshCw, RotateCcw, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarClock, Check, ChevronDown, Clock, History, Info, Minus, Phone, RefreshCw, RotateCcw, ShieldCheck } from "lucide-react";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
@@ -9,11 +9,18 @@ import { fmtDate, fmtTime, nowLocal, today, uid } from "@/core/dates";
 import { Avatar, Button, Card, Chip, PageHeader, confirmDialog } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { leseDatei, parseCsv, type CsvErgebnis, type DateiInfo } from "./csv";
-import { autoZuordnung, baueZeilen, imUmfang, normName, systemName as sysName, type DateiDublettenAktion, type DublettenAktion, type QuellSystem, type Umfang, type ZielFeld } from "./zuordnung";
+import { autoZuordnung, baueZeilen, systemName as sysName, type DateiDublettenAktion, type DublettenAktion, type OhneDatumAktion, type QuellSystem, type Umfang, type ZielFeld } from "./zuordnung";
 import { beispielExport } from "./beispiel";
-import { fuehreUmzugAus, macheRueckgaengig, type Entitaet, type Ergebnis, type Fortschritt } from "./uebernahme";
+import { fuehreUmzugAus, macheRueckgaengig, umzugPlan, type Entitaet, type Ergebnis, type Fortschritt } from "./uebernahme";
 import { SchrittDaten, SchrittFertig, SchrittQuelle, SchrittUebernahme, SchrittZuordnung } from "./Schritte";
-import { ladeStand, laufAusErgebnis, markiereRueckgaengig, sortiereLaeufe, speichereLauf, speichereStand, uebernehmeAlteLaeufe, type UmzugLauf } from "./laeufe";
+import {
+  istAbgebrochen, ladeLaufMarke, protokolliereAbbruch, ladeStand, laufAusErgebnis, markiereRueckgaengig, setzeLaufMarke, sortiereLaeufe, speichereLauf, speichereStand, uebernehmeAlteLaeufe,
+  type LaufMarke, type UmzugLauf,
+} from "./laeufe";
+
+/** Lauf, der gerade in diesem Fenster ausgeführt wird (auch wenn die Seite zwischendurch verlassen wurde). */
+let laufImFenster: string | null = null;
+const LEER_UNDO = (): UmzugLauf["undo"] => ({ erstellt: [], vorher: [] });
 
 const SCHRITTE = [
   { titel: "Altsystem wählen", kurz: "Altsystem" },
@@ -44,6 +51,10 @@ export default function Umzug() {
   const [ausnahmen, setAusnahmen] = useState<Record<number, DublettenAktion>>(start?.ausnahmen ?? {});
   const [dateiAktionen, setDateiAktionen] = useState<Record<number, DateiDublettenAktion>>(start?.dateiAktionen ?? {});
   const [umfang, setUmfang] = useState<Umfang>(start?.umfang ?? "alle");
+  const [ohneDatum, setOhneDatum] = useState<Record<number, OhneDatumAktion>>(start?.ohneDatum ?? {});
+  // Hinweis „Zwischenstand wiederhergestellt“ nach dem Neuladen (ab Schritt 2)
+  const [wiederhergestellt, setWiederhergestellt] = useState<string | null>(start && start.schritt > 0 ? (start.gespeichert ?? nowLocal()) : null);
+  const fristenBestand = useCol("fristen");
   const laeufeRoh = useCol("umzugLaeufe");
   const laeufe = useMemo(() => sortiereLaeufe(laeufeRoh), [laeufeRoh]);
   // Protokolle aus dem früheren Browserspeicher einmalig in den Datenbestand der Kanzlei übernehmen
@@ -51,6 +62,10 @@ export default function Umzug() {
   const [fortschritt, setFortschritt] = useState<Partial<Record<Entitaet, Fortschritt>>>({});
   const [laeuft, setLaeuft] = useState(false);
   const [ergebnis, setErgebnis] = useState<Ergebnis | null>(null);
+  const [laufendeId, setLaufendeId] = useState<string | null>(laufImFenster);
+  // „Was zieht um?“: vor der Dateiauswahl offen, danach eingeklappt (Platz für Zuordnung und Vorschau)
+  const [wasZiehtUm, setWasZiehtUm] = useState(schritt < 2);
+  const letzterStand = useRef<Ergebnis | null>(null);
 
   const name = sysName(system);
   // Dublettenprüfung gegen den Bestand vor dem Import (während/nach der Übernahme eingefroren)
@@ -62,40 +77,64 @@ export default function Umzug() {
   useEffect(() => {
     // Während und nach der Übernahme nichts mehr festhalten – das Ergebnis steht im Umzugsprotokoll
     if (ergebnis || laeuft) return;
-    speichereStand(tenant.id, system || csv ? { schritt, system, csv, datei, auto, zuordnung, modus, ausnahmen, dateiAktionen, umfang } : null);
+    speichereStand(tenant.id, system || csv ? { schritt, system, csv, datei, auto, zuordnung, modus, ausnahmen, dateiAktionen, umfang, ohneDatum } : null, nowLocal());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schritt, system, csv, datei, auto, zuordnung, modus, ausnahmen, dateiAktionen, umfang]);
+  }, [schritt, system, csv, datei, auto, zuordnung, modus, ausnahmen, dateiAktionen, umfang, ohneDatum]);
 
-  const plan = useMemo(() => {
-    const heute = today();
-    const ok0 = zeilen.filter((z) => !z.fehler);
-    const ausserhalb = ok0.filter((z) => !imUmfang(z, umfang, heute)).length;
-    const ok = ok0.filter((z) => imUmfang(z, umfang, heute) && !(z.dateiDublette && dateiAktionFuer(z.nr) !== "keep"));
-    const zusammengefuehrt = ok0.filter((z) => imUmfang(z, umfang, heute) && z.dateiDublette && dateiAktionFuer(z.nr) === "merge").length;
-    const dateiUebersprungen = ok0.filter((z) => imUmfang(z, umfang, heute) && z.dateiDublette && dateiAktionFuer(z.nr) === "skip").length;
-    const dub = ok.filter((z) => z.dublette);
-    const ueberspringen = dub.filter((z) => aktionFuer(z.nr) === "skip").length + dateiUebersprungen;
-    const aktualisieren = dub.length - dub.filter((z) => aktionFuer(z.nr) === "skip").length;
-    const rein = ok.filter((z) => !(z.dublette && aktionFuer(z.nr) === "skip"));
-    const namen = new Set<string>();
-    for (const z of rein) for (const n of [z.mandant, z.gegner]) if (normName(n)) namen.add(normName(n));
-    const vorhanden = new Set(kontakte.map((k) => normName(k.name)));
-    const mitFrist = rein.filter((z) => z.fristDatum);
-    const kontrolle = mitFrist.filter((z) => z.fristTyp === "notfrist" || z.fristTyp === "frist").length;
-    return {
-      akten: ok.length - dub.length,
-      archiv: ok.filter((z) => !z.dublette && z.status === "abgeschlossen").length,
-      aktualisieren,
-      ueberspringen,
-      zusammengefuehrt,
-      ausserhalb,
-      fristen: kontrolle,
-      wiedervorlagen: mitFrist.length - kontrolle,
-      kontakte: namen.size,
-      kontakteVorhanden: [...namen].filter((n) => vorhanden.has(n)).length,
+  // Unterbrochener Lauf (Fenster geschlossen oder neu geladen, während die Übernahme lief): vollständig zurücknehmen
+  // und im Umzugsprotokoll als „abgebrochen – nichts übernommen“ festhalten.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const pruefe = () => {
+      const m: LaufMarke | null = ladeLaufMarke(tenant.id);
+      if (!m || m.laufId === laufImFenster) return;
+      // Puls jünger als 6 s: läuft vermutlich noch in einem anderen Fenster – kurz warten und erneut prüfen
+      if (m.puls && Date.now() - new Date(m.puls).getTime() < 6000) {
+        timer = setTimeout(pruefe, 6500);
+        return;
+      }
+      const lauf = useData.getState().data.umzugLaeufe.find((l) => l.id === m.laufId);
+      if (lauf?.rueckgaengig) {
+        setzeLaufMarke(tenant.id, null);
+        return;
+      }
+      macheRueckgaengig(lauf?.undo ?? LEER_UNDO(), m.system, user.id, m.laufId);
+      protokolliereAbbruch(m, nowLocal());
+      setzeLaufMarke(tenant.id, null);
+      useData.getState().log({ akteur: "system", userId: user.id, text: `Umzug aus ${m.system} (${m.datei}) vom ${fmtDate(m.datum.slice(0, 10))}, ${fmtTime(m.datum)} Uhr wurde unterbrochen und vollständig zurückgenommen – nichts übernommen` });
+      toast("Unterbrochener Umzug zurückgenommen", { text: `Der Lauf vom ${fmtDate(m.datum.slice(0, 10))}, ${fmtTime(m.datum)} Uhr wurde nicht zu Ende geführt. Es wurde nichts übernommen – bitte starten Sie die Übernahme erneut.`, ton: "info" });
     };
+    pruefe();
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zeilen, modus, ausnahmen, kontakte, dateiAktionen, umfang]);
+  }, [tenant.id]);
+
+  // Während der Übernahme: Hinweis des Browsers beim Schließen oder Neuladen des Fensters
+  useEffect(() => {
+    if (!laeuft) return;
+    const warnen = (ev: BeforeUnloadEvent) => {
+      ev.preventDefault();
+      ev.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnen);
+    return () => window.removeEventListener("beforeunload", warnen);
+  }, [laeuft]);
+
+  // Eine Rechnung für Schritt 3 und 4 – zählt genau wie die Übernahme (Umfang, Dubletten, Zusammenführung, ohne Abschlussdatum)
+  const plan = useMemo(
+    () =>
+      umzugPlan(zeilen, {
+        aktionFuer: (z) => aktionFuer(z.nr),
+        dateiAktionFuer: (z) => dateiAktionFuer(z.nr),
+        umfang,
+        heute: today(),
+        ohneDatumAktionFuer: (z) => ohneDatum[z.nr],
+        kontakte: laeuft || ergebnis ? [] : kontakte,
+        bestand: fristenBestand,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [zeilen, modus, ausnahmen, kontakte, dateiAktionen, umfang, ohneDatum, fristenBestand],
+  );
 
   const ladeCsv = (text: string, info: DateiInfo) => {
     const p = parseCsv(text);
@@ -110,6 +149,7 @@ export default function Umzug() {
     setZuordnung(a);
     setAusnahmen({});
     setDateiAktionen({});
+    setOhneDatum({});
     setDateiFehler(null);
   };
 
@@ -139,41 +179,74 @@ export default function Umzug() {
     setAuto([]);
     setAusnahmen({});
     setDateiAktionen({});
+    setOhneDatum({});
     setDateiFehler(null);
+    setWiederhergestellt(null);
   };
 
   const geheZu = (n: number) => {
+    // ab der Zuordnung „Was zieht um?“ einklappen – Platz für Vorschau und Entscheidungen
+    if (n >= 2 && schritt < 2) setWasZiehtUm(false);
     setRichtung(n > schritt ? 1 : -1);
     setSchritt(n);
     document.getElementById("haupt-scroll")?.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const starte = async () => {
-    if (!csv || laeuft) return;
+    if (!csv || laeuft || plan.ohneDatumOffen > 0) return;
+    const laufId = uid("uz");
+    const marke: LaufMarke = { laufId, datum: nowLocal(), system: name, datei: datei?.name ?? "Export", userId: user.id, puls: nowLocal() };
+    // Kennung „läuft“ setzen: wird das Fenster geschlossen, nimmt der nächste Aufruf den Lauf vollständig zurück
+    laufImFenster = laufId;
+    setLaufendeId(laufId);
+    setzeLaufMarke(tenant.id, marke);
+    letzterStand.current = null;
     setLaeuft(true);
     setAktenStand(akten);
     setFortschritt({});
+    setWiederhergestellt(null);
+    document.getElementById("haupt-scroll")?.scrollTo({ top: 0, behavior: "smooth" });
+    // Puls alle 2 s: ein zweites Fenster erkennt daran, dass der Lauf noch arbeitet
+    const puls = setInterval(() => setzeLaufMarke(tenant.id, { ...marke, puls: nowLocal() }), 2000);
+    const sichere = (e: Ergebnis) => {
+      letzterStand.current = e;
+      speichereLauf(laufAusErgebnis({ ...e, undo: structuredClone(e.undo) }, { datum: marke.datum, system: name, datei: marke.datei, userId: user.id }));
+      setzeLaufMarke(tenant.id, { ...marke, puls: nowLocal() });
+    };
     try {
       const e = await fuehreUmzugAus({
         zeilen,
         aktionFuer: (z) => aktionFuer(z.nr),
         dateiAktionFuer: (z) => dateiAktionFuer(z.nr),
+        ohneDatumAktionFuer: (z) => ohneDatum[z.nr],
+        onZwischenstand: sichere,
         umfang,
-        laufId: uid("uz"),
+        laufId,
         system: name,
         user,
         team,
         bundesland: tenant.bundesland,
         onFortschritt: (k, f) => setFortschritt((p) => ({ ...p, [k]: f })),
       });
+      speichereLauf(laufAusErgebnis(e, { datum: marke.datum, system: name, datei: marke.datei, userId: user.id }));
+      setzeLaufMarke(tenant.id, null);
       setErgebnis(e);
       speichereStand(tenant.id, null);
-      speichereLauf(laufAusErgebnis(e, { datum: nowLocal(), system: name, datei: datei?.name ?? "Export", userId: user.id }));
-      toast("Umzug abgeschlossen", { text: `${e.aktenNeu + e.aktenAktualisiert} Akten, ${e.kontakteNeu} Kontakte und ${e.fristen} Fristen übernommen.`, ton: "erfolg" });
+      toast("Umzug abgeschlossen", { text: `${e.aktenNeu + e.aktenAktualisiert} ${e.aktenNeu + e.aktenAktualisiert === 1 ? "Akte" : "Akten"}, ${e.kontakteNeu} ${e.kontakteNeu === 1 ? "Kontakt" : "Kontakte"} und ${e.fristen} ${e.fristen === 1 ? "Frist" : "Fristen"} übernommen.`, ton: "erfolg" });
       setTimeout(() => geheZu(4), 650);
     } catch (err) {
-      toast("Übernahme unterbrochen", { text: err instanceof Error ? err.message : "Bitte erneut versuchen.", ton: "fehler" });
+      // Halber Lauf bleibt nicht stehen: alles zurücknehmen, im Protokoll als abgebrochen festhalten
+      const stand = letzterStand.current as Ergebnis | null;
+      macheRueckgaengig(stand?.undo ?? LEER_UNDO(), name, user.id, laufId);
+      protokolliereAbbruch(marke, nowLocal());
+      setzeLaufMarke(tenant.id, null);
+      setFortschritt({});
+      setAktenStand(null);
+      toast("Übernahme unterbrochen – nichts übernommen", { text: `${err instanceof Error ? err.message : "Unbekannter Fehler."} Der Datenbestand entspricht dem Stand vor dem Start; bitte erneut versuchen.`, ton: "fehler" });
     } finally {
+      clearInterval(puls);
+      laufImFenster = null;
+      setLaufendeId(null);
       setLaeuft(false);
     }
   };
@@ -230,9 +303,21 @@ export default function Umzug() {
         subtitle="Akten, Kontakte und Fristen aus Ihrer bisherigen Software übernehmen – mit Vorschau, Dublettenprüfung (auch innerhalb der Datei), Plausibilitätsprüfung und Vier-Augen-Kontrolle der Fristen. Jeder Lauf lässt sich rückgängig machen."
       />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+      {/* Schritt „Zuordnung prüfen“ einspaltig: die Vorschau braucht die volle Breite (Gegenstandswert und Frist ohne Querscrollen) */}
+      <div className={cn("grid grid-cols-1 gap-4 lg:items-start", schritt !== 2 && "lg:grid-cols-[minmax(0,1fr)_320px]")}>
         <Card padded={false} className="min-w-0">
           <Stepper schritt={schritt} />
+          {wiederhergestellt && schritt > 0 && schritt < 4 && (
+            <div role="status" className="mx-5 mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[14px] bg-[var(--ink-softer)] px-3.5 py-2.5 text-[12.5px] text-fg-2 ring-1 ring-inset ring-[var(--line)] md:mx-7">
+              <Info className="size-4 shrink-0 text-ink" />
+              <span className="min-w-0 flex-1">
+                Zwischenstand vom {fmtDate(wiederhergestellt.slice(0, 10))}, {fmtTime(wiederhergestellt)} Uhr wiederhergestellt – Datei, Zuordnung und Entscheidungen sind übernommen.
+              </span>
+              <Button size="sm" variant="ghost" onClick={neuStarten}>
+                Neu beginnen
+              </Button>
+            </div>
+          )}
           <div className="relative overflow-hidden px-5 pb-5 pt-5 md:px-7 md:pb-7">
             <AnimatePresence mode="wait" custom={richtung} initial={false}>
               <motion.div
@@ -260,7 +345,6 @@ export default function Umzug() {
                     auto={auto}
                     setZuordnung={setZuordnung}
                     zeilen={zeilen}
-                    kontakte={kontakte}
                     modus={modus}
                     setModus={(m) => {
                       setModus(m);
@@ -270,9 +354,24 @@ export default function Umzug() {
                     setAusnahme={(nr, a) => setAusnahmen((p) => ({ ...p, [nr]: a }))}
                     dateiAktionen={dateiAktionen}
                     setDateiAktion={(nr, a) => setDateiAktionen((p) => ({ ...p, [nr]: a }))}
+                    plan={plan}
                   />
                 )}
-                {schritt === 3 && <SchrittUebernahme plan={plan} fortschritt={fortschritt} laeuft={laeuft} onStart={starte} systemName={name} umfang={umfang} setUmfang={setUmfang} />}
+                {schritt === 3 && (
+                  <SchrittUebernahme
+                    plan={plan}
+                    fortschritt={fortschritt}
+                    laeuft={laeuft}
+                    onStart={starte}
+                    systemName={name}
+                    umfang={umfang}
+                    setUmfang={setUmfang}
+                    ohneDatum={ohneDatum}
+                    setOhneDatum={(nr, a) => setOhneDatum((p) => ({ ...p, [nr]: a }))}
+                    setOhneDatumAlle={(a) => setOhneDatum(Object.fromEntries(plan.ohneDatum.map((z) => [z.nr, a])))}
+                    heute={today()}
+                  />
+                )}
                 {schritt === 4 && ergebnis && (
                   <SchrittFertig
                     ergebnis={ergebnis}
@@ -315,10 +414,21 @@ export default function Umzug() {
           )}
         </Card>
 
-        <aside className="flex min-w-0 flex-col gap-4">
-          <Umzugsprotokoll laeufe={laeufe} onRueckgaengig={(l) => void laufRueckgaengig(l)} team={team} />
+        <aside className={cn("grid min-w-0 grid-cols-1 gap-4", schritt === 2 && "lg:grid-cols-2 xl:grid-cols-3 lg:items-start")}>
+          <Umzugsprotokoll laeufe={laeufe} onRueckgaengig={(l) => void laufRueckgaengig(l)} team={team} laufendeId={laufendeId} />
           <Card>
-            <div className="title-md">Was zieht um?</div>
+            <button
+              type="button"
+              className="-m-1 flex w-[calc(100%+0.5rem)] items-center justify-between gap-3 rounded-[12px] p-1 text-left"
+              aria-expanded={wasZiehtUm}
+              aria-controls="umzug-was-zieht-um"
+              onClick={() => setWasZiehtUm((v) => !v)}
+            >
+              <span className="title-md">Was zieht um?</span>
+              <ChevronDown className={cn("size-4 shrink-0 text-fg-3 transition-transform duration-300", wasZiehtUm && "rotate-180")} aria-hidden />
+            </button>
+            {!wasZiehtUm && <p className="mt-1 text-[12.5px] text-fg-3">Akten, Kontakte, Fristen, Wiedervorlagen und Datenblatt – FiBu und Zugangsdaten nicht.</p>}
+            <div id="umzug-was-zieht-um" hidden={!wasZiehtUm}>
             <div className="eyebrow mb-2 mt-3">Kommt mit – aus Ihrem Export</div>
             <ul className="grid grid-cols-1 gap-2 text-[13px]">
               {[
@@ -358,6 +468,7 @@ export default function Umzug() {
                   </li>
                 ))}
               </ul>
+            </div>
             </div>
           </Card>
 
@@ -425,7 +536,7 @@ export default function Umzug() {
 }
 
 /** Umzugsprotokoll: alle Läufe mit Datum, Datei und Zahlen – „Rückgängig machen“ je Lauf, auch nach dem Neuladen. */
-function Umzugsprotokoll({ laeufe, onRueckgaengig, team }: { laeufe: UmzugLauf[]; onRueckgaengig: (l: UmzugLauf) => void; team: { id: string; name: string }[] }) {
+function Umzugsprotokoll({ laeufe, onRueckgaengig, team, laufendeId }: { laeufe: UmzugLauf[]; onRueckgaengig: (l: UmzugLauf) => void; team: { id: string; name: string }[]; laufendeId: string | null }) {
   if (!laeufe.length) return null;
   return (
     <Card>
@@ -436,24 +547,32 @@ function Umzugsprotokoll({ laeufe, onRueckgaengig, team }: { laeufe: UmzugLauf[]
       <ul className="mt-3 grid grid-cols-1 gap-2.5">
         {laeufe.slice(0, 6).map((l) => {
           const z = l.zahlen;
-          const von = team.find((u) => u.id === (l.rueckgaengig?.von ?? l.userId))?.name;
+          const abgebrochen = istAbgebrochen(l);
+          const laeuftNoch = l.id === laufendeId;
+          const von = abgebrochen ? undefined : team.find((u) => u.id === (l.rueckgaengig?.von ?? l.userId))?.name;
           return (
             <li key={l.id} className={cn("rounded-[14px] px-3 py-2.5 ring-1 ring-[var(--line)]", l.rueckgaengig && "opacity-75")}>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <span className="num text-[12.5px] font-semibold">
                   {fmtDate(l.datum.slice(0, 10))}, {fmtTime(l.datum)} Uhr
                 </span>
-                {l.rueckgaengig ? <Chip>rückgängig gemacht</Chip> : <Chip tone="ink">aktiv</Chip>}
+                {abgebrochen ? <Chip tone="amber">abgebrochen – nichts übernommen</Chip> : l.rueckgaengig ? <Chip>rückgängig gemacht</Chip> : laeuftNoch ? <Chip tone="ink" dot>läuft …</Chip> : <Chip tone="ink">aktiv</Chip>}
               </div>
               <div className="mt-0.5 break-words text-[12.5px] text-fg-2">
                 {l.system} · {l.datei}
               </div>
-              <div className="mt-0.5 text-[12.5px] text-fg-3">
-                {z.aktenNeu} Akten neu{z.archiviert ? ` (${z.archiviert} abgeschlossen)` : ""}
-                {z.aktenAktualisiert ? `, ${z.aktenAktualisiert} aktualisiert` : ""}, {z.kontakteNeu} Kontakte, {z.fristen} Fristen
-                {z.zusammengefuehrt ? `, ${z.zusammengefuehrt} Dublette(n) zusammengeführt` : ""}
-              </div>
-              {l.rueckgaengig ? (
+              {abgebrochen ? (
+                <div className="mt-0.5 text-[12.5px] text-fg-3">
+                  Die Übernahme wurde unterbrochen (Fenster geschlossen oder neu geladen) und am {fmtDate(l.rueckgaengig!.am.slice(0, 10))}, {fmtTime(l.rueckgaengig!.am)} Uhr vollständig zurückgenommen.
+                </div>
+              ) : (
+                <div className="mt-0.5 text-[12.5px] text-fg-3">
+                  {z.aktenNeu} {z.aktenNeu === 1 ? "Akte" : "Akten"} neu{z.archiviert ? ` (${z.archiviert} abgeschlossen)` : ""}
+                  {z.aktenAktualisiert ? `, ${z.aktenAktualisiert} aktualisiert` : ""}, {z.kontakteNeu} {z.kontakteNeu === 1 ? "Kontakt" : "Kontakte"}, {z.fristen} {z.fristen === 1 ? "Frist bzw. Wiedervorlage" : "Fristen und Wiedervorlagen"}
+                  {z.zusammengefuehrt ? `, ${z.zusammengefuehrt} ${z.zusammengefuehrt === 1 ? "Dublette" : "Dubletten"} zusammengeführt` : ""}
+                </div>
+              )}
+              {abgebrochen || laeuftNoch ? null : l.rueckgaengig ? (
                 <div className="mt-0.5 text-[12.5px] text-fg-3">
                   rückgängig am {fmtDate(l.rueckgaengig.am.slice(0, 10))}
                   {von ? ` von ${von}` : ""}

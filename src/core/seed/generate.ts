@@ -11,9 +11,13 @@ import type {
 import { KAMMERN, stadtDatenFuer, type StadtDaten, type StadtKey, VORNAMEN_M, VORNAMEN_W, NACHNAMEN, BRANCHEN, HAUSVERWALTUNGEN, GEGNERANWAELTE, VERSICHERUNGEN, KFZ_VERSICHERER } from "./pools";
 import { createRng, hashString, type Rng } from "./rng";
 import { vorlagenFuer, type FallVorlage, type Parteien } from "./vorlagen";
-import { heroesBerlin, heroesMuenchen, heroesHamburg } from "./heroes";
+import { heroesBerlin, heroesMuenchen, heroesHamburg, zusatzBerlin } from "./heroes";
 
-export const SEED_VERSION = 9;
+/**
+ * 10: ArbG-Präsentationsakte mit Gütetermin (T14) und drei weitere RSV-Akten am Ende, Portal-Freigaben, Freigabestatus,
+ * Deckungsanfrage 142/26 als Brief-Entwurf, Zeuge „Seifert“, kein Gerichts-Az. in vorgerichtlichen Phasen.
+ */
+export const SEED_VERSION = 10;
 
 export interface SeedInput {
   tenant: Tenant;
@@ -360,7 +364,7 @@ function generischeAkte(ctx: Ctx, sachgebiet: Sachgebiet, azNummer: number) {
   // Kammer- und Abteilungsnummern nach Gerichtsgröße: ArbG Paderborn 1–4 Ca, AG Paderborn 1–20 C und 1–8 F; Großstädte wie bisher
   const k = KAMMERN[stadt.groesse ?? "gross"];
   const nr = (r: [number, number]) => rng.int(r[0], r[1]);
-  const gerichtsAz = gericht
+  const gerichtsAzGezogen = gericht
     ? gerichtArt === "arbg" ? `${nr(k.arbg)} Ca ${rng.int(1000, 9999)}/${ctx.yy}`
       : gerichtArt === "fam" ? `${nr(k.fam)} F ${rng.int(100, 999)}/${ctx.yy}`
       : gerichtArt === "mahn" ? `${ctx.yy}-${rng.int(1000000, 9999999)}-0-${rng.int(1, 9)}`
@@ -368,6 +372,9 @@ function generischeAkte(ctx: Ctx, sachgebiet: Sachgebiet, azNummer: number) {
       : gerichtArt === "straf" ? `${nr(k.straf)} Cs ${rng.int(100, 999)}/${ctx.yy}`
       : `${nr(k.ag)} C ${rng.int(100, 999)}/${ctx.yy}`
     : gerichtArt === "sta" ? `${nr(k.sta)} Js ${rng.int(1000, 9999)}/${ctx.yy}` : undefined;
+  // Vorgerichtliche Phasen haben (noch) kein gerichtliches Aktenzeichen – der Wert wird trotzdem gezogen, damit die Zufallsfolge
+  // und damit der übrige Demobestand unverändert bleiben (I2-T23-05). Die Phase bleibt, sie steuert die Gebühren der Sammelabrechnung.
+  const gerichtsAz = phase === "Mandatsaufnahme" || phase === "Außergerichtlich" ? undefined : gerichtsAzGezogen;
   p.AZ = gerichtsAz ?? "";
   const akte: Akte = {
     id: ctx.id("a"),
@@ -406,7 +413,9 @@ function generischeAkte(ctx: Ctx, sachgebiet: Sachgebiet, azNummer: number) {
   data.akten.push(akte);
 
   // Dokumente
-  addDok(ctx, { akteId: akte.id, name: "Vollmacht", art: "vollmacht", ordner: "Mandant", quelle: "generiert", format: "pdf", inhalt: `Vollmacht: ${mandant.name} bevollmächtigt ${ctx.tenant.name} in der Sache ${akte.titel}.`, createdAt: ctx.dt(createdOffset + 1) });
+  const vollmacht = addDok(ctx, { akteId: akte.id, name: "Vollmacht", art: "vollmacht", ordner: "Mandant", quelle: "generiert", format: "pdf", inhalt: `Vollmacht: ${mandant.name} bevollmächtigt ${ctx.tenant.name} in der Sache ${akte.titel}.`, createdAt: ctx.dt(createdOffset + 1) });
+  // Mandantenportal: eigene, für den Mandanten bestimmte Schreiben ausdrücklich freigeben (ohne Zufallszug)
+  if (akte.mandantenportal) vollmacht.portal = { am: vollmacht.createdAt, vonId: bearbeiter.id };
   for (const dv of v.dokumente) {
     addDok(ctx, {
       akteId: akte.id, name: dv.name, art: dv.art, ordner: dv.ordner,
@@ -508,12 +517,18 @@ function generischerPosteingang(ctx: Ctx) {
         ki: { akteId: a.id, sicherheit: 0.98, zusammenfassung: "Sachstandsanfrage des Mandanten. Kein fristrelevanter Inhalt.", aktion: "Mandanten-Update mit aktuellem Stand senden (Entwurf liegt bereit)." },
       });
     } else if (variant === 1 && gericht) {
+      // Ohne Gerichts-Az. (vorgerichtliche Phase): Eingangsbestätigung statt Terminsverfügung – gleiche Zufallszüge wie bisher
+      const ohneAz = !a.gerichtsAz;
       addMsg(ctx, {
-        kanal: "bea", von: gericht.name, betreff: `${a.gerichtsAz ?? ""} – Verfügung`,
-        text: `In Sachen ${a.titel} (Az. ${a.gerichtsAz}) wird mitgeteilt, dass der Termin zur mündlichen Verhandlung vom Vorsitzenden aufrechterhalten bleibt. Den Parteien wird aufgegeben, etwaige weitere Unterlagen bis spätestens eine Woche vor dem Termin einzureichen.`,
+        kanal: "bea", von: gericht.name, betreff: ohneAz ? `${a.titel} – Eingangsbestätigung` : `${a.gerichtsAz} – Verfügung`,
+        text: ohneAz
+          ? `In Sachen ${a.titel} wird der Eingang Ihres Schreibens bestätigt. Ein gerichtliches Verfahren ist bislang nicht anhängig; ein Aktenzeichen wird erst mit Eingang einer Klage bzw. eines Antrags vergeben.`
+          : `In Sachen ${a.titel} (Az. ${a.gerichtsAz}) wird mitgeteilt, dass der Termin zur mündlichen Verhandlung vom Vorsitzenden aufrechterhalten bleibt. Den Parteien wird aufgegeben, etwaige weitere Unterlagen bis spätestens eine Woche vor dem Termin einzureichen.`,
         eingang: ctx.dt(-rng.int(1, 5)), akteId: a.id, status: "gelesen", kiStatus: "uebernommen", zugeordnet: true,
-        anhaenge: [{ name: "Verfuegung.pdf", groesseKb: rng.int(40, 180) }],
-        ki: { akteId: a.id, sicherheit: 0.99, zusammenfassung: "Gerichtliche Verfügung: Termin bleibt bestehen, Unterlagen bis eine Woche vor Termin.", aktion: "Wiedervorlage eine Woche vor Termin gesetzt." },
+        anhaenge: [{ name: ohneAz ? "Eingangsbestaetigung.pdf" : "Verfuegung.pdf", groesseKb: rng.int(40, 180) }],
+        ki: ohneAz
+          ? { akteId: a.id, sicherheit: 0.99, zusammenfassung: "Eingangsbestätigung des Gerichts – kein fristrelevanter Inhalt.", aktion: "Zur Akte genommen – keine Frist." }
+          : { akteId: a.id, sicherheit: 0.99, zusammenfassung: "Gerichtliche Verfügung: Termin bleibt bestehen, Unterlagen bis eine Woche vor Termin.", aktion: "Wiedervorlage eine Woche vor Termin gesetzt." },
       });
     } else if (variant === 2) {
       const ga = a.gegneranwaltId ? data.kontakte.find((k) => k.id === a.gegneranwaltId) : a.gegnerId ? data.kontakte.find((k) => k.id === a.gegnerId) : undefined;
@@ -600,8 +615,11 @@ function zeiten(ctx: Ctx) {
   for (let i = 0; i < 46; i++) {
     const a = rng.pick(offene);
     const u = rng.pick(ctx.anwaelte);
+    // Erfasste Zeiten liegen nie in der Zukunft: Fällt „heute“ auf ein Wochenende, gilt der letzte Werktag davor.
+    const tag = -rng.int(0, 28);
+    const datum = ctx.werktag(tag) > ctx.d(0) ? ctx.werktag(tag - 1) : ctx.werktag(tag);
     const z: Zeiteintrag = {
-      id: ctx.id("z"), akteId: a.id, userId: u.id, datum: ctx.werktag(-rng.int(0, 28)),
+      id: ctx.id("z"), akteId: a.id, userId: u.id, datum,
       minuten: rng.pick([12, 18, 24, 30, 36, 42, 48, 60, 72, 90, 120]), taetigkeit: rng.pick(taetigkeiten), abrechenbar: rng.chance(0.85),
     };
     data.zeiten.push(z);
@@ -880,6 +898,8 @@ export function generateTenantData(input: SeedInput, today: string, opts: { leer
   automationenUndAktivitaeten(ctx);
   gerichtlicheFristen(ctx);
   verteileHeuteFristen(ctx);
+  // Zusatzakten mit festen Werten und eigenen IDs – erst ganz am Ende, damit der übrige Bestand unverändert bleibt
+  if (input.profil.heroes === "berlin") zusatzBerlin(ctx);
 
   if (opts.kundentest ?? input.profil.heroes === "none") {
     for (const a of ctx.data.aktivitaeten) {

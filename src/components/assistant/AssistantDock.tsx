@@ -33,6 +33,47 @@ interface Msg {
 
 let mid = 0;
 
+/** Gesprächsverlauf je Kanzlei und Person für diese Browsersitzung (übersteht Neuladen, nicht das Schließen des Tabs). */
+const verlaufSchluessel = (tenantId: string, userId: string) => `aa:assistent-verlauf:${tenantId}:${userId}`;
+function ladeVerlauf(key: string): Msg[] {
+  try {
+    const roh = sessionStorage.getItem(key);
+    const liste = roh ? (JSON.parse(roh) as Msg[]) : [];
+    const ok = Array.isArray(liste) ? liste.filter((m) => m && typeof m.text === "string" && !m.laedt) : [];
+    mid = Math.max(mid, ...ok.map((m) => m.id || 0));
+    return ok;
+  } catch {
+    return [];
+  }
+}
+function speichereVerlauf(key: string, msgs: Msg[]) {
+  try {
+    const fertig = msgs.filter((m) => !m.laedt).slice(-40);
+    if (fertig.length) sessionStorage.setItem(key, JSON.stringify(fertig));
+    else sessionStorage.removeItem(key);
+  } catch {
+    /* Speicher gesperrt – Verlauf gilt dann nur bis zum Neuladen */
+  }
+}
+
+/** Bedienelement oder Text unter einem Punkt (die Kugel selbst ist dabei durchlässig)? */
+function belegtAn(x: number, y: number): boolean {
+  const el = document.elementFromPoint(x, y);
+  if (!el || el === document.documentElement || el === document.body) return false;
+  if (el.closest("a[href], button, input, select, textarea, summary, label, [role=button], [role=link], [role=tab], [role=switch], [role=checkbox], [role=menuitem], [tabindex]:not([tabindex='-1'])")) {
+    // große, klickbare Flächen (z. B. eine ganze Karte) zählen nur, wenn dort auch Text steht
+    const r = el.closest("a[href], button, [role=button], [role=link]")?.getBoundingClientRect();
+    if (!r || r.width * r.height < 60_000) return true;
+  }
+  const doc = document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null };
+  const range = doc.caretRangeFromPoint?.(x, y);
+  const knoten = range?.startContainer;
+  if (!knoten || knoten.nodeType !== Node.TEXT_NODE || !knoten.textContent?.trim()) return false;
+  const r = document.createRange();
+  r.selectNodeContents(knoten);
+  return Array.from(r.getClientRects()).some((b) => x >= b.left - 2 && x <= b.right + 2 && y >= b.top - 2 && y <= b.bottom + 2);
+}
+
 /** Apex Assistent: sprechender KI-Avatar für Live-Support und Kanzleiarbeit (unten rechts). */
 export function AssistantDock() {
   const { assistentOffen, oeffneAssistent, schliesseAssistent, konsumierePrompt, assistentPrompt, kugel, kugelEingeklappt, setKugelEingeklappt } = useUI();
@@ -44,7 +85,14 @@ export function AssistantDock() {
   // Vorschläge aus den tatsächlichen Daten der Kanzlei (z. B. eine vorhandene Akte statt eines festen Aktenzeichens)
   const ap = sitzung.tenant.ansprechpartner;
   const chips = useMemo(() => vorschlaege({ ...useData.getState().data, akten }, ap), [akten, ap]);
-  const [msgs, setMsgs] = useState<Msg[]>([]);
+  const verlaufKey = verlaufSchluessel(sitzung.tenant.id, sitzung.user.id);
+  const [msgs, setMsgs] = useState<Msg[]>(() => ladeVerlauf(verlaufKey));
+  // Kugel weicht automatisch an den Rand aus, wenn darunter Text oder ein Bedienelement liegt
+  const [ausweichen, setAusweichen] = useState(false);
+  const kugelRef = useRef<HTMLElement | null>(null);
+  const setzeKugelRef = useCallback((el: HTMLElement | null) => {
+    kugelRef.current = el;
+  }, []);
   const [eingabe, setEingabe] = useState("");
   const [zustand, setZustand] = useState<OrbZustand>("ruhe");
   const [pegel, setPegel] = useState(0);
@@ -76,6 +124,65 @@ export function AssistantDock() {
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
   }, [msgs, interim]);
+
+  // Verlauf sitzungsweise merken (je Kanzlei und Person)
+  useEffect(() => {
+    speichereVerlauf(verlaufKey, msgs);
+  }, [msgs, verlaufKey]);
+  // Personen- oder Kanzleiwechsel im selben Tab: deren eigenen Verlauf laden
+  const letzterKey = useRef(verlaufKey);
+  useEffect(() => {
+    if (letzterKey.current === verlaufKey) return;
+    letzterKey.current = verlaufKey;
+    setMsgs(ladeVerlauf(verlaufKey));
+  }, [verlaufKey]);
+
+  // Kugel nur zeigen, wo sie nichts verdeckt: liegt unter ihr Text oder ein Bedienelement, weicht sie als Griff an den Rand aus.
+  const kugelSichtbar = !assistentOffen && !mobile && kugel && !kugelEingeklappt;
+  useEffect(() => {
+    if (!kugelSichtbar) return;
+    let raf = 0;
+    const pruefe = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        // Fläche der Kugel: 60 × 60 px, 24 px vom Rand (bottom-6 right-6)
+        const cx = w - 54;
+        const cy = h - 54;
+        const huelle = kugelRef.current;
+        const vorher = huelle?.style.pointerEvents ?? "";
+        if (huelle) huelle.style.pointerEvents = "none";
+        const punkte: [number, number][] = [[cx, cy], [cx - 20, cy], [cx + 20, cy], [cx, cy - 20], [cx, cy + 20], [cx - 14, cy - 14], [cx + 14, cy - 14], [cx - 14, cy + 14], [cx + 14, cy + 14]];
+        const belegt = punkte.some(([x, y]) => belegtAn(x, y));
+        if (huelle) huelle.style.pointerEvents = vorher;
+        setAusweichen(belegt);
+      });
+    };
+    pruefe();
+    const scroller = document.getElementById("haupt-scroll");
+    scroller?.addEventListener("scroll", pruefe, { passive: true });
+    window.addEventListener("resize", pruefe);
+    let t: ReturnType<typeof setTimeout> | undefined;
+    let t2: ReturnType<typeof setTimeout> | undefined;
+    const obs = new MutationObserver(() => {
+      clearTimeout(t);
+      clearTimeout(t2);
+      t = setTimeout(pruefe, 150);
+      // Listen gleiten nach einer Änderung animiert nach (z. B. erledigte Frist in der Ausgangskontrolle) – danach erneut prüfen
+      t2 = setTimeout(pruefe, 900);
+    });
+    const main = document.querySelector("main");
+    if (main) obs.observe(main, { childList: true, subtree: true, characterData: true });
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(t);
+      clearTimeout(t2);
+      obs.disconnect();
+      scroller?.removeEventListener("scroll", pruefe);
+      window.removeEventListener("resize", pruefe);
+    };
+  }, [kugelSichtbar]);
 
   const vorlesen = useCallback(
     (text: string) => {
@@ -159,6 +266,10 @@ export function AssistantDock() {
         setZustand((z) => (z === "hoert" ? "ruhe" : z));
       },
       onFehler: (msg, dauerhaft) => {
+        // Kein Mikrofon bzw. kein Zugriff: „Ich höre zu …“ verschwindet sofort – Kopf und Zeile widersprechen der Meldung nicht
+        stopHoeren.current?.();
+        setInterim("");
+        setZustand((z) => (z === "hoert" ? "ruhe" : z));
         setHinweis(msg);
         // Spracheingabe für diese Sitzung gesperrt: Mikrofon-Knopf verschwindet, weiter per Tastatur
         if (dauerhaft) setTimeout(() => inputRef.current?.focus(), 0);
@@ -232,8 +343,10 @@ export function AssistantDock() {
       {/* Avatar-Knopf (ab Tablet; auf dem Smartphone sitzt die Kugel in der Tab-Leiste). Einklappbar zu einem Griff am Rand,
           abschaltbar unter Einstellungen → Darstellung – der Assistent bleibt über Strg+K bzw. das Menü erreichbar. */}
       <AnimatePresence>
-        {!assistentOffen && !mobile && kugel && !kugelEingeklappt && (
+        {kugelSichtbar && !ausweichen && (
           <motion.div
+            ref={setzeKugelRef}
+            data-kugel
             key="kugel"
             initial={{ scale: 0.6, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -265,6 +378,22 @@ export function AssistantDock() {
               Apex Assistent fragen
             </span>
           </motion.div>
+        )}
+        {kugelSichtbar && ausweichen && (
+          <motion.button
+            ref={setzeKugelRef}
+            data-kugel
+            key="ausgewichen"
+            type="button"
+            initial={{ x: 20, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: 20, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 420, damping: 30 }}
+            onClick={() => oeffneAssistent()}
+            className="ai-fill fixed bottom-10 right-0 z-50 h-14 w-3.5 rounded-l-full shadow-[0_6px_18px_-6px_rgba(60,40,200,.6)] ring-1 ring-white/30 transition-[width] hover:w-5 focus-visible:w-5"
+            aria-label="Apex Assistent öffnen (Kugel ist an den Rand ausgewichen, damit sie nichts verdeckt)"
+            title="Apex Assistent öffnen"
+          />
         )}
         {!assistentOffen && !mobile && kugel && kugelEingeklappt && (
           <motion.button
@@ -368,13 +497,13 @@ export function AssistantDock() {
                     </div>
                   </div>
                 ) : (
-                  <div className="grid gap-3">
+                  <div className="grid grid-cols-[minmax(0,1fr)] gap-3">
                     {msgs.map((m) => (
-                      <motion.div key={m.id} initial={{ opacity: 0, y: 8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: 420, damping: 32 }} className={cn("flex", m.rolle === "nutzer" ? "justify-end" : "justify-start")}>
+                      <motion.div key={m.id} initial={{ opacity: 0, y: 8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: 420, damping: 32 }} className={cn("flex min-w-0", m.rolle === "nutzer" ? "justify-end" : "justify-start")}>
                         {m.rolle === "nutzer" ? (
-                          <div className="max-w-[85%] rounded-[20px] rounded-br-[6px] bg-ink px-3.5 py-2 text-[13.5px] leading-snug text-white">{m.text}</div>
+                          <div className="min-w-0 max-w-[85%] rounded-[20px] rounded-br-[6px] bg-ink px-3.5 py-2 text-[13.5px] leading-snug text-white [overflow-wrap:anywhere]">{m.text}</div>
                         ) : (
-                          <div className="max-w-[92%]">
+                          <div className="min-w-0 max-w-[92%] [overflow-wrap:anywhere]">
                             {m.werkzeuge && m.werkzeuge.length > 0 && (
                               <div className="mb-1.5 flex flex-wrap gap-1">
                                 {m.werkzeuge.map((w) => (
@@ -389,7 +518,7 @@ export function AssistantDock() {
                               {m.laedt && !m.text ? <Tippen /> : <Rich text={m.text} />}
                             </div>
                             {m.auswahl && m.auswahl.length > 0 && (
-                              <div className="mt-2 grid gap-1.5" role="group" aria-label="Bitte wählen Sie">
+                              <div className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-1.5" role="group" aria-label="Bitte wählen Sie">
                                 {m.auswahl.map((a) => (
                                   <button
                                     key={a.frage}
@@ -400,8 +529,8 @@ export function AssistantDock() {
                                   >
                                     <FolderOpen className="size-4 shrink-0 text-ink" />
                                     <span className="min-w-0 flex-1">
-                                      <span className="block truncate text-[13px] font-medium">{a.label}</span>
-                                      {a.sub && <span className="block truncate text-[12.5px] text-fg-3">{a.sub}</span>}
+                                      <span className="line-clamp-2 block text-[13px] font-medium leading-snug">{a.label}</span>
+                                      {a.sub && <span className="line-clamp-2 block text-[12.5px] leading-snug text-fg-3">{a.sub}</span>}
                                     </span>
                                     <ArrowRight className="size-3.5 shrink-0 text-fg-3" />
                                   </button>

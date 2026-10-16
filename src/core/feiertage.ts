@@ -199,3 +199,13 @@ export function istWerktag(datum: ISODate, land: Bundesland): boolean {
   const f = feiertagAm(datum, land);
   return !f || !!f.teilweise;
 }
+
+/** Erster Arbeitstag NACH `datum` (Mo–Fr, kein landesweiter Feiertag in `land`) – z. B. für „nächster Arbeitstag“ in der Ausgangskontrolle. */
+export function naechsterArbeitstag(datum: ISODate, land: Bundesland): ISODate {
+  let tag = datum.slice(0, 10);
+  for (let i = 0; i < 30; i++) {
+    tag = addDays(tag, 1);
+    if (istWerktag(tag, land)) return tag;
+  }
+  return tag;
+}

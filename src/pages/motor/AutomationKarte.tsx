@@ -35,17 +35,16 @@ function FreigabeZeile({ k }: { k: string }) {
   );
 }
 
-/** Schaltet eine Automation um – mit Rückmeldung und Protokolleintrag (Audit). */
+/**
+ * Schaltet eine Automatik um – mit Protokolleintrag (Audit). Die Rückmeldung steht an der Karte selbst (Status mit
+ * aria-live), nicht als Meldung über dem Schalter (WCAG 2.4.11).
+ */
 export function useAutomationUmschalten() {
   const { user } = useKanzlei();
   return (a: Automation, aktiv: boolean) => {
     const st = useData.getState();
     st.patch("automationen", a.id, { aktiv });
-    st.log({ akteur: "nutzer", userId: user.id, text: `Automation „${a.name}“ ${aktiv ? "aktiviert" : "pausiert"}` });
-    toast(aktiv ? "Automation aktiviert" : "Automation pausiert", {
-      text: aktiv ? `„${a.name}“ läuft ab sofort im Hintergrund.` : `„${a.name}“ ruht, bis Sie sie wieder einschalten.`,
-      ton: aktiv ? "erfolg" : "info",
-    });
+    st.log({ akteur: "nutzer", userId: user.id, text: `Automatik „${a.name}“ ${aktiv ? "aktiviert" : "pausiert"}` });
   };
 }
 
@@ -129,13 +128,15 @@ export function AutomationKarte({ a, onOpen, now, ausFeed }: { a: Automation; on
           <div className="title-md line-clamp-2">{a.name}</div>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <Chip>{a.kategorie}</Chip>
-            {a.aktiv ? (
-              <Chip tone="green" dot>
-                Aktiv
-              </Chip>
-            ) : (
-              <Chip tone="outline">Pausiert</Chip>
-            )}
+            <span aria-live="polite" className="inline-flex">
+              {a.aktiv ? (
+                <Chip tone="green" dot>
+                  Aktiv
+                </Chip>
+              ) : (
+                <Chip tone="outline">Pausiert – ruht, bis Sie sie einschalten</Chip>
+              )}
+            </span>
           </div>
         </div>
         <div className="relative z-[2]">
@@ -160,23 +161,24 @@ export function AutomationKarte({ a, onOpen, now, ausFeed }: { a: Automation; on
         <MiniFlow schritte={a.schritte} aktiv={a.aktiv} />
       </div>
 
-      <div className="mt-auto grid grid-cols-3 gap-2 border-t border-[var(--line)] pt-3.5">
-        <Kennzahl icon={<Timer className="size-3.5" />} label={vorgangVon(a.key)} wert={`${a.minutenProLauf} Min.`} />
+      {/* Kennzahlen untereinander – lange Bezeichnungen („je Mandanteninformation“) überlagern nichts */}
+      <dl className="mt-auto grid gap-1.5 border-t border-[var(--line)] pt-3.5">
+        <Kennzahl icon={<Timer className="size-3.5" />} label={`Ersparnis ${vorgangVon(a.key)}`} wert={`${a.minutenProLauf} Min.`} />
         <Kennzahl icon={<Repeat className="size-3.5" />} label="Vorgänge gesamt" wert={fmtNum(a.laeufe)} />
         <Kennzahl icon={<Clock className="size-3.5" />} label="Zuletzt" wert={letzter ? relTime(letzter, now) : "–"} />
-      </div>
+      </dl>
     </Card>
   );
 }
 
 function Kennzahl({ icon, label, wert }: { icon: React.ReactNode; label: string; wert: string }) {
   return (
-    <div className="min-w-0">
-      <div className="flex items-start gap-1 text-[12px] text-fg-3">
+    <div className="flex min-w-0 items-baseline justify-between gap-3">
+      <dt className="flex min-w-0 items-start gap-1.5 text-[12.5px] text-fg-3">
         <span className="mt-0.5 shrink-0">{icon}</span>
-        <span className="min-w-0 leading-snug">{label}</span>
-      </div>
-      <div className="num mt-0.5 truncate text-[13.5px] font-semibold">{wert}</div>
+        <span className="min-w-0 break-words leading-snug">{label}</span>
+      </dt>
+      <dd className="num shrink-0 text-[13.5px] font-semibold">{wert}</dd>
     </div>
   );
 }
@@ -243,10 +245,10 @@ export function AutomationDrawer({ a: aktuell, onClose, aktivitaeten, now }: { a
         <div className="flex flex-col gap-5">
           <div className="flex items-center justify-between gap-3 rounded-[16px] bg-[var(--ink-softer)] p-3.5">
             <div className="min-w-0">
-              <div className="text-[13.5px] font-semibold">{a.aktiv ? "Automation ist aktiv" : "Automation ist pausiert"}</div>
+              <div className="text-[13.5px] font-semibold" aria-live="polite">{a.aktiv ? "Automatik ist aktiv" : "Automatik ist pausiert"}</div>
               <div className="text-[12.5px] text-fg-3">{a.aktiv ? `Freigabe: ${freigabeVon(a.key)}.` : "Es werden keine Vorgänge bearbeitet."}</div>
             </div>
-            <Switch checked={a.aktiv} onChange={(v) => umschalten(a, v)} label={a.aktiv ? "Automation pausieren" : "Automation aktivieren"} />
+            <Switch checked={a.aktiv} onChange={(v) => umschalten(a, v)} label={a.aktiv ? "Automatik pausieren" : "Automatik aktivieren"} />
           </div>
 
           <p className="text-[14px] leading-relaxed text-fg-2">{a.beschreibung}</p>

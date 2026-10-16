@@ -17,7 +17,7 @@
     "build:server": "esbuild server/index.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist-server/index.js --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
     "start": "node --no-warnings=ExperimentalWarning dist-server/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/core/*.test.ts src/ai/*.test.ts",
+    "test": "tsx --test 'src/core/*.test.ts' 'src/ai/*.test.ts' 'src/pages/**/*.test.ts'",
     "build:artifact": "npm run build:demo && node scripts/build-artifact.mjs dist-demo dist-artifact/anwaltapex.html"
   },
   "dependencies": {

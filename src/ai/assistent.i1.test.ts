@@ -94,10 +94,10 @@ test("Wiedervorlage über den Assistenten: erst Bestätigung, Titel aus dem Auft
   const useData = await vorbereiten();
   const { vorschlagEintragen, vorschlagZuruecknehmen, pruefeDatum } = await import("./assistent");
   const vorher = useData.getState().data.fristen.length;
-  const r = await frag([{ role: "user", content: "Lege eine Wiedervorlage für Akte 137 in drei Tagen an: Zeugen Pohl benennen" }]);
+  const r = await frag([{ role: "user", content: "Lege eine Wiedervorlage für Akte 137 in drei Tagen an: Zeugen Seifert benennen" }]);
   assert.ok(r.vorschlag, "Bestätigungskarte");
   assert.equal(useData.getState().data.fristen.length, vorher, "noch nichts eingetragen");
-  assert.equal(r.vorschlag!.titel, "Zeugen Pohl benennen");
+  assert.equal(r.vorschlag!.titel, "Zeugen Seifert benennen");
   assert.equal(r.vorschlag!.datum, addDays(today(), 3));
   assert.equal(r.vorschlag!.aktenzeichen, "137/26");
   assert.match(r.text, /Bitte bestätigen/);
@@ -106,13 +106,13 @@ test("Wiedervorlage über den Assistenten: erst Bestätigung, Titel aus dem Auft
   assert.deepEqual(pruefeDatum("2026-10-19", "BE"), { werktag: true });
   const e = vorschlagEintragen(r.vorschlag!, sitzung);
   const f = useData.getState().data.fristen.find((x) => x.id === e.id)!;
-  assert.equal(f.titel, "Zeugen Pohl benennen");
+  assert.equal(f.titel, "Zeugen Seifert benennen");
   assert.equal(f.quelle, "ki");
   assert.match(f.notiz ?? "", /^Vom Apex Assistenten angelegt/);
-  assert.ok(useData.getState().data.aktivitaeten.some((a) => /Zeugen Pohl benennen.*eingetragen/.test(a.text)));
+  assert.ok(useData.getState().data.aktivitaeten.some((a) => /Zeugen Seifert benennen.*eingetragen/.test(a.text)));
   assert.equal(vorschlagZuruecknehmen(r.vorschlag!, e, sitzung), true);
   assert.ok(!useData.getState().data.fristen.some((x) => x.id === e.id), "wieder entfernt");
-  assert.ok(useData.getState().data.aktivitaeten.some((a) => /^Rückgängig: Wiedervorlage „Zeugen Pohl benennen“/.test(a.text)), "protokolliert");
+  assert.ok(useData.getState().data.aktivitaeten.some((a) => /^Rückgängig: Wiedervorlage „Zeugen Seifert benennen“/.test(a.text)), "protokolliert");
   assert.equal(vorschlagZuruecknehmen(r.vorschlag!, e, sitzung), false, "zweites Rückgängig ohne Wirkung");
 }));
 
@@ -133,4 +133,65 @@ test("Rückruf: Zusage mit Uhrzeit und Kennzeichnung als Simulation; förmliche 
   const g = await frag([{ role: "user", content: "Hallo" }]);
   assert.match(g.text, /Frau Dr\. Hartmann/);
   assert.ok(!/Julia/.test(g.text));
+}));
+
+// ───────────── Iteration 2 (A-02, A-13) ─────────────
+
+test("Wiedervorlage ohne Auftragstext: Rückfrage „Worum geht es …?“, die Antwort wird zum Titel (I1-T20-03)", still(async () => {
+  await vorbereiten();
+  const befehl = "Lege eine Wiedervorlage für Akte 137 in drei Tagen an.";
+  const r = await frag([{ role: "user", content: befehl }]);
+  assert.equal(r.vorschlag, undefined, "kein stiller Titel „Wiedervorlage“");
+  assert.match(r.text, /^Worum geht es bei der Wiedervorlage für 137\/26/);
+  const r2 = await frag([{ role: "user", content: befehl }, { role: "assistant", content: r.text }, { role: "user", content: "Zeugen Seifert benennen" }]);
+  assert.equal(r2.vorschlag?.titel, "Zeugen Seifert benennen");
+  assert.equal(r2.vorschlag?.datum, addDays(today(), 3));
+  assert.match(r2.vorschlag?.auftrag ?? "", /Lege eine Wiedervorlage für Akte 137/);
+  // Auftrag nach einem Komma
+  const r3 = await frag([{ role: "user", content: "Lege eine Wiedervorlage für Akte 137 in drei Tagen an, Zeugen Seifert benennen" }]);
+  assert.equal(r3.vorschlag?.titel, "Zeugen Seifert benennen");
+  // bewusst ohne Titel
+  const r4 = await frag([{ role: "user", content: befehl }, { role: "assistant", content: r.text }, { role: "user", content: "ohne Titel" }]);
+  assert.equal(r4.vorschlag?.titel, "Wiedervorlage");
+}));
+
+test("Rückfrage bei mehreren Akten: Chip „Akten durchsucht“ statt „Bereich geöffnet“ (I2-T20-02); Bankabgleich mit Direktlink (I2-T20-04)", still(async () => {
+  await vorbereiten();
+  const r = await frag([{ role: "user", content: "Öffne die Akte Müller" }]);
+  assert.ok(!r.werkzeuge.includes("Bereich geöffnet"), r.werkzeuge.join(", "));
+  const b = await frag([{ role: "user", content: "Wie funktioniert der Bankabgleich?" }]);
+  assert.ok(b.links.some((l) => l.to === "/abrechnung?tab=bank" && /Bankabgleich öffnen/.test(l.label)), JSON.stringify(b.links));
+}));
+
+test("„Und bei einer Berufung zum Oberlandesgericht?“ ohne Vorfrage → Berufungsfrist § 517 ZPO (I2-T12-02)", still(async () => {
+  await vorbereiten();
+  const r = await frag([{ role: "user", content: "Und bei einer Berufung zum Oberlandesgericht?" }]);
+  assert.match(r.text, /§ 517 ZPO/);
+  assert.match(r.text, /§ 520 Abs\. 2 S\. 1 ZPO/);
+  assert.ok(!/keine sichere Antwort/.test(r.text));
+  assert.ok(r.links.some((l) => l.to.includes("regel=berufung")));
+}));
+
+test("Ansprechpartnerin außerhalb der Servicezeit: „nicht erreichbar“, Rückruf frühestens Mo ab 7:30 Uhr, Hinweis auf Ersatzeinreichung (I2-T20-03)", still(async () => {
+  const { mock } = await import("node:test");
+  await vorbereiten();
+  mock.timers.enable({ apis: ["Date"], now: new Date(2026, 9, 16, 21, 0) });
+  try {
+    const r = await frag([{ role: "user", content: "Ich brauche meine Ansprechpartnerin – meine Frist läuft heute ab" }]);
+    assert.match(r.text, /^Ihre feste Ansprechpartnerin: Lena Vogt\. Lena Vogt ist jetzt nicht erreichbar – Rückruf frühestens Mo, 19\.10\.2026 ab 7:30 Uhr/);
+    assert.match(r.text, /§ 130d S\. 2, 3 ZPO/);
+    assert.match(r.text, /§ 46g S\. 3, 4 ArbGG/);
+    assert.ok(r.links.some((l) => l.to === "/hilfe?wiki=bea-stoerung"));
+    assert.ok(!/direkt erreichbar/.test(r.text));
+  } finally {
+    mock.timers.reset();
+  }
+  // in der Servicezeit: direkt erreichbar
+  mock.timers.enable({ apis: ["Date"], now: new Date(2026, 9, 20, 10, 0) });
+  try {
+    const r = await frag([{ role: "user", content: "Ich brauche meine Ansprechpartnerin" }]);
+    assert.match(r.text, /direkt erreichbar/);
+  } finally {
+    mock.timers.reset();
+  }
 }));

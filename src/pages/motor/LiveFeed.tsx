@@ -9,7 +9,7 @@ import { cn } from "@/lib/cn";
 import { LIVE_MINUTEN } from "./shared";
 
 /**
- * „Zuletzt erledigt“: neueste Vorgänge von Automationen und KI. „Live“ erscheint nur, wenn der jüngste Eintrag jünger als
+ * „Zuletzt erledigt“: neueste Vorgänge von Automatiken und KI. „Live“ erscheint nur, wenn der jüngste Eintrag jünger als
  * 15 Minuten ist; mit Demo-Daten heißt die Karte „Zuletzt erledigt (simuliert)“.
  */
 export function LiveFeed({ aktivitaeten, automationen, now, className, demo }: { aktivitaeten: Aktivitaet[]; automationen: Automation[]; now: number; className?: string; demo?: boolean }) {
@@ -84,7 +84,7 @@ export function LiveFeed({ aktivitaeten, automationen, now, className, demo }: {
           })}
         </AnimatePresence>
       </ul>
-      {eintraege.length === 0 && <p className="py-6 text-center text-[13px] text-fg-3">Noch nichts erledigt. Aktivieren Sie eine Automation – der erste Vorgang erscheint hier.</p>}
+      {eintraege.length === 0 && <p className="py-6 text-center text-[13px] text-fg-3">Noch nichts erledigt. Aktivieren Sie eine Automatik – der erste Vorgang erscheint hier.</p>}
     </Card>
   );
 }

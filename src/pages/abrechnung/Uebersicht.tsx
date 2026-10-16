@@ -2,10 +2,11 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { AlertTriangle, ArrowRight, BellRing, CheckCircle2, Clock, HandCoins, Landmark, Layers, ShieldCheck, Timer, TrendingUp, Wallet, Zap } from "lucide-react";
+import { AlertTriangle, ArrowRight, BellRing, CheckCircle2, Clock, HandCoins, Info, Landmark, Layers, ShieldCheck, Timer, TrendingUp, Wallet, Zap } from "lucide-react";
 import { AnimatedNumber, Button, Card, CardHeader, Chip, Stat, Switch } from "@/components/ui";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
+import { hatBeispieldaten } from "@/lib/backend";
 import { toast } from "@/store/ui";
 import { addDays, diffDays, fmtDateShort, fmtEUR, monatName, relDays, round2, today } from "@/core/dates";
 import { cn } from "@/lib/cn";
@@ -145,6 +146,8 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
   const rechnungen = useCol("rechnungen");
   const transaktionen = useCol("transaktionen");
   const automationen = useCol("automationen");
+  const sitzung = useKanzlei();
+  const beispiel = hatBeispieldaten(sitzung);
   const nav = useNavigate();
   const setSammel = useAbrechnungUI((s) => s.setSammel);
   const { vorschlaege } = useSammelKandidaten();
@@ -191,7 +194,10 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
   const offeneUmsaetze = transaktionen.filter((t) => t.status === "offen").length;
   const sammelSumme = round2(vorschlaege.reduce((s, v) => s + v.summen.brutto, 0));
   const motor = ["bankabgleich", "mahnwesen", "zeiterfassung"].map((k) => automationen.find((a) => a.key === k)).filter((a): a is NonNullable<typeof a> => !!a);
+  // Ersparnis je bearbeitetem Vorgang (zugeordneter Umsatz, erstellte Rechnung, Erinnerung) – wie auf der Motor-Seite.
+  // Läufe ohne Ergebnis zählen nicht: Der Bankabgleich zählt nur automatisch zugeordnete Umsätze als Vorgänge.
   const motorStunden = round2(motor.reduce((s, a) => s + a.laeufe * a.minutenProLauf, 0) / 60);
+  const herleitung = `Herleitung: Vorgänge × Minuten je Vorgang (${motor.map((a) => `${a.name} ${a.minutenProLauf} Min.`).join(", ")}). Gezählt wird nur, was tatsächlich erledigt wurde – ein Abgleich ohne Zuordnung zählt 0.${beispiel ? " Beispielwerte aus dem simulierten Betrieb." : ""}`;
 
   // „Weiterleiten“ öffnet den Dialog mit Empfänger, IBAN (Pflicht), Betrag, Verwendungszweck und Wirkung
   const [weiterleitung, setWeiterleitung] = useState<(typeof fremdgeld)[number] | null>(null);
@@ -366,7 +372,16 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
             <CardHeader
               icon={<Zap className="size-4" />}
               title="Was der 38h-Motor hier automatisiert"
-              subtitle={`Bisher ≈ ${motorStunden.toLocaleString("de-DE", { maximumFractionDigits: 1 })} Std. Routinearbeit in der Abrechnung übernommen.`}
+              subtitle={
+                <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                  <span>Bisher ≈ {motorStunden.toLocaleString("de-DE", { maximumFractionDigits: 1 })} Std. Routinearbeit in der Abrechnung übernommen.</span>
+                  <span className="inline-flex items-center gap-1 text-fg-3" title={herleitung}>
+                    <Info className="size-3.5" aria-hidden />
+                    <span className="sr-only">{herleitung}</span>
+                  </span>
+                </span>
+              }
+              action={beispiel ? <Chip tone="amber">Beispielwerte</Chip> : undefined}
             />
             <ul className="grid grid-cols-1 gap-3">
               {motor.map((a) => {
@@ -380,18 +395,28 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
                       <div className="text-[13.5px] font-medium">{a.name}</div>
                       <div className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-fg-3">{a.beschreibung}</div>
                       <div className="mt-1.5 flex flex-wrap gap-1.5">
-                        <Chip icon={<Clock className="size-3" />}>{a.minutenProLauf} Min. je Lauf</Chip>
-                        <Chip>{a.laeufe.toLocaleString("de-DE")} Läufe</Chip>
+                        <Chip icon={<Clock className="size-3" />} title={herleitung}>
+                          {a.minutenProLauf} Min. je Vorgang
+                        </Chip>
+                        <Chip>
+                          {a.laeufe.toLocaleString("de-DE")} {a.laeufe === 1 ? "Vorgang" : "Vorgänge"}
+                        </Chip>
                       </div>
                     </div>
-                    <Switch
-                      checked={a.aktiv}
-                      label={`${a.name} ${a.aktiv ? "pausieren" : "aktivieren"}`}
-                      onChange={(v) => {
-                        useData.getState().patch("automationen", a.id, { aktiv: v });
-                        toast(v ? "Automation aktiviert" : "Automation pausiert", { text: a.name, ton: v ? "erfolg" : "info" });
-                      }}
-                    />
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <Switch
+                        checked={a.aktiv}
+                        label={`${a.name} ${a.aktiv ? "pausieren" : "aktivieren"}`}
+                        onChange={(v) => {
+                          useData.getState().patch("automationen", a.id, { aktiv: v });
+                          useData.getState().log({ akteur: "nutzer", userId: sitzung.user.id, text: `Automatik „${a.name}“ ${v ? "aktiviert" : "pausiert"}` });
+                        }}
+                      />
+                      {/* Rückmeldung an der Karte selbst statt Meldung über dem Schalter (WCAG 2.4.11) */}
+                      <span aria-live="polite" className={cn("text-[11.5px] font-medium", a.aktiv ? "text-green" : "text-fg-3")}>
+                        {a.aktiv ? "aktiv" : "pausiert"}
+                      </span>
+                    </div>
                   </li>
                 );
               })}

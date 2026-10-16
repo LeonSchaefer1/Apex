@@ -1,9 +1,9 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { motion } from "motion/react";
-import { AlarmClock, AlertTriangle, Archive, CalendarClock, Check, FolderOpen, FolderPlus, Flag, Plus, Send, Sparkle, UserRound, UserRoundCog, ListChecks, X } from "lucide-react";
+import { AlarmClock, AlertTriangle, Archive, CalendarClock, Check, FolderOpen, FolderPlus, Flag, History, Plus, Send, Sparkle, UserRound, UserRoundCog, ListChecks, X } from "lucide-react";
 import type { Akte, Frist, User } from "@/core/types";
-import { fmtDate, fmtDateShort, fmtEUR, nowLocal, relTime, today, uid } from "@/core/dates";
+import { fmtDate, fmtDateShort, fmtTime, nowLocal, relTime, today, uid } from "@/core/dates";
 import { search } from "@/core/search";
 import { aktenMitFrist } from "@/core/fristenLage";
 import { aktenZahlen, wochenbeginn } from "@/core/kennzahlen";
@@ -14,10 +14,10 @@ import { AnimatedNumber, Avatar, Button, Chip, DataTable, Empty, Modal, PageHead
 import { Highlight } from "@/components/Highlight";
 import { cn } from "@/lib/cn";
 import {
-  FRIST_TYP_LABEL, FristChip, PhasenBalken, SACHGEBIETE, STATUS_INFO, SachgebietChip, azSortKey, listenKontext,
+  FRIST_TYP_LABEL, FristChip, PhasenBalken, SACHGEBIETE, STATUS_INFO, SachgebietChip, azSortKey, gerichtKurz, listenKontext, wertKurz,
   useKontaktMap, useNaechsteFristen, useTeam,
 } from "./helfer";
-import { Mandatsaufnahme } from "./Mandatsaufnahme";
+import { Mandatsaufnahme, ladeMandatsEntwurf } from "./Mandatsaufnahme";
 import { offeneEintraege, offeneEintraegeText, schliesseAkteAb } from "./AkteKopf";
 
 type StatusFilter = "offen" | "ruhend" | "abgeschlossen" | "alle";
@@ -188,7 +188,7 @@ export default function AktenListe() {
       {
         id: "aktenzeichen",
         header: "Az.",
-        size: 84,
+        size: 76,
         accessorFn: (a) => azSortKey(a.aktenzeichen),
         cell: ({ row }) => (
           <span className="mono text-[12.5px] font-semibold text-fg-2">
@@ -201,8 +201,10 @@ export default function AktenListe() {
         header: "Akte",
         size: 230,
         accessorFn: (a) => a.titel,
-        cell: ({ row }) => {
+        cell: ({ row, table }) => {
           const a = row.original;
+          // Gerichtliches Az. steht in der Spalte „Gericht“, wenn sie eingeblendet ist – sonst hier unter dem Mandanten
+          const mitGericht = table.getColumn("Gericht")?.getIsVisible();
           return (
             <div className="min-w-0">
               <div className="flex items-start gap-1.5">
@@ -211,13 +213,13 @@ export default function AktenListe() {
                     <span className="sr-only">Hohe Priorität</span>
                   </span>
                 )}
-                <span className="line-clamp-2 break-words font-semibold leading-snug text-fg" title={a.titel}>
+                <span className="whitespace-normal break-words font-semibold leading-snug text-fg">
                   <Highlight text={a.titel} q={q} />
                 </span>
               </div>
-              <div className="break-words text-[12.5px] text-fg-3">
+              <div className="whitespace-normal break-words text-[12.5px] text-fg-3">
                 <Highlight text={kontakte.get(a.mandantId)?.name ?? "–"} q={q} />
-                {a.gerichtsAz && <span className="mono text-fg-3"> · {a.gerichtsAz}</span>}
+                {a.gerichtsAz && !mitGericht && <span className="mono text-fg-3"> · {a.gerichtsAz}</span>}
               </div>
             </div>
           );
@@ -226,35 +228,30 @@ export default function AktenListe() {
       {
         id: "Gericht",
         header: "Gericht",
-        size: 170,
-        accessorFn: (a) => (a.gerichtId ? kontakte.get(a.gerichtId)?.name ?? "" : ""),
+        size: 128,
+        accessorFn: (a) => (a.gerichtId ? gerichtKurz(kontakte.get(a.gerichtId)?.name ?? "") : ""),
         cell: ({ row }) => {
           const g = row.original.gerichtId ? kontakte.get(row.original.gerichtId)?.name : undefined;
           return g ? (
-            <div className="min-w-0">
-              <div className="line-clamp-2 break-words text-[12.5px] text-fg-2">{g}</div>
-              {row.original.gerichtsAz && <div className="mono truncate text-[12.5px] text-fg-3">{row.original.gerichtsAz}</div>}
+            <div className="min-w-0 whitespace-normal" title={g}>
+              <div className="break-words text-[12.5px] leading-snug text-fg-2">{gerichtKurz(g)}</div>
+              {row.original.gerichtsAz && <div className="mono break-words text-[12px] text-fg-3">{row.original.gerichtsAz}</div>}
             </div>
           ) : (
-            <span className="text-[12.5px] text-fg-3">noch kein Verfahren</span>
+            <span className="whitespace-normal text-[12.5px] text-fg-3">noch kein Verfahren</span>
           );
         },
       },
+      // Sachgebiet und Phase in einer Spalte – so passt die Liste auch mit „Gericht“ auf 1366 px ohne Querscrollen
       {
         id: "Sachgebiet",
-        header: "Sachgebiet",
-        size: 160,
+        header: "Sachgebiet · Phase",
+        size: 150,
         accessorFn: (a) => a.sachgebiet,
-        cell: ({ row }) => <SachgebietChip sg={row.original.sachgebiet} />,
-      },
-      {
-        id: "Phase",
-        header: "Phase",
-        size: 134,
-        accessorFn: (a) => a.phase,
         cell: ({ row }) => (
           <div className="min-w-0">
-            <div className="truncate text-[12.5px] text-fg-2">{row.original.status === "offen" ? row.original.phase : STATUS_INFO[row.original.status].label}</div>
+            <SachgebietChip sg={row.original.sachgebiet} className="max-w-full" />
+            <div className="mt-1 truncate text-[12.5px] text-fg-2">{row.original.status === "offen" ? row.original.phase : STATUS_INFO[row.original.status].label}</div>
             <PhasenBalken phase={row.original.phase} className="mt-1 w-[84px]" />
           </div>
         ),
@@ -262,7 +259,7 @@ export default function AktenListe() {
       {
         id: "Nächste Frist",
         header: "Nächste Frist",
-        size: 148,
+        size: 118,
         accessorFn: (a) => naechste.get(a.id)?.datum ?? "9999-12-31",
         cell: ({ row }) => {
           const f = naechste.get(row.original.id);
@@ -270,7 +267,7 @@ export default function AktenListe() {
           return (
             <div className="min-w-0" title={`${f.titel} – ${fmtDate(f.datum)}`}>
               <FristChip datum={f.datum} />
-              <div className="mt-0.5 truncate text-[12.5px] text-fg-3">
+              <div className="mt-0.5 whitespace-normal text-[12.5px] leading-snug text-fg-3">
                 {fmtDateShort(f.datum)} · {FRIST_TYP_LABEL[f.typ]}
               </div>
             </div>
@@ -284,14 +281,14 @@ export default function AktenListe() {
             Gegenstandswert
           </span>
         ),
-        size: 124,
+        size: 112,
         accessorFn: (a) => a.gegenstandswert,
-        cell: ({ row }) => <div className="num text-right text-[13px] font-medium">{row.original.gegenstandswert ? fmtEUR(row.original.gegenstandswert, { cents: false }) : "–"}</div>,
+        cell: ({ row }) => <div className="num text-right text-[13px] font-medium">{row.original.gegenstandswert ? wertKurz(row.original.gegenstandswert) : "–"}</div>,
       },
       {
         id: "Bearbeitung",
         header: "Bearbeitung",
-        size: 86,
+        size: 72,
         accessorFn: (a) => byId.get(a.bearbeiterId)?.name ?? "",
         cell: ({ row }) => {
           const u = byId.get(row.original.bearbeiterId);
@@ -307,9 +304,9 @@ export default function AktenListe() {
       {
         id: "Letzte Änderung",
         header: "Geändert",
-        size: 98,
+        size: 88,
         accessorFn: (a) => a.updatedAt,
-        cell: ({ row }) => <span className="text-[12.5px] text-fg-3">{relTime(row.original.updatedAt)}</span>,
+        cell: ({ row }) => <span className="block whitespace-normal text-[12.5px] leading-snug text-fg-3">{relTime(row.original.updatedAt)}</span>,
       },
     ],
     [q, kontakte, naechste, byId],
@@ -395,7 +392,16 @@ export default function AktenListe() {
     setBulk(null);
   };
 
-  const neueAkte = () => setNeuOffen(true);
+  // Über die Adresse öffnen (?neu=1): Nach dem Neuladen ist die Mandatsaufnahme wieder offen und bietet den Entwurf an
+  const neueAkte = () =>
+    setParams((p) => {
+      const n = new URLSearchParams(p);
+      n.set("neu", "1");
+      return n;
+    });
+  const dialogOffen = neuOffen || params.get("neu") === "1";
+  // Begonnene Mandatsaufnahme (Entwurf je Person) – Hinweis neben „Neue Akte“, solange der Dialog zu ist
+  const offenerEntwurf = useMemo(() => (dialogOffen ? null : ladeMandatsEntwurf(user.id)), [dialogOffen, user.id]);
   const ausUrl = params.get("neu") === "1" || !!params.get("nachricht");
   const schliesseNeu = useCallback(() => {
     setNeuOffen(false);
@@ -423,9 +429,16 @@ export default function AktenListe() {
         hilfe="akten"
         subtitle="Alle Mandate Ihrer Kanzlei an einem Ort – suchen, filtern und mit einem Klick in die E-Akte mit Dokumenten, Fristen, Beteiligten und Aktenkonto springen."
         actions={
-          <Button variant="primary" icon={<Plus className="size-4" />} onClick={neueAkte}>
-            Neue Akte
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {offenerEntwurf && (
+              <Button variant="secondary" icon={<History className="size-4" />} onClick={neueAkte} title={`Begonnen ${fmtDate(offenerEntwurf.gespeichert.slice(0, 10))}, ${fmtTime(offenerEntwurf.gespeichert)} Uhr – Schritt ${offenerEntwurf.schritt + 1} von 4`}>
+                Mandatsaufnahme fortsetzen
+              </Button>
+            )}
+            <Button variant="primary" icon={<Plus className="size-4" />} onClick={neueAkte}>
+              Neue Akte
+            </Button>
+          </div>
         }
       />
 
@@ -494,7 +507,7 @@ export default function AktenListe() {
         columns={columns}
         getRowId={(a) => a.id}
         initialSort={[{ id: "aktenzeichen", desc: true }]}
-        // Spalte „Gericht“ ist unter „Spalten wählen“ zuschaltbar, anfangs aber ausgeblendet – die Tabelle passt so auf 1366 px.
+        // Spalte „Gericht“ (Kurzform + gerichtliches Az.) ist unter „Spalten wählen“ zuschaltbar; auch mit ihr passt die Tabelle auf 1366 px.
         defaultHidden={["Gericht"]}
         onRowClick={(a) => nav(`/akten/${a.id}`)}
         selectable
@@ -593,7 +606,7 @@ export default function AktenListe() {
         {liste.length} {liste.length === 1 ? "Akte" : "Akten"} · Spaltenbreite, sichtbare Spalten und Zeilendichte merkt sich AnwaltApex für Sie · {tenant.kurzname}
       </p>
 
-      <Mandatsaufnahme open={neuOffen || params.get("neu") === "1"} onClose={schliesseNeu} onErstellt={onErstellt} nachrichtId={params.get("nachricht")} />
+      <Mandatsaufnahme open={dialogOffen} onClose={schliesseNeu} onErstellt={onErstellt} nachrichtId={params.get("nachricht")} />
 
       <Modal
         open={!!bulk}

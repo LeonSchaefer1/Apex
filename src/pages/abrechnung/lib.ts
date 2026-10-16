@@ -167,29 +167,56 @@ export function satzFuerAbrechnung(akte: Pick<Akte, "verguetungsvereinbarung"> |
 }
 
 /**
- * Stundenpositionen je Bearbeiter. „lt. Vergütungsvereinbarung“ steht nur im Text, wenn der Satz tatsächlich der an der Akte
+ * Der eine Stundensatz eines Zeiteintrags – Zeitliste, Abrechnungsvorschau, Rechnungspositionen und Tätigkeitsnachweis
+ * nutzen nur diese Funktion: abweichender Satz dieser Abrechnung > vereinbarter Satz der Akte (§ 3a RVG) > Satz der Person,
+ * die den Eintrag erfasst hat (nie der angemeldeten Person) > Standardsatz der Kanzlei.
+ */
+export function satzFuerEintrag(
+  eintrag: Pick<Zeiteintrag, "userId">,
+  akte: Pick<Akte, "verguetungsvereinbarung"> | undefined,
+  usersById: Map<string, Pick<User, "stundensatz">>,
+  abrechnungsSatz?: number,
+): { satz: number; quelle: SatzQuelle } {
+  return satzFuerAbrechnung(akte, abrechnungsSatz, usersById.get(eintrag.userId)?.stundensatz ?? STANDARD_STUNDENSATZ);
+}
+
+/** Betrag einer Zeit: Minuten × Stundensatz / 60, kaufmännisch auf Cent gerundet (20 Min. × 240 € = 80,00 €). */
+export const betragFuerMinuten = (minuten: number, satz: number) => round2((minuten * satz) / 60);
+
+/** Wert eines Zeiteintrags mit seinem Satz (siehe `satzFuerEintrag`). */
+export function wertEintrag(eintrag: Pick<Zeiteintrag, "userId" | "minuten">, akte: Pick<Akte, "verguetungsvereinbarung"> | undefined, usersById: Map<string, Pick<User, "stundensatz">>, abrechnungsSatz?: number): number {
+  return betragFuerMinuten(eintrag.minuten, satzFuerEintrag(eintrag, akte, usersById, abrechnungsSatz).satz);
+}
+
+/**
+ * Stundenpositionen je Bearbeiter und Satz – jeder Eintrag mit seinem eigenen Satz (`satzFuerEintrag`), der Betrag aus
+ * den Minuten je Eintrag. „lt. Vergütungsvereinbarung“ steht nur im Text, wenn der Satz tatsächlich der an der Akte
  * hinterlegte vereinbarte Stundensatz ist (§ 3a RVG) – ein abweichender oder persönlicher Satz wird nur als Betrag genannt.
  */
 export function stundenPositionen(
   eintraege: Zeiteintrag[],
+  akte: Pick<Akte, "verguetungsvereinbarung"> | undefined,
   usersById: Map<string, User>,
-  fallbackSatz: number,
-  vereinbarterSatz?: number,
-  opts: { satz?: number; quelle?: SatzQuelle; vereinbarungDatum?: ISODate } = {},
+  opts: { abrechnungsSatz?: number } = {},
 ): RechnungsPosition[] {
-  const proUser = new Map<string, number>();
-  for (const z of eintraege) proUser.set(z.userId, (proUser.get(z.userId) ?? 0) + z.minuten);
-  return [...proUser.entries()].map(([userId, minuten]) => {
+  const gruppen = new Map<string, { userId: string; satz: number; quelle: SatzQuelle; minuten: number; betrag: number }>();
+  for (const z of eintraege) {
+    const { satz, quelle } = satzFuerEintrag(z, akte, usersById, opts.abrechnungsSatz);
+    const key = `${z.userId}|${satz}`;
+    const g = gruppen.get(key) ?? { userId: z.userId, satz, quelle, minuten: 0, betrag: 0 };
+    g.minuten += z.minuten;
+    g.betrag = round2(g.betrag + betragFuerMinuten(z.minuten, satz));
+    gruppen.set(key, g);
+  }
+  const vereinbarungDatum = akte?.verguetungsvereinbarung?.datum;
+  return [...gruppen.values()].map(({ userId, satz, quelle, minuten, betrag }) => {
     const u = usersById.get(userId);
-    const quelle: SatzQuelle = opts.quelle ?? (vereinbarterSatz ? "vereinbarung" : "person");
-    const satz = opts.satz ?? vereinbarterSatz ?? u?.stundensatz ?? fallbackSatz;
-    const std = round2(minuten / 60);
     const satzText = `${satz.toLocaleString("de-DE")} €/Std.`;
     const bezeichnung =
       quelle === "vereinbarung"
-        ? `Tätigkeit ${u?.name ?? "Rechtsanwalt"} lt. Vergütungsvereinbarung${opts.vereinbarungDatum ? ` vom ${fmtDate(opts.vereinbarungDatum)}` : ""} (${satzText})`
+        ? `Tätigkeit ${u?.name ?? "Rechtsanwalt"} lt. Vergütungsvereinbarung${vereinbarungDatum ? ` vom ${fmtDate(vereinbarungDatum)}` : ""} (${satzText})`
         : `Tätigkeit ${u?.name ?? "Rechtsanwalt"} nach Zeitaufwand (${satzText})`;
-    return { vv: "Std", bezeichnung, menge: std, betrag: round2(std * satz) };
+    return { vv: "Std", bezeichnung, menge: round2(minuten / 60), betrag };
   });
 }
 
@@ -214,7 +241,8 @@ export function vorschlagFuerAkte(
   rechnungenDerAkte: Rechnung[],
   zeitenDerAkte: Zeiteintrag[],
   usersById: Map<string, User>,
-  fallbackSatz: number,
+  /** veraltet – der Satz kommt je Eintrag aus `satzFuerEintrag` (Satz der erfassenden Person, nie der angemeldeten) */
+  _fallbackSatz: number,
   kontext: AkteKontext = {},
 ): Vorschlag | Ausschluss {
   const heute = kontext.heute ?? today();
@@ -231,7 +259,7 @@ export function vorschlagFuerAkte(
     if (!hatVerguetungsvereinbarung(akte, dokumente)) return { akte, grund: `Ohne Vergütungsvereinbarung – Rahmengebühren nach ${teil} VV RVG bestimmen (§ 14 RVG)` };
     const offen = zeitenDerAkte.filter((z) => z.abrechenbar && !z.abgerechnet);
     if (!offen.length) return { akte, grund: `${sache}: keine offenen abrechenbaren Zeiten` };
-    const positionen = stundenPositionen(offen, usersById, fallbackSatz, akte.verguetungsvereinbarung?.stundensatz, { vereinbarungDatum: akte.verguetungsvereinbarung?.datum });
+    const positionen = stundenPositionen(offen, akte, usersById);
     return { akte, art: "stunden", positionen, summen: summen(positionen), bereitsAbgerechnet: [], zeitIds: offen.map((z) => z.id), hinweis: "nach Zeitaufwand lt. Vergütungsvereinbarung (§ 3a RVG)" };
   }
 
@@ -322,8 +350,17 @@ export const korrekturText = (nummer: string) => `Korrektur zu ${nummer}`;
 /** Aus einem Umzug übernommen und Abrechnungsstand noch nicht geprüft – in der Sammelabrechnung nicht vorausgewählt. */
 export const abrechnungUngeprueft = (akte: Pick<Akte, "umzugLaufId" | "abrechnungGeprueft">) => !!akte.umzugLaufId && !akte.abrechnungGeprueft;
 
-/** Leistungszeitraum einer Rechnung (Auftrag bis Rechnungsdatum). */
-export function leistungszeitraum(akte: Akte | undefined, r: Rechnung): [string, string] {
+/**
+ * Leistungszeitraum einer Rechnung (§ 14 Abs. 4 S. 1 Nr. 6 UStG): bei einer Zeitrechnung vom ersten bis zum letzten
+ * abgerechneten Eintrag, sonst vom Auftrag bis zum Rechnungsdatum.
+ */
+export function leistungszeitraum(akte: Akte | undefined, r: Rechnung, zeiten: Pick<Zeiteintrag, "id" | "datum">[] = []): [string, string] {
+  const tage = r.zeitIds?.length ? zeiten.filter((z) => r.zeitIds!.includes(z.id)).map((z) => z.datum).sort() : [];
+  if (tage.length) return [tage[0], tage[tage.length - 1]];
   const von = akte?.createdAt.slice(0, 10) ?? r.datum;
   return [von < r.datum ? von : r.datum, r.datum];
 }
+
+/** Reine Zeitrechnung: nur Positionen nach Zeitaufwand (und ggf. Auslagen), keine Wertgebühr – dann kein Gegenstandswert im Kopf. */
+export const istReineZeitrechnung = (r: Pick<Rechnung, "positionen">) =>
+  r.positionen.some((p) => p.vv === "Std") && !r.positionen.some((p) => p.vv !== "Std" && (!!p.gegenstandswert || (/^\d{4}$/.test(p.vv) && !/^700\d$/.test(p.vv))));

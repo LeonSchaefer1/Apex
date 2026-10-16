@@ -20,9 +20,9 @@ export function Zeile({ titel, text, children, htmlFor, className }: { titel: Re
   );
 }
 
-export function Abschnitt({ titel, text, icon, children, aktion, className }: { titel: ReactNode; text?: ReactNode; icon?: ReactNode; children: ReactNode; aktion?: ReactNode; className?: string }) {
+export function Abschnitt({ titel, text, icon, children, aktion, className, id }: { titel: ReactNode; text?: ReactNode; icon?: ReactNode; children: ReactNode; aktion?: ReactNode; className?: string; id?: string }) {
   return (
-    <section className={cn("sheet relative rounded-[22px] p-5 md:p-6", className)}>
+    <section id={id} tabIndex={id ? -1 : undefined} className={cn("sheet relative scroll-mt-28 rounded-[22px] p-5 outline-none md:p-6", className)}>
       <div className="mb-4 flex flex-wrap items-start gap-3">
         {icon && <div className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">{icon}</div>}
         <div className="min-w-0 flex-1 basis-[200px]">

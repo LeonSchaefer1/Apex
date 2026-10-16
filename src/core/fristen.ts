@@ -29,6 +29,8 @@ export interface FristRegel {
   festesDatum?: "pflicht" | "moeglich";
   /** Eigene Kurzform für Chips und Tooltips (sonst aus Typ und Verfahrensordnung). */
   kurz?: string;
+  /** Eigener Satz zur Rechtsnatur (sonst aus Typ und Verfahrensordnung), z. B. bei § 61b ArbGG. */
+  artText?: string;
   /** Gesetzliche Frist, die nicht verlängert werden kann, ohne Notfrist zu sein (z. B. § 4 KSchG, StPO, OWiG, VwGO). */
   unverlaengerbar?: boolean;
   /** Rechtsfolge und Rechtsbehelf bei Versäumnis (Wiedereinsetzung, nachträgliche Zulassung …). */
@@ -53,7 +55,7 @@ export const FRIST_REGELN: FristRegel[] = [
     hinweis: "Die Frist beginnt spätestens mit Ablauf von fünf Monaten nach Verkündung (§ 517 Hs. 2 ZPO).", stichworte: ["berufung", "urteil", "zustellung", "517"],
   },
   {
-    key: "berufungsbegruendung", titel: "Berufungsbegründungsfrist", grundlage: "§ 520 Abs. 2 ZPO", dauer: 2, einheit: "monate", typ: "frist", verfahren: "ZPO",
+    key: "berufungsbegruendung", titel: "Berufungsbegründungsfrist", grundlage: "§ 520 Abs. 2 S. 1 ZPO", dauer: 2, einheit: "monate", typ: "frist", verfahren: "ZPO",
     ereignis: "Zustellung des vollständigen Urteils", gebiet: "Zivilprozess", vorfristTage: 14, versaeumnis: WE_ZPO_BEGRUENDUNG,
     hinweis: "Keine Notfrist: Verlängerung auf Antrag möglich (§ 520 Abs. 2 S. 2, 3 ZPO). Beginn spätestens mit Ablauf von fünf Monaten nach Verkündung (§ 520 Abs. 2 S. 1 ZPO).",
     stichworte: ["berufungsbegründung", "520"],
@@ -107,6 +109,23 @@ export const FRIST_REGELN: FristRegel[] = [
     versaeumnis: "Bei Versäumnis gilt die Kündigung als von Anfang an rechtswirksam (§ 7 KSchG). Keine Wiedereinsetzung nach § 233 ZPO – nur nachträgliche Zulassung der Klage (§ 5 KSchG): Antrag binnen zwei Wochen nach Behebung des Hindernisses, spätestens sechs Monate nach Fristende.",
     hinweis: "Bedarf die Kündigung der Zustimmung einer Behörde, läuft die Frist erst ab Bekanntgabe der Entscheidung an den Arbeitnehmer (§ 4 S. 4 KSchG).",
     stichworte: ["kündigung", "kündigungsschutz", "kschg", "arbeitsverhältnis"],
+  },
+  {
+    key: "entfristungsklage", titel: "Entfristungsklage (Befristungskontrolle)", grundlage: "§ 17 S. 1 TzBfG", dauer: 3, einheit: "wochen", typ: "frist", verfahren: "KSchG", unverlaengerbar: true,
+    ereignis: "Vereinbartes Ende des befristeten Arbeitsvertrags", gebiet: "Arbeitsrecht", vorfristTage: 7,
+    versaeumnis: "Bei Versäumnis gilt die Befristung als rechtswirksam (§ 17 S. 2 TzBfG i. V. m. § 7 KSchG). Keine Wiedereinsetzung nach § 233 ZPO – nur nachträgliche Zulassung der Klage (§ 17 S. 2 TzBfG i. V. m. § 5 KSchG): Antrag binnen zwei Wochen nach Behebung des Hindernisses, spätestens sechs Monate nach Fristende.",
+    hinweis: "Wird das Arbeitsverhältnis nach dem vereinbarten Ende fortgesetzt, beginnt die Frist erst mit Zugang der schriftlichen Erklärung des Arbeitgebers, das Arbeitsverhältnis sei auf Grund der Befristung beendet (§ 17 S. 3 TzBfG). Die Klage kann schon vor dem vereinbarten Ende erhoben werden. Zweckbefristung bzw. auflösende Bedingung: § 15 Abs. 2, § 21 TzBfG beachten.",
+    kurz: "Klagefrist – nicht verlängerbar; bei Versäumnis nur nachträgliche Zulassung (§ 17 S. 2 TzBfG i. V. m. § 5 KSchG)",
+    stichworte: ["entfristung", "entfristungsklage", "befristung", "befristet", "befristungskontrolle", "befristungskontrollklage", "tzbfg", "17 tzbfg", "befristeter arbeitsvertrag", "arbeitsvertrag"],
+  },
+  {
+    key: "entschaedigung_agg", titel: "Entschädigungsklage (AGG)", grundlage: "§ 61b Abs. 1 ArbGG", dauer: 3, einheit: "monate", typ: "frist", verfahren: "BGB", unverlaengerbar: true,
+    ereignis: "Schriftliche Geltendmachung des Anspruchs (§ 15 Abs. 4 AGG)", gebiet: "Arbeitsrecht", vorfristTage: 14,
+    artText: "Gesetzliche Klagefrist (§ 61b Abs. 1 ArbGG) – nicht verlängerbar.",
+    versaeumnis: "Bei Versäumnis ist der Entschädigungsanspruch nach § 15 AGG ausgeschlossen – keine Wiedereinsetzung (§ 233 ZPO gilt nicht für diese Klagefrist), keine nachträgliche Zulassung.",
+    hinweis: "Die Klagefrist knüpft an die schriftliche Geltendmachung an – vorsorglich ab dem Tag rechnen, an dem sie abgesandt wurde (der frühere Tag ist die sichere Seite). Vorher gilt die Geltendmachungsfrist von zwei Monaten (§ 15 Abs. 4 AGG).",
+    kurz: "Klagefrist – nicht verlängerbar; bei Versäumnis ist der Anspruch ausgeschlossen (§ 61b Abs. 1 ArbGG)",
+    stichworte: ["entschädigung", "entschädigungsklage", "agg", "diskriminierung", "benachteiligung", "15 agg", "61b", "61b arbgg", "gleichbehandlung"],
   },
   {
     key: "berufung_arbg", titel: "Berufungsfrist (Arbeitsgericht)", grundlage: "§ 66 Abs. 1 S. 1 ArbGG", dauer: 1, einheit: "monate", typ: "notfrist", verfahren: "ArbGG",
@@ -262,7 +281,9 @@ export function fristArt(r: FristRegel): FristArt {
     return {
       label: "Frist",
       kritisch: true,
-      art: r.verfahren === "KSchG"
+      art: r.artText
+        ? r.artText
+        : r.verfahren === "KSchG"
         ? "Keine Notfrist im Sinne der ZPO, aber nicht verlängerbar."
         : vertraglich
           ? `Vertraglich vereinbarte Frist – nicht einseitig verlängerbar.`
@@ -369,7 +390,13 @@ function keinWerktagGrund(datum: ISODate, land: Bundesland): string {
 }
 
 /** Pflichtzeile im Rechenweg: Welche Feiertage wurden geprüft? – immer, auch ohne Verschiebung (ohne Normzitat). */
-function feiertagsZeile(land: Bundesland, ort: string): string {
+function feiertagsZeile(land: Bundesland, ort: string, kanzleiLand?: Bundesland): string {
+  if (ort === "Kanzleisitz") {
+    // Bundesland weicht vom Kanzleisitz ab, ohne dass ein Gericht genannt ist: von Hand gewählt
+    if (kanzleiLand && kanzleiLand !== land) return `Feiertage am Gerichtsort geprüft: ${bundeslandName(land)} (von Hand gewählt)`;
+    // Ohne Gericht nicht „am Gerichtsort geprüft … (Kanzleisitz)“ behaupten – das wäre widersprüchlich (I2-T04-02)
+    return `Gerichtsort noch offen – geprüft mit den Feiertagen am Kanzleisitz (${bundeslandName(land)})`;
+  }
   return `Feiertage am Gerichtsort geprüft: ${bundeslandName(land)} (${ort})`;
 }
 
@@ -454,7 +481,7 @@ export function berechneFrist(params: {
     roh = `${year + dauer}-12-31`;
     rechenweg.push(`Beginn mit Schluss des Jahres ${year} (§ 199 Abs. 1 BGB), Dauer ${dauer} Jahre${params.grundlage ? ` (${params.grundlage})` : ""} → ${fmtDateWd(roh)}`);
   }
-  rechenweg.push(feiertagsZeile(land, feiertagsOrt));
+  rechenweg.push(feiertagsZeile(land, feiertagsOrt, params.kanzleiLand));
 
   let ende = roh;
   let verschoben = false;
@@ -559,7 +586,7 @@ export function berechneFestesEnde(params: {
   const warnungen: string[] = [];
   rechenweg.push(`${params.ereignisLabel ?? "Eingang des Schreibens"}: ${fmtDateWd(ereignis)}`);
   rechenweg.push(`Fristende laut ${params.quelle ?? "Schreiben"} (festes Datum): ${fmtDateWd(ende)}`);
-  rechenweg.push(feiertagsZeile(land, feiertagsOrt));
+  rechenweg.push(feiertagsZeile(land, feiertagsOrt, params.kanzleiLand));
   let naechster = ende;
   let guard = 0;
   while (!istWerktag(naechster, land) && guard++ < 10) naechster = addDays(naechster, 1);

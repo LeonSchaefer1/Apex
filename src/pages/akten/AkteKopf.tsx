@@ -3,17 +3,20 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { motion } from "motion/react";
 import { Archive, CalendarPlus, Check, ChevronDown, CircleDot, CircleHelp, Copy, Eye, FolderOpen, Globe, Lock, Mail, MoreHorizontal, PauseCircle, PlayCircle, Sparkles } from "lucide-react";
-import type { Akte, AktenPhase, Frist } from "@/core/types";
+import type { Akte, AktenPhase, Buchung, Frist, Rechnung } from "@/core/types";
 import { istKritisch, zaehltAlsFrist } from "@/core/fristenLage";
-import { fmtDate, fmtDateWd, fmtEUR, nowLocal, today } from "@/core/dates";
+import { fmtDate, fmtDateWd, fmtEUR, nowLocal, round2, today } from "@/core/dates";
+import { istOffen, offenerBetrag } from "@/pages/abrechnung/lib";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast, useUI } from "@/store/ui";
 import { Avatar, Button, Card, Chip, IconButton, Menu, confirmDialog } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { KontaktAvatar, kopiere } from "@/pages/kontakte/kontaktHelfer";
-import { DECKUNG_INFO, PHASEN, PRIO_INFO, SACHGEBIET_ICON, STATUS_INFO, SachgebietChip, useKontaktMap, useTeam } from "./helfer";
+import { DECKUNG_INFO, PHASEN, PRIO_INFO, SACHGEBIET_ICON, STATUS_INFO, SachgebietChip, kontoSummen, useKontaktMap, useTeam } from "./helfer";
 import { useMandantenportal } from "./Mandantenportal";
+import { DateiDialog, type AusgabeDatei } from "@/pages/fristen/dateiAusgabe";
+import { erzeugeIcs, icsDateiname } from "@/pages/fristen/ics";
 
 /** Nächster offener Termin einer Akte (Datum, Uhrzeit, Gericht/Saal) */
 export function naechsterTermin(akteId: string, fristen: Frist[]): Frist | undefined {
@@ -63,13 +66,31 @@ export function schliesseAkteAb(akte: Akte, userId: string): number {
   return jahr;
 }
 
+/**
+ * Hinweise vor dem Abschließen: offene Einträge im Fristenkalender (mit richtigem Numerus), offene Rechnungen, offener Saldo
+ * des Honorarkontos und nicht weitergeleitetes Fremdgeld (§ 43a Abs. 7 BRAO).
+ */
+export function abschlussHinweise(akteId: string, data: { fristen: Frist[]; rechnungen: Rechnung[]; buchungen: Buchung[] }): { text: string; warnung: boolean } {
+  const o = offeneEintraege(akteId, data.fristen);
+  const anzahl = o.fristen + o.wiedervorlagen + o.termine;
+  const teile: string[] = [];
+  if (anzahl) teile.push(`Es ${anzahl === 1 ? "ist" : "sind"} noch ${offeneEintraegeText(o)} eingetragen – ${anzahl === 1 ? "der Eintrag bleibt" : "die Einträge bleiben"} im Fristenkalender stehen.`);
+  const rechnungen = data.rechnungen.filter((r) => r.akteId === akteId && istOffen(r));
+  const offenR = round2(rechnungen.reduce((s, r) => s + offenerBetrag(r), 0));
+  const konto = kontoSummen(data.buchungen.filter((b) => b.akteId === akteId));
+  if (rechnungen.length) teile.push(`${rechnungen.length === 1 ? "1 Rechnung ist" : `${rechnungen.length} Rechnungen sind`} noch offen (${fmtEUR(offenR)}).`);
+  if (konto.offen > 0) teile.push(`Offener Saldo im Aktenkonto: ${fmtEUR(konto.offen)}.`);
+  if (konto.fremdOffen > 0) teile.push(`${fmtEUR(konto.fremdOffen)} Fremdgeld sind noch nicht weitergeleitet (§ 43a Abs. 7 BRAO).`);
+  const warnung = teile.length > 0;
+  if (!rechnungen.length && konto.offen <= 0 && konto.fremdOffen <= 0) teile.push("Keine offenen Rechnungen, das Aktenkonto ist ausgeglichen.");
+  return { text: `${warnung ? "Achtung: " : ""}${teile.join(" ")}`, warnung };
+}
+
 export async function akteAbschliessen(akte: Akte, userId: string) {
-  const offen = offeneEintraegeText(offeneEintraege(akte.id, useData.getState().data.fristen));
+  const { text, warnung } = abschlussHinweise(akte.id, useData.getState().data);
   const ok = await confirmDialog({
     titel: `Akte ${akte.aktenzeichen} abschließen?`,
-    text: offen
-      ? `Achtung: Es sind noch ${offen} eingetragen – sie bleiben im Fristenkalender stehen. Die Akte wird archiviert und die Aufbewahrungsfrist der Handakte (§ 50 BRAO, sechs Jahre) vorgemerkt.`
-      : "Die Akte wird archiviert und die Aufbewahrungsfrist der Handakte (§ 50 BRAO, sechs Jahre) vorgemerkt. Sie können sie jederzeit wieder öffnen.",
+    text: `${text} Die Akte wird archiviert und die Aufbewahrungsfrist der Handakte (§ 50 BRAO, sechs Jahre) vorgemerkt.${warnung ? "" : " Sie können sie jederzeit wieder öffnen."}`,
     bestaetigen: "Akte abschließen",
   });
   if (!ok) return false;
@@ -92,6 +113,15 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
   const ra = byId.get(akte.bearbeiterId);
   const sb = akte.sachbearbeiterId ? byId.get(akte.sachbearbeiterId) : undefined;
   const Icon = SACHGEBIET_ICON[akte.sachgebiet];
+  const [datei, setDatei] = useState<AusgabeDatei | null>(null);
+  const terminIcs = () =>
+    termin &&
+    setDatei({
+      name: icsDateiname(termin, akte),
+      mime: "text/calendar",
+      inhalt: erzeugeIcs([{ f: termin, akte }], `Termin ${akte.aktenzeichen}`),
+      beschreibung: "Kalendereintrag zum Übernehmen in Outlook, Apple oder Google Kalender",
+    });
 
   const setzeStatus = (status: Akte["status"]) => {
     const st = useData.getState();
@@ -104,7 +134,7 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
 
   return (
     <Card padded={false}>
-      <div className="p-5 sm:p-6">
+      <div className="p-5">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
           <div className="min-w-0 flex-1 basis-[240px]">
             <div className="flex flex-wrap items-center gap-2">
@@ -115,7 +145,7 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
                 type="button"
                 onClick={() => kopiere(akte.aktenzeichen, "Aktenzeichen")}
                 title="Aktenzeichen kopieren"
-                className="group mono inline-flex h-8 items-center gap-1.5 rounded-full bg-ink-softer px-3 text-[13.5px] font-semibold text-fg shadow-[inset_0_0_0_1px_var(--line)] transition-colors hover:bg-ink-soft"
+                className="group mono inline-flex h-8 items-center gap-1.5 rounded-full max-sm:h-11 bg-ink-softer px-3 text-[13.5px] font-semibold text-fg shadow-[inset_0_0_0_1px_var(--line)] transition-colors hover:bg-ink-soft"
               >
                 {akte.aktenzeichen}
                 <Copy className="size-3 text-fg-3 transition-colors group-hover:text-ink" />
@@ -124,21 +154,21 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
             </div>
           </div>
           <div className="order-last flex w-full flex-wrap items-center gap-2 sm:order-none sm:w-auto">
-            <Button variant="secondary" icon={<Mail className="size-4" />} onClick={onEmail} className="flex-1 sm:flex-none">
+            <Button variant="secondary" icon={<Mail className="size-4" />} onClick={onEmail} className="flex-1 max-sm:[--h:44px] sm:flex-none">
               <span className="sm:hidden">E-Mail</span>
               <span className="hidden sm:inline">E-Mail schreiben</span>
             </Button>
-            <Button variant="secondary" icon={<CalendarPlus className="size-4" />} onClick={onFrist} className="flex-1 sm:flex-none">
+            <Button variant="secondary" icon={<CalendarPlus className="size-4" />} onClick={onFrist} className="flex-1 max-sm:[--h:44px] sm:flex-none">
               <span className="sm:hidden">Frist</span>
               <span className="hidden sm:inline">Frist anlegen</span>
             </Button>
-            <Button variant="ai" icon={<Sparkles className="size-4" />} onClick={onKi} className="flex-1 sm:flex-none">
+            <Button variant="ai" icon={<Sparkles className="size-4" />} onClick={onKi} className="flex-1 max-sm:[--h:44px] sm:flex-none">
               <span className="sm:hidden">KI-Analyse</span>
               <span className="hidden sm:inline">KI-Fallanalyse</span>
             </Button>
             <Menu
               trigger={({ toggle }) => (
-                <IconButton label="Weitere Aktionen" onClick={toggle} className="shadow-[inset_0_0_0_1px_var(--line)]">
+                <IconButton label="Weitere Aktionen" onClick={toggle} className="shadow-[inset_0_0_0_1px_var(--line)] max-sm:!size-11">
                   <MoreHorizontal className="size-[18px]" />
                 </IconButton>
               )}
@@ -160,11 +190,11 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
             <div className="flex items-start gap-2">
               <h1 className="title-xl min-w-0 break-words">{akte.titel}</h1>
               {/* Schnellhilfe wie im PageHeader der Bereichsseiten */}
-              <IconButton label="Was ist das? Schnellhilfe öffnen" size="sm" onClick={() => useUI.getState().zeigeHilfe("akten")} className="mt-0.5 shrink-0 text-fg-3">
+              <IconButton label="Was ist das? Schnellhilfe öffnen" size="sm" onClick={() => useUI.getState().zeigeHilfe("akten")} className="mt-0.5 shrink-0 text-fg-3 max-sm:!size-11">
                 <CircleHelp className="size-[18px]" />
               </IconButton>
             </div>
-            <div className="mt-3 flex flex-wrap gap-1.5">
+            <div className="mt-2 flex flex-wrap gap-1.5">
               <SachgebietChip sg={akte.sachgebiet} />
               {!(akte.status === "abgeschlossen" && akte.phase === "Abgeschlossen") && (
                 <Chip tone="ink" icon={<CircleDot className="size-3" />}>
@@ -196,7 +226,8 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
           </div>
         </div>
 
-        <dl className="mt-5 grid grid-cols-2 gap-x-5 gap-y-4 border-t border-[var(--line)] pt-5 lg:grid-cols-4">
+        {/* Kompakt: auf L eine Zeile mit sechs Angaben (Gericht mit gerichtlichem Az.), damit die Reiter ohne Scrollen sichtbar sind */}
+        <dl className="mt-4 grid grid-cols-2 gap-x-5 gap-y-4 border-t border-[var(--line)] pt-4 lg:grid-cols-3 xl:grid-cols-6">
           <Fakt label="Mandant">
             {mandant ? (
               <Link to={`/kontakte?id=${mandant.id}`} className="group flex min-h-11 min-w-0 items-center gap-2 sm:min-h-0">
@@ -216,7 +247,18 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
               <span className="text-fg-3">nicht erfasst</span>
             )}
           </Fakt>
-          <Fakt label="Gericht">
+          <Fakt
+            label="Gericht"
+            sub={
+              akte.gerichtsAz ? (
+                <button type="button" onClick={() => void kopiere(akte.gerichtsAz!, "Gerichtliches Aktenzeichen")} title="Gerichtliches Aktenzeichen kopieren" className="mono inline-flex min-h-11 items-center break-all text-left font-medium text-fg-2 hover:text-ink sm:min-h-0">
+                  Az. {akte.gerichtsAz}
+                </button>
+              ) : gericht ? (
+                "Az. noch nicht bekannt"
+              ) : undefined
+            }
+          >
             {gericht ? (
               <Link to={`/kontakte?id=${gericht.id}`} className="flex min-h-11 min-w-0 items-center break-words font-medium hover:text-ink sm:min-h-0">
                 {gericht.name}
@@ -225,16 +267,20 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
               <span className="text-fg-3">noch kein Verfahren</span>
             )}
           </Fakt>
-          <Fakt label="Gerichtl. Az.">
-            {akte.gerichtsAz ? (
-              <button type="button" onClick={() => void kopiere(akte.gerichtsAz!, "Gerichtliches Aktenzeichen")} title="Gerichtliches Aktenzeichen kopieren" className="mono flex min-h-11 items-center break-all text-left font-medium hover:text-ink sm:min-h-0">
-                {akte.gerichtsAz}
-              </button>
-            ) : (
-              <span className="text-fg-3">–</span>
-            )}
-          </Fakt>
-          <Fakt label="Nächster Termin" sub={termin ? [termin.titel, termin.ort].filter(Boolean).join(" · ") : undefined}>
+          <Fakt
+            label="Nächster Termin"
+            sub={
+              termin ? (
+                <>
+                  <span className="block">{[termin.titel, termin.ort].filter(Boolean).join(" · ")}</span>
+                  <button type="button" onClick={terminIcs} className="mt-0.5 inline-flex min-h-11 items-center gap-1 font-medium text-ink hover:underline sm:min-h-0" title="Termin als Kalenderdatei (.ics) für Outlook, Apple oder Google Kalender">
+                    <CalendarPlus className="size-3.5" aria-hidden />
+                    In Kalender (.ics)
+                  </button>
+                </>
+              ) : undefined
+            }
+          >
             {termin ? (
               <span className="num font-medium">
                 {fmtDateWd(termin.datum)}
@@ -261,6 +307,7 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
       </div>
       <PhasenLeiste akte={akte} />
       {portalAktionen.dialoge}
+      <DateiDialog datei={datei} onClose={() => setDatei(null)} />
     </Card>
   );
 }
@@ -280,10 +327,13 @@ function Fakt({ label, sub, children, className }: { label: string; sub?: React.
 /** Verfahrensstand als klickbare Schrittfolge mit gleitender Markierung. */
 const VERFAHRENSSTAND_KEY = "apex.akte.verfahrensstand";
 function leseOffen(): boolean {
+  // ohne eigene Wahl: auf niedrigen Bildschirmen (L, 1366 × 768) eingeklappt – die Reiter bleiben ohne Scrollen sichtbar
+  const standard = typeof window === "undefined" || window.innerHeight >= 900;
   try {
-    return localStorage.getItem(VERFAHRENSSTAND_KEY) !== "zu";
+    const v = localStorage.getItem(VERFAHRENSSTAND_KEY);
+    return v ? v !== "zu" : standard;
   } catch {
-    return true;
+    return standard;
   }
 }
 

@@ -32,20 +32,38 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
   );
 });
 
-export function SearchField({ value, onChange, placeholder = "Suchen …", className, autoFocus, id }: { value: string; onChange: (v: string) => void; placeholder?: string; className?: string; autoFocus?: boolean; id?: string }) {
+type SearchFieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "className"> & {
+  value: string;
+  onChange: (v: string) => void;
+  /** Klassen des äußeren Rahmens (Breite, Abstand) */
+  className?: string;
+  /** „Suche leeren“ als eigener Tab-Stopp? In Comboboxen aus (Escape leert), sonst an. */
+  leerenFokussierbar?: boolean;
+};
+
+/**
+ * Suchfeld mit Lupe und „Suche leeren“. Weitere Eingabe-Attribute (onKeyDown, role, aria-*, autoComplete …) werden an das
+ * Eingabefeld durchgereicht – damit nutzen auch Comboboxen mit Trefferliste (Kontakt-, Fristart-Auswahl) dieselbe Optik.
+ */
+export function SearchField({ value, onChange, placeholder = "Suchen …", className, leerenFokussierbar = true, ...rest }: SearchFieldProps) {
   return (
     <div className={cn("relative", className)}>
-      <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-fg-4" />
+      <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-fg-4" aria-hidden />
       <input
-        id={id}
-        autoFocus={autoFocus}
+        {...rest}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         className="field !h-10 !rounded-full !pl-10 !pr-9"
       />
       {value && (
-        <button type="button" aria-label="Suche leeren" onClick={() => onChange("")} className="absolute right-2.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-full text-fg-3 hover:bg-ink-softer">
+        <button
+          type="button"
+          tabIndex={leerenFokussierbar ? undefined : -1}
+          aria-label="Suche leeren"
+          onClick={() => onChange("")}
+          className="absolute right-2.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-full text-fg-3 hover:bg-ink-softer"
+        >
           <X className="size-3.5" />
         </button>
       )}

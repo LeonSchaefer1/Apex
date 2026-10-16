@@ -1,11 +1,19 @@
 // Einheitlicher Wortlaut zu KI-Verarbeitungsort, Unterauftragnehmern und Löschfristen – Einstellungen → KI/Datenschutz und Landing.
-// Wahrheitsgemäß: Der Kanzlei-Server spricht die Anthropic-API direkt an. Eine EU-Verarbeitung wird nicht behauptet.
+// Wahrheitsgemäß: Der Kanzlei-Server spricht die Anthropic-API direkt an. Eine EU-Verarbeitung wird nicht behauptet; ob es sie gibt,
+// entscheidet der Auftraggeber (neutral: „auf Anfrage“, src/content/lizenz.ts).
+import { KI_EU_HINWEIS } from "./lizenz";
+
+/**
+ * § 43e Abs. 4 BRAO ist eine Voraussetzung (vergleichbarer Geheimnisschutz im Ausland), keine Vertragsklausel –
+ * deshalb kein „vertraglich geregelt“, sondern der Hinweis auf die Prüfung durch die Kanzlei.
+ */
+export const DRITTLAND = "Für die Übermittlung in die USA gelten Art. 44 ff. DSGVO. Nach § 43e Abs. 4 BRAO muss der Geheimnisschutz in den USA dem Schutz im Inland vergleichbar sein – das prüft die Kanzlei vor dem Einschalten der Live-KI.";
 
 export const VERARBEITUNGSORT = {
   titel: "Verarbeitungsort",
-  live: "Live-KI: Anthropic, PBC (USA). Ihr Kanzlei-Server sendet nur die für die jeweilige Aufgabe nötigen Inhalte – ohne Nutzung zum Training. Die Drittlandübermittlung ist vertraglich nach Art. 44 ff. DSGVO und § 43e Abs. 4 BRAO geregelt.",
+  live: `Live-KI: Anthropic, PBC (USA). Ihr Kanzlei-Server sendet nur die für die jeweilige Aufgabe nötigen Inhalte – ohne Nutzung zum Training. ${DRITTLAND}`,
   demo: "Demo-KI (offline): keine Übermittlung – die Verarbeitung erfolgt lokal nach festen Regeln.",
-  eu: "Eine Verarbeitung in der EU ist auf Wunsch über einen EU-Cloud-Zugang des KI-Anbieters möglich – im Prototyp nicht eingerichtet.",
+  eu: `${KI_EU_HINWEIS}.`,
 } as const;
 
 export interface Unterauftragnehmer {
@@ -28,7 +36,7 @@ export interface Loeschfrist {
 }
 
 export const LOESCHKONZEPT: Loeschfrist[] = [
-  { was: "Handakten", frist: "6 Jahre nach Ende des Mandats", grundlage: "§ 50 Abs. 1 BRAO" },
+  { was: "Handakten", frist: "6 Jahre ab Ende des Kalenderjahres, in dem das Mandat endete", grundlage: "§ 50 Abs. 1 S. 2, 3 BRAO" },
   { was: "Bücher, Inventare, Jahresabschlüsse", frist: "10 Jahre", grundlage: "§ 147 Abs. 3 AO" },
   { was: "Buchungsbelege inkl. Rechnungen", frist: "8 Jahre", grundlage: "§ 147 Abs. 3 AO" },
   { was: "Empfangene und gesendete Handels- und Geschäftsbriefe", frist: "6 Jahre", grundlage: "§ 147 Abs. 1 Nr. 2, 3, Abs. 3 AO" },

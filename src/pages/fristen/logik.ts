@@ -1,8 +1,9 @@
 // Gemeinsame Fristen-Helfer für Fristenkalender und Posteingang (Anlegen, Erledigen, Vier-Augen-Kontrolle, Darstellung).
-import { addDays, addMonthsBGB, fmtDate, fmtTime, fromISO, nowLocal, today, uid, weekday } from "@/core/dates";
+import { addDays, addMonthsBGB, fmtDate, fmtEUR, fmtTime, fromISO, nowLocal, today, uid, weekday } from "@/core/dates";
 import type { Einheit } from "@/core/fristen";
+import { istKritisch } from "@/core/fristenLage";
 import { useData } from "@/store/data";
-import type { Frist, FristTyp, ID, ISODate, Nachricht, User } from "@/core/types";
+import type { Frist, FristTyp, ID, ISODate, Nachricht, Transaktion, User } from "@/core/types";
 import type { Tone } from "@/components/ui";
 
 export interface TypMeta {
@@ -25,6 +26,15 @@ export const TYP_META: Record<FristTyp, TypMeta> = {
 
 export const TYP_REIHENFOLGE: FristTyp[] = ["notfrist", "frist", "vorfrist", "wiedervorlage", "termin"];
 
+/**
+ * Kalenderdarstellung (Woche, Monat): kritische Fristen – Notfrist oder gesetzlich nicht verlängerbar (§ 4 KSchG,
+ * § 17 TzBfG …) – rot wie Notfristen, mit sichtbarem Text statt nur Tooltip (WCAG 1.4.1).
+ */
+export function kalenderMeta(f: Pick<Frist, "typ" | "regelKey">): { pill: string; dot: string; kritisch?: "Notfrist" | "nicht verlängerbar" } {
+  if (istKritisch(f)) return { pill: TYP_META.notfrist.pill, dot: TYP_META.notfrist.dot, kritisch: f.typ === "notfrist" ? "Notfrist" : "nicht verlängerbar" };
+  return { pill: TYP_META[f.typ].pill, dot: TYP_META[f.typ].dot };
+}
+
 /** Herkunft einer Frist – eine Tabelle für Fristenkalender, Akten-Reiter und Filter-Chips. */
 export const QUELLE_LABEL: Record<Frist["quelle"], string> = {
   ki: "Von KI erkannt",
@@ -36,7 +46,7 @@ export const QUELLE_LABEL: Record<Frist["quelle"], string> = {
 /** Erläuterung der Herkunft (Tooltip). */
 export const QUELLE_TITEL: Record<Frist["quelle"], string> = {
   ki: "Von der KI im Dokument erkannt – berechnet mit dem Fristenrechner",
-  automatisch: "Automatisch angelegt (z. B. Vorfrist, Automation des 38h-Motors)",
+  automatisch: "Automatisch angelegt (z. B. Vorfrist, Automatik des 38h-Motors)",
   manuell: "Von Hand eingetragen",
   migration: "Aus der Altsoftware übernommen – Datum laut Altsystem, bitte mit dem Fristenrechner nachrechnen",
 };
@@ -199,26 +209,71 @@ export const NACHWEIS_ART: Record<Nachweis["art"], string> = {
   bote: "Bote",
   post: "Post",
   persoenlich: "persönlich übergeben",
+  ueberweisung: "Überweisung (Kontoumsatz)",
   gestrichen: "gestrichen/gegenstandslos",
   sonstiges: "sonstiger Nachweis",
 };
+
+/** Versandwege mit Pflicht-Versandzeit (Datum und Uhrzeit des tatsächlichen Versands – nicht die Zeit des Eintrags). */
+export const VERSAND_ARTEN: Nachweis["art"][] = ["bea", "fax", "bote", "post", "persoenlich"];
+export const istVersandArt = (a: Nachweis["art"]) => VERSAND_ARTEN.includes(a);
+
+/** „versandt per beA“, „persönlich übergeben“ … */
+const VERSAND_WEG: Partial<Record<Nachweis["art"], string>> = {
+  bea: "versandt per beA",
+  fax: "versandt per Telefax",
+  bote: "übergeben durch Boten",
+  post: "versandt per Post",
+  persoenlich: "persönlich übergeben",
+};
+
+/** Zahlungsfristen (Fremdgeld weiterleiten, § 43a Abs. 7 BRAO) werden durch Überweisung gewahrt, nicht durch einen Schriftsatz. */
+export function istZahlungsfrist(f: Pick<Frist, "titel">): boolean {
+  return /fremdgeld|weiterleit|überweis|auszahl|zahlung an/i.test(f.titel);
+}
+
+/** Nachweisarten nach Fristart: Zahlungsfristen per Überweisung (Kontoumsatz), sonst die Versandwege. */
+export function nachweisArtenFuer(f: Pick<Frist, "titel">): Nachweis["art"][] {
+  return istZahlungsfrist(f) ? ["ueberweisung", "gestrichen"] : [...VERSAND_ARTEN, "gestrichen"];
+}
 
 /** Notfristen und Fristen brauchen beim Erledigen einen Nachweis (Ausgangskontrolle) – Wiedervorlagen, Vorfristen und Termine nicht. */
 export function erfordertNachweis(f: Pick<Frist, "typ">): boolean {
   return f.typ === "notfrist" || f.typ === "frist";
 }
 
-/** „versandt – Nachweis: beA 16:42 Uhr (Dr. Hartmann)“, „gestrichen – weil …“, „erledigt – ohne Nachweis“ */
-export function nachweisText(f: Frist, team: User[], nachrichten: Nachricht[] = []): string {
+/** „am 16.10.2026 um 18:05 Uhr“ bzw. nur „am 16.10.2026“ (Überweisung) */
+function amUm(iso: string): string {
+  const zeit = iso.length > 10 ? fmtTime(iso) : "";
+  return `am ${fmtDate(iso.slice(0, 10))}${zeit ? ` um ${zeit} Uhr` : ""}`;
+}
+
+/**
+ * Nachweis einer erledigten Frist – Versandzeit und Protokollzeit getrennt:
+ * „versandt per beA am 16.10.2026 um 18:05 Uhr · protokolliert 21:39 Uhr von Dr. Julia Hartmann“,
+ * „überwiesen am 16.10.2026 (Kontoumsatz −1.250,00 € an …) · protokolliert …“, „gestrichen – weil …“.
+ */
+export function nachweisText(f: Frist, team: User[], nachrichten: Nachricht[] = [], transaktionen: Transaktion[] = []): string {
   const n = f.erledigtNachweis;
   const wer = team.find((u) => u.id === f.erledigtVon)?.name;
-  const zeit = f.erledigtAm ? `${fmtTime(f.erledigtAm)} Uhr` : "";
   if (!n) return `erledigt – ohne Nachweis${wer ? ` (${wer})` : ""}`;
   if (n.art === "gestrichen") return `gestrichen – ${n.text ?? "ohne Grund"}${wer ? ` (${wer})` : ""}`;
+  const protokoll = f.erledigtAm
+    ? ` · protokolliert ${n.versandAm && n.versandAm.slice(0, 10) === f.erledigtAm.slice(0, 10) ? `${fmtTime(f.erledigtAm)} Uhr` : `am ${fmtDate(f.erledigtAm.slice(0, 10))}, ${fmtTime(f.erledigtAm)} Uhr`}${wer ? ` von ${wer}` : ""}`
+    : wer
+      ? ` · ${wer}`
+      : "";
+  const zusatz = n.text ? ` · ${n.text}` : "";
+  if (n.art === "ueberweisung") {
+    const t = n.transaktionId ? transaktionen.find((x) => x.id === n.transaktionId) : undefined;
+    const wann = n.versandAm ?? t?.datum;
+    const umsatz = t ? ` (Kontoumsatz ${fmtEUR(t.betrag)} ${t.betrag < 0 ? "an" : "von"} ${t.gegenpartei})` : "";
+    return `überwiesen${wann ? ` ${amUm(wann.slice(0, 10))}` : ""}${umsatz}${zusatz}${protokoll}`;
+  }
   const msg = n.nachrichtId ? nachrichten.find((m) => m.id === n.nachrichtId) : undefined;
-  const wann = msg ? `${fmtTime(msg.eingang)} Uhr` : zeit;
-  const art = n.art === "bea" ? "beA" : NACHWEIS_ART[n.art];
-  return `versandt – Nachweis: ${art}${wann ? ` ${wann}` : ""}${n.text ? ` · ${n.text}` : ""}${wer ? ` (${wer})` : ""}`;
+  const versand = n.versandAm ?? msg?.eingang;
+  const weg = VERSAND_WEG[n.art] ?? `Nachweis: ${NACHWEIS_ART[n.art]}`;
+  return `${weg} ${versand ? amUm(versand) : "– Versandzeit nicht erfasst"}${zusatz}${protokoll}`;
 }
 
 /** Erledigt eine Frist (inkl. offener Vorfrist) und protokolliert es – bei Notfristen und Fristen mit Nachweis bzw. Grund. */
@@ -230,7 +285,7 @@ export function erledigeFrist(f: Frist, userId: ID, nachweis?: Nachweis): void {
   const was = nachweis
     ? nachweis.art === "gestrichen"
       ? ` gestrichen – Grund: ${nachweis.text ?? "–"}`
-      : ` als erledigt markiert – gewahrt per ${NACHWEIS_ART[nachweis.art]}${nachweis.nachrichtId ? ` (${data.nachrichten.find((m) => m.id === nachweis.nachrichtId)?.betreff ?? "beA-Nachricht"})` : ""}${nachweis.text ? `: ${nachweis.text}` : ""}`
+      : ` als erledigt markiert – gewahrt per ${NACHWEIS_ART[nachweis.art]}${nachweis.versandAm ? ` ${amUm(nachweis.versandAm)}` : ""}${nachweis.nachrichtId ? ` (${data.nachrichten.find((m) => m.id === nachweis.nachrichtId)?.betreff ?? "beA-Nachricht"})` : ""}${nachweis.transaktionId ? ` (Kontoumsatz ${data.transaktionen.find((t) => t.id === nachweis.transaktionId)?.gegenpartei ?? ""})` : ""}${nachweis.text ? `: ${nachweis.text}` : ""}`
     : " als erledigt markiert";
   const kontrolle = nachweis?.kontrolleOffenBestaetigt ? " · Vier-Augen-Kontrolle stand noch aus – trotzdem erledigt (bestätigt)" : "";
   log({ akteur: "nutzer", userId, akteId: f.akteId, text: `${TYP_META[f.typ].label} „${f.titel}“ (${fmtDate(f.datum)})${was}${kontrolle}` });
@@ -259,12 +314,66 @@ export function oeffneFristWieder(f: Frist, heute: ISODate = today(), userId?: I
   }
 }
 
+export interface FristKorrektur {
+  datum: ISODate;
+  vorfrist?: ISODate;
+  ereignisDatum?: ISODate;
+  regelKey?: string;
+  titel?: string;
+  grundlage?: string;
+  rechenweg?: string[];
+  typ?: FristTyp;
+}
+
+/**
+ * Korrigiert eine notierte Frist (Datum bzw. Fristart/Ereignisdatum über den Fristenrechner) mit Pflichtgrund.
+ * Der vorherige Stand bleibt in `korrekturen` erhalten, Vorfristen ziehen mit, die Vier-Augen-Kontrolle ist danach
+ * wieder offen und eine angeforderte Korrektur erledigt. Protokolliert.
+ */
+export function korrigiereFrist(f: Frist, userId: ID, neu: FristKorrektur, grund: string): void {
+  const { patch, log, data } = useData.getState();
+  const aktuell = data.fristen.find((x) => x.id === f.id) ?? f;
+  const am = nowLocal();
+  const vorher = { datum: aktuell.datum, ereignisDatum: aktuell.ereignisDatum, regelKey: aktuell.regelKey, titel: aktuell.titel };
+  const titel = neu.titel ?? aktuell.titel;
+  patch("fristen", f.id, {
+    ...neu,
+    titel,
+    korrekturen: [...(aktuell.korrekturen ?? []), { am, vonId: userId, grund: grund.trim(), vorher }],
+    kontrolliertVon: undefined,
+    korrekturAngefordert: undefined,
+  });
+  for (const v of vorfristenZu(aktuell, data.fristen)) {
+    if (v.status !== "offen") continue;
+    if (neu.vorfrist && neu.vorfrist < neu.datum) patch("fristen", v.id, { datum: neu.vorfrist, titel: `Vorfrist: ${titel}`, notiz: `Vorfrist zu „${titel}“ (Fristende ${fmtDate(neu.datum)}).` });
+    else patch("fristen", v.id, { status: "erledigt", erledigtAm: am, erledigtVon: userId, notiz: `Mit der Korrektur von „${titel}“ entfallen.` });
+  }
+  const was = [
+    vorher.datum !== neu.datum ? `Fristende ${fmtDate(vorher.datum)} → ${fmtDate(neu.datum)}` : "",
+    neu.ereignisDatum && neu.ereignisDatum !== vorher.ereignisDatum ? `Ereignis ${vorher.ereignisDatum ? fmtDate(vorher.ereignisDatum) : "–"} → ${fmtDate(neu.ereignisDatum)}` : "",
+    neu.regelKey && neu.regelKey !== vorher.regelKey ? `Fristart „${vorher.titel}“ → „${titel}“` : "",
+  ].filter(Boolean);
+  log({
+    akteur: "nutzer",
+    userId,
+    akteId: f.akteId,
+    text: `${TYP_META[aktuell.typ].label} „${vorher.titel}“ korrigiert: ${was.join(", ") || "ohne Datumsänderung"} – Grund: ${grund.trim()}${unterliegtKontrolle(aktuell) ? " · Vier-Augen-Kontrolle wieder offen" : ""}`,
+  });
+}
+
+/** Kontrolle: „Korrektur anfordern“ mit Grund – sichtbar für die verantwortliche Person, protokolliert. */
+export function fordereKorrekturAn(f: Frist, userId: ID, grund: string): void {
+  const { patch, log } = useData.getState();
+  patch("fristen", f.id, { korrekturAngefordert: { vonId: userId, am: nowLocal(), grund: grund.trim() } });
+  log({ akteur: "nutzer", userId, akteId: f.akteId, text: `Korrektur angefordert (Vier-Augen-Kontrolle): ${f.titel} (${fmtDate(f.datum)}) – ${grund.trim()}` });
+}
+
 /** Vier-Augen-Kontrolle bestätigen (nur durch eine andere Person als die verantwortliche, siehe `darfKontrollieren`). */
 export function bestaetigeKontrolle(f: Frist, userId: ID): boolean {
   const aktuell = useData.getState().data.fristen.find((x) => x.id === f.id) ?? f;
   if (!darfKontrollieren(aktuell, userId)) return false;
   const { patch, log } = useData.getState();
-  patch("fristen", f.id, { kontrolliertVon: userId });
+  patch("fristen", f.id, { kontrolliertVon: userId, korrekturAngefordert: undefined });
   log({ akteur: "nutzer", userId, akteId: f.akteId, text: `Vier-Augen-Kontrolle bestätigt: ${f.titel} (${f.datum.split("-").reverse().join(".")})` });
   return true;
 }

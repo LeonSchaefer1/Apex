@@ -8,7 +8,7 @@ import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
 import { search, normalize, tokenize } from "@/core/search";
 import { addDays, fmtDate, fmtDateWd, fmtEUR, fmtNum, nowLocal, relDays, today, uid } from "@/core/dates";
 import { istWerktag } from "@/core/feiertage";
-import { RUECKRUF_SIMULIERT, rueckrufZusage } from "@/core/rueckruf";
+import { RUECKRUF_SIMULIERT, inServicezeit, naechsteServicezeit, rueckrufNachFristende, rueckrufZusage } from "@/core/rueckruf";
 import { WIKI, artikel, type WikiArtikel } from "@/content/wiki";
 import { NAV } from "@/app/nav";
 import { useData } from "@/store/data";
@@ -38,7 +38,7 @@ export interface SchreibVorschlag {
   akteId: string;
   aktenzeichen: string;
   akteTitel: string;
-  /** Bezeichnung des Eintrags – bei Wiedervorlagen der Auftragstext („Zeugen Pohl benennen“) */
+  /** Bezeichnung des Eintrags – bei Wiedervorlagen der Auftragstext („Zeugen Seifert benennen“) */
   titel: string;
   datum?: ISODate;
   uhrzeit?: string;
@@ -540,10 +540,10 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
     {
       name: "frist_anlegen",
       description:
-        "Bereitet eine Frist, Wiedervorlage oder einen Termin für eine Akte vor. Es wird NICHTS eingetragen: Die Person sieht eine Bestätigungskarte (Akte, Titel, Datum mit Wochentag) und trägt mit „Eintragen“ ein – danach gibt es „Rückgängig“. Als Titel den Auftragstext verwenden (z. B. „Zeugen Pohl benennen“), nicht nur „Wiedervorlage“. Nur aufrufen, wenn die Person das ausdrücklich möchte.",
+        "Bereitet eine Frist, Wiedervorlage oder einen Termin für eine Akte vor. Es wird NICHTS eingetragen: Die Person sieht eine Bestätigungskarte (Akte, Titel, Datum mit Wochentag) und trägt mit „Eintragen“ ein – danach gibt es „Rückgängig“. Als Titel den Auftragstext verwenden (z. B. „Zeugen Seifert benennen“), nicht nur „Wiedervorlage“ – fehlt er, vorher nachfragen. In „auftrag“ den Wortlaut der Bitte übergeben. Nur aufrufen, wenn die Person das ausdrücklich möchte.",
       inputSchema: {
         type: "object",
-        properties: { aktenzeichen: { type: "string", description: "Aktenzeichen oder Name (Mandant/Titel)" }, titel: { type: "string" }, datum: { type: "string", description: "YYYY-MM-DD" }, typ: { type: "string", enum: ["frist", "wiedervorlage", "termin", "notfrist"] }, uhrzeit: { type: "string", description: "Optional HH:MM (Termine)" } },
+        properties: { aktenzeichen: { type: "string", description: "Aktenzeichen oder Name (Mandant/Titel)" }, titel: { type: "string" }, datum: { type: "string", description: "YYYY-MM-DD" }, typ: { type: "string", enum: ["frist", "wiedervorlage", "termin", "notfrist"] }, uhrzeit: { type: "string", description: "Optional HH:MM (Termine)" }, auftrag: { type: "string", description: "Wortlaut der Bitte der Person (für das Protokoll)" } },
         required: ["aktenzeichen", "titel", "datum"],
       },
       execute: (i) => {
@@ -558,7 +558,7 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
         t("frist_anlegen");
         const datum = String(i.datum).slice(0, 10);
         const typ = (["frist", "wiedervorlage", "termin", "notfrist"].includes(String(i.typ)) ? String(i.typ) : "wiedervorlage") as VorschlagArt;
-        ctx.vorschlag = { id: uid("vs"), art: typ, akteId: a.id, aktenzeichen: a.aktenzeichen, akteTitel: a.titel, titel: String(i.titel).trim() || TYP_NAME[typ as FristTyp], datum, uhrzeit: i.uhrzeit ? String(i.uhrzeit).slice(0, 5) : undefined, auftrag: String(i.titel) };
+        ctx.vorschlag = { id: uid("vs"), art: typ, akteId: a.id, aktenzeichen: a.aktenzeichen, akteTitel: a.titel, titel: String(i.titel).trim() || TYP_NAME[typ as FristTyp], datum, uhrzeit: i.uhrzeit ? String(i.uhrzeit).slice(0, 5) : undefined, auftrag: String(i.auftrag ?? "").trim() || String(i.titel) };
         const p = pruefeDatum(datum, land);
         return { status: "zur_bestaetigung", hinweis: "Noch nicht eingetragen – die Person bestätigt mit „Eintragen“ in der Karte unter Ihrer Antwort.", akte: `${a.aktenzeichen} ${a.titel}`, titel: ctx.vorschlag.titel, datum: fmtDateWd(datum), werktag: p.werktag, vorschlagNaechsterWerktag: p.naechster ? fmtDateWd(p.naechster) : null };
       },
@@ -665,8 +665,8 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
         const name = ziel.replace(/^(die\s+)?akte\s+/i, "");
         const kandidaten = akteKandidaten(name);
         if (kandidaten.length > 1) {
-          // Mehrdeutig: nie still eine Akte öffnen – Auswahl anbieten
-          t("navigiere");
+          // Mehrdeutig: nie still eine Akte öffnen – Auswahl anbieten (Chip „Akten durchsucht“, nicht „Bereich geöffnet“)
+          t("suche_akten");
           ctx.auswahl = auswahlFuer(kandidaten, (a) => `Öffne die Akte ${a.aktenzeichen}`);
           return { mehrdeutig: true, suchbegriff: name, treffer: kandidaten.slice(0, 6).map((a) => `${a.aktenzeichen} ${a.titel}`), hinweis: "Mehrere Akten passen – die Person wählt per Knopf. Keine Akte geöffnet." };
         }
@@ -698,7 +698,16 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
         t("ansprechpartner");
         ctx.links.push({ label: "Hilfe & Support", to: "/hilfe" });
         const ap = ctx.sitzung.tenant.ansprechpartner;
-        return { ...ap, bezeichnung: ansprechBezeichnung(ap), anrede: festeAnsprechperson(ap) };
+        const jetzt = new Date();
+        const erreichbar = inServicezeit(jetzt, ap.verfuegbar, ctx.sitzung.tenant.bundesland);
+        return {
+          ...ap,
+          bezeichnung: ansprechBezeichnung(ap),
+          anrede: festeAnsprechperson(ap),
+          erreichbar,
+          wiederErreichbar: erreichbar ? undefined : naechsteServicezeit(jetzt, ap.verfuegbar, ctx.sitzung.tenant.bundesland).text,
+          hinweis: erreichbar ? undefined : "Außerhalb der Servicezeit nicht erreichbar – nie „direkt erreichbar“ sagen. Bei einer heute ablaufenden Frist auf die Ersatzeinreichung (§ 130d S. 2, 3 ZPO; § 46g S. 3, 4 ArbGG) und die Wissenskarte „beA-Störung – was tun?“ verweisen.",
+        };
       },
     },
     {
@@ -708,9 +717,17 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
       execute: (i) => {
         t("rueckruf_anfordern");
         const ap = ctx.sitzung.tenant.ansprechpartner;
-        const z = rueckrufZusage(new Date(), ap.verfuegbar, ctx.sitzung.tenant.bundesland);
+        const jetzt = new Date();
+        const z = rueckrufZusage(jetzt, ap.verfuegbar, ctx.sitzung.tenant.bundesland);
         useData.getState().log({ akteur: "nutzer", userId: ctx.sitzung.user.id, text: `Rückruf bei ${ap.name} angefordert (${z.text}) ${RUECKRUF_SIMULIERT}: ${String(i.thema)}` });
-        return { ok: true, ansprechpartner: ap.name, zusage: z.text, hinweis: `Im Prototyp simuliert – es ruft niemand an. Bitte immer „${RUECKRUF_SIMULIERT}“ dazusagen.` };
+        const spaeter = rueckrufNachFristende(z, jetzt);
+        return {
+          ok: true,
+          ansprechpartner: ap.name,
+          zusage: z.text,
+          erstNachHeute: spaeter,
+          hinweis: `Im Prototyp simuliert – es ruft niemand an. Bitte immer „${RUECKRUF_SIMULIERT}“ dazusagen.${spaeter ? " Der Rückruf kommt erst nach heute 24 Uhr: Läuft heute eine Frist ab, auf die Ersatzeinreichung und die Wissenskarte „beA-Störung – was tun?“ verweisen." : ""}`,
+        };
       },
     },
     {
@@ -842,6 +859,7 @@ Regeln:
 - Wenn du nicht weiterkommst oder der Nutzer einen Menschen möchte: biete die feste Ansprechperson an und nutze rueckruf_anfordern. Formuliere ohne Pronomen für die Ansprechperson: „${festeAnsprechperson(ap)}: ${ap.name}“ und wiederhole bei Bedarf den Namen.
 - Wenn der Nutzer einen Bereich sehen möchte, nutze navigiere.
 - Rückrufe sind im Prototyp simuliert: nenne die Zusage mit Uhrzeit aus rueckruf_anfordern und immer den Zusatz „${RUECKRUF_SIMULIERT}“.
+- Meldet ansprechpartner „erreichbar: false“, sag ehrlich, dass die Ansprechperson jetzt nicht erreichbar ist, und nenne „wiederErreichbar“. Läuft heute eine Frist ab, verweise auf die Ersatzeinreichung (§ 130d S. 2, 3 ZPO; § 46g S. 3, 4 ArbGG) und die Wissenskarte „beA-Störung – was tun?“ – erfinde keine Notfallnummer.
 - Notfallwissen beA-Störung (verbindlich, bei Fragen nach gestörtem beA, Ersatzeinreichung oder technischer Unmöglichkeit – vor jeder Posteingangsabfrage):
 ${beaWissen()}`;
 }
@@ -987,6 +1005,25 @@ export function auftragAus(text: string): string | undefined {
   return undefined;
 }
 
+/** „ohne Titel“, „egal“ … als Antwort auf die Rückfrage nach dem Auftrag: Titel bleibt die Art („Wiedervorlage“). */
+const OHNE_TITEL = /^(ohne( titel| auftrag| text)?|egal|keiner|kein(en)? titel|nichts|nix|einfach so)$/;
+
+/**
+ * Auftragstext ohne Doppelpunkt oder Anführungszeichen: nach einem Komma bzw. Gedankenstrich
+ * („… in drei Tagen an, Zeugen Seifert benennen“) oder als „um … zu …“.
+ */
+export function auftragAusNachsatz(text: string): string | undefined {
+  const t = text.trim().replace(/[.!?]+$/, "");
+  const um = t.match(/\bum\s+(.{3,120}?)\s+zu\s+([a-zäöüß]+)$/i);
+  if (um) return `${um[1].charAt(0).toUpperCase()}${um[1].slice(1)} ${um[2]}`;
+  const teile = t.split(/\s*[,;]\s+|\s+[–—-]\s+/);
+  if (teile.length < 2) return undefined;
+  const rest = teile[teile.length - 1].trim();
+  if (rest.length < 3 || datumAus(rest) || azAus(rest)) return undefined;
+  if (/\b(wiedervorlage|frist|notfrist|termin|notiz|akte|an|ein|anlegen|eintragen|bitte)$/i.test(rest) || /^(bitte|danke)\b/i.test(rest)) return undefined;
+  return rest.charAt(0).toUpperCase() + rest.slice(1);
+}
+
 // ───────────── Offline-Assistent (Demo-Modus) ─────────────
 
 const MONATE: Record<string, number> = { januar: 1, februar: 2, märz: 3, maerz: 3, april: 4, mai: 5, juni: 6, juli: 7, august: 8, september: 9, oktober: 10, november: 11, dezember: 12 };
@@ -1076,13 +1113,14 @@ function liste(items: string[]): string {
 
 // ── Gesprächskontext: Rückfragen des Assistenten und kurze Antworten darauf ──
 
-type Rueckfrage = "rueckruf" | "akte" | "datum" | "akte-analyse";
+type Rueckfrage = "rueckruf" | "akte" | "datum" | "akte-analyse" | "titel";
 
 const RUECKFRAGEN: [Rueckfrage, RegExp][] = [
-  ["rueckruf", /soll ich einen rückruf anfordern\?/i],
+  ["rueckruf", /soll ich einen rückruf (für dann )?anfordern\?/i],
   ["akte", /^für welche akte soll ich das eintragen\?/i],
   ["datum", /^zu welchem datum\?/i],
   ["akte-analyse", /^für welche akte soll ich die fallanalyse/i],
+  ["titel", /^worum geht es bei der (wiedervorlage|frist|notfrist|termin)\b/i],
 ];
 
 function rueckfrageIn(text: string | undefined): Rueckfrage | undefined {
@@ -1110,8 +1148,10 @@ function zusammengefuehrt(verlauf: LlmMessage[]): string | undefined {
   let ergaenzt = false;
   while (i >= 2 && verlauf[i - 1].role === "assistant" && verlauf[i - 2].role === "user") {
     const r = rueckfrageIn(verlauf[i - 1].content);
-    if (r !== "akte" && r !== "datum" && r !== "akte-analyse") break;
-    teile.unshift(verlauf[i - 2].content);
+    if (r !== "akte" && r !== "datum" && r !== "akte-analyse" && r !== "titel") break;
+    // Antwort auf „Worum geht es …?“ ist der Auftragstext – als „Befehl: Auftrag“ anhängen, damit er zum Titel wird
+    if (r === "titel") teile[0] = `${verlauf[i - 2].content.trim().replace(/[.!?]+$/, "")}: ${teile[0].trim()}`;
+    else teile.unshift(verlauf[i - 2].content);
     ergaenzt = true;
     i -= 2;
   }
@@ -1249,7 +1289,7 @@ async function kennzahlAntwort(q: string, run: (name: string, input?: Record<str
   // ── Apex Island ──
   if (/apex[- ]?island|\bisland\b|schwarze kapsel/.test(q)) {
     const m = (await run("motor_status")) as { stundenLetzte7Tage: string };
-    return `Die Apex Island ist die schwarze Kapsel oben in der Kopfleiste. Sie zeigt live, was der 38h-Motor gerade automatisch erledigt (z. B. „Vorfrist gesetzt“), und sonst die in den letzten 7 Tagen gesparte Zeit – aktuell ${m.stundenLetzte7Tage} Std. Ein Klick öffnet den 38h-Motor mit allen Automationen.`;
+    return `Die Apex Island ist die schwarze Kapsel oben in der Kopfleiste. Sie zeigt live, was der 38h-Motor gerade automatisch erledigt (z. B. „Vorfrist gesetzt“), und sonst die in den letzten 7 Tagen gesparte Zeit – aktuell ${m.stundenLetzte7Tage} Std. Ein Klick öffnet den 38h-Motor mit allen Automatiken.`;
   }
   // ── 38h-Motor: gesparte Zeit ──
   const erklaeren = /^(was|wie) (ist|sind|macht|bedeutet|funktioniert)\b(?! mit)/.test(q);
@@ -1280,6 +1320,31 @@ async function kennzahlAntwort(q: string, run: (name: string, input?: Record<str
   return undefined;
 }
 
+/** Heute ablaufende Fristen (Kanzlei) bzw. „Frist läuft heute ab“ in der Frage. */
+function fristHeute(q: string): number {
+  const genannt = /frist[^.?!]*heute|heute[^.?!]*frist|l(ä|ae)uft heute ab/.test(q.toLowerCase());
+  const anzahl = fristenLage(daten().fristen, today()).heute.length;
+  return genannt ? Math.max(1, anzahl) : anzahl;
+}
+
+/**
+ * Hinweis bei einer heute ablaufenden Frist, wenn die Ansprechperson nicht mehr rechtzeitig zurückrufen kann:
+ * nicht warten, sondern ersatzweise einreichen (§ 130d S. 2, 3 ZPO; § 46g S. 3, 4 ArbGG) – mit Wissenskarte.
+ */
+function fristHeuteSatz(ctx: Kontext, q: string, nurVerweis = false): string {
+  const n = fristHeute(q);
+  if (!n) return "";
+  ctx.links.push({ label: "Wissenskarte beA-Störung", to: "/hilfe?wiki=bea-stoerung" });
+  if (nurVerweis) return " Ist das beA gestört und läuft heute eine Frist ab: siehe Wissenskarte „beA-Störung – was tun?“.";
+  return ` ${n === 1 ? "Heute läuft noch eine Frist ab" : `Heute laufen noch ${n} Fristen ab`} – warten Sie nicht auf den Rückruf: Ist das beA gestört, reichen Sie nach den allgemeinen Vorschriften ein (Ersatzeinreichung, § 130d S. 2, 3 ZPO; vor den Arbeitsgerichten § 46g S. 3, 4 ArbGG) und machen Sie die Störung glaubhaft – siehe Wissenskarte „beA-Störung – was tun?“.`;
+}
+
+/** Nachsatz zur Erreichbarkeit nach einer Rückrufanforderung – ehrlich außerhalb der Servicezeit. */
+function erreichbarSatz(ctx: Kontext, ap: Ansprechpartner, erstNachHeute: boolean, q = ""): string {
+  if (inServicezeit(new Date(), ap.verfuegbar, ctx.sitzung.tenant.bundesland)) return ` Direkt erreichbar unter ${ap.telefon}.`;
+  return ` ${ap.name} ist jetzt nicht erreichbar.${erstNachHeute ? fristHeuteSatz(ctx, q) : ""}`;
+}
+
 async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = []): Promise<string> {
   const tools = Object.fromEntries(werkzeuge(ctx).map((t) => [t.name, t]));
   const run = async (name: string, input: Record<string, unknown> = {}) => tools[name].execute(input) as Promise<never> | never;
@@ -1295,15 +1360,22 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
   if (offeneRueckfrage === "rueckruf" && (ZUSTIMMUNG.test(kurz) || (/^(ja|gern|gerne|bitte|ok|okay|klar)\b/.test(kurz) && !/^(ja|bitte)? ?(nein|nicht)\b/.test(kurz)))) {
     const vorherFrage = verlauf.length >= 3 ? verlauf[verlauf.length - 3].content : "";
     await run("ansprechpartner");
-    const r = (await run("rueckruf_anfordern", { thema: vorherFrage || "Rückruf gewünscht" })) as { zusage: string };
-    return `Erledigt: Ich habe einen Rückruf bei ${ap.name} angefordert – ${r.zusage} (${ap.verfuegbar}). ${RUECKRUF_SIMULIERT} Direkt erreichbar unter ${ap.telefon}.`;
+    const r = (await run("rueckruf_anfordern", { thema: vorherFrage || "Rückruf gewünscht" })) as { zusage: string; erstNachHeute: boolean };
+    return `Erledigt: Ich habe einen Rückruf bei ${ap.name} angefordert – ${r.zusage} (${ap.verfuegbar}). ${RUECKRUF_SIMULIERT}${erreichbarSatz(ctx, ap, r.erstNachHeute)}`;
   }
   if (offeneRueckfrage === "rueckruf" && (ABLEHNUNG.test(kurz) || /^(nein|nee|lieber nicht)\b/.test(kurz))) {
-    return `Alles klar, kein Rückruf. ${ap.name} ist jederzeit direkt erreichbar unter ${ap.telefon} oder ${ap.email} (${ap.verfuegbar}).`;
+    return inServicezeit(new Date(), ap.verfuegbar, ctx.sitzung.tenant.bundesland)
+      ? `Alles klar, kein Rückruf. ${ap.name} ist in der Servicezeit direkt erreichbar unter ${ap.telefon} oder ${ap.email} (${ap.verfuegbar}).`
+      : `Alles klar, kein Rückruf. ${ap.name} ist wieder erreichbar ${naechsteServicezeit(new Date(), ap.verfuegbar, ctx.sitzung.tenant.bundesland).text} unter ${ap.telefon} oder ${ap.email}.`;
   }
   // Antwort auf „Für welche Akte …?“ bzw. „Zu welchem Datum?“ – nur, wenn sie die erfragte Angabe auch enthält
   const vollstaendig = zusammengefuehrt(verlauf);
-  const liefertAngabe = offeneRueckfrage === "datum" ? /^(am|zum|bis|in|ab|heute|morgen|übermorgen|uebermorgen|\d)/.test(kurz) && !!datumAus(kurz) : !!akteAusText(frage);
+  const liefertAngabe =
+    offeneRueckfrage === "datum"
+      ? /^(am|zum|bis|in|ab|heute|morgen|übermorgen|uebermorgen|\d)/.test(kurz) && !!datumAus(kurz)
+      : offeneRueckfrage === "titel"
+        ? kurz.length >= 3 && !ZUSTIMMUNG.test(kurz) && !ABLEHNUNG.test(kurz)
+        : !!akteAusText(frage);
   if (vollstaendig && liefertAngabe) return demoAntwort(vollstaendig, ctx, []);
   if (ZUSTIMMUNG.test(kurz) || ABLEHNUNG.test(kurz)) {
     return ZUSTIMMUNG.test(kurz)
@@ -1339,12 +1411,15 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
     return `Ich habe „${r.geoeffnet}“ für Sie geöffnet. ${r.beschreibung}`;
   }
   if (/ansprechpartner|ansprechperson|mensch|rückruf|rueckruf|hotline|anrufen|support|kontakt zu (euch|ihnen)/.test(q) || normalize(q).includes(normalize(ap.name))) {
-    const a = (await run("ansprechpartner")) as { name: string; telefon: string; email: string; verfuegbar: string };
+    const a = (await run("ansprechpartner")) as { name: string; telefon: string; email: string; verfuegbar: string; erreichbar: boolean; wiederErreichbar?: string };
     if (/rückruf|rueckruf|ruf.*an\b|anrufen/.test(q)) {
-      const r = (await run("rueckruf_anfordern", { thema: frage })) as { zusage: string };
-      return `Erledigt: Ich habe einen Rückruf bei ${a.name} angefordert – ${r.zusage} (${a.verfuegbar}). ${RUECKRUF_SIMULIERT} Direkt erreichbar unter ${a.telefon}.`;
+      const r = (await run("rueckruf_anfordern", { thema: frage })) as { zusage: string; erstNachHeute: boolean };
+      return `Erledigt: Ich habe einen Rückruf bei ${a.name} angefordert – ${r.zusage} (${a.verfuegbar}). ${RUECKRUF_SIMULIERT}${erreichbarSatz(ctx, ap, r.erstNachHeute, q)}`;
     }
-    return `${apText} – direkt erreichbar unter ${a.telefon} oder ${a.email} (${a.verfuegbar}), ohne Warteschleife. Soll ich einen Rückruf anfordern?`;
+    if (!a.erreichbar) {
+      return `${apText}. ${a.name} ist jetzt nicht erreichbar – Rückruf frühestens ${a.wiederErreichbar} (Servicezeit ${a.verfuegbar}).${fristHeuteSatz(ctx, q)} Soll ich einen Rückruf für dann anfordern?`;
+    }
+    return `${apText} – direkt erreichbar unter ${a.telefon} oder ${a.email} (${a.verfuegbar}), ohne Warteschleife.${fristHeuteSatz(ctx, q, true)} Soll ich einen Rückruf anfordern?`;
   }
 
   // ── Tagesbriefing (dieselben Sätze wie im Cockpit) ──
@@ -1410,6 +1485,15 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
     return `Die ${r.frist} (${r.grundlage}) endet am **${r.fristende}**, ausgehend vom ${fmtDate(datum)}.${r.verschoben ? " Das rechnerische Ende fiel auf ein Wochenende oder einen Feiertag – deshalb verschoben nach § 222 Abs. 2 ZPO." : ""}${ort} Vorfrist: ${r.vorfrist}. Den vollständigen Rechenweg sehen Sie im Fristenrechner.${r.hinweise.length ? ` Hinweis: ${r.hinweise[0]}` : ""}`;
   }
 
+  // ── Berufung zum OLG bzw. LAG ohne Vorfrage („Und bei einer Berufung zum Oberlandesgericht?“): Berufungsfrist statt Ratlosigkeit ──
+  if (/berufung/.test(q) && /oberlandesgericht|\bolg\b|kammergericht|landesarbeitsgericht|\blag\b/.test(q) && !/(lege|leg |trag|erstelle|notiz)/.test(q)) {
+    const arbeit = /landesarbeitsgericht|\blag\b/.test(q);
+    ctx.links.push({ label: "Berufungsfrist berechnen", to: fristenrechnerLink(arbeit ? "berufung_arbg" : "berufung", today()) }, { label: "Wissenskarte beA-Störung", to: "/hilfe?wiki=bea-stoerung" });
+    return arbeit
+      ? "**Berufung zum Landesarbeitsgericht:** Die Berufungsfrist beträgt einen Monat, die Begründungsfrist zwei Monate (§ 66 Abs. 1 S. 1 ArbGG). Beide beginnen mit der Zustellung des vollständig abgefassten Urteils, spätestens fünf Monate nach der Verkündung (§ 66 Abs. 1 S. 2 ArbGG). Den Fristablauf mit den Feiertagen am Gerichtsort berechnet der Fristenrechner. Ist das beA gestört: Ersatzeinreichung nach § 46g S. 3, 4 ArbGG – siehe Wissenskarte „beA-Störung – was tun?“."
+      : "**Berufung zum Oberlandesgericht:** Die Berufungsfrist ist eine Notfrist von einem Monat ab Zustellung des vollständig abgefassten Urteils, spätestens fünf Monate nach der Verkündung (§ 517 ZPO). Eingelegt wird beim Berufungsgericht (§ 519 Abs. 1 ZPO) – gegen Urteile des Landgerichts beim Oberlandesgericht, in Berlin beim Kammergericht. Begründet wird binnen zwei Monaten ab Zustellung (§ 520 Abs. 2 S. 1 ZPO). Den Fristablauf mit den Feiertagen am Gerichtsort berechnet der Fristenrechner. Ist das beA gestört: Ersatzeinreichung nach § 130d S. 2, 3 ZPO – siehe Wissenskarte „beA-Störung – was tun?“.";
+  }
+
   // ── Frist / Wiedervorlage anlegen ──
   // ── Notiz anlegen (Bestätigung vor dem Schreiben) ──
   if (/(lege|leg |schreib|füge|fuege|erstelle|trag|notier|halte).*\bnotiz\b|\bnotiz\b.*(an|ein)legen|^notiz\b/.test(q) && !/^wie\b/.test(q)) {
@@ -1429,8 +1513,10 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
 
   // ── Frist / Wiedervorlage / Termin anlegen: erst Bestätigungskarte, dann eintragen, danach „Rückgängig“ ──
   if (/(lege|leg |trag|erstelle|setz|erinnere).*(frist|wiedervorlage|termin|erinnerung)|(frist|wiedervorlage|termin).*(an|ein)legen|^erinnere mich/.test(q) && !/^wie\b/.test(q)) {
-    const auftrag = auftragAus(frage);
-    const ohneAuftrag = auftrag ? frage.replace(auftrag, " ") : frage;
+    const roh = auftragAus(frage) ?? auftragAusNachsatz(frage);
+    const ohneTitel = !!roh && OHNE_TITEL.test(kurzform(roh));
+    const auftrag = ohneTitel ? undefined : roh;
+    const ohneAuftrag = roh ? frage.replace(roh, " ") : frage;
     const datum = datumAus(ohneAuftrag.toLowerCase());
     const typ: VorschlagArt = /termin/.test(q) ? "termin" : /notfrist/.test(q) ? "notfrist" : /frist/.test(q) && !/wiedervorlage/.test(q) ? "frist" : "wiedervorlage";
     const kandidaten = akteKandidaten(ohneAuftrag);
@@ -1445,8 +1531,12 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
         : `Für welche Akte soll ich das eintragen? Nennen Sie mir bitte das Aktenzeichen, z. B. „${beispielAz()}“.`;
     }
     if (!datum) return "Zu welchem Datum? Sagen Sie z. B. „in drei Tagen“ oder „am 30.10.“.";
+    // Ohne Auftragstext nicht still „Wiedervorlage“ eintragen, sondern nachfragen – der Auftrag wird zum Titel
+    if (!auftrag && !ohneTitel) {
+      return `Worum geht es bei der ${ART_NAME[typ]} für ${akte.aktenzeichen} am ${fmtDateWd(datum)}? Nennen Sie mir den Auftrag, z. B. „Zeugen Seifert benennen“ – er wird zum Titel. Oder sagen Sie „ohne Titel“.`;
+    }
     const titel = auftrag ?? (typ === "termin" ? "Termin" : typ === "frist" ? "Frist (manuell)" : typ === "notfrist" ? "Notfrist (manuell)" : "Wiedervorlage");
-    const r = (await run("frist_anlegen", { aktenzeichen: akte.aktenzeichen, titel, datum, typ })) as { akte: string; datum: string; werktag: boolean; vorschlagNaechsterWerktag: string | null };
+    const r = (await run("frist_anlegen", { aktenzeichen: akte.aktenzeichen, titel, datum, typ, auftrag: frage.trim() })) as { akte: string; datum: string; werktag: boolean; vorschlagNaechsterWerktag: string | null };
     const hinweis = !r.werktag && r.vorschlagNaechsterWerktag ? ` Achtung: ${r.datum} ist kein Werktag – Vorschlag: ${r.vorschlagNaechsterWerktag}.` : "";
     return `Bitte bestätigen Sie: ${ART_NAME[typ]} „${titel}“ für ${r.akte} am ${r.datum}.${hinweis} Eingetragen wird erst nach „Eintragen“ – danach können Sie es rückgängig machen.`;
   }
@@ -1486,7 +1576,13 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
     const ziel = navMatch[5].replace(/[?.!]+$/, "").replace(/^akte\s+/, "");
     try {
       const r = (await run("navigiere", { ziel })) as { geoeffnet?: string; titel?: string; mehrdeutig?: boolean; treffer?: string[] };
-      if (r.mehrdeutig) return `Zu „${ziel.replace(/^akte\s+/i, "")}“ passen ${r.treffer?.length ?? 0} Akten. Welche soll ich öffnen?`;
+      if (r.mehrdeutig) {
+        // Suchbegriff so zeigen, wie er eingegeben wurde („Schneider“, nicht „schneider“)
+        const begriff = ziel.replace(/^akte\s+/i, "");
+        const i = frage.toLowerCase().lastIndexOf(begriff);
+        const original = i >= 0 ? frage.slice(i, i + begriff.length) : begriff;
+        return `Zu „${original}“ passen ${r.treffer?.length ?? 0} Akten. Welche soll ich öffnen?`;
+      }
       return r.titel ? `Ich habe die ${r.geoeffnet} (${r.titel}) für Sie geöffnet.` : `Ich habe „${r.geoeffnet}“ für Sie geöffnet.`;
     } catch {
       if (/akte/.test(q) || azAus(q)) {
@@ -1509,6 +1605,16 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
   const hilfe = (await run("hilfe_artikel", { frage })) as { titel: string; kurz: string; schritte: string[] }[];
   if (hilfe.length && (bedienFrage || /^(was|wie|kann ich|gibt es)\b|hilfe|funktion/.test(q))) {
     const h = hilfe[0];
+    // Neben dem Wiki-Artikel direkt in den gefragten Bereich („Wie funktioniert der Bankabgleich?“ → „Bankabgleich öffnen“)
+    const ziel = findeBereich(frage);
+    if (ziel) {
+      const i = ctx.links.findIndex((l) => l.to === ziel.to);
+      const oeffnen = { label: `${ziel.label} öffnen`, to: ziel.to };
+      if (i >= 0) ctx.links[i] = oeffnen;
+      else ctx.links.unshift(oeffnen);
+      const w = WIKI.find((x) => x.titel === h.titel);
+      if (w) ctx.links.push({ label: `Schnellhilfe „${w.titel}“`, to: `/hilfe?wiki=${w.key}` });
+    }
     return `**${h.titel}:** ${h.kurz}\n${liste(h.schritte.slice(0, 3))}`;
   }
   if (bereich) {

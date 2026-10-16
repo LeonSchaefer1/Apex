@@ -1,4 +1,5 @@
-import type { CollectionKey, ConsoleSession, SessionInfo, Tenant, TenantData, User, Rolle, Sachgebiet, Bundesland } from "@/core/types";
+import type { Aktivitaet, CollectionKey, ConsoleSession, SessionInfo, Tenant, TenantData, User, Rolle, Sachgebiet, Bundesland } from "@/core/types";
+import { istBerufstraeger } from "../../core/vertretung";
 
 export interface BackendInfo {
   modus: "demo" | "server";
@@ -136,6 +137,8 @@ export interface KanzleiProfil {
   adresse: string;
   stadt: string;
   schwerpunkte: string[];
+  /** Bundesland des Kanzleisitzes – Voreinstellung der Feiertage im Fristenrechner (fehlt = unverändert). */
+  bundesland?: Bundesland;
 }
 
 export const ROLLEN: readonly Rolle[] = ["partner", "anwalt", "refa", "admin", "azubi"];
@@ -238,6 +241,14 @@ export function pruefeTeamAenderung(t: { users: User[] }, ich: User, ziel: User,
         const v = t.users.find((x) => x.id === ab.vertretungId);
         if (!v || v.id === ziel.id) throw new Error("Bitte wählen Sie als Vertretung eine andere Person aus Ihrem Team.");
         if (v.deaktiviert) throw new Error(`${v.name} ist deaktiviert und kann nicht vertreten. Bitte wählen Sie eine andere Vertretung.`);
+        if (istBerufstraeger(ziel) && !istBerufstraeger(v)) {
+          throw new Error(`Vertretung nach § 53 BRAO nur durch eine Rechtsanwältin oder einen Rechtsanwalt. ${v.name} kann stattdessen die Sachbearbeitung übernehmen.`);
+        }
+      }
+      if (ab.sachbearbeitungId) {
+        const sb = t.users.find((x) => x.id === ab.sachbearbeitungId);
+        if (!sb || sb.id === ziel.id) throw new Error("Bitte wählen Sie für die Sachbearbeitung eine andere Person aus Ihrem Team.");
+        if (sb.deaktiviert) throw new Error(`${sb.name} ist deaktiviert. Bitte wählen Sie eine andere Person für die Sachbearbeitung.`);
       }
       if (ab.grund && ab.grund.length > 200) throw new Error("Der Grund ist zu lang (höchstens 200 Zeichen).");
     }
@@ -288,6 +299,8 @@ export interface Backend {
   entsperren(passwort: string): Promise<void>;
   me(): Promise<Sitzung | null>;
   logout(): Promise<void>;
+  /** Sperre wegen Inaktivität im Kanzleiprotokoll festhalten – liefert den Eintrag (für die sofortige Anzeige). */
+  sperreProtokollieren?(): Promise<Aktivitaet | null>;
   /**
    * Bindet alle folgenden Daten-, Team- und KI-Anfragen an diese Sitzung (Kanzlei + Person). Der Server weist Anfragen ab,
    * wenn inzwischen – z. B. in einem anderen Tab – eine andere Kanzlei angemeldet ist (Schutz vor kanzleiübergreifendem Schreiben).

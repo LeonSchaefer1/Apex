@@ -3,7 +3,9 @@ import { DEMO_KI_NAME } from "@/ai/status";
 
 export type WikiVisual =
   | "cockpit" | "akte" | "posteingang" | "frist" | "rechner" | "ki" | "suche" | "motor"
-  | "rvg" | "bank" | "umzug" | "assistent" | "team" | "lizenz" | "portal" | "eeb" | "vieraugen" | "status";
+  | "rvg" | "bank" | "umzug" | "assistent" | "team" | "lizenz" | "portal" | "eeb" | "vieraugen" | "status"
+  /** Störungsbild beA (Artikel „beA-Störung – was tun?“): dokumentieren → Ersatzeinreichung → glaubhaft machen → nachreichen */
+  | "stoerung" | "ersatzeinreichung" | "glaubhaft";
 
 export interface WikiSchritt {
   titel: string;
@@ -33,7 +35,7 @@ export const WIKI: WikiArtikel[] = [
       { titel: "Fristen zuerst", text: "Die Karte „Heute & morgen fällig“ (freitags „Heute & Montag fällig“) zeigt Fristen, Wiedervorlagen und Vorfristen mit Ampel. Ein Klick öffnet die Akte direkt im richtigen Reiter.", visual: "frist" },
       { titel: "Zeitersparnis sehen", text: "Die Karte „38h-Motor“ zeigt, wie viele Stunden in den letzten 7 Tagen automatisch erledigt wurden – und was das im Rechenbeispiel in Euro bedeutet.", visual: "motor" },
     ],
-    tipps: ["Mit ⌘K bzw. Strg+K erreichen Sie von überall die globale Suche.", "Der Status oben rechts zeigt, ob beA, E-Mail, Bank und KI verbunden sind."],
+    tipps: ["Mit Strg+K (Mac: ⌘K) erreichen Sie von überall die globale Suche – auch Einstellungen, „Zeit erfassen“ und die Sammelabrechnung.", "Der Status oben rechts zeigt, ob beA, E-Mail, Bank und KI verbunden sind – im Prototyp simuliert."],
   },
   {
     key: "akten", titel: "Akten & E-Akte", kategorie: "Akten & Fristen", dauer: "2 Min.", pfad: "/akten",
@@ -71,9 +73,9 @@ export const WIKI: WikiArtikel[] = [
     kurz: "Ist das beA vorübergehend technisch nicht nutzbar, bleibt die Einreichung nach den allgemeinen Vorschriften zulässig (Telefax, Papier, Bote) – Zivilgerichte § 130d S. 2, 3 ZPO, Arbeitsgerichte § 46g S. 3, 4 ArbGG. Die Unmöglichkeit glaubhaft machen und die Störung dokumentieren.",
     stichworte: ["beA gestört", "beA Störung", "beA geht nicht", "beA ausgefallen", "beA nicht erreichbar", "Ersatzeinreichung", "technische Unmöglichkeit", "130d ZPO", "46g ArbGG", "Notfall"],
     schritte: [
-      { titel: "Störung dokumentieren", text: "Sofort festhalten: Screenshot mit Uhrzeit, Fehlermeldung, Störungsmeldung der BRAK bzw. beA-Status, Uhrzeiten der Versuche. Das ist die Grundlage der Glaubhaftmachung.", visual: "status" },
-      { titel: "Ersatzeinreichung", text: "Bei vorübergehender technischer Unmöglichkeit nach den allgemeinen Vorschriften einreichen: Telefax, Papier oder Bote. Zivilgerichte (AG, LG, OLG, BGH): § 130d S. 2 ZPO; Arbeitsgerichte (ArbG, LAG, BAG): § 46g S. 3 ArbGG; entsprechend § 55d VwGO, § 65d SGG, § 52d FGO, § 32d StPO.", visual: "eeb" },
-      { titel: "Glaubhaft machen", text: "Die vorübergehende Unmöglichkeit bei der Ersatzeinreichung oder unverzüglich danach glaubhaft machen – mit anwaltlicher Versicherung und geschlossener Schilderung der Abläufe (§ 130d S. 3 ZPO, § 46g S. 4 ArbGG). Auf Anforderung des Gerichts das elektronische Dokument nachreichen.", visual: "eeb" },
+      { titel: "Störung dokumentieren", text: "Sofort festhalten: Screenshot mit Uhrzeit, Fehlermeldung, Störungsmeldung der BRAK bzw. beA-Status, Uhrzeiten der Versuche. Das ist die Grundlage der Glaubhaftmachung.", visual: "stoerung" },
+      { titel: "Ersatzeinreichung", text: "Bei vorübergehender technischer Unmöglichkeit nach den allgemeinen Vorschriften einreichen: Telefax, Papier oder Bote. Zivilgerichte (AG, LG, OLG, BGH): § 130d S. 2 ZPO; Arbeitsgerichte (ArbG, LAG, BAG): § 46g S. 3 ArbGG; entsprechend § 55d VwGO, § 65d SGG, § 52d FGO, § 32d StPO.", visual: "ersatzeinreichung" },
+      { titel: "Glaubhaft machen", text: "Die vorübergehende Unmöglichkeit bei der Ersatzeinreichung oder unverzüglich danach glaubhaft machen – mit anwaltlicher Versicherung und geschlossener Schilderung der Abläufe (§ 130d S. 3 ZPO, § 46g S. 4 ArbGG). Auf Anforderung des Gerichts das elektronische Dokument nachreichen.", visual: "glaubhaft" },
       { titel: "Frist erst nach Nachweis erledigen", text: "Die Frist erst nach Sendebericht bzw. Eingangsbestätigung als erledigt markieren (Ausgangskontrolle). Und: Ihre feste Ansprechperson bei AnwaltApex anrufen.", visual: "frist" },
     ],
     tipps: ["Der Apex Assistent beantwortet „beA gestört – was tun?“ auch für das konkrete Gericht (z. B. LAG oder OLG)."],
@@ -113,11 +115,11 @@ export const WIKI: WikiArtikel[] = [
   {
     key: "motor", titel: "Der 38h-Motor", kategorie: "Erste Schritte", dauer: "2 Min.", pfad: "/automatisierung",
     kurz: "Standard-Schriftsätze (z. B. Kostenfestsetzungsantrag) bereitet der 38h-Motor vor – zur Prüfung und Unterschrift. Fristenkontrolle, Zuordnung und Vorfristen laufen im Hintergrund; was die Kanzlei verlässt, geht erst nach Ihrer Freigabe hinaus. Die Apex Island oben zeigt, was zuletzt erledigt wurde.",
-    stichworte: ["Apex Island", "Island", "Kapsel", "Automatisierung", "Automationen", "Zeitersparnis", "gesparte Stunden"],
+    stichworte: ["Apex Island", "Island", "Kapsel", "Automatisierung", "Automatiken", "Zeitersparnis", "gesparte Stunden"],
     schritte: [
-      { titel: "Automationen ein- und ausschalten", text: "Jede Automation hat einen Schalter, eine klare Beschreibung und zeigt, wie viel Zeit sie pro Lauf spart. Zeitgesteuerte Automationen laufen nur zu ihrer Uhrzeit (z. B. Mandanten-Update freitags um 14:00 Uhr).", visual: "motor" },
-      { titel: "Freigabe vor dem Versand", text: "Jede Automation nennt ihre Freigabestufe: Entwürfe und Schreiben nach außen (Deckungsanfrage, Zahlungserinnerung, Mandanten-Update) gehen erst nach Ihrer Freigabe hinaus; interne Schritte wie Vorfristen laufen ohne Rückfrage – nichts davon verlässt die Kanzlei.", visual: "motor" },
-      { titel: "Mitverfolgen", text: "Die schwarze Kapsel oben – die Apex Island – zeigt, was der 38h-Motor zuletzt erledigt hat, und sonst die in den letzten 7 Tagen gesparte Zeit (im Prototyp Beispielwerte). Ein Klick öffnet den 38h-Motor; unter Einstellungen → Darstellung lässt sie sich beruhigen.", visual: "motor" },
+      { titel: "Automatiken ein- und ausschalten", text: "Jede Automatik hat einen Schalter, eine klare Beschreibung und zeigt, wie viel Zeit sie pro Lauf spart. Zeitgesteuerte Automatiken laufen nur zu ihrer Uhrzeit (z. B. Mandanten-Update freitags um 14:00 Uhr).", visual: "motor" },
+      { titel: "Freigabe vor dem Versand", text: "Jede Automatik nennt ihre Freigabestufe: Entwürfe und Schreiben nach außen (Deckungsanfrage, Zahlungserinnerung, Mandanten-Update) gehen erst nach Ihrer Freigabe hinaus; interne Schritte wie Vorfristen laufen ohne Rückfrage – nichts davon verlässt die Kanzlei.", visual: "motor" },
+      { titel: "Mitverfolgen", text: "Die schwarze Kapsel oben – die Apex Island – zeigt, was der 38h-Motor zuletzt erledigt hat, und sonst die in den letzten 7 Tagen gesparte Zeit (im Prototyp Beispielwerte). Ein Klick öffnet den 38h-Motor; das × an der Island blendet sie aus (wieder einschalten unter Einstellungen → Darstellung).", visual: "motor" },
       { titel: "Ersparnis berechnen", text: "Gezählt wird je bearbeitetem Vorgang, nicht je Lauf. Der Rechner zeigt, was die gesparte Zeit im Rechenbeispiel in Euro wert ist. Das Ziel von bis zu 38 Std. je Woche ist ein Richtwert, keine Garantie.", visual: "motor" },
     ],
   },
@@ -164,7 +166,7 @@ export const WIKI: WikiArtikel[] = [
     kurz: "Kanzleidaten, Team & Zugänge, Lizenz, KI-Einstellungen und Darstellung.",
     schritte: [
       { titel: "Team einladen", text: "Neue Kolleginnen und Kollegen mit Rolle anlegen – sie erhalten ein Startpasswort.", visual: "team" },
-      { titel: "Lizenz", text: "Lifetime-Lizenz: einmal investiert, keine Monatsgebühren. Wartung optional (Richtwert 15 % des Lizenzpreises pro Jahr, das erste Jahr ist enthalten); Updates werden vorher in einer Testumgebung geprüft.", visual: "lizenz" },
+      { titel: "Lizenz", text: "Lifetime-Lizenz: einmal investiert, keine Monatsgebühren. Preis auf Anfrage – verbindlich im Angebot. Wartung ist optional; Umfang und Preis regelt das Angebot. Aktualisierungen werden vorher in einer Testumgebung geprüft.", visual: "lizenz" },
     ],
   },
   {

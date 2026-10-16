@@ -3,16 +3,16 @@ import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, BadgeCheck, Check, Clock3, Infinity as InfinityIcon, Server, Wrench, X } from "lucide-react";
 import { Button } from "@/components/ui";
-import { ESCROW, LIZENZ_KENNZEICHNUNG, UEBERTRAGBARKEIT, WARTUNG, WARTUNG_SATZ } from "@/content/lizenz";
+import { ESCROW_HINWEIS, LIZENZ_KENNZEICHNUNG, PREIS_HINWEIS, UEBERTRAGBARKEIT_HINWEIS, WARTUNG_HINWEIS, WARTUNG_INHALT } from "@/content/lizenz";
 import { Abschnitt, Kopf, Reveal } from "./basis";
 import { useAnfrage } from "./Anfrage";
 
 // Schematische Kurven (ohne Zahlen): kumulierte Kosten über fünf Jahre
 const abo = (t: number) => 0.15 + 1.0 * t + 0.1 * t * t;
 const LIFETIME = 2.6;
-/** Wartung (Richtwert 15 % des Lizenzpreises pro Jahr), das erste Jahr ist enthalten. */
-const WARTUNG_JAHR = LIFETIME * WARTUNG_SATZ;
-const lifetimeWartung = (t: number) => LIFETIME + WARTUNG_JAHR * Math.max(0, t - 1);
+/** Wartung im Schema: gleichmäßige jährliche Steigung – rein schematisch, Umfang und Preis regelt das Angebot. */
+const WARTUNG_JAHR = 0.39;
+const lifetimeWartung = (t: number) => LIFETIME + WARTUNG_JAHR * Math.max(0, t);
 const MAX_Y = 8.2;
 /** Geometrie in echten Pixeln der Containerbreite – Schrift bleibt auf jedem Gerät lesbar. */
 function geometrie(W: number) {
@@ -23,16 +23,16 @@ function geometrie(W: number) {
   const y = (v: number) => H - P.b - (v / MAX_Y) * (H - P.t - P.b);
   return { W, H, P, x, y, schmal };
 }
-/** Ausgleichspunkt inkl. Wartung: abo(t) = LIFETIME + w·(t − 1) für t ≥ 1 → 0,1t² + (1 − w)t + 0,15 − LIFETIME + w = 0 */
+/** Ausgleichspunkt inkl. Wartung: abo(t) = LIFETIME + w·t → 0,1t² + (1 − w)t + 0,15 − LIFETIME = 0 */
 const break_even = (() => {
-  const a = 0.1, b = 1 - WARTUNG_JAHR, c = 0.15 - LIFETIME + WARTUNG_JAHR;
+  const a = 0.1, b = 1 - WARTUNG_JAHR, c = 0.15 - LIFETIME;
   return (-b + Math.sqrt(b * b - 4 * a * c)) / (2 * a);
 })();
 
 const TOOLTIP: Record<number, { abo: string; apex: string; wartung: string }> = {
-  0: { abo: "Einrichtung und erste Monatsgebühr", apex: "Einmalige Investition nach Kanzleigröße", wartung: "Wartung im ersten Jahr enthalten" },
-  1: { abo: "Zwölf Monatsgebühren bezahlt", apex: "Keine laufenden Lizenzgebühren", wartung: "Wartung im ersten Jahr enthalten" },
-  2: { abo: "Gebühren laufen weiter – Preiserhöhung möglich", apex: "Ohne Wartung: keine weiteren Kosten", wartung: "Mit Wartung: Richtwert 15 % des Lizenzpreises pro Jahr" },
+  0: { abo: "Einrichtung und erste Monatsgebühr", apex: "Einmalige Investition nach Kanzleigröße", wartung: "Wartung optional – Umfang und Preis laut Angebot" },
+  1: { abo: "Zwölf Monatsgebühren bezahlt", apex: "Keine laufenden Lizenzgebühren", wartung: "Mit Wartung: jährlicher Betrag laut Angebot" },
+  2: { abo: "Gebühren laufen weiter – Preiserhöhung möglich", apex: "Ohne Wartung: keine weiteren Kosten", wartung: "Mit Wartung: jährlicher Betrag laut Angebot" },
   3: { abo: "Kosten steigen weiter", apex: "Software und Daten bleiben nutzbar", wartung: "Investition inkl. Wartung ist ausgeglichen" },
   4: { abo: "Kosten steigen weiter", apex: "Software gehört weiterhin Ihnen", wartung: "Wartung bleibt optional – Sie entscheiden jedes Jahr" },
   5: { abo: "Nach fünf Jahren: höchste Gesamtkosten", apex: "Keine Abo-Falle, keine Anbieterbindung", wartung: "Auch mit Wartung deutlich unter dem Abo" },
@@ -53,14 +53,14 @@ export function Lifetime() {
                 <br /> <span className="text-fg-3">Für immer nutzen.</span>
               </>
             }
-            text="Klassische Kanzleisoftware kostet jeden Monat – und wird mit jeder Preiserhöhung teurer. AnwaltApex kaufen Sie einmal; die Wartung ist optional und im ersten Jahr enthalten. Danach arbeitet die Software für Sie, nicht Ihre Kanzlei für die Software."
+            text="Klassische Kanzleisoftware kostet jeden Monat – und wird mit jeder Preiserhöhung teurer. AnwaltApex kaufen Sie einmal; die Wartung ist optional, Umfang und Preis regelt das Angebot. Danach arbeitet die Software für Sie, nicht Ihre Kanzlei für die Software."
           />
           <Reveal>
             <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {[
                 { i: <InfinityIcon className="size-4" />, t: "Lifetime-Lizenz", s: "Kauflizenz ohne Laufzeit, ohne Monatsgebühren" },
                 { i: <Server className="size-4" />, t: "Ihr Betrieb, Ihre Wahl", s: "Eigener Server in der Kanzlei oder deutsches Rechenzentrum" },
-                { i: <Wrench className="size-4" />, t: "Wartung transparent", s: "Richtwert 15 % des Lizenzpreises pro Jahr, erstes Jahr enthalten" },
+                { i: <Wrench className="size-4" />, t: "Wartung optional", s: "Umfang und Preis regelt das Angebot" },
                 { i: <BadgeCheck className="size-4" />, t: "Keine Anbieterbindung", s: "Ihre Daten bleiben exportierbar" },
               ].map((x) => (
                 <li key={x.t} className="glass-thin flex items-start gap-3 rounded-[18px] p-3.5">
@@ -78,6 +78,7 @@ export function Lifetime() {
               </span>
               <div className="min-w-0 flex-1 basis-[220px]">
                 <div className="text-[15px] font-semibold tracking-[-0.01em]">Einmalige Investition nach Kanzleigröße</div>
+                <div className="text-[13px] font-medium text-fg-2">{PREIS_HINWEIS}.</div>
                 <div className="text-[13px] text-fg-3">Ihre Ansprechpartnerin meldet sich im Echtbetrieb innerhalb eines Werktags mit Ihrem Angebot.</div>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -156,7 +157,7 @@ function KostenKurve() {
           width={W}
           height={H}
           role="img"
-          aria-label="Schematischer Vergleich über fünf Jahre: Die kumulierten Kosten eines Abo-Modells steigen Jahr für Jahr. Die Lifetime-Lizenz ohne Wartung bleibt nach der einmaligen Investition flach; mit Wartung (Richtwert 15 % des Lizenzpreises pro Jahr ab dem zweiten Jahr) steigt sie leicht und bleibt deutlich unter dem Abo."
+          aria-label="Schematischer Vergleich über fünf Jahre ohne Preisangaben: Die kumulierten Kosten eines Abo-Modells steigen Jahr für Jahr. Die Lifetime-Lizenz ohne Wartung bleibt nach der einmaligen Investition flach; mit Wartung (Umfang und Preis laut Angebot) steigt sie im Schema leicht und bleibt unter dem Abo."
           onPointerMove={onMove}
           onPointerDown={onMove}
           onPointerLeave={() => setJahr(null)}
@@ -247,7 +248,7 @@ function KostenKurve() {
         </AnimatePresence>
       </div>
       <p className="mt-2 text-[13px] leading-relaxed text-fg-2">
-        Schematische Darstellung ohne Preisangaben. „Lifetime inkl. Wartung“: Richtwert 15 % des Lizenzpreises pro Jahr ab dem zweiten Jahr (das erste Jahr ist enthalten). Der tatsächliche Verlauf hängt von Kanzleigröße, Modulen und dem bisherigen Abo ab. {LIZENZ_KENNZEICHNUNG}.
+        Schematische Darstellung ohne Preisangaben. „Lifetime inkl. Wartung“: jährliche Wartung laut Angebot. Der tatsächliche Verlauf hängt von Kanzleigröße, Modulen und dem bisherigen Abo ab. {PREIS_HINWEIS}.
       </p>
     </figure>
   );
@@ -258,12 +259,12 @@ function WartungKarte() {
   return (
     <div className="sheet mt-4 rounded-[22px] p-4 sm:p-5">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h3 className="text-[15px] font-semibold tracking-[-0.01em]">{WARTUNG.titel}</h3>
-        <span className="text-[13px] text-fg-3">Richtwert 15 % des Lizenzpreises pro Jahr, das erste Jahr ist enthalten.</span>
+        <h3 className="text-[15px] font-semibold tracking-[-0.01em]">{WARTUNG_INHALT.titel}</h3>
+        <span className="text-[13px] text-fg-3">{WARTUNG_HINWEIS}.</span>
       </div>
       <div className="mt-3 grid gap-4 sm:grid-cols-2">
         <ul className="grid gap-1.5 text-[13px] text-fg-2" aria-label="In der Wartung enthalten">
-          {WARTUNG.enthalten.map((x) => (
+          {WARTUNG_INHALT.enthalten.map((x) => (
             <li key={x} className="flex gap-2">
               <Check className="mt-0.5 size-3.5 shrink-0 text-green" strokeWidth={3} />
               {x}
@@ -271,7 +272,7 @@ function WartungKarte() {
           ))}
         </ul>
         <ul className="grid gap-1.5 text-[13px] text-fg-2" aria-label="Ohne Wartung">
-          {WARTUNG.ohne.map((x, i) => (
+          {WARTUNG_INHALT.ohne.map((x, i) => (
             <li key={x} className="flex gap-2">
               {i === 0 ? <Check className="mt-0.5 size-3.5 shrink-0 text-green" strokeWidth={3} /> : <X className="mt-0.5 size-3.5 shrink-0 text-fg-3" strokeWidth={3} />}
               <span>
@@ -283,7 +284,7 @@ function WartungKarte() {
         </ul>
       </div>
       <p className="mt-3 border-t border-[var(--line)] pt-3 text-[13px] leading-relaxed text-fg-2">
-        {UEBERTRAGBARKEIT}. {ESCROW}.
+        {UEBERTRAGBARKEIT_HINWEIS}. {ESCROW_HINWEIS}.
       </p>
       <p className="mt-2 text-[13px] text-fg-3">{LIZENZ_KENNZEICHNUNG}.</p>
     </div>

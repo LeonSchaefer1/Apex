@@ -429,6 +429,10 @@
 .kopfleiste-gescrollt::before {
   opacity: 1;
 }
+/* Höhe der mobilen Tab-Leiste (62 px Leiste + 10 px Abstand) – Grundlage für Freiraum und Scroll-Abstand unten */
+:root {
+  --tabbar-h: 72px;
+}
 /* Tastaturfokus scrollt nie unter die Assistent-Kugel bzw. die Tab-Leiste (WCAG 2.4.11) */
 .haupt-scroll {
   scroll-padding-top: 84px;
@@ -436,8 +440,21 @@
 }
 @media (max-width: 767px) {
   .haupt-scroll {
-    scroll-padding-bottom: 96px;
+    /* + Platz für schwebende Aktionsleisten über der Tab-Leiste (z. B. Notiz/Frist/Wiedervorlage in der Akte) */
+    scroll-padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 76px);
   }
+}
+/* Mobile Tab-Leiste deckend wie die Kopfleiste: kein Text scheint durch – auch nicht neben der schwebenden Leiste */
+.tabbar-zone::before {
+  content: "";
+  position: absolute;
+  inset: -14px 0 0 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(to top, var(--bg) 0%, var(--bg) 72%, color-mix(in oklab, var(--bg) 0%, transparent) 100%);
+}
+.tabbar-deckend {
+  background: linear-gradient(160deg, var(--glass-sheen) 0%, transparent 42%), var(--surface);
 }
 /* Schriftgröße (Einstellungen → Darstellung): die Oberfläche nutzt px-Größen – zoom skaliert alles gleichmäßig */
 :root[data-schrift="112"] {

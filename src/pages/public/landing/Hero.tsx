@@ -76,7 +76,7 @@ export function Kennzahlen() {
     { icon: <Clock3 className="size-[18px]" />, wert: <><span className="font-semibold text-fg-3">Ø</span> <AnimatedNumber value={38} /> Std.</>, text: "Zielwert: Routinearbeit pro Woche und Kanzlei, erledigt oder zur Freigabe vorbereitet¹" },
     { icon: <Euro className="size-[18px]" />, wert: <>≈ <AnimatedNumber value={36000} /> €</>, text: "Wert der gesparten Zeit pro Jahr – im Rechenbeispiel²" },
     { icon: <InfinityIcon className="size-[18px]" />, wert: <><AnimatedNumber value={0} /> €</>, text: "Monatliche Abo-Gebühren mit der Lifetime-Lizenz" },
-    { icon: <Library className="size-[18px]" />, wert: <>Sekunden</>, text: "bis zum passenden Präzedenzfall" },
+    { icon: <Library className="size-[18px]" />, wert: <>Sekunden</>, text: "bis zum passenden Präzedenzfall³" },
   ];
   return (
     <section aria-label="AnwaltApex in Zahlen" className="px-4 sm:px-6">
@@ -91,7 +91,7 @@ export function Kennzahlen() {
           ))}
         </ul>
         <p className="mt-3 px-2 text-[13px] leading-relaxed text-fg-2">
-          ¹ Zielwert, kein garantiertes Ergebnis – die tatsächliche Ersparnis hängt von Kanzleigröße, Fallzahlen und Abläufen; der 38h-Motor misst sie je bearbeitetem Vorgang. ² 38 Std. × 48 Arbeitswochen × ≈ 19,74 € interner Kostensatz je Stunde – ein bewusst niedrig angesetzter Zielwert; mit ReFa-Vollkosten von ca. 26 €/Std. wären es ≈ 47.500 €.
+          ¹ Zielwert, kein garantiertes Ergebnis – die tatsächliche Ersparnis hängt von Kanzleigröße, Fallzahlen und Abläufen; der 38h-Motor misst sie je bearbeitetem Vorgang. ² 38 Std. × 48 Arbeitswochen × ≈ 19,74 € interner Kostensatz je Stunde – ein bewusst niedrig angesetzter Zielwert; mit ReFa-Vollkosten von ca. 26 €/Std. wären es ≈ 47.500 €. ³ Messbar im Produkt: Die Suche in der Fall-Datenbank zeigt ihre Dauer in Millisekunden an (Strg+K), die KI-Fallanalyse nennt ihre Laufzeit im Ergebnis – im Prototyp über einen kuratierten Auszug echter Leitentscheidungen.
         </p>
       </Reveal>
     </section>

@@ -16,7 +16,7 @@ import { parseEuro } from "./Mandatsaufnahme";
 import { WeiterleitungsDialog } from "@/pages/abrechnung/WeiterleitungsDialog";
 import { storniereWeiterleitung } from "@/pages/abrechnung/aktionen";
 import { ibanFormatiert } from "@/pages/abrechnung/lib";
-import { beruehreAkte, useKontaktMap } from "./helfer";
+import { beruehreAkte, kontoSummen, useKontaktMap } from "./helfer";
 import { VorschussDialog } from "./Vorschuss";
 
 export const ART_INFO: Record<BuchungsArt, { label: string; tone: Tone }> = {
@@ -62,29 +62,7 @@ export function TabAktenkonto({ akte }: { akte: Akte }) {
     });
   }, [buchungen]);
 
-  const summen = useMemo(() => {
-    let honorar = 0, bezahlt = 0, vorschuss = 0, angefordert = 0, fremdEin = 0, fremdAus = 0, auslagen = 0;
-    for (const b of buchungen) {
-      const fremd = b.fremdgeld || b.art === "fremdgeld";
-      if (fremd) {
-        if (b.art === "fremdgeld" && b.betrag < 0) fremdAus += -b.betrag;
-        else fremdEin += Math.abs(b.betrag);
-        continue;
-      }
-      if (b.art === "honorar") honorar += b.betrag;
-      else if (b.art === "zahlung") bezahlt += -b.betrag;
-      else if (b.art === "vorschuss") {
-        // nur eingegangene Vorschüsse mindern das Offene – ein angeforderter ist eine Forderung, kein Guthaben
-        if (b.betrag < 0) vorschuss += -b.betrag;
-        else angefordert += b.betrag;
-      } else auslagen += b.betrag;
-    }
-    const fremdOffen = round2(fremdEin - fremdAus);
-    return {
-      honorar: round2(honorar), bezahlt: round2(bezahlt), vorschuss: round2(vorschuss), angefordert: round2(angefordert), auslagen: round2(auslagen),
-      offen: round2(honorar + auslagen + angefordert - bezahlt - vorschuss), fremdEin: round2(fremdEin), fremdOffen,
-    };
-  }, [buchungen]);
+  const summen = useMemo(() => kontoSummen(buchungen), [buchungen]);
 
   /** Weiterleitungen, die noch nicht storniert sind – „Rückgängig“ bleibt dauerhaft möglich (Stornobuchung). */
   const storniert = useMemo(() => new Set(buchungen.filter((b) => b.text.startsWith("Storno: ")).map((b) => b.text.slice(8))), [buchungen]);

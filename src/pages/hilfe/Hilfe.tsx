@@ -24,16 +24,25 @@ export default function Hilfe() {
     if (w) useUI.getState().zeigeHilfe(w);
   }, [params]);
 
-  // Sprung zum Systemstatus (z. B. aus der Kopfleiste „Alle Dienste verbunden")
+  // Sprung zum Systemstatus (z. B. aus der Kopfleiste „Simuliert verbunden“) – sofort, ohne Verzögerung und ohne Gleitanimation
   useEffect(() => {
     if (loc.hash !== "#status") return;
-    const t = setTimeout(() => document.getElementById("status")?.scrollIntoView({ behavior: "smooth", block: "start" }), 300);
-    return () => clearTimeout(t);
+    let n = 0;
+    let raf = 0;
+    const springe = () => {
+      const el = document.getElementById("status");
+      if (el) {
+        el.scrollIntoView({ block: "start" });
+        el.focus({ preventScroll: true });
+      } else if (n++ < 30) raf = requestAnimationFrame(springe);
+    };
+    raf = requestAnimationFrame(springe);
+    return () => cancelAnimationFrame(raf);
   }, [loc.hash, loc.key]);
 
   return (
     <div>
-      <PageHeader title="Hilfe & Support" hilfe="hilfe" subtitle={`Animiertes Wiki, Schnellhilfe, Systemstatus und ${festeAnsprechperson(tenant.ansprechpartner)} – Hilfe, die wirklich hilft, ohne Hotline-Warteschleife.`} />
+      <PageHeader title="Hilfe & Support" hilfe="hilfe" subtitle={`Animiertes Wiki, Schnellhilfe, Systemstatus und ${festeAnsprechperson(tenant.ansprechpartner)} – Hilfe, die wirklich hilft: direkt und ohne Warteschleife.`} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <AnsprechpartnerKarte ap={tenant.ansprechpartner} className="lg:col-span-2" />

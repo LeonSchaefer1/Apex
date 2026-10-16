@@ -1,4 +1,5 @@
-// Mandantenportal einer Akte: Freischalten nur nach Rückfrage, Vorschau „Als Mandant ansehen“, Sperren – jeweils protokolliert.
+// Mandantenportal einer Akte: Freischalten nur nach Rückfrage, Vorschau „Als Mandant ansehen“, Sperren mit Rückfrage – jeweils protokolliert.
+// Sichtbar sind nur Dokumente, die einzeln im Portal bereitgestellt wurden (`Dokument.portal`) – nie Entwürfe, Eingänge oder KI-Erzeugnisse von selbst.
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { AlertTriangle, CalendarDays, Eye, FileText, Globe, Lock, Mail, ShieldCheck } from "lucide-react";
@@ -7,14 +8,60 @@ import { fmtDate, fmtDateWd, nowLocal, today } from "@/core/dates";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
-import { Button, Chip, Modal } from "@/components/ui";
-import { PHASEN, useKontaktMap, useTeam } from "./helfer";
+import { Button, Chip, Modal, confirmDialog } from "@/components/ui";
+import { PHASEN, beruehreAkte, istEingang, useKontaktMap, useTeam } from "./helfer";
 
-/** Dokumente, die der Mandant im Portal sieht – keine internen Notizen, keine Rechnungen (Aktenkonto). */
+/** Warum ein Dokument nicht ins Portal darf (sonst `undefined`): interne Notizen, Rechnungen (Aktenkonto), Entwürfe vor der Freigabe. */
+export function portalSperrgrund(d: Pick<Dokument, "art" | "status">): string | undefined {
+  if (d.art === "notiz") return "interne Notiz – nie im Portal";
+  if (d.art === "rechnung") return "Rechnungen stehen im Aktenkonto";
+  if (d.status === "entwurf") return "Entwurf – erst nach Freigabe";
+  return undefined;
+}
+
+/** Ist das Dokument für den Mandanten sichtbar? Nur ausdrücklich bereitgestellt und nicht gesperrt (Entwurf, Notiz, Rechnung). */
+export const imPortal = (d: Dokument) => !!d.portal && !portalSperrgrund(d);
+
+/** Dokumente, die der Mandant im Portal sieht – genau die einzeln bereitgestellten, ohne Entwürfe, Notizen und Rechnungen. */
 export function portalDokumente(akteId: string, dokumente: Dokument[]): Dokument[] {
-  return dokumente
-    .filter((d) => d.akteId === akteId && ["Mandant", "Gericht", "Schriftsätze", "Korrespondenz"].includes(d.ordner) && d.art !== "notiz" && d.art !== "rechnung")
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return dokumente.filter((d) => d.akteId === akteId && imPortal(d)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+/** Was der Mandant NICHT sieht – für die Kanzleiansicht unter der Vorschau. */
+export function nichtImPortal(akteId: string, dokumente: Dokument[]): { entwuerfe: number; eingaenge: number; intern: number; weitere: number } {
+  const rest = dokumente.filter((d) => d.akteId === akteId && !imPortal(d));
+  const intern = rest.filter((d) => d.art === "notiz" || d.art === "rechnung");
+  const entwuerfe = rest.filter((d) => d.status === "entwurf" && !intern.includes(d));
+  const eingaenge = rest.filter((d) => !intern.includes(d) && !entwuerfe.includes(d) && istEingang(d));
+  return { entwuerfe: entwuerfe.length, eingaenge: eingaenge.length, intern: intern.length, weitere: rest.length - intern.length - entwuerfe.length - eingaenge.length };
+}
+
+/** „Nicht sichtbar für den Mandanten: 2 Entwürfe, 3 Eingänge, …“ */
+export function nichtImPortalText(n: ReturnType<typeof nichtImPortal>): string {
+  const teile = [
+    n.entwuerfe ? `${n.entwuerfe} ${n.entwuerfe === 1 ? "Entwurf" : "Entwürfe"}` : "",
+    n.eingaenge ? `${n.eingaenge} ${n.eingaenge === 1 ? "Eingang" : "Eingänge"}` : "",
+    n.intern ? `${n.intern} ${n.intern === 1 ? "internes Dokument" : "interne Dokumente"} (Notizen, Rechnungen)` : "",
+    n.weitere ? `${n.weitere} weitere, nicht bereitgestellt` : "",
+  ].filter(Boolean);
+  return teile.length ? `Nicht sichtbar für den Mandanten: ${teile.join(", ")}.` : "Alle Dokumente der Akte sind bereitgestellt.";
+}
+
+/** Dokument im Portal bereitstellen bzw. herausnehmen – mit Verlaufseintrag. Gibt false zurück, wenn es gesperrt ist. */
+export function setzePortal(d: Dokument, akte: Akte, userId: string, bereitstellen: boolean, wie?: string): boolean {
+  if (bereitstellen && portalSperrgrund(d)) return false;
+  const st = useData.getState();
+  st.patch("dokumente", d.id, { portal: bereitstellen ? { am: nowLocal(), vonId: userId } : undefined });
+  st.log({
+    akteur: "nutzer",
+    userId,
+    akteId: akte.id,
+    text: bereitstellen
+      ? `„${d.name}“ (Version ${d.version}) im Mandantenportal bereitgestellt${wie ? ` (${wie})` : ""} – ${akte.aktenzeichen}`
+      : `„${d.name}“ aus dem Mandantenportal genommen – ${akte.aktenzeichen}`,
+  });
+  beruehreAkte(akte.id);
+  return true;
 }
 
 /** Termine, die der Mandant sieht – keine Fristen, Vorfristen oder Wiedervorlagen (Fristinterna). */
@@ -30,7 +77,14 @@ export function useMandantenportal(akte: Akte) {
   const [frage, setFrage] = useState(false);
   const [vorschau, setVorschau] = useState(false);
 
-  const sperren = () => {
+  const sperren = async () => {
+    const ok = await confirmDialog({
+      titel: "Mandantenportal sperren?",
+      text: `${mandant?.name ?? "Der Mandant"} verliert den Zugang sofort – sperren? Die bereitgestellten Dokumente bleiben markiert und sind nach erneutem Freischalten wieder sichtbar. Der Vorgang steht im Verlauf.`,
+      bestaetigen: "Sperren",
+      gefahr: true,
+    });
+    if (!ok) return;
     useData.getState().patch("akten", akte.id, { mandantenportal: false, updatedAt: nowLocal() });
     useData.getState().log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Mandantenportal gesperrt – ${mandant?.name ?? "Mandant"} hat keinen Zugriff mehr – ${akte.aktenzeichen}` });
     toast("Mandantenportal gesperrt", { ton: "erfolg", text: `${mandant?.name ?? "Der Mandant"} hat keinen Zugriff mehr.` });
@@ -54,7 +108,7 @@ export function useMandantenportal(akte: Akte) {
       <PortalVorschau akte={akte} open={vorschau} onClose={() => setVorschau(false)} />
     </>
   );
-  return { freischalten: () => setFrage(true), sperren, ansehen: () => setVorschau(true), dialoge, mandant };
+  return { freischalten: () => setFrage(true), sperren: () => void sperren(), ansehen: () => setVorschau(true), dialoge, mandant };
 }
 
 function FreigabeDialog({ akte, open, onClose, onBestaetigen, onVorschau }: { akte: Akte; open: boolean; onClose: () => void; onBestaetigen: () => void; onVorschau: () => void }) {
@@ -110,7 +164,7 @@ function FreigabeDialog({ akte, open, onClose, onBestaetigen, onVorschau }: { ak
           <ul className="mt-1 list-disc space-y-0.5 pl-5">
             <li>Stand der Sache (Phase „{akte.phase}“) und die Ansprechperson</li>
             <li>
-              {doks.length} {doks.length === 1 ? "freigegebenes Dokument" : "freigegebene Dokumente"} (Ordner Mandant, Gericht, Schriftsätze, Korrespondenz)
+              {doks.length} {doks.length === 1 ? "bereitgestelltes Dokument" : "bereitgestellte Dokumente"} – weitere stellen Sie einzeln in der E-Akte bereit
             </li>
             <li>
               {termine.length} {termine.length === 1 ? "anstehender Termin" : "anstehende Termine"}
@@ -119,7 +173,7 @@ function FreigabeDialog({ akte, open, onClose, onBestaetigen, onVorschau }: { ak
           </ul>
           <div className="mt-2 flex items-start gap-2 text-[12.5px] text-fg-3">
             <Lock className="mt-0.5 size-3.5 shrink-0" />
-            <span>Nicht sichtbar: interne Notizen, Fristen und Vorfristen, Aktenkonto und Rechnungen, KI-Analysen.</span>
+            <span>Nicht sichtbar: Entwürfe, nicht bereitgestellte Dokumente, interne Notizen, Fristen und Vorfristen, Aktenkonto und Rechnungen, KI-Analysen.</span>
           </div>
         </div>
         <p className="text-[12.5px] text-fg-3">
@@ -141,6 +195,7 @@ function PortalVorschau({ akte, open, onClose }: { akte: Akte; open: boolean; on
   const ra = byId.get(akte.bearbeiterId);
   const doks = useMemo(() => portalDokumente(akte.id, dokumente), [akte.id, dokumente]);
   const termine = useMemo(() => portalTermine(akte.id, fristen), [akte.id, fristen]);
+  const verborgen = useMemo(() => nichtImPortal(akte.id, dokumente), [akte.id, dokumente]);
   const idx = PHASEN.indexOf(akte.phase);
   return (
     <Modal
@@ -193,7 +248,7 @@ function PortalVorschau({ akte, open, onClose }: { akte: Akte; open: boolean; on
                 {doks.length > 8 && <li className="text-[12.5px] text-fg-3">und {doks.length - 8} weitere</li>}
               </ul>
             ) : (
-              <p className="mt-2 text-[12.5px] text-fg-3">Noch keine Dokumente freigegeben.</p>
+              <p className="mt-2 text-[12.5px] text-fg-3">Noch keine Dokumente bereitgestellt.</p>
             )}
           </section>
           <section>
@@ -219,9 +274,15 @@ function PortalVorschau({ akte, open, onClose }: { akte: Akte; open: boolean; on
           </section>
         </div>
       </div>
-      <p className="mt-3 flex items-start gap-2 text-[12.5px] text-fg-3">
-        <Lock className="mt-0.5 size-3.5 shrink-0" /> Nicht im Portal: interne Notizen, Fristen und Vorfristen, Aktenkonto und Rechnungen, KI-Analysen.
-      </p>
+      {/* Kanzleiansicht – nicht Teil dessen, was der Mandant sieht */}
+      <div className="mt-3 rounded-[14px] bg-ink-softer px-3.5 py-2.5 text-[12.5px] leading-relaxed text-fg-2">
+        <div className="flex items-start gap-2 font-medium text-fg">
+          <Lock className="mt-0.5 size-3.5 shrink-0" /> {nichtImPortalText(verborgen)}
+        </div>
+        <div className="mt-0.5 pl-[22px] text-fg-3">
+          Bereitstellen bzw. herausnehmen je Dokument in der E-Akte. Nie im Portal: Fristen und Vorfristen, Aktenkonto, KI-Analysen{akte.mandantenportal ? "" : " – das Portal ist derzeit nicht freigeschaltet"}.
+        </div>
+      </div>
     </Modal>
   );
 }

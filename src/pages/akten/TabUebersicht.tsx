@@ -12,7 +12,8 @@ import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
 import { Avatar, Button, Card, CardHeader, Chip, Switch, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { DOK_ART_LABEL, FRIST_TYP_LABEL, FristChip, beruehreAkte, schlagwortAnzeige, useKontaktMap, useTeam } from "./helfer";
+import { useMedia } from "@/lib/useMedia";
+import { DOK_ART_LABEL, FRIST_TYP_LABEL, FristChip, MOBIL_TREFFER, beruehreAkte, schlagwortAnzeige, useKontaktMap, useTeam } from "./helfer";
 import { DokIcon } from "./TabDokumente";
 import { DiktatKnopf } from "./Diktat";
 import { useMandantenportal } from "./Mandantenportal";
@@ -28,6 +29,7 @@ export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onT
   const zeiten = useCol("zeiten");
   const buchungen = useCol("buchungen");
   const [notiz, setNotiz] = useState("");
+  const feinZeiger = useMedia("(pointer: fine)");
   const [bearbeite, setBearbeite] = useState(false);
   const [sachverhalt, setSachverhalt] = useState(akte.beschreibung);
   const mandant = kontakte.get(akte.mandantId);
@@ -72,7 +74,7 @@ export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onT
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-4">
+    <div className={cn("grid grid-cols-1 gap-4", MOBIL_TREFFER)}>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {kennzahlen.map((k, i) => (
           <motion.button
@@ -178,7 +180,7 @@ export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onT
                 rows={2}
                 value={notiz}
                 onChange={(e) => setNotiz(e.target.value)}
-                placeholder="Notiz hinzufügen … (⌘/Strg + Enter speichert)"
+                placeholder={feinZeiger ? "Notiz hinzufügen … (⌘/Strg + Enter speichert)" : "Notiz hinzufügen …"}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) speichereNotiz();
                 }}

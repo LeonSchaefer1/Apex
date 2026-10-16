@@ -144,7 +144,7 @@ export default function Login() {
               { icon: <Sparkles className="size-4" />, t: "KI-Fallanalyse", s: "Erfolgsaussicht & Präzedenzfälle" },
               { icon: <ShieldCheck className="size-4" />, t: "Fristen mit Rechenweg", s: "§ 222 ZPO, Vier-Augen-Prinzip" },
               { icon: <InfinityIcon className="size-4" />, t: "Lifetime-Lizenz", s: "Keine Monatsgebühren" },
-              { icon: <Building2 className="size-4" />, t: "Ihr Ansprechpartner", s: "Direkt erreichbar – ohne Hotline" },
+              { icon: <Building2 className="size-4" />, t: "Ihre Ansprechpartnerin", s: "Direkt erreichbar, ohne Warteschleife" },
             ].map((x, i) => (
               <motion.li key={x.t} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 + i * 0.07 }} className="glass-thin flex items-start gap-3 rounded-[18px] p-3.5">
                 <span className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-ink-soft text-ink">{x.icon}</span>
@@ -245,18 +245,24 @@ export default function Login() {
                   </div>
                 </div>
                 <input type="email" autoComplete="username" value={wechsel.email} readOnly hidden />
-                <div className="relative">
+                <label htmlFor="login-neu" className="label !mb-0">
+                  Neues Passwort
+                </label>
+                <div className="relative -mt-2">
                   <Lock className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-fg-4" />
-                  <Input id="login-neu" type={zeigePw ? "text" : "password"} autoComplete="new-password" required value={neuPw} onChange={(e) => setNeuPw(e.target.value)} placeholder="Neues Passwort" aria-label="Neues Passwort" className="!h-12 !pl-10 !pr-11" />
+                  <Input id="login-neu" type={zeigePw ? "text" : "password"} autoComplete="new-password" required value={neuPw} onChange={(e) => setNeuPw(e.target.value)} aria-describedby="login-neu-regel" className="!h-12 !pl-10 !pr-11" />
                   <button type="button" onClick={() => setZeigePw((v) => !v)} className="icon-btn absolute right-1.5 top-1/2 !size-9 -translate-y-1/2" aria-label={zeigePw ? "Passwort verbergen" : "Passwort anzeigen"}>
                     {zeigePw ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                   </button>
                 </div>
-                <div className="relative">
+                <label htmlFor="login-neu2" className="label !mb-0">
+                  Neues Passwort wiederholen
+                </label>
+                <div className="relative -mt-2">
                   <Lock className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-fg-4" />
-                  <Input id="login-neu2" type={zeigePw ? "text" : "password"} autoComplete="new-password" required value={neuPw2} onChange={(e) => setNeuPw2(e.target.value)} placeholder="Neues Passwort wiederholen" aria-label="Neues Passwort wiederholen" className="!h-12 !pl-10" />
+                  <Input id="login-neu2" type={zeigePw ? "text" : "password"} autoComplete="new-password" required value={neuPw2} onChange={(e) => setNeuPw2(e.target.value)} className="!h-12 !pl-10" />
                 </div>
-                <p className="text-[13px] text-fg-3">Mindestens {PASSWORT_MIN} Zeichen mit Buchstaben und mindestens einer Ziffer – anders als das Startpasswort.</p>
+                <p id="login-neu-regel" className="text-[13px] text-fg-3">Mindestens {PASSWORT_MIN} Zeichen mit Buchstaben und mindestens einer Ziffer – anders als das Startpasswort.</p>
                 {fehler && (
                   <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="rounded-[12px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal" role="alert">
                     {fehler}

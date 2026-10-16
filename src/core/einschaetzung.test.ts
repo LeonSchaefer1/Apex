@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { belegeIn, deckungsanfrageStatus, deckungsText, faktorenAus, OHNE_BELEG, STUFE_WORT, stufeAusProzent, stufeWort } from "./einschaetzung";
+import { belegeIn, deckungsanfrageStatus, deckungsSatz, deckungsText, faktorenAus, OHNE_BELEG, STUFE_WORT, stufeAusProzent, stufeWort } from "./einschaetzung";
 import type { Aktivitaet } from "./types";
 
 test("Stufen-Wörter statt Prozent als Hauptanzeige", () => {
@@ -39,10 +39,22 @@ test("Deckungsanfrage: Vorlage des Motors ist ein Entwurf, erst die Freigabe ein
   const motor: Aktivitaet = { id: "x1", zeit: "2026-10-14T11:34:00", akteur: "automation", akteId: "a1", text: "Deckungsanfrage an Nordlicht Rechtsschutz AG zur Freigabe vorgelegt – 142/26" };
   const s1 = deckungsanfrageStatus("a1", [motor], dok);
   assert.equal(s1.status, "entwurf");
-  assert.equal(deckungsText(s1), "Entwurf – wartet auf Ihre Freigabe");
+  assert.equal(deckungsText(s1), "vorbereitet, noch nicht versandt");
   const frei: Aktivitaet = { id: "x2", zeit: "2026-10-15T09:10:00", akteur: "nutzer", userId: "u-mia", akteId: "a1", text: "Deckungsanfrage an Nordlicht Rechtsschutz AG freigegeben und versandt – 142/26" };
   const s2 = deckungsanfrageStatus("a1", [motor, frei], dok);
   assert.equal(s2.status, "versandt");
   assert.equal(deckungsText(s2, () => "Mia Becker"), "versandt am 15.10.2026 von Mia Becker");
   assert.equal(deckungsanfrageStatus("a2", [motor, frei], dok).status, "keine");
+});
+
+test("deckungsSatz: ein Stand – erteilt mit Schaden-Nr., versandt, vorbereitet; nie „angefragt“ vor dem Versand (I2-T06-01)", () => {
+  const entwurf = { status: "entwurf" as const, dokumentId: "d1" };
+  assert.equal(deckungsSatz({ deckung: "offen" }, entwurf), "Deckungsanfrage vorbereitet, noch nicht versandt");
+  assert.equal(deckungsSatz({ deckung: "angefragt" }, entwurf), "Deckungsanfrage vorbereitet, noch nicht versandt");
+  assert.equal(deckungsSatz({ deckung: "erteilt", schadennummer: "S26-41207" }, entwurf), "Deckung erteilt (Schaden-Nr. S26-41207)");
+  assert.equal(deckungsSatz({ deckung: "offen" }, { status: "versandt", am: "2026-10-15T10:00:00", vonId: "u" }, () => "Mia Becker"), "Deckungsanfrage versandt am 15.10.2026 von Mia Becker");
+  assert.equal(deckungsSatz(undefined, { status: "keine" }), "kein Rechtsschutz hinterlegt");
+  // Freigabestatus am Dokument
+  const dok = [{ id: "d1", akteId: "a1", name: "Deckungsanfrage X", createdAt: "2026-10-14T10:00:00", status: "versandt" as const }];
+  assert.equal(deckungsanfrageStatus("a1", [], dok).status, "versandt");
 });

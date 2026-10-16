@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { Calculator, CalendarCheck2, CalendarClock, CalendarPlus, Check, ChevronDown, Clock, MapPin, RotateCcw, ShieldAlert, Trash2 } from "lucide-react";
+import { Calculator, CalendarCheck2, CalendarClock, CalendarPlus, Check, ChevronDown, Clock, MapPin, PenLine, RotateCcw, ShieldAlert, Trash2 } from "lucide-react";
 import type { Akte, Frist } from "@/core/types";
 import { fristArtZu } from "@/core/fristen";
 import { istKritisch } from "@/core/fristenLage";
@@ -15,7 +15,10 @@ import { cn } from "@/lib/cn";
 // Erledigen, Wiederöffnen und Vier-Augen-Kontrolle laufen über dieselben Helfer wie im Fristenkalender –
 // damit gelten in Akte und Kalender dieselben Regeln (u. a. keine Selbstkontrolle der verantwortlichen Person).
 import { brauchtKontrolle } from "@/pages/fristen/logik";
-import { KontrolleAktion, KontrollStatus, NachweisZeile, QuelleChip, useFristAktionen } from "@/pages/fristen/FristZeile";
+import { KontrolleAktion, KontrollStatus, KorrekturHinweis, NachweisZeile, QuelleChip, korrigierbar, useFristAktionen } from "@/pages/fristen/FristZeile";
+import { DateiDialog, type AusgabeDatei } from "@/pages/fristen/dateiAusgabe";
+import { erzeugeIcs, icsDateiname } from "@/pages/fristen/ics";
+import { TYP_META } from "@/pages/fristen/logik";
 import { FRIST_TYP_LABEL, beruehreAkte, dringlichkeit, useTeam } from "./helfer";
 
 export function TabFristen({ akte, onNeu }: { akte: Akte; onNeu: (modus?: "regel" | "frei") => void }) {
@@ -41,6 +44,7 @@ export function TabFristen({ akte, onNeu }: { akte: Akte; onNeu: (modus?: "regel
         <Segmented
           value={ansicht}
           onChange={setAnsicht}
+          mobilGross
           options={[
             { value: "offen", label: "Offen", count: offen.length },
             { value: "erledigt", label: "Erledigt", count: erledigt.length },
@@ -54,7 +58,7 @@ export function TabFristen({ akte, onNeu }: { akte: Akte; onNeu: (modus?: "regel
         <div className="flex-1" />
         <Link
           to={`/fristen?rechner=1&akte=${akte.id}`}
-          className="inline-flex h-[38px] items-center gap-1.5 rounded-full px-3.5 text-[13.5px] font-medium text-fg-2 transition-colors hover:bg-ink-softer hover:text-fg"
+          className="inline-flex h-[38px] items-center gap-1.5 rounded-full px-3.5 text-[13.5px] font-medium text-fg-2 transition-colors hover:bg-ink-softer hover:text-fg max-sm:h-11"
           title="Fristenrechner mit dieser Akte öffnen – mit Kalender aller Fristen der Kanzlei"
         >
           <Calculator className="size-4" /> Im Fristenrechner öffnen
@@ -63,12 +67,13 @@ export function TabFristen({ akte, onNeu }: { akte: Akte; onNeu: (modus?: "regel
           variant="secondary"
           icon={<CalendarClock className="size-4" />}
           onClick={() => useUI.getState().setWiedervorlage({ akteId: akte.id })}
+          className="max-sm:[--h:44px]"
           aria-keyshortcuts="W"
           title="Wiedervorlage anlegen (Taste W)"
         >
           Wiedervorlage <kbd className="kbd ml-1 hidden sm:inline-flex">W</kbd>
         </Button>
-        <Button variant="primary" icon={<CalendarPlus className="size-4" />} onClick={() => onNeu("regel")} aria-keyshortcuts="F" title="Frist anlegen (Taste F öffnet den Fristenrechner für diese Akte)">
+        <Button variant="primary" icon={<CalendarPlus className="size-4" />} onClick={() => onNeu("regel")} className="max-sm:[--h:44px]" aria-keyshortcuts="F" title="Frist anlegen (Taste F öffnet den Fristenrechner für diese Akte)">
           Frist anlegen <kbd className="kbd ml-1 hidden sm:inline-flex">F</kbd>
         </Button>
       </div>
@@ -114,7 +119,16 @@ function FristKarte({ f, akte }: { f: Frist; akte: Akte }) {
   const { team, byId } = useTeam();
   const [rechenweg, setRechenweg] = useState(false);
   // Dieselben Regeln wie im Fristenkalender: Notfristen/Fristen nur mit Nachweis oder Grund erledigen, Wiederöffnen protokolliert
-  const { umschalten, kontrollieren, streichen, dialog } = useFristAktionen(f, user);
+  const { umschalten, kontrollieren, streichen, korrigieren, korrekturAnfordern, dialog } = useFristAktionen(f, user);
+  // „In Kalender (.ics)“ – jede Frist bzw. jeder Termin der Akte als Kalenderdatei
+  const [datei, setDatei] = useState<AusgabeDatei | null>(null);
+  const ics = () =>
+    setDatei({
+      name: icsDateiname(f, akte),
+      mime: "text/calendar",
+      inhalt: erzeugeIcs([{ f, akte }], `${TYP_META[f.typ].label} ${akte.aktenzeichen}`),
+      beschreibung: "Kalendereintrag zum Übernehmen in Outlook, Apple oder Google Kalender",
+    });
   const verantw = byId.get(f.verantwortlichId);
   const erledigtVon = f.erledigtVon ? byId.get(f.erledigtVon) : undefined;
   const d = dringlichkeit(f.datum);
@@ -175,6 +189,7 @@ function FristKarte({ f, akte }: { f: Frist; akte: Akte }) {
             {f.vorfrist && <span>Vorfrist {fmtDate(f.vorfrist)}</span>}
           </div>
           {f.notiz && <p className="mt-1.5 text-[12.5px] text-fg-2">{f.notiz}</p>}
+          <KorrekturHinweis f={f} team={team} />
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {verantw && (
@@ -183,7 +198,7 @@ function FristKarte({ f, akte }: { f: Frist; akte: Akte }) {
               </span>
             )}
             <KontrollStatus f={f} team={team} />
-            {istOffen && <KontrolleAktion f={f} user={user} kontrollieren={kontrolliere} verantwortlich={verantw} />}
+            {istOffen && <KontrolleAktion f={f} user={user} kontrollieren={kontrolliere} verantwortlich={verantw} anfordern={korrekturAnfordern} />}
             {!istOffen && (
               <span className="text-[12.5px] text-fg-3">
                 Erledigt {f.erledigtAm ? relTime(f.erledigtAm) : ""}
@@ -195,7 +210,7 @@ function FristKarte({ f, akte }: { f: Frist; akte: Akte }) {
 
           {f.rechenweg && f.rechenweg.length > 0 && (
             <div className="mt-3">
-              <button type="button" onClick={() => setRechenweg((v) => !v)} className="inline-flex items-center gap-1 rounded-full text-[12.5px] font-medium text-ink hover:underline" aria-expanded={rechenweg}>
+              <button type="button" onClick={() => setRechenweg((v) => !v)} className="inline-flex items-center gap-1 rounded-full text-[12.5px] font-medium text-ink hover:underline max-sm:min-h-11" aria-expanded={rechenweg}>
                 <motion.span animate={{ rotate: rechenweg ? 180 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }}>
                   <ChevronDown className="size-3.5" />
                 </motion.span>
@@ -227,23 +242,32 @@ function FristKarte({ f, akte }: { f: Frist; akte: Akte }) {
         <div className="flex shrink-0 flex-col items-end gap-2">
           {istOffen ? (
             <>
-              <Button size="sm" variant="secondary" icon={<Check className="size-4" />} onClick={erledige} aria-label="Als erledigt markieren" title={f.typ === "notfrist" || f.typ === "frist" ? "Erledigen – mit Nachweis, wie die Frist gewahrt wurde" : "Als erledigt markieren"}>
+              <Button size="sm" variant="secondary" className="max-sm:[--h:44px] max-sm:min-w-11" icon={<Check className="size-4" />} onClick={erledige} aria-label="Als erledigt markieren" title={f.typ === "notfrist" || f.typ === "frist" ? "Erledigen – mit Nachweis, wie die Frist gewahrt wurde" : "Als erledigt markieren"}>
                 <span className="hidden sm:inline">Erledigt</span>
               </Button>
+              {korrigierbar(f) && (
+                <Button size="sm" variant="ghost" className="max-sm:[--h:44px] max-sm:min-w-11" icon={<PenLine className="size-4" />} onClick={korrigieren} aria-label="Korrigieren – mit Grund" title="Datum bzw. Fristart und Ereignisdatum korrigieren – mit Pflichtgrund, danach erneute Vier-Augen-Kontrolle">
+                  <span className="hidden sm:inline">Korrigieren</span>
+                </Button>
+              )}
               {f.typ !== "termin" && f.typ !== "vorfrist" && (
-                <Button size="sm" variant="ghost" icon={<Trash2 className="size-4" />} onClick={streichen} aria-label="Streichen – mit Grund" title="Streichen – mit Pflichtgrund, protokolliert">
+                <Button size="sm" variant="ghost" className="max-sm:[--h:44px] max-sm:min-w-11" icon={<Trash2 className="size-4" />} onClick={streichen} aria-label="Streichen – mit Grund" title="Streichen – mit Pflichtgrund, protokolliert">
                   <span className="hidden sm:inline">Streichen</span>
                 </Button>
               )}
             </>
           ) : (
-            <Button size="sm" variant="ghost" icon={<RotateCcw className="size-4" />} onClick={wiederOeffnen} aria-label="Frist wieder öffnen" title="Frist wieder öffnen">
+            <Button size="sm" variant="ghost" className="max-sm:[--h:44px] max-sm:min-w-11" icon={<RotateCcw className="size-4" />} onClick={wiederOeffnen} aria-label="Frist wieder öffnen" title="Frist wieder öffnen">
               <span className="hidden sm:inline">Wieder öffnen</span>
             </Button>
           )}
+          <Button size="sm" variant="ghost" className="max-sm:[--h:44px] max-sm:min-w-11" icon={<CalendarPlus className="size-4" />} onClick={ics} aria-label={`${f.titel} in Kalender übernehmen (.ics)`} title="In Kalender übernehmen (.ics)">
+            <span className="hidden sm:inline">.ics</span>
+          </Button>
         </div>
       </div>
       {dialog}
+      <DateiDialog datei={datei} onClose={() => setDatei(null)} />
     </Card>
   );
 }

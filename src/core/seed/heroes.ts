@@ -1,8 +1,9 @@
 // Präsentationsfälle („Hero-Akten") – in sich stimmige Geschichten für die Live-Demo.
 import { AUTOMATION_DEFS } from "../automationen";
 import { addDays, fmtDate, fmtDateLong, round2 } from "../dates";
+import { berechneNachRegel } from "../fristen";
 import { berechneRvg, fassungFuerAuftrag } from "../rvg";
-import type { Akte, Aktivitaet } from "../types";
+import type { Akte, Aktivitaet, Dokument, Frist, Kontakt } from "../types";
 import { addDok, addFrist, addMsg, addRechnung, addRegelFrist, nextAz, type Ctx } from "./generate";
 import { STAEDTE } from "./pools";
 
@@ -69,15 +70,17 @@ export function heroesBerlin(ctx: Ctx) {
   });
   addDok(ctx, {
     akteId: a1.id, name: "Gesprächsnotiz Erstberatung", art: "notiz", ordner: "Mandant", quelle: "generiert", format: "docx", autorId: julia.id, createdAt: dt(-2, 11, 5),
-    inhalt: `Erstberatung mit Herrn Weber am ${fmtDate(d(-2))} (Dauer 45 Min.).\n• 52 Jahre, verheiratet, zwei Kinder (14 und 17), seit 01.04.2012 bei Kröger Logistik, keine Abmahnungen, sehr gute Beurteilungen.\n• Die drei Packungen waren eingerissen und lagen im Container „Bruch – Entsorgung“. Laut Mandant nehmen Kollegen regelmäßig Bruchware mit; Schichtleiter Pohl habe das mehrfach gesehen und geduldet.\n• Eine Anhörung des Mandanten vor der Kündigung fand nicht statt.\n• Ob und wann der Betriebsrat angehört wurde, ist unklar.\n• Rechtsschutzversicherung: Nordlicht Rechtsschutz AG, Vertrag seit 2016.\n• Ziel: Weiterbeschäftigung. Abfindung nur als zweite Option.\n• Vor Übernahme des Mandats darauf hingewiesen, dass sich die Gebühren nach dem Gegenstandswert richten (§ 49b Abs. 5 BRAO) und im ersten Rechtszug vor dem Arbeitsgericht keine Kostenerstattung stattfindet (§ 12a Abs. 1 S. 2 ArbGG) – Hinweisblatt gegengezeichnet.\n• Erste Einschätzung: Konstellation wie im „Emmely“-Fall (Kündigung wegen zweier Pfandbons über 1,30 €, BAG 2 AZR 541/09) – nach 14 Jahren ohne Abmahnung ist die fristlose Kündigung voraussichtlich unverhältnismäßig.`,
+    inhalt: `Erstberatung mit Herrn Weber am ${fmtDate(d(-2))} (Dauer 45 Min.).\n• 52 Jahre, verheiratet, zwei Kinder (14 und 17), seit 01.04.2012 bei Kröger Logistik, keine Abmahnungen, sehr gute Beurteilungen.\n• Die drei Packungen waren eingerissen und lagen im Container „Bruch – Entsorgung“. Laut Mandant nehmen Kollegen regelmäßig Bruchware mit; der Schichtleiter habe das mehrfach gesehen und geduldet.\n• Eine Anhörung des Mandanten vor der Kündigung fand nicht statt.\n• Ob und wann der Betriebsrat angehört wurde, ist unklar.\n• Rechtsschutzversicherung: Nordlicht Rechtsschutz AG, Vertrag seit 2016.\n• Ziel: Weiterbeschäftigung. Abfindung nur als zweite Option.\n• Vor Übernahme des Mandats darauf hingewiesen, dass sich die Gebühren nach dem Gegenstandswert richten (§ 49b Abs. 5 BRAO) und im ersten Rechtszug vor dem Arbeitsgericht keine Kostenerstattung stattfindet (§ 12a Abs. 1 S. 2 ArbGG) – Hinweisblatt gegengezeichnet.\n• Erste Einschätzung: Konstellation wie im „Emmely“-Fall (Kündigung wegen zweier Pfandbons über 1,30 €, BAG 2 AZR 541/09) – nach 14 Jahren ohne Abmahnung ist die fristlose Kündigung voraussichtlich unverhältnismäßig.`,
   });
   addDok(ctx, {
     akteId: a1.id, name: "Kostenhinweise vor Mandatsübernahme (§ 49b Abs. 5 BRAO, § 12a ArbGG)", art: "brief", ordner: "Mandant", quelle: "generiert", seiten: 1, createdAt: dt(-2, 10, 58),
+    portal: { am: dt(-2, 11, 40), vonId: julia.id },
     inhalt: `Hinweise vor Übernahme des Mandats\n\nUnser Zeichen: 142/${ctx.yy} – Weber ./. Kröger Logistik GmbH\n\n1. Abrechnung nach dem Gegenstandswert (§ 49b Abs. 5 BRAO)\nDie für unsere Tätigkeit zu erhebenden Gebühren richten sich nach dem Gegenstandswert (§ 2 Abs. 1 RVG). Für die Kündigungsschutzklage beträgt er voraussichtlich drei Bruttomonatsentgelte (§ 42 Abs. 2 S. 1 GKG), für einen Weiterbeschäftigungsantrag kommt ein Bruttomonatsentgelt hinzu.\n\n2. Keine Kostenerstattung im ersten Rechtszug (§ 12a Abs. 1 S. 2 ArbGG)\nIm Urteilsverfahren des ersten Rechtszugs vor dem Arbeitsgericht trägt jede Partei ihre Anwaltskosten selbst – auch wenn sie den Prozess gewinnt. Ein Anspruch auf Erstattung der Kosten für die Hinzuziehung eines Prozessbevollmächtigten besteht nicht.\n\nBeide Hinweise wurden im Erstgespräch am ${fmtDate(d(-2))} vor Übernahme des Mandats erteilt.\n\nZur Kenntnis genommen:\nBerlin, den ${fmtDate(d(-2))}\n\nThomas Weber (digital gegengezeichnet)`,
   });
-  addDok(ctx, { akteId: a1.id, name: "Vollmacht (digital unterzeichnet)", art: "vollmacht", ordner: "Mandant", quelle: "generiert", createdAt: dt(-2, 11, 30), inhalt: "Prozessvollmacht Thomas Weber für Hartmann & Partner Rechtsanwälte, digital unterzeichnet." });
+  addDok(ctx, { akteId: a1.id, name: "Vollmacht (digital unterzeichnet)", art: "vollmacht", ordner: "Mandant", quelle: "generiert", createdAt: dt(-2, 11, 30), inhalt: "Prozessvollmacht Thomas Weber für Hartmann & Partner Rechtsanwälte, digital unterzeichnet.", portal: { am: dt(-2, 11, 40), vonId: julia.id } });
   addDok(ctx, {
-    akteId: a1.id, name: "Deckungsanfrage Nordlicht Rechtsschutz AG", art: "schriftsatz", ordner: "Korrespondenz", quelle: "generiert", format: "docx", createdAt: dt(-2, 11, 34),
+    // Brief an die Versicherung (kein Schriftsatz an ein Gericht) – Entwurf des 38h-Motors, Versand erst nach Freigabe
+    akteId: a1.id, name: "Deckungsanfrage Nordlicht Rechtsschutz AG", art: "brief", status: "entwurf", ordner: "Korrespondenz", quelle: "generiert", format: "docx", createdAt: dt(-2, 11, 34),
     inhalt: "Automatisch erstellte Deckungsanfrage für Versicherungsnehmer Thomas Weber (RS-4471209): Kündigungsschutzklage gegen die fristlose Kündigung der Kröger Logistik GmbH, Gegenstandswert 10.200 € (Vierteljahresentgelt, § 42 Abs. 2 GKG). Sachverhaltsschilderung und Kündigungsschreiben anbei.",
   });
   addRegelFrist(ctx, a1, "kschg_klage", zugang, { quelle: "ki", kontrolliertVon: mia?.id, notiz: "Von der KI aus dem Kündigungsschreiben erkannt (Zugang per Bote)." });
@@ -100,7 +103,7 @@ export function heroesBerlin(ctx: Ctx) {
   });
   addDok(ctx, { akteId: a2.id, name: "Mietvertrag vom 01.08.2019", art: "vertrag", ordner: "Mandant", quelle: "upload", seiten: 11, createdAt: dt(-74, 10, 0), inhalt: "Formularmietvertrag. § 8 Schönheitsreparaturen: Der Mieter ist verpflichtet, die Schönheitsreparaturen während der Mietzeit fachgerecht auszuführen (Küche/Bad alle 3 Jahre, Wohnräume alle 5 Jahre). Mietkaution: 2.850 €." });
   addDok(ctx, { akteId: a2.id, name: "Übergabeprotokoll Einzug 2019", art: "anlage", ordner: "Anlagen", quelle: "scan", createdAt: dt(-74, 10, 3), inhalt: "Übergabeprotokoll vom 01.08.2019: Wände im Wohnzimmer und Flur vergilbt, zahlreiche Dübellöcher, Heizkörper mit Farbabplatzungen. Vermerk: „Wohnung wird unrenoviert übergeben.“ Kein Mietnachlass vereinbart." });
-  addDok(ctx, { akteId: a2.id, name: "Klageschrift", art: "schriftsatz", ordner: "Gericht", quelle: "generiert", format: "docx", autorId: jonas.id, createdAt: dt(-52), inhalt: "Klage auf Zahlung von 2.850 € nebst Zinsen. Die Renovierungsklausel ist unwirksam, weil die Wohnung unrenoviert übergeben wurde (BGH, Urt. v. 18.03.2015 – VIII ZR 185/14). Eine Aufrechnung mit Malerkosten scheidet aus." });
+  addDok(ctx, { akteId: a2.id, name: "Klageschrift", art: "schriftsatz", ordner: "Gericht", quelle: "generiert", format: "docx", autorId: jonas.id, createdAt: dt(-52), status: "versandt", portal: { am: dt(-52, 16, 10), vonId: jonas.id }, inhalt: "Klage auf Zahlung von 2.850 € nebst Zinsen. Die Renovierungsklausel ist unwirksam, weil die Wohnung unrenoviert übergeben wurde (BGH, Urt. v. 18.03.2015 – VIII ZR 185/14). Eine Aufrechnung mit Malerkosten scheidet aus." });
   addDok(ctx, { akteId: a2.id, name: "Klageerwiderung Möller & Thiel", art: "schriftsatz", ordner: "Gericht", quelle: "bea", createdAt: dt(-12), inhalt: "Die Beklagte beantragt Klageabweisung. Die Klägerin habe die Wohnung bei Einzug als „renoviert“ akzeptiert; die Vergilbung sei geringfügig gewesen. Hilfsweise wird mit Schadensersatz wegen Beschädigungen der Einbauküche in Höhe von 640 € aufgerechnet." });
   addFrist(ctx, { akteId: a2.id, titel: "Replik auf Klageerwiderung", typ: "frist", datum: ctx.werktag(2), verantwortlichId: jonas.id, quelle: "ki", grundlage: "Richterliche Frist (§ 277 Abs. 4 ZPO)", notiz: "Frist laut Verfügung des AG Charlottenburg." });
   addFrist(ctx, { akteId: a2.id, titel: "Mündliche Verhandlung", typ: "termin", datum: ctx.werktag(9), uhrzeit: "10:30", ort: "Amtsgericht Charlottenburg, Saal 1/215", verantwortlichId: jonas.id, quelle: "ki" });
@@ -194,8 +197,8 @@ export function heroesBerlin(ctx: Ctx) {
 
   // Posteingang – Präsentationsnachrichten
   addMsg(ctx, {
-    kanal: "email", von: "Thomas Weber", vonAdresse: weber.email, betreff: "Unterlagen + wichtiger Hinweis zu Herrn Pohl",
-    text: `Guten Morgen Frau Dr. Hartmann,\n\nanbei wie besprochen mein Arbeitsvertrag und die letzten drei Lohnabrechnungen.\n\nMir ist noch etwas eingefallen: Mein Kollege Herr Pohl hat im März ebenfalls Kaffee aus dem Bruch mitgenommen. Der Schichtleiter hat das gesehen und nur gesagt, das sei „sowieso Müll“. Er wäre auch bereit, das zu bestätigen.\n\nMuss ich wegen der Arbeitsagentur noch etwas machen?\n\nViele Grüße\nThomas Weber`,
+    kanal: "email", von: "Thomas Weber", vonAdresse: weber.email, betreff: "Unterlagen + wichtiger Hinweis zu Herrn Seifert",
+    text: `Guten Morgen Frau Dr. Hartmann,\n\nanbei wie besprochen mein Arbeitsvertrag und die letzten drei Lohnabrechnungen.\n\nMir ist noch etwas eingefallen: Mein Kollege Herr Seifert hat im März ebenfalls Kaffee aus dem Bruch mitgenommen. Der Schichtleiter hat das gesehen und nur gesagt, das sei „sowieso Müll“. Er wäre auch bereit, das zu bestätigen.\n\nMuss ich wegen der Arbeitsagentur noch etwas machen?\n\nViele Grüße\nThomas Weber`,
     eingang: dt(0, 7, 41), status: "neu", zugeordnet: false, kiStatus: "ausstehend",
     anhaenge: [{ name: "Arbeitsvertrag_2012.pdf", groesseKb: 1240 }, { name: "Lohnabrechnungen_Q3.pdf", groesseKb: 860 }],
   });
@@ -397,4 +400,166 @@ export function heroesHamburg(ctx: Ctx) {
   verlauf(ctx, a3, [
     { zeit: dt(0, 7, 21), akteur: "automation", key: "zuordnung", text: `Nachricht der Akte ${a3.aktenzeichen} zugeordnet` },
   ]);
+}
+
+// ───────────────────────── Berlin: Zusatzakten (am Ende erzeugt) ─────────────────────────
+// Werden NACH dem übrigen Bestand angelegt – mit festen Werten, eigenen IDs (hero-guete-…, hero-rsv-…) und ohne Zufallszug,
+// damit Zufallsfolge, IDs und Aktenzeichen aller übrigen Akten, Fristen und Nachrichten unverändert bleiben.
+// Keine Posteingangsnachrichten, keine Frist und kein Termin heute (Morgenzahlen des Cockpits bleiben gleich).
+
+/** Kontakt mit fester ID und festen Daten (ohne Zufall). */
+function festerKontakt(ctx: Ctx, k: Omit<Kontakt, "createdAt"> & { createdAt?: string }): Kontakt {
+  const voll: Kontakt = { createdAt: k.createdAt ?? ctx.dt(-60, 9, 0), ...k };
+  ctx.data.kontakte.push(voll);
+  return voll;
+}
+function festesDok(ctx: Ctx, d: Omit<Dokument, "version" | "groesseKb"> & { groesseKb?: number }): Dokument {
+  const dok: Dokument = { version: 1, groesseKb: d.groesseKb ?? 180, ...d };
+  ctx.data.dokumente.push(dok);
+  return dok;
+}
+
+export function zusatzBerlin(ctx: Ctx) {
+  const { d, dt, data } = ctx;
+  const [julia, jonas] = ctx.anwaelte;
+  const mia = ctx.refas[0];
+  const G = STAEDTE.berlin.gerichte;
+  const naechsteNr = () => nextAz(ctx, Math.max(100, ...ctx.usedAz) + 1);
+
+  // 1) T14 „mobil am Gericht“: Kündigungsschutz Ostermann – Klage eingereicht, Gütetermin in den nächsten Tagen
+  const arbg = data.kontakte.find((k) => k.name === G.arbg) ?? festerKontakt(ctx, { id: "hero-guete-k-arbg", typ: "organisation", name: G.arbg, firma: G.arbg, rollen: ["gericht"], strasse: "Magdeburger Platz 1", plz: "10785", ort: "Berlin" });
+  const ostermann = festerKontakt(ctx, {
+    id: "hero-guete-k1", typ: "person", name: "Katrin Ostermann", vorname: "Katrin", nachname: "Ostermann", anrede: "Frau",
+    email: "katrin.ostermann@posteo.de", telefon: "+49 157 3390 2716", strasse: "Gotzkowskystraße 17", plz: "10555", ort: "Berlin", rollen: ["mandant"], createdAt: dt(-24, 9, 40),
+  });
+  const havelbrueck = festerKontakt(ctx, {
+    id: "hero-guete-k2", typ: "organisation", name: "Havelbrück Pflegedienste GmbH", firma: "Havelbrück Pflegedienste GmbH",
+    email: "personal@havelbrueck-pflege.de", telefon: "+49 30 4471 2280", strasse: "Havelchaussee 66", plz: "14193", ort: "Berlin", rollen: ["gegner"], createdAt: dt(-24, 9, 45),
+  });
+  const tanneberg = festerKontakt(ctx, {
+    id: "hero-guete-k3", typ: "organisation", name: "Tanneberg & Sternberg Rechtsanwälte PartG mbB", firma: "Tanneberg & Sternberg Rechtsanwälte PartG mbB",
+    email: "kanzlei@tanneberg-sternberg.de", telefon: "+49 30 8812 4400", strasse: "Kurfürstendamm 52", plz: "10707", ort: "Berlin", rollen: ["gegneranwalt"], safeId: "DE.BRAK.5f2c71a0-8e14-4b8b-9d0a-3c55a7e01b62.6b1e", createdAt: dt(-8, 11, 0),
+  });
+  const kuendigung = d(-27);
+  const zugang = d(-26);
+  const klageAm = d(-12);
+  const guete = ctx.werktag(3);
+  const gerichtsAz = `28 Ca 11873/${ctx.yy}`;
+  const ost: Akte = {
+    id: "hero-guete-a1", aktenzeichen: naechsteNr(), titel: "Ostermann ./. Havelbrück Pflegedienste GmbH", sachgebiet: "Arbeitsrecht", phase: "Gerichtlich", status: "offen",
+    mandantId: ostermann.id, gegnerId: havelbrueck.id, gegneranwaltId: tanneberg.id, gerichtId: arbg.id, gerichtsAz,
+    gegenstandswert: 11700, bearbeiterId: julia.id, sachbearbeiterId: mia?.id,
+    rsv: { versicherung: "Spreebogen Rechtsschutz VVaG", versicherungsnummer: "RS-6604418", schadennummer: `S${ctx.yy}-73390`, deckung: "erteilt", selbstbeteiligung: 150 },
+    beschreibung: "Ordentliche, auf betriebliche Gründe gestützte Kündigung einer Pflegefachkraft nach zehn Jahren Betriebszugehörigkeit (Bruttomonatsgehalt 3.900 €). Die Arbeitgeberin beruft sich auf die Schließung der Tagespflege Spandau; die Sozialauswahl ist nicht nachvollziehbar. Kündigungsschutzklage beim Arbeitsgericht Berlin eingereicht, Gütetermin steht an.",
+    schlagworte: ["kündigungsschutz", "betriebsbedingt", "sozialauswahl", "gütetermin", "pflege", "kündigungsschutzklage"],
+    prioritaet: "normal", createdAt: dt(-24, 10, 0), updatedAt: dt(-8, 14, 30), mandantenportal: true,
+  };
+  data.akten.push(ost);
+  const dok = (n: number, x: Omit<Dokument, "id" | "akteId" | "version" | "groesseKb"> & { groesseKb?: number }) => festesDok(ctx, { id: `hero-guete-d${n}`, akteId: ost.id, ...x });
+  dok(1, {
+    name: `Kündigungsschreiben vom ${fmtDate(kuendigung)}`, art: "brief", ordner: "Mandant", format: "pdf", quelle: "scan", seiten: 2, createdAt: dt(-24, 10, 20),
+    inhalt: `Havelbrück Pflegedienste GmbH · Havelchaussee 66 · 14193 Berlin\n\nFrau Katrin Ostermann\nGotzkowskystraße 17\n10555 Berlin\n\nBerlin, ${fmtDate(kuendigung)}\n\nOrdentliche Kündigung\n\nSehr geehrte Frau Ostermann,\n\nhiermit kündigen wir das mit Ihnen seit dem 01.03.2016 bestehende Arbeitsverhältnis ordentlich und fristgerecht zum ${fmtDate(addDays(kuendigung, 92))}. Grund ist die Schließung unserer Tagespflege in Spandau zum Jahresende; eine Weiterbeschäftigung an einem anderen Standort ist nicht möglich.\n\nDer Betriebsrat wurde angehört. Auf die Pflicht zur Arbeitsuchendmeldung (§ 38 Abs. 1 SGB III) weisen wir hin.\n\nMit freundlichen Grüßen\nHavelbrück Pflegedienste GmbH\n– Geschäftsführung –\n\nZugegangen per Einwurf-Einschreiben am ${fmtDate(zugang)}.`,
+    ki: { zusammenfassung: "Ordentliche, betriebsbedingte Kündigung (Schließung Tagespflege Spandau). Zugang per Einwurf-Einschreiben.", erkannteFristen: 1 },
+  });
+  dok(2, {
+    name: "Arbeitsvertrag vom 01.03.2016", art: "vertrag", ordner: "Mandant", format: "pdf", quelle: "email", seiten: 7, createdAt: dt(-24, 10, 25),
+    inhalt: "Arbeitsvertrag zwischen der Havelbrück Pflegedienste GmbH und Frau Katrin Ostermann. Beginn: 01.03.2016. Tätigkeit: Pflegefachkraft, Einsatzort nach Dienstplan (Standorte Spandau und Charlottenburg). Bruttomonatsvergütung zuletzt 3.900 €. Kündigungsfristen nach § 622 BGB.",
+  });
+  dok(3, {
+    name: "Gesprächsnotiz Erstberatung", art: "notiz", ordner: "Mandant", format: "docx", quelle: "generiert", autorId: julia.id, seiten: 1, createdAt: dt(-24, 11, 5),
+    inhalt: `Erstberatung mit Frau Ostermann am ${fmtDate(d(-24))} (Dauer 40 Min.).\n• 46 Jahre, ledig, ein unterhaltsberechtigtes Kind (12), seit 01.03.2016 bei Havelbrück, Pflegefachkraft.\n• Kündigung wegen Schließung der Tagespflege Spandau; am Standort Charlottenburg werden weiter Pflegefachkräfte gesucht (Stellenanzeige liegt vor).\n• Sozialauswahl: Zwei jüngere Kolleginnen ohne Unterhaltspflichten wurden nach Charlottenburg versetzt.\n• Ziel: Weiterbeschäftigung, hilfsweise Abfindung.\n• Rechtsschutz: Spreebogen Rechtsschutz VVaG, Deckung erteilt.\n• Kostenhinweise (§ 49b Abs. 5 BRAO, § 12a Abs. 1 S. 2 ArbGG) vor Mandatsübernahme erteilt.`,
+  });
+  dok(4, {
+    name: "Vollmacht (digital unterzeichnet)", art: "vollmacht", ordner: "Mandant", format: "pdf", quelle: "generiert", seiten: 1, createdAt: dt(-24, 11, 30),
+    inhalt: "Prozessvollmacht Katrin Ostermann für Hartmann & Partner Rechtsanwälte, digital unterzeichnet.", portal: { am: dt(-24, 11, 45), vonId: julia.id },
+  });
+  dok(5, {
+    name: "Klageschrift (Kündigungsschutzklage)", art: "schriftsatz", ordner: "Schriftsätze", format: "docx", quelle: "generiert", autorId: julia.id, seiten: 5, createdAt: dt(-12, 15, 5), status: "versandt",
+    portal: { am: dt(-12, 15, 40), vonId: julia.id },
+    inhalt: `An das\nArbeitsgericht Berlin\nMagdeburger Platz 1\n10785 Berlin\n\nKlage\n\nder Frau Katrin Ostermann, Gotzkowskystraße 17, 10555 Berlin\n– Klägerin –\nProzessbevollmächtigte: Hartmann & Partner Rechtsanwälte\n\ngegen\n\ndie Havelbrück Pflegedienste GmbH, Havelchaussee 66, 14193 Berlin\n– Beklagte –\n\nwegen: Kündigungsschutz\nStreitwert (vorläufig): 11.700,00 € (drei Bruttomonatsentgelte, § 42 Abs. 2 S. 1 GKG)\n\nNamens und in Vollmacht der Klägerin erheben wir Klage und werden beantragen:\n\n1. Es wird festgestellt, dass das Arbeitsverhältnis der Parteien durch die Kündigung der Beklagten vom ${fmtDate(kuendigung)} nicht aufgelöst wird.\n2. Die Beklagte wird verurteilt, die Klägerin bis zum rechtskräftigen Abschluss des Verfahrens zu unveränderten Arbeitsbedingungen als Pflegefachkraft weiterzubeschäftigen.\n\nBegründung:\nDie Kündigung ist sozial ungerechtfertigt (§ 1 Abs. 2, 3 KSchG). Eine Weiterbeschäftigung am Standort Charlottenburg ist möglich; die Sozialauswahl ist fehlerhaft. Die ordnungsgemäße Anhörung des Betriebsrats (§ 102 BetrVG) wird mit Nichtwissen bestritten.\n\nDr. Julia Hartmann\nRechtsanwältin\n\nÜbermittelt per beA am ${fmtDate(klageAm)}.`,
+  });
+  dok(6, {
+    name: `Ladung zum Gütetermin am ${fmtDate(guete)}`, art: "beschluss", ordner: "Gericht", format: "pdf", quelle: "bea", seiten: 2, createdAt: dt(-8, 14, 12),
+    inhalt: `Arbeitsgericht Berlin\nGeschäftszeichen: ${gerichtsAz}\n\nIn dem Rechtsstreit Ostermann ./. Havelbrück Pflegedienste GmbH wird Termin zur Güteverhandlung (§ 54 ArbGG) bestimmt auf\n\n${fmtDateLong(guete)}, 09:00 Uhr, Saal 3,\nArbeitsgericht Berlin, Magdeburger Platz 1, 10785 Berlin.\n\nDas persönliche Erscheinen der Parteien wird angeordnet (§ 51 Abs. 1 ArbGG). Bleibt eine Partei aus, kann ein Ordnungsgeld festgesetzt werden.\n\nAuf Anordnung\nJustizbeschäftigte als Urkundsbeamtin der Geschäftsstelle`,
+    ki: { zusammenfassung: `Ladung zur Güteverhandlung am ${fmtDate(guete)}, 9:00 Uhr, Saal 3; persönliches Erscheinen angeordnet.` },
+  });
+  // Klagefrist (§ 4 S. 1 KSchG): rechtzeitig eingereicht – erledigt mit Nachweis
+  const kf = berechneNachRegel("kschg_klage", zugang, ctx.tenant.bundesland, undefined, { feiertagsOrt: `${G.arbg} – laut Akte` });
+  const klagefrist: Frist = {
+    id: "hero-guete-f1", akteId: ost.id, titel: kf.regel.titel, typ: kf.regel.typ, datum: kf.ende, vorfrist: kf.vorfrist, regelKey: "kschg_klage", grundlage: kf.regel.grundlage,
+    ereignisDatum: zugang, rechenweg: kf.rechenweg, status: "erledigt", erledigtAm: dt(-12, 15, 22), erledigtVon: julia.id, verantwortlichId: julia.id, quelle: "ki",
+    kontrolliertVon: mia?.id, createdAt: dt(-24, 10, 21),
+    erledigtNachweis: { art: "bea", text: "Kündigungsschutzklage per beA an das Arbeitsgericht Berlin übermittelt (Eingangsbestätigung liegt vor)", versandAm: dt(-12, 15, 18) },
+  };
+  const termin: Frist = {
+    id: "hero-guete-f2", akteId: ost.id, titel: "Gütetermin", typ: "termin", datum: guete, uhrzeit: "09:00", ort: "Arbeitsgericht Berlin, Magdeburger Platz 1, Saal 3",
+    status: "offen", verantwortlichId: julia.id, quelle: "ki", createdAt: dt(-8, 14, 13), notiz: "Persönliches Erscheinen der Mandantin angeordnet (§ 51 Abs. 1 ArbGG).",
+  };
+  data.fristen.push(klagefrist, termin);
+  const zeitpunkte: [string, Aktivitaet["akteur"], string, string?, string?][] = [
+    [dt(-24, 10, 1), "automation", `Mandatsaufnahme-Paket (Vollmacht, Mandatsbestätigung, Datenschutz) erstellt und zur Freigabe vorgelegt – ${ost.aktenzeichen}`, "mandatsaufnahme"],
+    [dt(-24, 10, 21), "ki", `Kündigungsschreiben gelesen: Klagefrist nach § 4 S. 1 KSchG erkannt und berechnet – ${ost.aktenzeichen}`, "posteingang-fristen"],
+    [dt(-12, 15, 18), "nutzer", `Kündigungsschutzklage per beA an das Arbeitsgericht Berlin übermittelt – ${ost.aktenzeichen}`, undefined, julia.id],
+    [dt(-12, 15, 22), "nutzer", `Klagefrist (§ 4 KSchG) als erledigt markiert – Nachweis: beA-Versand ${fmtDate(klageAm)}, 15:18 Uhr – ${ost.aktenzeichen}`, undefined, julia.id],
+    [dt(-8, 14, 13), "ki", `Ladung erkannt: Gütetermin am ${fmtDate(guete)}, 9:00 Uhr eingetragen – ${ost.aktenzeichen}`, "posteingang-fristen"],
+  ];
+  zeitpunkte.forEach(([zeit, akteur, text, key, userId], i) => {
+    const def = key ? AUTOMATION_DEFS.find((x) => x.key === key) : undefined;
+    data.aktivitaeten.push({ id: `hero-guete-ak${i + 1}`, zeit, akteur, akteId: ost.id, text, userId, automationKey: key, minutenGespart: akteur === "nutzer" ? undefined : def?.minutenProLauf });
+  });
+
+  // 2) Weitere abrechenbare RSV-Akten mit erteilter Deckung (Sammelabrechnung: „4 RSV-Akten in einem Durchgang“)
+  const rsvAkten: { nr: number; mandant: Omit<Kontakt, "id" | "rollen" | "createdAt">; gegner: Omit<Kontakt, "id" | "rollen" | "createdAt">; akte: Pick<Akte, "titel" | "sachgebiet" | "gegenstandswert" | "beschreibung" | "schlagworte" | "rsv">; bearbeiter: string; tage: number }[] = [
+    {
+      nr: 1, bearbeiter: julia.id, tage: 41,
+      mandant: { typ: "person", name: "Doris Engelke", vorname: "Doris", nachname: "Engelke", anrede: "Frau", email: "doris.engelke@web.de", telefon: "+49 160 4471 9023", strasse: "Sonnenallee 112", plz: "12045", ort: "Berlin" },
+      gegner: { typ: "organisation", name: "Stadtwerke Spreetal GmbH", firma: "Stadtwerke Spreetal GmbH", email: "personal@stadtwerke-spreetal.de", strasse: "Spreeufer 4", plz: "10178", ort: "Berlin" },
+      akte: {
+        titel: "Engelke ./. Stadtwerke Spreetal GmbH (Zeugnis)", sachgebiet: "Arbeitsrecht", gegenstandswert: 3900,
+        beschreibung: "Berichtigung des Arbeitszeugnisses (Leistungsbeurteilung „stets zu unserer Zufriedenheit“ statt „vollsten“). Außergerichtliche Aufforderung mit Fristsetzung versandt.",
+        schlagworte: ["arbeitszeugnis", "zeugnisberichtigung", "leistungsbeurteilung"],
+        rsv: { versicherung: "Spreebogen Rechtsschutz VVaG", versicherungsnummer: "RS-3318842", schadennummer: `S${ctx.yy}-50311`, deckung: "erteilt", selbstbeteiligung: 150 },
+      },
+    },
+    {
+      nr: 2, bearbeiter: jonas.id, tage: 55,
+      mandant: { typ: "person", name: "Malte Rehbein", vorname: "Malte", nachname: "Rehbein", anrede: "Herr", email: "malte.rehbein@gmx.de", telefon: "+49 151 2290 6614", strasse: "Allee der Kosmonauten 31", plz: "12681", ort: "Berlin" },
+      gegner: { typ: "organisation", name: "Wohnungsgenossenschaft Marzahn-Ost eG", firma: "Wohnungsgenossenschaft Marzahn-Ost eG", email: "vermietung@wg-marzahn-ost.de", strasse: "Landsberger Allee 520", plz: "12681", ort: "Berlin" },
+      akte: {
+        titel: "Rehbein ./. Wohnungsgenossenschaft Marzahn-Ost eG", sachgebiet: "Mietrecht", gegenstandswert: 1680,
+        beschreibung: "Mieterhöhungsverlangen um 140 € monatlich (§ 558 BGB) – Vergleichswohnungen nicht vergleichbar, Kappungsgrenze überschritten. Zustimmung außergerichtlich verweigert, Begründung gegenüber der Vermieterin.",
+        schlagworte: ["mieterhöhung", "558 bgb", "kappungsgrenze", "vergleichswohnungen"],
+        rsv: { versicherung: "Nordlicht Rechtsschutz AG", versicherungsnummer: "RS-5520917", schadennummer: `S${ctx.yy}-60824`, deckung: "erteilt", selbstbeteiligung: 250 },
+      },
+    },
+    {
+      nr: 3, bearbeiter: jonas.id, tage: 33,
+      mandant: { typ: "person", name: "Henrik Vossberg", vorname: "Henrik", nachname: "Vossberg", anrede: "Herr", email: "henrik.vossberg@posteo.de", telefon: "+49 176 3381 4507", strasse: "Prenzlauer Allee 188", plz: "10405", ort: "Berlin" },
+      gegner: { typ: "organisation", name: "Reiseveranstalter Sonnenkap GmbH", firma: "Reiseveranstalter Sonnenkap GmbH", email: "kundenservice@sonnenkap-reisen.de", strasse: "Friedrichstraße 95", plz: "10117", ort: "Berlin" },
+      akte: {
+        titel: "Vossberg ./. Reiseveranstalter Sonnenkap GmbH (Reisemangel)", sachgebiet: "Vertragsrecht", gegenstandswert: 2400,
+        beschreibung: "Minderung des Reisepreises wegen Baulärms und fehlenden Pools (§ 651m BGB); Mängelanzeige vor Ort dokumentiert. Anspruch außergerichtlich geltend gemacht.",
+        schlagworte: ["reisemangel", "minderung", "pauschalreise", "651m bgb"],
+        rsv: { versicherung: "Isarwerk Versicherung AG", versicherungsnummer: "RS-7740265", schadennummer: `S${ctx.yy}-71956`, deckung: "erteilt", selbstbeteiligung: 0 },
+      },
+    },
+  ];
+  for (const r of rsvAkten) {
+    const m = festerKontakt(ctx, { id: `hero-rsv-k${r.nr}m`, rollen: ["mandant"], createdAt: dt(-r.tage, 9, 10), ...r.mandant });
+    const g = festerKontakt(ctx, { id: `hero-rsv-k${r.nr}g`, rollen: ["gegner"], createdAt: dt(-r.tage, 9, 12), ...r.gegner });
+    const a: Akte = {
+      id: `hero-rsv-a${r.nr}`, aktenzeichen: naechsteNr(), phase: "Außergerichtlich", status: "offen", mandantId: m.id, gegnerId: g.id,
+      bearbeiterId: r.bearbeiter, sachbearbeiterId: mia?.id, prioritaet: "normal", createdAt: dt(-r.tage, 9, 30), updatedAt: dt(-r.tage + 9, 11, 0), ...r.akte,
+    };
+    data.akten.push(a);
+    festesDok(ctx, { id: `hero-rsv-d${r.nr}a`, akteId: a.id, name: "Vollmacht", art: "vollmacht", ordner: "Mandant", format: "pdf", quelle: "generiert", seiten: 1, createdAt: dt(-r.tage, 9, 45), inhalt: `Vollmacht: ${m.name} bevollmächtigt ${ctx.tenant.name} in der Sache ${a.titel}.` });
+    festesDok(ctx, {
+      id: `hero-rsv-d${r.nr}b`, akteId: a.id, name: `Deckungszusage ${r.akte.rsv!.versicherung}`, art: "brief", ordner: "Korrespondenz", format: "pdf", quelle: "email", seiten: 1, createdAt: dt(-r.tage + 6, 10, 15),
+      inhalt: `${r.akte.rsv!.versicherung} – Schaden-Nr. ${r.akte.rsv!.schadennummer}\n\nVersicherungsnehmer: ${m.name} (${r.akte.rsv!.versicherungsnummer})\n\nWir erteilen Deckungszusage für die außergerichtliche Interessenwahrnehmung in der Angelegenheit ${a.titel}. Selbstbeteiligung: ${r.akte.rsv!.selbstbeteiligung ? `${r.akte.rsv!.selbstbeteiligung} €` : "keine"}.`,
+    });
+    festesDok(ctx, {
+      id: `hero-rsv-d${r.nr}c`, akteId: a.id, name: `Aufforderungsschreiben an ${g.name}`, art: "brief", ordner: "Korrespondenz", format: "docx", quelle: "generiert", autorId: r.bearbeiter, seiten: 2, status: "versandt", createdAt: dt(-r.tage + 9, 11, 0),
+      inhalt: `${g.name}\n${g.strasse}\n${g.plz} ${g.ort}\n\nIn der Angelegenheit ${a.titel} zeigen wir an, dass wir ${m.anrede === "Frau" ? "Frau" : "Herrn"} ${m.nachname} vertreten. ${r.akte.beschreibung}\n\nMit freundlichen Grüßen\n${ctx.tenant.name}`,
+    });
+  }
 }

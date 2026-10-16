@@ -8,14 +8,14 @@ import { cn } from "@/lib/cn";
 import { Abschnitt, Kopf, Reveal, scrollZu } from "./basis";
 import { ANKER } from "./Navigation";
 import { VERARBEITUNGSORT } from "@/content/datenschutz";
-import { ESCROW, LIZENZ_KENNZEICHNUNG, UEBERTRAGBARKEIT, WARTUNG } from "@/content/lizenz";
+import { ESCROW_HINWEIS, LIZENZ_KENNZEICHNUNG, PREIS_HINWEIS, UEBERTRAGBARKEIT_HINWEIS, WARTUNG_HINWEIS, WARTUNG_INHALT } from "@/content/lizenz";
 import { KontaktBlock, useAnfrage } from "./Anfrage";
 
 const PROBLEME = [
   { i: <AlertOctagon className="size-5" />, p: "Nach der Aktualisierung funktioniert der gewohnte Ablauf nicht mehr.", l: "Geprüfte Aktualisierungen – Zeitpunkt wählen Sie." },
   { i: <Hourglass className="size-5" />, p: "45 bis 60 Minuten in der Telefon-Warteschleife.", l: "Feste Ansprechpartnerin mit Durchwahl." },
   { i: <Link2Off className="size-5" />, p: "beA oder E-Mail streikt – mit einer Fehlermeldung, die niemand versteht.", l: "Betriebsstatus und Fehler in Klartext." },
-  { i: <Search className="size-5" />, p: "Die Suche in großen Akten dauert länger als das Blättern.", l: "Volltextsuche über alles mit ⌘K." },
+  { i: <Search className="size-5" />, p: "Die Suche in großen Akten dauert länger als das Blättern.", l: "Volltextsuche über alles mit Strg+K (Mac: ⌘K)." },
   { i: <Receipt className="size-5" />, p: "Das Forderungskonto rechnet Zinsen nicht vollständig.", l: "Taggenaue Zinsen, Verrechnung nach § 367 BGB." },
   { i: <Mail className="size-5" />, p: "Nach dem E-Mail-Versand ist der Fallkontext weg.", l: "Versand aus der Akte bleibt in der Akte." },
   { i: <ShieldAlert className="size-5" />, p: "Für die Software braucht es lokale Admin-Rechte.", l: "Läuft ohne Admin-Rechte." },
@@ -54,11 +54,11 @@ export function Erfahrungen() {
 const FRAGEN = [
   {
     f: "Was bedeutet „Lifetime-Lizenz“ genau?",
-    a: `Lifetime-Lizenz heißt: Kauflizenz ohne Laufzeit. Sie erwerben AnwaltApex einmalig und dürfen die Software dauerhaft nutzen – ohne monatliche Lizenzgebühren. ${WARTUNG.kurz} Ohne Wartung bleiben Software und Daten unbefristet nutzbar und vollständig exportierbar. ${UEBERTRAGBARKEIT}. ${ESCROW}. (${LIZENZ_KENNZEICHNUNG}.)`,
+    a: `Lifetime-Lizenz heißt: Kauflizenz ohne Laufzeit. Sie erwerben AnwaltApex einmalig und dürfen die Software dauerhaft nutzen – ohne monatliche Lizenzgebühren. ${WARTUNG_HINWEIS}. Ohne Wartung bleiben Software und Daten unbefristet nutzbar und vollständig exportierbar. ${UEBERTRAGBARKEIT_HINWEIS}. ${ESCROW_HINWEIS}. (${LIZENZ_KENNZEICHNUNG}.)`,
   },
   {
     f: "Was kostet AnwaltApex?",
-    a: `Die einmalige Investition richtet sich nach der Kanzleigröße, also nach Arbeitsplätzen und gewünschten Modulen. ${WARTUNG.kurz} Enthalten: ${WARTUNG.enthalten.join(", ")}. Ohne Wartung: ${WARTUNG.ohne.join("; ")}. Ihr Angebot fordern Sie über „Angebot anfordern“ an – im Echtbetrieb meldet sich Ihre Ansprechpartnerin innerhalb eines Werktags. (${LIZENZ_KENNZEICHNUNG}.)`,
+    a: `${PREIS_HINWEIS}: Die einmalige Investition richtet sich nach der Kanzleigröße, also nach Arbeitsplätzen und gewünschten Modulen. ${WARTUNG_HINWEIS}. Enthalten: ${WARTUNG_INHALT.enthalten.join(", ")}. Ohne Wartung: ${WARTUNG_INHALT.ohne.join("; ")}. Ihr Angebot fordern Sie über „Angebot anfordern“ an – im Echtbetrieb meldet sich Ihre Ansprechpartnerin innerhalb eines Werktags. (${LIZENZ_KENNZEICHNUNG}.)`,
   },
   {
     f: "Wo liegen unsere Daten?",
@@ -171,7 +171,7 @@ const RECHTLICHES: Record<Rechtliches, { label: string; titel: string; text: str
   datenschutz: {
     label: "Datenschutz",
     titel: "Datenschutzerklärung",
-    text: "Die Datenschutzerklärung (Informationen nach Art. 13 DSGVO) ist in diesem Prototyp noch nicht hinterlegt. Diese Seite lädt keine externen Schriften und setzt kein Tracking ein.",
+    text: "Die Datenschutzerklärung (Informationen nach Art. 13 DSGVO) ist in diesem Prototyp noch nicht hinterlegt. Diese Seite lädt keine externen Schriften und verzichtet auf jede Nutzungsverfolgung.",
   },
   agb: {
     label: "AGB & Lizenzbedingungen",
@@ -200,7 +200,7 @@ export function Fusszeile() {
           </div>
           <p className="mt-3 max-w-[38ch] text-[13px] leading-relaxed text-fg-3">Ein Werkzeug. Volle Kontrolle. Die Kanzlei-Software, die mitdenkt – mit Lifetime-Lizenz statt Abo.</p>
           <p className="mt-4 flex items-center gap-2 text-[13px] text-fg-3">
-            <Lock className="size-3.5" /> Keine externen Schriften, kein Tracking auf dieser Seite.
+            <Lock className="size-3.5" /> Keine externen Schriften, ohne Nutzungsverfolgung.
           </p>
         </div>
         <nav aria-label="Produkt">

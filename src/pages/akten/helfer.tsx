@@ -4,10 +4,10 @@ import {
   Briefcase, Home, Car, HeartHandshake, ScrollText, Gavel, Coins, FileSignature, HardHat, Landmark,
   Mail, PenLine, UserRound, Receipt, Paperclip, type LucideIcon,
 } from "lucide-react";
-import type { Akte, AktenPhase, Dokument, Frist, FristTyp, Kontakt, Sachgebiet, User } from "@/core/types";
+import type { Akte, AktenPhase, Buchung, Dokument, Frist, FristTyp, Kontakt, Sachgebiet, User } from "@/core/types";
 import { fristDringlichkeit } from "@/core/fristen";
 import { fristenJeAkte } from "@/core/fristenLage";
-import { addDays, diffDays, nowLocal, relDays, today } from "@/core/dates";
+import { addDays, diffDays, fmtEUR, nowLocal, relDays, round2, today } from "@/core/dates";
 import { istWerktag } from "@/core/feiertage";
 import type { Bundesland } from "@/core/types";
 import { useCol, useData } from "@/store/data";
@@ -214,4 +214,101 @@ export const DOK_ART_LABEL: Record<Dokument["art"], string> = {
 export function fmtKb(kb: number): string {
   if (kb >= 1024) return `${(kb / 1024).toLocaleString("de-DE", { maximumFractionDigits: 1 })} MB`;
   return `${Math.max(1, Math.round(kb))} KB`;
+}
+
+// ───────────── Eigene Schreiben, Bearbeitungsstand, Platzhalter ─────────────
+
+/** Eigenes Schreiben der Kanzlei (erzeugt bzw. aus eigener Vorlage) – nur diese tragen den Kanzleikopf und lassen sich bearbeiten. */
+export function eigenesSchreiben(d: Pick<Dokument, "quelle">): boolean {
+  return d.quelle === "generiert";
+}
+
+/** Eingang von außen (beA, E-Mail, Scan, Umzug, hochgeladenes Fremddokument) – wird nie verändert und nie automatisch freigegeben. */
+export function istEingang(d: Pick<Dokument, "quelle">): boolean {
+  return !eigenesSchreiben(d);
+}
+
+export const DOK_STATUS_INFO: Record<NonNullable<Dokument["status"]>, { label: string; tone: Tone }> = {
+  entwurf: { label: "Entwurf", tone: "amber" },
+  freigegeben: { label: "Freigegeben", tone: "green" },
+  versandt: { label: "Versandt", tone: "ink" },
+};
+
+/** Offene Platzhalter im Text („[Anschrift der Versicherung]“) – je Platzhalter einmal, in der Reihenfolge des Auftretens. */
+export function offenePlatzhalter(text: string): string[] {
+  return [...new Set(text.match(/\[[^\]\n]{1,80}\]/g) ?? [])];
+}
+
+/** „Deckungsanfrage Nordlicht Rechtsschutz AG (16.10.2026) · Version 2“ – Datum nur, wenn es nicht schon im Namen steht. */
+export function dokumentBezeichnung(d: Pick<Dokument, "name" | "createdAt" | "version">): string {
+  const datum = d.createdAt.slice(0, 10).split("-").reverse().join(".");
+  const name = d.name.includes(datum) ? d.name : `${d.name} (${datum})`;
+  return `${name} · Version ${d.version}`;
+}
+
+/** „Deckungsanfrage X (Entwurf vom 16.10.2026)“ → „Deckungsanfrage X (16.10.2026)“ – nach Freigabe bzw. Versand. */
+export function ohneEntwurfsVermerk(name: string): string {
+  return name.replace(/\s*\(Entwurf vom ([\d.]+)\)$/, " ($1)").replace(/\s*\(Entwurf\)$/, "");
+}
+
+/** Summen des Aktenkontos: Honorarkonto (offener Saldo) und Fremdgeld (Treuhand) getrennt – für Reiter und Abschließen-Dialog. */
+export function kontoSummen(buchungen: Buchung[]) {
+  let honorar = 0, bezahlt = 0, vorschuss = 0, angefordert = 0, fremdEin = 0, fremdAus = 0, auslagen = 0;
+  for (const b of buchungen) {
+    const fremd = b.fremdgeld || b.art === "fremdgeld";
+    if (fremd) {
+      if (b.art === "fremdgeld" && b.betrag < 0) fremdAus += -b.betrag;
+      else fremdEin += Math.abs(b.betrag);
+      continue;
+    }
+    if (b.art === "honorar") honorar += b.betrag;
+    else if (b.art === "zahlung") bezahlt += -b.betrag;
+    else if (b.art === "vorschuss") {
+      // nur eingegangene Vorschüsse mindern das Offene – ein angeforderter ist eine Forderung, kein Guthaben
+      if (b.betrag < 0) vorschuss += -b.betrag;
+      else angefordert += b.betrag;
+    } else auslagen += b.betrag;
+  }
+  return {
+    honorar: round2(honorar), bezahlt: round2(bezahlt), vorschuss: round2(vorschuss), angefordert: round2(angefordert), auslagen: round2(auslagen),
+    offen: round2(honorar + auslagen + angefordert - bezahlt - vorschuss), fremdEin: round2(fremdEin), fremdOffen: round2(fremdEin - fremdAus),
+  };
+}
+
+/**
+ * Mobil (≤ 640 px): Bedienflächen der Akte mindestens 44 × 44 px – Schaltflächen höher, Symbolknöpfe größer; Kontrollkästchen
+ * und Schalter behalten ihre Optik, bekommen aber eine unsichtbar vergrößerte Trefferfläche.
+ */
+export const MOBIL_TREFFER =
+  "max-sm:[&_.btn]:[--h:44px] max-sm:[&_.icon-btn]:!size-11 max-sm:[&_[role=checkbox]]:relative max-sm:[&_[role=checkbox]]:before:absolute max-sm:[&_[role=checkbox]]:before:-inset-[13px] max-sm:[&_[role=checkbox]]:before:content-[''] max-sm:[&_[role=switch]]:relative max-sm:[&_[role=switch]]:before:absolute max-sm:[&_[role=switch]]:before:-inset-y-[7px] max-sm:[&_[role=switch]]:before:inset-x-0 max-sm:[&_[role=switch]]:before:content-['']";
+
+/** Gerichtsbezeichnung in der üblichen Kurzform: „Arbeitsgericht Paderborn“ → „ArbG Paderborn“, „Landgericht Berlin II“ → „LG Berlin II“. */
+const GERICHT_KURZ: [RegExp, string][] = [
+  [/^Bundesgerichtshof\b/, "BGH"],
+  [/^Bundesarbeitsgericht\b/, "BAG"],
+  [/^Bundessozialgericht\b/, "BSG"],
+  [/^Bundesverwaltungsgericht\b/, "BVerwG"],
+  [/^Bundesfinanzhof\b/, "BFH"],
+  [/^Landesarbeitsgericht\b/, "LAG"],
+  [/^Landessozialgericht\b/, "LSG"],
+  [/^Oberverwaltungsgericht\b/, "OVG"],
+  [/^Verwaltungsgerichtshof\b/, "VGH"],
+  [/^Oberlandesgericht\b/, "OLG"],
+  [/^Kammergericht\b/, "KG"],
+  [/^Arbeitsgericht\b/, "ArbG"],
+  [/^Sozialgericht\b/, "SG"],
+  [/^Verwaltungsgericht\b/, "VG"],
+  [/^Finanzgericht\b/, "FG"],
+  [/^Landgericht\b/, "LG"],
+  [/^Amtsgericht\b/, "AG"],
+];
+export function gerichtKurz(name: string): string {
+  const n = name.trim();
+  for (const [re, kurz] of GERICHT_KURZ) if (re.test(n)) return n.replace(re, kurz);
+  return n;
+}
+
+/** Gegenstandswert in Listen: ganze Euro ohne Nachkommastellen, sonst auf den Cent (2.180,50 €). */
+export function wertKurz(v: number): string {
+  return fmtEUR(v, { cents: Math.round(v * 100) % 100 !== 0 });
 }

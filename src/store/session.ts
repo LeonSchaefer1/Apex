@@ -89,6 +89,15 @@ export const useSession = create<SessionState>((set, get) => ({
     if (!k || get().gesperrt) return;
     sperreMerken(k);
     set({ gesperrt: true });
+    // „Sperre wegen Inaktivität“ ins Kanzleiprotokoll – und sofort in der Anzeige (ohne erneutes Laden)
+    void Promise.resolve(getBackend().sperreProtokollieren?.())
+      .then((a) => {
+        if (!a) return;
+        useData.setState((st) => (st.data.aktivitaeten.some((x) => x.id === a.id) ? st : { data: { ...st.data, aktivitaeten: [a, ...st.data.aktivitaeten] } }));
+      })
+      .catch(() => {
+        /* Protokoll ist nachrangig – die Sperre gilt trotzdem */
+      });
   },
   entsperren: async (passwort) => {
     await getBackend().entsperren(passwort);

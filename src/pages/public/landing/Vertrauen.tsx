@@ -69,7 +69,7 @@ export function UmzugBand() {
 const PRINZIPIEN = [
   { i: <Calculator className="size-5" />, t: "KI erkennt – Rechenkern berechnet", s: "Fristen rät keine KI. Sie erkennt das auslösende Ereignis, der geprüfte Fristenrechner rechnet nach §§ 187 ff. BGB und der jeweiligen Verfahrensordnung (z. B. § 222 ZPO, § 43 StPO) – mit Rechenweg und Feiertagen je Bundesland." },
   { i: <BookCheck className="size-5" />, t: "Nachprüfbare Quellen", s: "Präzedenzfälle übernimmt die KI nur aus der Fall-Datenbank – jeweils mit Gericht, Datum und Aktenzeichen zum Nachprüfen. KI-Texte sind als Entwurf gekennzeichnet und werden vor Verwendung anwaltlich geprüft." },
-  { i: <ServerCog className="size-5" />, t: "Deutsches Rechenzentrum oder eigener Server", s: "Betrieb in einem deutschen Rechenzentrum oder auf einem eigenen Server in der Kanzlei. Live-KI nur aufgabenbezogen über Ihren Server beim KI-Anbieter Anthropic (USA) – oder komplett offline. Keine externen Schriften, kein Tracking." },
+  { i: <ServerCog className="size-5" />, t: "Deutsches Rechenzentrum oder eigener Server", s: "Betrieb in einem deutschen Rechenzentrum oder auf einem eigenen Server in der Kanzlei. Live-KI – also die Verarbeitung durch das Sprachmodell eines KI-Anbieters – nur aufgabenbezogen über Ihren Server bei Anthropic (USA), oder komplett offline. Keine externen Schriften, ohne Nutzungsverfolgung." },
   { i: <Lock className="size-5" />, t: "Verschwiegenheit nach § 203 StGB", s: "Strikte Mandantentrennung auf Datenbankebene, verschlüsselte Übertragung, Rollen und Rechte. Sie behalten die Kontrolle über jede Freigabe." },
 ];
 

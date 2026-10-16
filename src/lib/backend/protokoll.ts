@@ -19,13 +19,49 @@ export const VORGANG = {
   ersteAnmeldung: (name: string) => `Erste Anmeldung von ${name}`,
   eigenesPasswort: (name: string) => `Eigenes Passwort festgelegt – ${name}`,
   consolePasswort: (name: string) => `Startpasswort für ${name} durch AnwaltApex (Apex Console) neu vergeben`,
-  standardPasswort: (name: string) => `Standardpasswort für ${name} durch AnwaltApex (Apex Console) wiederhergestellt`,
+  standardPasswort: (name: string) => `Demo-Passwort für ${name} durch AnwaltApex (Apex Console) wiederhergestellt`,
   beispieldatenZurueckgesetzt: (durch?: string) => (durch ? `Beispieldaten zurückgesetzt – durch ${durch}` : "Beispieldaten durch AnwaltApex (Apex Console) zurückgesetzt"),
   zweiFaktorEingerichtet: (name: string) => `Zwei-Faktor-Anmeldung eingerichtet – ${name}`,
   zweiFaktorDeaktiviert: (name: string) => `Zwei-Faktor-Anmeldung deaktiviert – ${name}`,
   zweiFaktorZurueckgesetzt: (name: string, durch: string) => `Zwei-Faktor-Anmeldung von ${name} zurückgesetzt – durch ${durch}`,
   zweiFaktorWiederherstellung: (name: string) => `Anmeldung mit Wiederherstellungscode – ${name}`,
+  anmeldung: (name: string) => `Anmeldung – ${name}`,
+  abmeldung: (name: string) => `Abmeldung – ${name}`,
+  anmeldungFehlgeschlagen: (name: string, grund: FehlGrund) => `Anmeldung fehlgeschlagen (${FEHL_GRUND[grund]}) – ${name}`,
+  sperreInaktivitaet: (name: string) => `Sperre wegen Inaktivität – ${name}`,
+  fehlversucheWarnung: (name: string, n: number) => `${n} fehlgeschlagene Anmeldungen für ${name} innerhalb von 15 Minuten – bitte prüfen`,
+  bundeslandGeaendert: (vorher: string, nachher: string) => `Bundesland geändert: ${vorher} → ${nachher}`,
 } as const;
+
+/** Grund eines Fehlversuchs – nie das eingegebene Passwort. */
+export type FehlGrund = "passwort" | "startpasswort" | "zweifaktor";
+export const FEHL_GRUND: Record<FehlGrund, string> = {
+  passwort: "falsches Passwort",
+  startpasswort: "Startpasswort nicht mehr gültig",
+  zweifaktor: "Zwei-Faktor-Code falsch",
+};
+
+/** Ab so vielen Fehlversuchen für dasselbe Konto innerhalb des Fensters gibt es einen Hinweis an Partner und Administration. */
+export const ANMELDE_WARN_SCHWELLE = 3;
+export const ANMELDE_WARN_FENSTER_MS = 15 * 60_000;
+
+/** Anmeldeereignis im Kanzleiprotokoll (Filter „Anmeldungen“). */
+export function anmeldeVorgang(text: string, opts: { akteur: "system" | "nutzer"; userId?: ID; meldung?: boolean }): Aktivitaet {
+  const a = vorgang(text, opts);
+  return { ...a, kategorie: "anmeldung", ...(opts.meldung ? { meldung: true } : {}) };
+}
+
+/**
+ * Zählt Fehlversuche je Konto (nur im Arbeitsspeicher). Liefert die Anzahl im Fenster – genau beim Erreichen der Schwelle
+ * meldet der Aufrufer „3 fehlgeschlagene Anmeldungen für …“.
+ */
+export function zaehleFehlversuch(speicher: Map<string, number[]>, kontoId: string, jetzt = Date.now()): number {
+  const liste = (speicher.get(kontoId) ?? []).filter((t) => jetzt - t < ANMELDE_WARN_FENSTER_MS);
+  liste.push(jetzt);
+  speicher.set(kontoId, liste);
+  if (speicher.size > 5000) for (const [k, v] of speicher) if (!v.some((t) => jetzt - t < ANMELDE_WARN_FENSTER_MS)) speicher.delete(k);
+  return liste.length;
+}
 
 let zaehler = 0;
 /** Neuer Protokolleintrag. `system`: Vorgang durch AnwaltApex bzw. das System; `nutzer`: von der Person selbst ausgelöst. */

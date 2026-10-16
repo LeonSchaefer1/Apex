@@ -10,7 +10,7 @@ import { Avatar, Button, Chip, Field, Input, Menu, Modal, Select } from "@/compo
 import { StartpasswortKarte } from "@/components/StartpasswortKarte";
 import { cn } from "@/lib/cn";
 import { fmtDate, fmtDateWd, today } from "@/core/dates";
-import { istAbwesend } from "@/core/vertretung";
+import { istAbwesend, istBerufstraeger } from "@/core/vertretung";
 import { Abschnitt } from "./teile";
 import { ROLLE_AUSWAHL, ROLLE_SPALTE, rollenLabel } from "@/lib/rollen";
 
@@ -39,15 +39,30 @@ const REIHENFOLGE: Rolle[] = ["partner", "anwalt", "refa", "azubi", "admin"];
 
 // Muss mit der Rechteprüfung in src/lib/backend (Demo), server/index.ts und den Fachseiten übereinstimmen
 // (VERWALTUNGS_ROLLEN, darfEebAbgeben, darfAbrechnung, darfLizenzSehen).
-const RECHTE: { bereich: string; r: Record<Rolle, boolean> }[] = [
-  { bereich: "Akten, Fristen & Kontakte", r: { partner: true, anwalt: true, refa: true, azubi: true, admin: true } },
-  { bereich: "Posteingang & beA (lesen, zuordnen, Notizen)", r: { partner: true, anwalt: true, refa: true, azubi: true, admin: true } },
-  { bereich: "eEB abgeben (nur Berufsträger)", r: { partner: true, anwalt: true, refa: false, azubi: false, admin: false } },
-  { bereich: "Abrechnung & Aktenkonten (Fremdgeld)", r: { partner: true, anwalt: true, refa: true, azubi: false, admin: true } },
-  { bereich: "Lizenz & Teamliste einsehen", r: { partner: true, anwalt: false, refa: false, azubi: false, admin: true } },
-  { bereich: "Team & Zugänge verwalten", r: { partner: true, anwalt: false, refa: false, azubi: false, admin: true } },
-  { bereich: "Kanzleiprofil & Datenbestand", r: { partner: true, anwalt: false, refa: false, azubi: false, admin: true } },
+const RECHTE: { bereich: string; ja: string; nein: string; r: Record<Rolle, boolean> }[] = [
+  { bereich: "Akten, Fristen & Kontakte", ja: "Akten, Fristen, Kontakte", nein: "keine Akten", r: { partner: true, anwalt: true, refa: true, azubi: true, admin: true } },
+  { bereich: "Posteingang & beA (lesen, zuordnen, Notizen)", ja: "Posteingang", nein: "kein Posteingang", r: { partner: true, anwalt: true, refa: true, azubi: true, admin: true } },
+  { bereich: "eEB abgeben (nur Berufsträger)", ja: "eEB", nein: "kein eEB", r: { partner: true, anwalt: true, refa: false, azubi: false, admin: false } },
+  { bereich: "Abrechnung & Aktenkonten (Fremdgeld)", ja: "Abrechnung", nein: "keine Abrechnung und Aktenkonten", r: { partner: true, anwalt: true, refa: true, azubi: false, admin: true } },
+  { bereich: "Lizenz & Teamliste einsehen", ja: "Lizenz- und Teamdaten", nein: "keine Lizenz- und Teamdaten", r: { partner: true, anwalt: false, refa: false, azubi: false, admin: true } },
+  { bereich: "Team & Zugänge verwalten", ja: "Zugänge verwalten", nein: "keine Zugangsverwaltung", r: { partner: true, anwalt: false, refa: false, azubi: false, admin: true } },
+  { bereich: "Kanzleiprofil & Datenbestand", ja: "Kanzleiprofil", nein: "kein Kanzleiprofil", r: { partner: true, anwalt: false, refa: false, azubi: false, admin: true } },
 ];
+
+/**
+ * Folgen einer Rolle in einem Satz – aus derselben Rechte-Matrix wie die Tabelle:
+ * „Fachangestellte: Akten, Fristen, Kontakte, Posteingang, Abrechnung – kein eEB, keine Lizenz- und Teamdaten, …“
+ */
+function rollenFolgen(rolle: Rolle): string {
+  const ja = RECHTE.filter((z) => z.r[rolle]).map((z) => z.ja);
+  const nein = RECHTE.filter((z) => !z.r[rolle]).map((z) => z.nein);
+  // Lizenz/Teamliste und Zugangsverwaltung hängen zusammen – einmal nennen
+  const kurz = nein.includes("keine Lizenz- und Teamdaten") ? nein.filter((x) => x !== "keine Zugangsverwaltung") : nein;
+  const name = ROLLE_AUSWAHL[rolle];
+  if (nein.length) return `${name}: ${ja.join(", ")} – ${kurz.join(", ")}.`;
+  const auch = ja.slice(2);
+  return `${name}: alle Rechte, auch ${auch.slice(0, -1).join(", ")} und ${auch[auch.length - 1]}.`;
+}
 
 function aktualisiereTeam(fn: (team: User[]) => User[]) {
   const s = useSession.getState().sitzung;
@@ -62,8 +77,9 @@ function abwesenheitText(u: User, team: User[]): string | null {
   const a = u.abwesenheit;
   if (!a || a.bis < today()) return null;
   const v = a.vertretungId ? team.find((x) => x.id === a.vertretungId) : undefined;
+  const sb = a.sachbearbeitungId ? team.find((x) => x.id === a.sachbearbeitungId) : undefined;
   const zeitraum = istAbwesend(u, today()) ? `abwesend bis ${fmtDate(a.bis).slice(0, 6)}` : `abwesend ${fmtDate(a.von).slice(0, 6)}–${fmtDate(a.bis).slice(0, 6)}`;
-  return `${zeitraum}${v ? ` · Vertretung: ${v.name}` : " · keine Vertretung"}${a.grund ? ` · ${a.grund}` : ""}`;
+  return `${zeitraum}${v ? ` · Vertretung: ${v.name}` : " · keine Vertretung"}${sb ? ` · Sachbearbeitung: ${sb.name}` : ""}${a.grund ? ` · ${a.grund}` : ""}`;
 }
 
 export function TeamTab() {
@@ -318,6 +334,8 @@ function AbwesenheitModal({ ziel, onClose }: { ziel: User | null; onClose: () =>
   const [von, setVon] = useState("");
   const [bis, setBis] = useState("");
   const [vertretung, setVertretung] = useState("");
+  const [sachbearbeitung, setSachbearbeitung] = useState("");
+  const [umgestellt, setUmgestellt] = useState<string | null>(null);
   const [grund, setGrund] = useState("");
   const [fehler, setFehler] = useState<string | null>(null);
   const [laedt, setLaedt] = useState(false);
@@ -326,12 +344,21 @@ function AbwesenheitModal({ ziel, onClose }: { ziel: User | null; onClose: () =>
     setGeoeffnetFuer(ziel.id);
     setVon(ziel.abwesenheit?.von ?? today());
     setBis(ziel.abwesenheit?.bis ?? "");
-    setVertretung(ziel.abwesenheit?.vertretungId ?? "");
+    // Früher gespeicherte Vertretung durch eine Fachangestellte: als Sachbearbeitung übernehmen, Vertretung neu wählen lassen
+    const alt = team.find((x) => x.id === ziel.abwesenheit?.vertretungId);
+    const umstellen = !!alt && istBerufstraeger(ziel) && !istBerufstraeger(alt);
+    setVertretung(umstellen ? "" : ziel.abwesenheit?.vertretungId ?? "");
+    setSachbearbeitung(ziel.abwesenheit?.sachbearbeitungId ?? (umstellen && alt ? alt.id : ""));
+    setUmgestellt(umstellen && alt ? `${alt.name} war als Vertretung eingetragen und ist jetzt für die Sachbearbeitung vorgesehen. Bitte wählen Sie eine Vertretung nach § 53 BRAO.` : null);
     setGrund(ziel.abwesenheit?.grund ?? "");
     setFehler(null);
   }
   if (!ziel && geoeffnetFuer) setGeoeffnetFuer(null);
-  const kandidaten = team.filter((u) => ziel && u.id !== ziel.id && !u.deaktiviert && u.rolle !== "azubi");
+  // § 53 BRAO: Berufsträger vertreten nur Partner und Rechtsanwälte; die Sachbearbeitung (z. B. Fachangestellte) ist ein eigenes Feld.
+  const berufstraeger = !!ziel && istBerufstraeger(ziel);
+  const aktiv = team.filter((u) => ziel && u.id !== ziel.id && !u.deaktiviert);
+  const kandidaten = aktiv.filter((u) => (berufstraeger ? istBerufstraeger(u) : u.rolle !== "azubi"));
+  const sbKandidaten = aktiv.filter((u) => u.rolle === "refa" || u.rolle === "azubi");
 
   const speichern = async (entfernen = false) => {
     if (!ziel) return;
@@ -342,13 +369,19 @@ function AbwesenheitModal({ ziel, onClose }: { ziel: User | null; onClose: () =>
     }
     setLaedt(true);
     try {
-      const neu = await getBackend().team.aendern(ziel.id, { abwesenheit: entfernen ? null : { von, bis, ...(vertretung ? { vertretungId: vertretung } : {}), ...(grund.trim() ? { grund: grund.trim() } : {}) } });
+      const sbId = berufstraeger && sachbearbeitung ? sachbearbeitung : "";
+      const neu = await getBackend().team.aendern(ziel.id, {
+        abwesenheit: entfernen ? null : { von, bis, ...(vertretung ? { vertretungId: vertretung } : {}), ...(sbId ? { sachbearbeitungId: sbId } : {}), ...(grund.trim() ? { grund: grund.trim() } : {}) },
+      });
       aktualisiereTeam((t) => t.map((x) => (x.id === ziel.id ? neu : x)));
       const v = team.find((x) => x.id === vertretung);
+      const sb = sbId ? team.find((x) => x.id === sbId) : undefined;
       useData.getState().log({
         akteur: "nutzer",
         userId: user.id,
-        text: entfernen ? `Abwesenheit von ${ziel.name} beendet` : `Abwesenheit von ${ziel.name} eingetragen (${fmtDate(von)}–${fmtDate(bis)}) – Vertretung: ${v?.name ?? "keine"} (§ 53 BRAO)`,
+        text: entfernen
+          ? `Abwesenheit von ${ziel.name} beendet`
+          : `Abwesenheit von ${ziel.name} eingetragen (${fmtDate(von)}–${fmtDate(bis)}) – Vertretung: ${v?.name ?? "keine"}${berufstraeger ? " (§ 53 BRAO)" : ""}${sb ? ` · Sachbearbeitung: ${sb.name}` : ""}`,
       });
       toast(entfernen ? "Abwesenheit entfernt" : "Abwesenheit eingetragen", { text: entfernen ? ziel.name : `${ziel.name} · bis ${fmtDateWd(bis)}${v ? ` · Vertretung: ${v.name}` : ""}`, ton: "erfolg" });
       onClose();
@@ -398,16 +431,42 @@ function AbwesenheitModal({ ziel, onClose }: { ziel: User | null; onClose: () =>
             <Input id="abw-bis" type="date" value={bis} min={von || undefined} onChange={(e) => setBis(e.target.value)} />
           </Field>
         </div>
-        <Field label="Vertretung" htmlFor="abw-vertretung" hint="§ 53 BRAO: Bei Abwesenheit über eine Woche ist für eine Vertretung zu sorgen.">
+        <Field
+          label={berufstraeger ? "Vertretung (Rechtsanwältin/Rechtsanwalt)" : "Vertretung"}
+          htmlFor="abw-vertretung"
+          hint={
+            berufstraeger
+              ? "§ 53 BRAO: Bei Abwesenheit über eine Woche ist für eine Vertretung durch eine Rechtsanwältin oder einen Rechtsanwalt zu sorgen. Zur Wahl stehen deshalb nur Partner und Anwälte."
+              : "Die Vertretung sieht die Fristen und Wiedervorlagen im Cockpit und unter „Nur meine“."
+          }
+        >
           <Select id="abw-vertretung" value={vertretung} onChange={(e) => setVertretung(e.target.value)}>
             <option value="">keine Vertretung</option>
             {kandidaten.map((u) => (
               <option key={u.id} value={u.id}>
                 {u.name} · {rollenLabel(u)}
+                {istAbwesend(u, von || today()) ? " · selbst abwesend" : ""}
               </option>
             ))}
           </Select>
         </Field>
+        {umgestellt && (
+          <p className="flex gap-2 rounded-[12px] bg-amber-soft px-3 py-2 text-[13px] text-fg-2">
+            <Info className="mt-0.5 size-3.5 shrink-0 text-amber" /> {umgestellt}
+          </p>
+        )}
+        {berufstraeger && sbKandidaten.length > 0 && (
+          <Field label="Sachbearbeitung während der Abwesenheit (optional)" htmlFor="abw-sachbearbeitung" hint="Fachangestellte übernehmen hier die Sachbearbeitung – nicht die Vertretung nach § 53 BRAO.">
+            <Select id="abw-sachbearbeitung" value={sachbearbeitung} onChange={(e) => setSachbearbeitung(e.target.value)}>
+              <option value="">wie bisher</option>
+              {sbKandidaten.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name} · {rollenLabel(u)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
         <Field label="Grund (optional)" htmlFor="abw-grund">
           <Input id="abw-grund" value={grund} maxLength={200} onChange={(e) => setGrund(e.target.value)} placeholder="z. B. Urlaub, Fortbildung" />
         </Field>
@@ -431,30 +490,40 @@ function FolgenModal({ daten, onClose }: { daten: { user: User; art: "deaktivier
   const akten = useData((s) => s.data.akten);
   const fristen = useData((s) => s.data.fristen);
   const [ziel, setZiel] = useState("");
+  const [sbZiel, setSbZiel] = useState("");
   const [laedt, setLaedt] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
   const u = daten?.user;
-  const offeneAkten = useMemo(() => (u ? akten.filter((a) => a.status !== "abgeschlossen" && (a.bearbeiterId === u.id || a.sachbearbeiterId === u.id)) : []), [akten, u]);
+  const offen = useMemo(() => (u ? akten.filter((a) => a.status !== "abgeschlossen") : []), [akten, u]);
+  const bearbAkten = useMemo(() => (u ? offen.filter((a) => a.bearbeiterId === u.id) : []), [offen, u]);
+  const sachAkten = useMemo(() => (u ? offen.filter((a) => a.sachbearbeiterId === u.id) : []), [offen, u]);
   const offeneFristen = useMemo(() => (u ? fristen.filter((f) => f.status === "offen" && f.verantwortlichId === u.id) : []), [fristen, u]);
-  const kandidaten = team.filter((x) => u && x.id !== u.id && !x.deaktiviert && x.rolle !== "azubi");
+  // Bearbeitung und Fristverantwortung nur an Berufsträger; Fachangestellte nur als Sachbearbeitung
+  const aktiv = team.filter((x) => u && x.id !== u.id && !x.deaktiviert);
+  const kandidaten = aktiv.filter(istBerufstraeger);
+  const sbKandidaten = [...aktiv.filter((x) => x.rolle === "refa"), ...kandidaten];
   const entfernen = daten?.art === "entfernen";
+  const bearbUndFristen = bearbAkten.length > 0 || offeneFristen.length > 0;
 
   const schliessen = () => {
     setZiel("");
+    setSbZiel("");
     setFehler(null);
     onClose();
   };
 
-  const uebertragen = (alt: User, neu: User) => {
+  const uebertragen = (alt: User, neu: User | undefined, neuSb: User | undefined) => {
     const st = useData.getState();
-    for (const a of offeneAkten) {
+    for (const a of offen) {
       const patch: Partial<typeof a> = {};
-      if (a.bearbeiterId === alt.id) patch.bearbeiterId = neu.id;
-      if (a.sachbearbeiterId === alt.id) patch.sachbearbeiterId = neu.id;
+      if (neu && a.bearbeiterId === alt.id) patch.bearbeiterId = neu.id;
+      if (neuSb && a.sachbearbeiterId === alt.id) patch.sachbearbeiterId = neuSb.id;
+      if (!Object.keys(patch).length) continue;
       st.patch("akten", a.id, patch);
-      st.log({ akteur: "nutzer", userId: user.id, akteId: a.id, text: `Bearbeitung von ${alt.name} an ${neu.name} übergeben` });
+      if (patch.bearbeiterId) st.log({ akteur: "nutzer", userId: user.id, akteId: a.id, text: `Bearbeitung von ${alt.name} an ${neu!.name} übergeben` });
+      if (patch.sachbearbeiterId) st.log({ akteur: "nutzer", userId: user.id, akteId: a.id, text: `Sachbearbeitung von ${alt.name} an ${neuSb!.name} übergeben` });
     }
-    for (const f of offeneFristen) st.patch("fristen", f.id, { verantwortlichId: neu.id });
+    if (neu) for (const f of offeneFristen) st.patch("fristen", f.id, { verantwortlichId: neu.id });
   };
 
   const ausfuehren = async () => {
@@ -462,19 +531,29 @@ function FolgenModal({ daten, onClose }: { daten: { user: User; art: "deaktivier
     setFehler(null);
     setLaedt(true);
     try {
-      const neu = team.find((x) => x.id === ziel);
-      if (neu) uebertragen(u, neu);
+      const neu = kandidaten.find((x) => x.id === ziel);
+      const neuSb = sbKandidaten.find((x) => x.id === sbZiel);
+      if (neu || neuSb) uebertragen(u, neu, neuSb);
+      const teile = [
+        neu && `Bearbeitung und Fristen an ${neu.name}`,
+        neuSb && `Sachbearbeitung an ${neuSb.name}`,
+      ].filter(Boolean) as string[];
+      const nachsatz = teile.length ? ` – ${teile.join(", ")} übertragen` : "";
       if (entfernen) {
         await getBackend().team.remove(u.id);
         aktualisiereTeam((t) => t.filter((x) => x.id !== u.id));
-        useData.getState().log({ akteur: "nutzer", userId: user.id, text: `Zugang von ${u.name} entfernt${neu ? ` – Akten und Fristen an ${neu.name} übertragen` : ""}` });
+        useData.getState().log({ akteur: "nutzer", userId: user.id, text: `Zugang von ${u.name} entfernt${nachsatz}` });
       } else {
         const geaendert = await getBackend().team.aendern(u.id, { deaktiviert: true });
         aktualisiereTeam((t) => t.map((x) => (x.id === u.id ? geaendert : x)));
-        useData.getState().log({ akteur: "nutzer", userId: user.id, text: `Zugang von ${u.name} deaktiviert (umkehrbar)${neu ? ` – Akten und Fristen an ${neu.name} übertragen` : ""}` });
+        useData.getState().log({ akteur: "nutzer", userId: user.id, text: `Zugang von ${u.name} deaktiviert (umkehrbar)${nachsatz}` });
       }
+      const zahlen = [
+        neu && `${bearbAkten.length} Akten und ${offeneFristen.length} Fristen an ${neu.name}`,
+        neuSb && `Sachbearbeitung in ${sachAkten.length} Akten an ${neuSb.name}`,
+      ].filter(Boolean) as string[];
       toast(entfernen ? "Zugang entfernt" : "Zugang deaktiviert", {
-        text: `${u.name}${neu ? ` · ${offeneAkten.length} Akten und ${offeneFristen.length} Fristen an ${neu.name} übertragen` : ""}`,
+        text: `${u.name}${zahlen.length ? ` · ${zahlen.join(" · ")} übertragen` : ""}`,
         ton: "info",
       });
       schliessen();
@@ -506,23 +585,47 @@ function FolgenModal({ daten, onClose }: { daten: { user: User; art: "deaktivier
     >
       {u && (
         <div className="grid gap-3.5">
-          <div className="grid grid-cols-2 gap-2">
+          <div className={cn("grid gap-2", sachAkten.length > 0 ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2")}>
             <div className="rounded-[14px] bg-[var(--ink-softer)] p-3 ring-1 ring-[var(--line)]">
-              <div className="num text-[22px] font-semibold">{offeneAkten.length}</div>
+              <div className="num text-[22px] font-semibold">{bearbAkten.length}</div>
               <div className="text-[13px] text-fg-3">offene Akten (Bearbeitung)</div>
             </div>
+            {sachAkten.length > 0 && (
+              <div className="rounded-[14px] bg-[var(--ink-softer)] p-3 ring-1 ring-[var(--line)]">
+                <div className="num text-[22px] font-semibold">{sachAkten.length}</div>
+                <div className="text-[13px] text-fg-3">offene Akten (Sachbearbeitung)</div>
+              </div>
+            )}
             <div className={cn("rounded-[14px] p-3 ring-1 ring-[var(--line)]", offeneFristen.length ? "bg-amber-soft" : "bg-[var(--ink-softer)]")}>
               <div className="num text-[22px] font-semibold">{offeneFristen.length}</div>
               <div className="text-[13px] text-fg-3">offene Fristen (verantwortlich)</div>
             </div>
           </div>
-          {(offeneAkten.length > 0 || offeneFristen.length > 0) && (
-            <Field label="Jetzt übertragen an …" htmlFor="folgen-ziel" hint="Jede Akte erhält im Verlauf den Eintrag „Bearbeitung von … an … übergeben“.">
+          {bearbUndFristen && (
+            <Field
+              label="Bearbeitung und Fristverantwortung übertragen an …"
+              htmlFor="folgen-ziel"
+              hint="Nur Partner und Anwälte. Jede Akte erhält im Verlauf den Eintrag „Bearbeitung von … an … übergeben“."
+            >
               <Select id="folgen-ziel" value={ziel} onChange={(e) => setZiel(e.target.value)}>
                 <option value="">nicht übertragen</option>
                 {kandidaten.map((x) => (
                   <option key={x.id} value={x.id}>
                     {x.name} · {rollenLabel(x)}
+                    {istAbwesend(x, today()) ? " · abwesend" : ""}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
+          {sachAkten.length > 0 && (
+            <Field label="Sachbearbeitung übertragen an …" htmlFor="folgen-sb" hint="Die Sachbearbeitung können auch Fachangestellte übernehmen.">
+              <Select id="folgen-sb" value={sbZiel} onChange={(e) => setSbZiel(e.target.value)}>
+                <option value="">nicht übertragen</option>
+                {sbKandidaten.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.name} · {rollenLabel(x)}
+                    {istAbwesend(x, today()) ? " · abwesend" : ""}
                   </option>
                 ))}
               </Select>
@@ -663,7 +766,7 @@ function EinladenModal({ open, onClose, voll }: { open: boolean; onClose: () => 
           </Field>
           <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
             <Field label="Rolle" htmlFor="inv-rolle">
-              <Select id="inv-rolle" value={rolle} onChange={(e) => setRolle(e.target.value as Rolle)}>
+              <Select id="inv-rolle" value={rolle} onChange={(e) => setRolle(e.target.value as Rolle)} aria-describedby="inv-rolle-folgen">
                 {REIHENFOLGE.map((r) => (
                   <option key={r} value={r}>
                     {ROLLE_AUSWAHL[r]}
@@ -675,11 +778,14 @@ function EinladenModal({ open, onClose, voll }: { open: boolean; onClose: () => 
               <Input id="inv-titel" value={titel} onChange={(e) => setTitel(e.target.value)} placeholder={titelVorschlag(rolle, anrede)} />
             </Field>
           </div>
-          {rolle === "azubi" && (
-            <p className="flex gap-2 rounded-[12px] bg-[var(--ink-softer)] px-3.5 py-2.5 text-[13px] text-fg-2">
-              <Info className="mt-0.5 size-3.5 shrink-0 text-ink" /> Auszubildende arbeiten in Akten, Fristen, Kontakten und im Posteingang (lesen, zuordnen, Notizen). Abrechnung, Aktenkonten (Fremdgeld), eEB-Abgabe, Lizenz und Teamliste sind gesperrt.
-            </p>
-          )}
+          <p id="inv-rolle-folgen" aria-live="polite" className="flex gap-2 rounded-[12px] bg-[var(--ink-softer)] px-3.5 py-2.5 text-[13px] text-fg-2">
+            <Info className="mt-0.5 size-3.5 shrink-0 text-ink" />
+            <span className="min-w-0">
+              {rollenFolgen(rolle)}
+              {rolle === "azubi" && " Im Posteingang: lesen, zuordnen, Notizen."}
+              {(rolle === "refa" || rolle === "azubi" || rolle === "admin") && " Vertretung nach § 53 BRAO, Aktenbearbeitung und Fristverantwortung übernehmen nur Partner und Anwälte."}
+            </span>
+          </p>
           {voll && <div className="rounded-[12px] bg-amber-soft px-3.5 py-2.5 text-[13px] text-fg-2">Alle Arbeitsplätze sind belegt. Weitere Arbeitsplätze erhalten Sie über {tenant.ansprechpartner.name}.</div>}
           {fehler && (
             <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} role="alert" className="rounded-[12px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal">

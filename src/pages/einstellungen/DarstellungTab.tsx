@@ -6,7 +6,7 @@ import { tabellenDichteZuruecksetzen } from "@/components/ui/DataTable";
 import { Abschnitt, Zeile } from "./teile";
 
 export function DarstellungTab() {
-  const { theme, setTheme, dichte, setDichte, sidebarKompakt, toggleSidebar, schrift, setSchrift, liveMeldungen, setLiveMeldungen, kugel, setKugel, setKuerzel } = useUI();
+  const { theme, setTheme, dichte, setDichte, sidebarKompakt, toggleSidebar, schrift, setSchrift, liveMeldungen, setLiveMeldungen, island, setIsland, kugel, setKugel, setKuerzel, einzeltastenKuerzel, setEinzeltastenKuerzel } = useUI();
   const reduziert = useMedia("(prefers-reduced-motion: reduce)");
   const dunkelSystem = useMedia("(prefers-color-scheme: dark)");
 
@@ -52,24 +52,50 @@ export function DarstellungTab() {
             <Switch id="sb-kompakt" checked={sidebarKompakt} onChange={() => toggleSidebar()} label="Seitenleiste kompakt" />
           </Zeile>
           <Zeile
-            titel="Live-Meldungen in der Kopfleiste"
-            htmlFor="live-meldungen"
+            titel="Apex Island (Live-Meldungen) anzeigen"
+            htmlFor="island"
             text={
-              liveMeldungen
-                ? reduziert
-                  ? "Eingeschaltet – wegen „Bewegung reduzieren“ zeigt die Apex Island trotzdem nur die ruhige Wochenbilanz."
-                  : "Die Apex Island zeigt höchstens alle 90 Sekunden kurz, was der 38h-Motor gerade erledigt hat (Beispielwerte)."
-                : "Aus: Die Apex Island zeigt nur die ruhige Wochenbilanz – ohne Wechsel und ohne Bewegung."
+              !island
+                ? "Ausgeblendet. Die schwarze Kapsel in der Kopfleiste zeigt sonst, was der 38h-Motor erledigt hat (Beispielwerte)."
+                : reduziert
+                  ? "Die Apex Island zeigt wegen „Bewegung reduzieren“ nur die ruhige Wochenbilanz. Ausblenden geht auch direkt am × der Island."
+                  : "Die schwarze Kapsel in der Kopfleiste zeigt die Wochenbilanz des 38h-Motors (Beispielwerte). Ausblenden geht auch direkt am × der Island."
             }
           >
-            <Switch id="live-meldungen" checked={liveMeldungen} onChange={setLiveMeldungen} label="Live-Meldungen in der Kopfleiste" />
+            <Switch id="island" checked={island} onChange={setIsland} label="Apex Island (Live-Meldungen) anzeigen" />
           </Zeile>
+          {island && (
+            <Zeile
+              titel="Live-Meldungen kurz einblenden"
+              htmlFor="live-meldungen"
+              text={
+                liveMeldungen
+                  ? reduziert
+                    ? "Eingeschaltet – wegen „Bewegung reduzieren“ zeigt die Apex Island trotzdem nur die ruhige Wochenbilanz."
+                    : "Die Apex Island zeigt höchstens alle 90 Sekunden kurz, was der 38h-Motor gerade erledigt hat (Beispielwerte)."
+                  : "Aus: Die Apex Island zeigt nur die ruhige Wochenbilanz – ohne Wechsel und ohne Bewegung."
+              }
+            >
+              <Switch id="live-meldungen" checked={liveMeldungen} onChange={setLiveMeldungen} label="Live-Meldungen kurz einblenden" />
+            </Zeile>
+          )}
           <Zeile
             titel="Assistent-Kugel anzeigen"
             htmlFor="kugel"
-            text={kugel ? "Die Kugel unten rechts öffnet den Apex Assistenten. Am Rand lässt sie sich auch einklappen." : "Ausgeblendet. Den Assistenten erreichen Sie weiter über Strg+K (Mac: ⌘ K) → „Apex Assistent“."}
+            text={kugel ? "Die Kugel unten rechts öffnet den Apex Assistenten. Liegt darunter Text oder ein Bedienelement, weicht sie automatisch an den Rand aus; einklappen lässt sie sich auch von Hand." : "Ausgeblendet. Den Assistenten erreichen Sie weiter über Strg+K (Mac: ⌘ K) → „Apex Assistent“."}
           >
             <Switch id="kugel" checked={kugel} onChange={setKugel} label="Assistent-Kugel anzeigen" />
+          </Zeile>
+          <Zeile
+            titel="Kürzel mit einzelnen Buchstaben (W, F, Z, ?, Posteingang J/K/U/E)"
+            htmlFor="einzeltasten"
+            text={
+              einzeltastenKuerzel
+                ? "An: Ein Buchstabe außerhalb von Eingabefeldern löst das Kürzel aus. Wer oft neben ein Feld tippt, schaltet das hier aus – Alt+W, Alt+F und Alt+Z wirken immer."
+                : "Aus: Einzelne Buchstaben lösen nichts aus. Weiter verfügbar: Alt+W (Wiedervorlage), Alt+F (Fristenrechner), Alt+Z (Zeit erfassen) und Strg+K."
+            }
+          >
+            <Switch id="einzeltasten" checked={einzeltastenKuerzel} onChange={setEinzeltastenKuerzel} label="Kürzel mit einzelnen Buchstaben" />
           </Zeile>
           <Zeile
             titel="Bewegung"
@@ -89,8 +115,8 @@ export function DarstellungTab() {
       <Abschnitt titel="Gut zu wissen" icon={<PanelLeft className="size-[18px]" />}>
         <ul className="grid grid-cols-1 gap-3 text-[13px] text-fg-2">
           <li className="flex gap-3">
-            <span className="kbd shrink-0">⌘K</span>
-            <span>Globale Suche über Akten, Dokumente, Fristen und Rechtsprechung – unter Windows mit Strg+K.</span>
+            <span className="kbd shrink-0">Strg+K</span>
+            <span>Globale Suche über Akten, Dokumente, Fristen, Einstellungen und Rechtsprechung (Mac: ⌘K).</span>
           </li>
           <li className="flex gap-3">
             <span className="grid size-5 shrink-0 place-items-center text-ink">
@@ -107,7 +133,7 @@ export function DarstellungTab() {
               <Keyboard className="size-4" />
             </span>
             <span>
-              Taste <span className="kbd">W</span> legt eine Wiedervorlage an, <span className="kbd">F</span> öffnet den Fristenrechner.{" "}
+              Taste <span className="kbd">W</span> legt eine Wiedervorlage an, <span className="kbd">F</span> öffnet den Fristenrechner, <span className="kbd">Z</span> erfasst eine Zeit (immer auch mit Alt).{" "}
               <button type="button" className="font-semibold text-ink underline-offset-2 hover:underline" onClick={() => setKuerzel(true)}>
                 Alle Tastaturkürzel (?)
               </button>

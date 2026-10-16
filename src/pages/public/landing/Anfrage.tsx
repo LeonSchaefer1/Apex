@@ -20,7 +20,7 @@ export const ANFRAGE_BESTAETIGUNG = "Im Prototyp wird nichts versendet – im Ec
 
 const TITEL: Record<AnfrageArt, { titel: string; untertitel: string; knopf: string }> = {
   testzugang: { titel: "Testzugang anfordern", untertitel: "Eigener Testzugang für Ihre Kanzlei – auf Wunsch mit Beispieldaten.", knopf: "Testzugang anfordern" },
-  angebot: { titel: "Angebot anfordern", untertitel: "Lifetime-Lizenz nach Kanzleigröße – mit Wartung als Richtwert.", knopf: "Angebot anfordern" },
+  angebot: { titel: "Angebot anfordern", untertitel: "Lifetime-Lizenz nach Kanzleigröße – Preis auf Anfrage, verbindlich im Angebot.", knopf: "Angebot anfordern" },
 };
 
 const PLAETZE = ["1–3", "4–8", "9–15", "16–30", "mehr als 30"];

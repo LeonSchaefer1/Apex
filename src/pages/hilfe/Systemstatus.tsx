@@ -55,7 +55,7 @@ export function Systemstatus() {
   );
 
   return (
-    <section id="status" className="scroll-mt-24">
+    <section id="status" tabIndex={-1} aria-label="Systemstatus" className="scroll-mt-24 outline-none">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h2 className="title-lg">Systemstatus</h2>

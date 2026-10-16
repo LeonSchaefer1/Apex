@@ -15,10 +15,11 @@ import { AssistantDock } from "@/components/assistant/AssistantDock";
 import { LadeBildschirm } from "./LadeBildschirm";
 import { Sperrbildschirm } from "./Sperrbildschirm";
 import { ZweiFaktorPflicht } from "./ZweiFaktorPflicht";
-import { WiedervorlageDialog, useTastenkuerzel } from "./Tastenkuerzel";
+import { WiedervorlageDialog, ZeiterfassungDialog, useTastenkuerzel } from "./Tastenkuerzel";
 import { KeinZugriff } from "./KeinZugriff";
 import { bereichErlaubt } from "@/app/nav";
 import { useUI } from "@/store/ui";
+import { pausiereDialoge } from "@/components/ui/Modal";
 
 /** Rahmen der Kanzlei-App: schwebende Glas-Navigation über dem belichteten Arbeitsgrund. */
 export function AppShell() {
@@ -38,6 +39,12 @@ export function AppShell() {
     if (sitzung && !istConsole(sitzung) && dataStatus === "leer" && !zweiFaktorFehlt) void load();
   }, [sitzung, dataStatus, load, zweiFaktorFehlt]);
 
+  // Gesperrt: Fokusfallen offener Fachdialoge ruhen (inert), damit der Sperrbildschirm bedienbar bleibt.
+  useEffect(() => {
+    pausiereDialoge(gesperrt);
+    return () => pausiereDialoge(false);
+  }, [gesperrt]);
+
   // Gesperrt: Suche, Assistent und Dialoge schließen – nichts bleibt hinter dem Sperrbildschirm offen.
   useEffect(() => {
     if (!gesperrt) return;
@@ -45,6 +52,7 @@ export function AppShell() {
     ui.setPalette(false);
     ui.schliesseAssistent();
     ui.setWiedervorlage(null);
+    ui.setZeiterfassung(null);
     ui.setKuerzel(false);
     ui.zeigeHilfe(null);
   }, [gesperrt]);
@@ -83,17 +91,32 @@ export function AppShell() {
     <>
       {/* Gesperrt: Inhalte unsichtbar und nicht bedienbar, darüber der Sperrbildschirm */}
       <div className={gesperrt ? "invisible relative flex h-full" : "relative flex h-full"} aria-hidden={gesperrt || undefined} inert={gesperrt || undefined}>
+        {/* Erster Tab-Stopp: direkt zum Inhalt (WCAG 2.4.1) – nur bei Fokus sichtbar */}
+        <a
+          href="#inhalt"
+          onClick={(e) => {
+            e.preventDefault();
+            const ziel = document.getElementById("inhalt");
+            ziel?.focus({ preventScroll: true });
+            ziel?.scrollIntoView({ block: "start" });
+          }}
+          className="sr-only z-[120] rounded-full bg-[var(--surface)] px-4 py-2 text-[14px] font-semibold text-ink shadow-[var(--glass-shadow)] ring-2 ring-[var(--focus)] focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:inline-flex focus:min-h-11 focus:items-center"
+        >
+          Zum Inhalt springen
+        </a>
         <Sidebar />
         <div className="relative z-10 flex min-w-0 flex-1 flex-col">
-          {/* Unten Freiraum für die Assistent-Kugel (Kugel + 16 px): Fokus und letzte Inhalte liegen nie unter ihr (WCAG 2.4.11). */}
+          {/* Unten Freiraum für die Assistent-Kugel bzw. mobil für Tab-Leiste und schwebende Aktionsleiste: Fokus und letzte Inhalte liegen nie darunter (WCAG 2.4.11). */}
           <div ref={scrollRef} className="haupt-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden" id="haupt-scroll">
             <TopBar />
-            <main className="mx-auto w-full max-w-[1480px] px-4 pb-36 pt-6 md:px-8 md:pb-28">
+            <main id="inhalt" tabIndex={-1} className="mx-auto w-full max-w-[1480px] px-4 pb-[calc(var(--tabbar-h)+env(safe-area-inset-bottom)+76px)] pt-6 outline-none md:px-8 md:pb-28">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={loc.pathname}
                   initial={{ opacity: 0, y: 10, filter: "blur(4px)" }}
-                  animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                  // Nach dem Einblenden filter/transform entfernen: Sonst wird der Seitenrahmen zum Bezugsrahmen für
+                  // position: fixed (z. B. die mobile Aktionsleiste der Akte klebte am Seitenende statt über der Tab-Leiste).
+                  animate={{ opacity: 1, y: 0, filter: "blur(0px)", transitionEnd: { filter: "none", transform: "none" } }}
                   exit={{ opacity: 0, y: -6, filter: "blur(3px)" }}
                   transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
                 >
@@ -107,6 +130,7 @@ export function AppShell() {
         <CommandPalette />
         <QuickHelp />
         <WiedervorlageDialog />
+        <ZeiterfassungDialog />
         <AssistantDock />
       </div>
       {gesperrt && <Sperrbildschirm />}

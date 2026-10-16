@@ -35,10 +35,11 @@ export function MobileTabBar() {
         initial={false}
         animate={{ y: dialogOffen ? "130%" : "0%", opacity: dialogOffen ? 0 : 1 }}
         transition={{ type: "spring", stiffness: 420, damping: 38 }}
-        className="fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-[max(10px,env(safe-area-inset-bottom))] md:hidden"
+        className="tabbar-zone fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-[max(10px,env(safe-area-inset-bottom))] md:hidden"
       >
         <div className="flex w-full max-w-[520px] items-center gap-2">
-        <div className="glass-strong refract flex h-[62px] min-w-0 flex-1 items-center gap-1 rounded-full px-1.5">
+        {/* deckend (kein Glas hinter Text): Inhalte scrollen nicht sichtbar unter der Leiste durch */}
+        <div className="glass-strong tabbar-deckend flex h-[62px] min-w-0 flex-1 items-center gap-1 rounded-full px-1.5">
           {tabs.map((t) => {
             const isActive = active === t.to;
             const badge = badges[t.to];

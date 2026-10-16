@@ -38,7 +38,7 @@ function springeZurKiKarte(nurLesebereich = false) {
 }
 
 /** Schmale KI-Leiste im Kopf: das Wichtigste der Analyse auf einen Blick – Klick springt zur KI-Karte. */
-function KiLeiste({ ansicht, schritt, akteAz, eeb }: { ansicht: KiAnsicht | null; schritt?: number; akteAz?: string; eeb: boolean }) {
+function KiLeiste({ ansicht, schritt, akteAz, vorschlagAz, eeb }: { ansicht: KiAnsicht | null; schritt?: number; akteAz?: string; vorschlagAz?: string; eeb: boolean }) {
   const springe = () => springeZurKiKarte();
   const laeuft = schritt !== undefined;
   // wichtigste Frist: kritische zuerst (Notfrist oder nicht verlängerbar, z. B. § 4 KSchG), sonst die erste
@@ -62,7 +62,19 @@ function KiLeiste({ ansicht, schritt, akteAz, eeb }: { ansicht: KiAnsicht | null
         ) : ansicht ? (
           <>
             <span className="font-semibold">{ansicht.typ}</span>
-            {akteAz && <span className="text-fg-3"> · Akte <span className="mono text-fg-2">{akteAz}</span> ({Math.round(ansicht.sicherheit * 100)} %)</span>}
+            {/* Kopfzeile aus der tatsächlichen Zuordnung; der KI-Vorschlag erscheint nur, solange nicht zugeordnet ist bzw. wenn er abweicht */}
+            {akteAz ? (
+              <span className="text-fg-3">
+                {" "}· Akte <span className="mono text-fg-2">{akteAz}</span> (zugeordnet)
+                {vorschlagAz && vorschlagAz !== akteAz && <span> · KI-Vorschlag <span className="mono">{vorschlagAz}</span></span>}
+              </span>
+            ) : (
+              vorschlagAz && (
+                <span className="text-fg-3">
+                  {" "}· KI-Vorschlag <span className="mono text-fg-2">{vorschlagAz}</span> ({Math.round(ansicht.sicherheit * 100)} %)
+                </span>
+              )
+            )}
             {notfrist ? (
               <span className={istKritisch(notfrist) ? "text-seal" : "text-fg-2"}>
                 {" "}· {TYP_META[notfrist.typ].label} bis {fmtDateWd(notfrist.ende)}
@@ -184,7 +196,13 @@ export function Lesebereich({
             )}
           </div>
         </div>
-        <KiLeiste ansicht={ansicht} schritt={schritt} akteAz={ansicht?.akteId ? akten.find((a) => a.id === ansicht.akteId)?.aktenzeichen : undefined} eeb={!!n.eebErforderlich && !n.eebAbgegeben} />
+        <KiLeiste
+          ansicht={ansicht}
+          schritt={schritt}
+          akteAz={akte?.aktenzeichen}
+          vorschlagAz={ansicht?.akteId ? akten.find((a) => a.id === ansicht.akteId)?.aktenzeichen : undefined}
+          eeb={!!n.eebErforderlich && !n.eebAbgegeben}
+        />
       </header>
 
       <div className="space-y-5 px-4 pb-8 pt-5 sm:px-6 xl:pb-24">

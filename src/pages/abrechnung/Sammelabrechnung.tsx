@@ -20,7 +20,7 @@ export function useSammelKandidaten() {
   const fristen = useCol("fristen");
   const dokumente = useCol("dokumente");
   const kontakte = useCol("kontakte");
-  const { team, user } = useKanzlei();
+  const { team } = useKanzlei();
   return useMemo(() => {
     const heute = today();
     const grenze = addDays(heute, -30);
@@ -49,7 +49,7 @@ export function useSammelKandidaten() {
         ausgeschlossen.push({ akte: a, grund: "In den letzten 30 Tagen abgerechnet" });
         continue;
       }
-      const v = vorschlagFuerAkte(a, rs, zProAkte.get(a.id) ?? [], usersById, user.stundensatz ?? STANDARD_STUNDENSATZ, {
+      const v = vorschlagFuerAkte(a, rs, zProAkte.get(a.id) ?? [], usersById, STANDARD_STUNDENSATZ, {
         gericht: a.gerichtId ? kontaktById.get(a.gerichtId) : undefined,
         fristen: fProAkte.get(a.id) ?? [],
         dokumente: dProAkte.get(a.id) ?? [],
@@ -60,7 +60,7 @@ export function useSammelKandidaten() {
     }
     vorschlaege.sort((x, y) => y.summen.brutto - x.summen.brutto);
     return { vorschlaege, ausgeschlossen };
-  }, [akten, rechnungen, zeiten, fristen, dokumente, kontakte, team, user.stundensatz]);
+  }, [akten, rechnungen, zeiten, fristen, dokumente, kontakte, team]);
 }
 
 type FormatWahl = Rechnung["format"] | "auto";
@@ -223,9 +223,12 @@ export function Sammelabrechnung({ open, onClose, onAnsehen }: { open: boolean; 
                   ? ` (${erstellt.filter((r) => r.format !== "PDF").length} E-Rechnung, ${erstellt.filter((r) => r.format === "PDF").length} PDF)`
                   : erstellt.some((r) => r.format !== format) && ` · ${erstellt.filter((r) => r.format !== format).length} an Privatpersonen als PDF`}
               </div>
-              <Chip tone="green" icon={<Clock className="size-3.5" />} className="mt-3">
-                ≈ {gespart} Min. gegenüber Einzelabrechnung gespart
+              <Chip tone="green" icon={<Clock className="size-3.5" />} className="mt-3" title={`Schätzung: ${erstellt.length} Rechnungen × ${MINUTEN_JE_EINZELRECHNUNG} Min. je Einzelrechnung`}>
+                ≈ {gespart} Min. gegenüber Einzelabrechnung gespart · Schätzung
               </Chip>
+              <div className="mt-1.5 text-[12.5px] text-fg-3">
+                Annahme: {MINUTEN_JE_EINZELRECHNUNG} Min. je Einzelrechnung ({erstellt.length} × {MINUTEN_JE_EINZELRECHNUNG} Min.)
+              </div>
             </div>
             <ul className="mt-2 divide-y divide-[var(--line)] overflow-hidden rounded-[18px] border border-[var(--line)]">
               {erstellt.map((r, i) => {
@@ -263,10 +266,13 @@ export function Sammelabrechnung({ open, onClose, onAnsehen }: { open: boolean; 
             {/* Engpass sichtbar machen */}
             <div className="grid gap-2 rounded-[20px] bg-ink-softer p-2 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
               <div className="rounded-[16px] px-4 py-3">
-                <div className="eyebrow">Einzeln abrechnen</div>
-                <div className="mt-1 text-[14px] text-fg-2">
-                  <span className="num font-semibold text-fg">{vorschlaege.length}</span> Durchgänge · ≈ <span className="num">{vorschlaege.length * MINUTEN_JE_EINZELRECHNUNG}</span> Min.
+                <div className="eyebrow flex flex-wrap items-center gap-1.5">
+                  Einzeln abrechnen <Chip tone="amber" className="!h-5 !px-1.5 !text-[11px] !normal-case !tracking-normal">Schätzung</Chip>
                 </div>
+                <div className="mt-1 text-[14px] text-fg-2">
+                  <span className="num font-semibold text-fg">{vorschlaege.length}</span> {vorschlaege.length === 1 ? "Durchgang" : "Durchgänge"} · ≈ <span className="num">{vorschlaege.length * MINUTEN_JE_EINZELRECHNUNG}</span> Min.
+                </div>
+                <div className="mt-0.5 text-[12px] text-fg-3">Annahme: {MINUTEN_JE_EINZELRECHNUNG} Min. je Einzelrechnung</div>
               </div>
               <ArrowRight className="mx-auto hidden size-5 text-fg-3 sm:block" />
               <div className="glass-thin rounded-[16px] px-4 py-3">

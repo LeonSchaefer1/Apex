@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router";
 import { motion } from "motion/react";
 import { Building, Cloud, DatabaseBackup, FileClock, FileText, Fingerprint, KeyRound, Lock, MonitorCheck, RotateCcw, Scale, Server, ShieldAlert, ShieldCheck, Trash2, Users } from "lucide-react";
 import { SPERRE_MINUTEN, darfVerwalten, getBackend, getInfo, hatBeispieldaten, istConsole, kanzleiSicherheit, type SperreMinuten, type ZweiFaktorStatus } from "@/lib/backend";
-import { fmtDate, relTime, today } from "@/core/dates";
+import { fmtDate, fmtTime, relTime, today } from "@/core/dates";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei, useSession } from "@/store/session";
 import { toast } from "@/store/ui";
@@ -56,7 +57,31 @@ export function DatenschutzTab() {
   const akt = useCol("aktivitaeten");
   const [laedt, setLaedt] = useState(false);
   const namen = useMemo(() => new Map(team.map((u) => [u.id, u])), [team]);
-  const protokoll = useMemo(() => akt.filter((a) => a.akteur === "nutzer" || a.akteur === "system").slice().sort((a, b) => b.zeit.localeCompare(a.zeit)).slice(0, 8), [akt]);
+  const [params] = useSearchParams();
+  const [filter, setFilter] = useState<"alle" | "anmeldungen">(params.get("filter") === "anmeldungen" ? "anmeldungen" : "alle");
+  // Anmeldeereignisse anderer Personen (z. B. Fehlversuche) sehen nur Partner und Administration – die eigenen sieht jede Person
+  const sichtbar = (a: (typeof akt)[number]) => a.kategorie !== "anmeldung" || darf || a.userId === user.id;
+  const protokoll = useMemo(
+    () =>
+      akt
+        .filter((a) => (a.akteur === "nutzer" || a.akteur === "system") && sichtbar(a) && (filter === "alle" || a.kategorie === "anmeldung"))
+        .slice()
+        .sort((a, b) => b.zeit.localeCompare(a.zeit))
+        .slice(0, filter === "anmeldungen" ? 20 : 8),
+    [akt, filter, darf, user.id],
+  );
+  // Direktsprung (Strg+K, Glocke): /einstellungen?tab=datenschutz&abschnitt=sicherheit|protokoll|loeschkonzept
+  const abschnitt = params.get("abschnitt");
+  useEffect(() => {
+    if (!abschnitt) return;
+    if (abschnitt === "protokoll" && params.get("filter") !== "alle") setFilter("anmeldungen");
+    const t = setTimeout(() => {
+      const el = document.getElementById(`ds-${abschnitt}`);
+      el?.scrollIntoView({ block: "start" });
+      el?.focus({ preventScroll: true });
+    }, 120);
+    return () => clearTimeout(t);
+  }, [abschnitt, params]);
   const [muster, setMuster] = useState<AusgabeDatei | null>(null);
   const oeffneMuster = (key: (typeof MUSTER)[number]["key"]) => {
     const m = MUSTER.find((x) => x.key === key);
@@ -151,7 +176,7 @@ export function DatenschutzTab() {
         <p className="mt-3 text-[12.5px] leading-snug text-fg-3">Gestaltungsziele, keine Rechtsberatung: Maßgeblich sind die geschlossenen Verträge und Ihre eigene berufsrechtliche Prüfung.</p>
       </Abschnitt>
 
-      <Abschnitt titel="Unterauftragnehmer & Löschkonzept" text="Wer außer uns Ihre Daten verarbeiten kann – und wie lange was aufbewahrt wird." icon={<Trash2 className="size-[18px]" />} className="xl:col-span-2">
+      <Abschnitt id="ds-loeschkonzept" titel="Unterauftragnehmer & Löschkonzept" text="Wer außer uns Ihre Daten verarbeiten kann – und wie lange was aufbewahrt wird." icon={<Trash2 className="size-[18px]" />} className="xl:col-span-2">
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="min-w-0">
             <h3 className="text-[13.5px] font-semibold">Unterauftragnehmer</h3>
@@ -202,14 +227,31 @@ export function DatenschutzTab() {
         </div>
       </Abschnitt>
 
-      <Abschnitt titel="Protokoll" text="Jede Änderung an Akten, Fristen, Zugängen und Einstellungen wird mit Person und Zeitpunkt festgehalten." icon={<FileClock className="size-[18px]" />}>
+      <Abschnitt
+        id="ds-protokoll"
+        titel="Protokoll"
+        text="Jede Änderung an Akten, Fristen, Zugängen und Einstellungen wird mit Person und Zeitpunkt festgehalten – ebenso Anmeldungen, Abmeldungen, Fehlversuche und Sperren."
+        icon={<FileClock className="size-[18px]" />}
+        aktion={
+          <Segmented<"alle" | "anmeldungen">
+            size="sm"
+            value={filter}
+            onChange={setFilter}
+            options={[
+              { value: "alle", label: "Alle" },
+              { value: "anmeldungen", label: "Anmeldungen", icon: <KeyRound className="size-3.5" /> },
+            ]}
+          />
+        }
+      >
         <ul className="divide-y divide-[var(--line)] overflow-hidden rounded-[16px] border border-[var(--line)]">
-          {protokoll.length === 0 && <li className="px-3.5 py-6 text-center text-[13px] text-fg-3">Noch keine Einträge.</li>}
+          {protokoll.length === 0 && <li className="px-3.5 py-6 text-center text-[13px] text-fg-3">{filter === "anmeldungen" ? "Noch keine Anmeldeereignisse." : "Noch keine Einträge."}</li>}
           {protokoll.map((a, i) => {
             // Vorgänge durch AnwaltApex bzw. das System (z. B. Zugang angelegt, Startpasswort vergeben): `userId` nennt die
             // betroffene Person – ausgelöst hat sie AnwaltApex, nicht die Person selbst.
             const u = a.akteur !== "system" && a.userId ? namen.get(a.userId) : undefined;
-            const wer = a.beispiel && !u ? "Beispielperson" : (u?.name ?? (a.akteur === "system" ? "AnwaltApex (System)" : "Unbekannte Person"));
+            const anmeldung = a.kategorie === "anmeldung";
+            const wer = a.beispiel && !u ? "Beispielperson" : (u?.name ?? (anmeldung && a.akteur === "system" ? "Anmeldeversuch bzw. Sperre (automatisch)" : a.akteur === "system" ? "AnwaltApex (System)" : "Unbekannte Person"));
             return (
               <motion.li key={a.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }} className={cn("flex items-center gap-3 px-3.5 py-2.5", a.beispiel && "bg-[var(--ink-softer)]")}>
                 {u ? (
@@ -229,7 +271,7 @@ export function DatenschutzTab() {
                     )}
                   </span>
                   <span className="block text-[12.5px] text-fg-3">
-                    {wer} · {relTime(a.zeit)}
+                    {wer} · <time dateTime={a.zeit}>{fmtDate(a.zeit.slice(0, 10))}, {fmtTime(a.zeit)} Uhr</time> ({relTime(a.zeit)})
                     {a.beispiel && " · Beispieldaten – nicht von Ihnen ausgelöst"}
                   </span>
                 </span>
@@ -237,7 +279,9 @@ export function DatenschutzTab() {
             );
           })}
         </ul>
-        <p className="mt-2 text-[12.5px] text-fg-3">Auszug der letzten Einträge. Eingriffe von AnwaltApex (z. B. ein neues Startpasswort über die Apex Console) stehen hier ebenfalls. KI-Anfragen werden ohne Inhalte protokolliert.</p>
+        <p className="mt-2 text-[12.5px] text-fg-3">
+          Auszug der letzten Einträge. Eingriffe von AnwaltApex (z. B. ein neues Startpasswort über die Apex Console) stehen hier ebenfalls. KI-Anfragen werden ohne Inhalte protokolliert, Fehlversuche ohne das eingegebene Passwort. Nach 3 Fehlversuchen für dasselbe Konto innerhalb von 15 Minuten erhalten Partner und Administration einen Hinweis.
+        </p>
       </Abschnitt>
 
       {beispiel && (
@@ -298,8 +342,10 @@ function AnmeldungSicherheit({ praesentation }: { praesentation: boolean }) {
       ? "Richten Sie zuerst Ihre eigene Zwei-Faktor-Anmeldung ein (links) – sonst sperren Sie sich selbst aus."
       : undefined;
 
+  const nav = useNavigate();
   return (
     <Abschnitt
+      id="ds-sicherheit"
       titel="Anmeldung & Sicherheit"
       text="Zwei-Faktor-Anmeldung mit einer Authenticator-App und automatische Sperre bei Inaktivität."
       icon={<Fingerprint className="size-[18px]" />}
@@ -314,6 +360,19 @@ function AnmeldungSicherheit({ praesentation }: { praesentation: boolean }) {
         <div className="min-w-0">
           <h3 className="mb-2 text-[13.5px] font-semibold">Ihre Zwei-Faktor-Anmeldung</h3>
           <ZweiFaktorEinrichtung onStatus={setEigen} />
+          <div className="mt-4 rounded-[16px] bg-[var(--surface-2)] p-3.5 ring-1 ring-[var(--line)]">
+            <h3 className="flex items-center gap-2 text-[13.5px] font-semibold">
+              <KeyRound className="size-4 text-ink" /> Passwort ändern
+            </h3>
+            <p className="mt-1 text-[12.5px] leading-relaxed text-fg-2">
+              Ein neues Passwort vergeben Partner und Administration unter Team & Zugänge („⋯“ → „Neues Startpasswort vergeben“). Bei der nächsten Anmeldung legen Sie damit Ihr eigenes Passwort fest – der Vorgang steht im Protokoll.
+            </p>
+            {darf && (
+              <Button size="sm" className="mt-2" onClick={() => nav("/einstellungen?tab=team")}>
+                Team & Zugänge öffnen
+              </Button>
+            )}
+          </div>
         </div>
         <div className="min-w-0 rounded-[18px] bg-[var(--surface-2)] p-4 ring-1 ring-[var(--line)]">
           <h3 className="text-[13.5px] font-semibold">Für die ganze Kanzlei</h3>

@@ -264,7 +264,7 @@ export default function Fristen() {
         subtitle="Fristenkalender mit Vorfristen, Vier-Augen-Kontrolle und Fristenrechner nach § 222 ZPO."
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="ghost" icon={<Printer className="size-4" />} onClick={() => setDruck(true)} title="Druckansicht „Fristen heute und morgen“">
+            <Button variant="ghost" icon={<Printer className="size-4" />} onClick={() => setDruck(true)} title="Druckansicht „Fristen heute und nächster Arbeitstag“">
               Drucken
             </Button>
             <Button variant="ghost" icon={<Download className="size-4" />} onClick={meineIcs} title="Ihre offenen Fristen, Wiedervorlagen und Termine als Kalenderdatei (.ics)">
@@ -391,6 +391,7 @@ export default function Fristen() {
               ohneHorizont={!!akteFilter || !!quelleFilter || fokus === "unkontrolliert" || fokus === "kritisch"}
               markiert={markiert ?? undefined}
               vertretungFuer={vertretungFuer}
+              onOpen={(f) => setDetailId(f.id)}
             />
           )}
           {ansicht === "ausgang" && <Ausgangskontrolle fristen={fristen} akten={akten} team={team} user={user} heute={heute} />}

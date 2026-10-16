@@ -1,23 +1,30 @@
 import { useState } from "react";
 import { motion } from "motion/react";
-import { AlarmClock, Check, Clock, Mail, MonitorUp, Phone, PhoneCall, ShieldCheck, Timer } from "lucide-react";
+import { AlarmClock, AlertTriangle, BookOpen, Check, Clock, Mail, MonitorUp, Phone, PhoneCall, ShieldCheck, Timer } from "lucide-react";
 import type { Ansprechpartner } from "@/core/types";
 import { useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
-import { toast } from "@/store/ui";
-import { Avatar, Button, Card, Chip, Field, Input, Modal, Segmented, Select, Textarea } from "@/components/ui";
+import { toast, useUI } from "@/store/ui";
+import { Avatar, Button, Card, Chip, Field, Input, Modal, Select, Textarea } from "@/components/ui";
 import { festeAnsprechperson } from "@/lib/rollen";
-import { RUECKRUF_SIMULIERT, rueckrufZusage } from "@/core/rueckruf";
+import { RUECKRUF_SIMULIERT, inServicezeit, naechsteServicezeit, rueckrufNachFristende, rueckrufZusage } from "@/core/rueckruf";
+import { fmtDateWd } from "@/core/dates";
+import { cn } from "@/lib/cn";
 import { CopyButton } from "./kopieren";
 
 const THEMEN = ["Umzug & Datenübernahme", "Fristen & beA", "Abrechnung & RVG", "Schnittstellen (E-Mail, Bank)", "Team & Zugänge", "Etwas anderes"];
-type Wunsch = "sofort" | "wunschzeit";
+/** „sofort“ = jetzt + 30 Min. in der Servicezeit · „naechste“ = nächstmögliche Zeit außerhalb der Servicezeit · „wunschzeit“ */
+type Wunsch = "sofort" | "naechste" | "wunschzeit";
 
 /** Fester, direkter Ansprechpartner statt Hotline-Warteschleife. */
 export function AnsprechpartnerKarte({ ap, className }: { ap: Ansprechpartner; className?: string }) {
+  const { tenant } = useKanzlei();
   const [rueckruf, setRueckruf] = useState(false);
   const [fernwartung, setFernwartung] = useState(false);
   const vorname = ap.name.split(" ")[0];
+  const jetzt = new Date();
+  const erreichbar = inServicezeit(jetzt, ap.verfuegbar, tenant.bundesland);
+  const naechste = naechsteServicezeit(jetzt, ap.verfuegbar, tenant.bundesland);
 
   return (
     <Card padded={false} className={className}>
@@ -28,8 +35,8 @@ export function AnsprechpartnerKarte({ ap, className }: { ap: Ansprechpartner; c
             <Avatar initialen={ap.initialen} size={68} />
             <span className="absolute bottom-0.5 right-0.5 flex size-4 items-center justify-center rounded-full bg-[var(--surface)]">
               <span className="relative flex size-2.5">
-                <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--green)] opacity-60 [animation-duration:2.2s]" />
-                <span className="relative inline-flex size-2.5 rounded-full bg-[var(--green)]" />
+                {erreichbar && <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--green)] opacity-60 [animation-duration:2.2s]" />}
+                <span className={cn("relative inline-flex size-2.5 rounded-full", erreichbar ? "bg-[var(--green)]" : "bg-[var(--fg-4)]")} />
               </span>
             </span>
           </div>
@@ -38,9 +45,15 @@ export function AnsprechpartnerKarte({ ap, className }: { ap: Ansprechpartner; c
             <h2 className="title-lg mt-1">{ap.name}</h2>
             <div className="text-[13px] text-fg-3">{festeAnsprechperson(ap)}</div>
             <div className="mt-2.5 flex flex-wrap gap-1.5">
-              <Chip tone="green" dot>
-                Erreichbar · {ap.verfuegbar}
-              </Chip>
+              {erreichbar ? (
+                <Chip tone="green" dot>
+                  Erreichbar · {ap.verfuegbar}
+                </Chip>
+              ) : (
+                <Chip tone="amber" icon={<Clock className="size-3" />} title={`Servicezeit ${ap.verfuegbar}`}>
+                  Jetzt nicht erreichbar · wieder {naechste.text}
+                </Chip>
+              )}
               <Chip tone="ink" icon={<Timer className="size-3" />} title="Beispielwert – im Prototyp simuliert">
                 Ø Antwortzeit heute: 4 Min. (Beispiel)
               </Chip>
@@ -111,8 +124,13 @@ function Vergleich({ label, wert, anteil, ton }: { label: string; wert: string; 
 
 function RueckrufModal({ open, onClose, ap }: { open: boolean; onClose: () => void; ap: Ansprechpartner }) {
   const { user, tenant } = useKanzlei();
+  const jetzt = new Date();
+  const imDienst = inServicezeit(jetzt, ap.verfuegbar, tenant.bundesland);
   const [thema, setThema] = useState("");
-  const [wunsch, setWunsch] = useState<Wunsch>("sofort");
+  const [themaFehler, setThemaFehler] = useState(false);
+  const [wunschWahl, setWunsch] = useState<Wunsch | null>(null);
+  // Außerhalb der Servicezeit ist „Sofort“ nicht möglich – vorausgewählt ist dann die nächste mögliche Zeit.
+  const wunsch: Wunsch = wunschWahl === "sofort" && !imDienst ? "naechste" : wunschWahl === "naechste" && imDienst ? "sofort" : (wunschWahl ?? (imDienst ? "sofort" : "naechste"));
   const [wunschzeit, setWunschzeit] = useState("");
   const [dringend, setDringend] = useState(false);
   const [nummer, setNummer] = useState("");
@@ -120,15 +138,21 @@ function RueckrufModal({ open, onClose, ap }: { open: boolean; onClose: () => vo
   const [zusage, setZusage] = useState<string | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
   // Verbindliche Zusage mit Uhrzeit: jetzt + 30 Min. in der Servicezeit, sonst nächster Werktag 8:30 Uhr
-  const jetztZusage = rueckrufZusage(new Date(), ap.verfuegbar, tenant.bundesland).text;
+  const zusageJetzt = rueckrufZusage(jetzt, ap.verfuegbar, tenant.bundesland);
+  const jetztZusage = zusageJetzt.text;
   const gesendet = zusage !== null;
+  // Frist läuft heute ab, Rückruf kommt erst nach 24 Uhr (bzw. zur Wunschzeit): nicht warten, sondern ersatzweise einreichen.
+  const nachFristende = dringend && (wunsch === "wunschzeit" || rueckrufNachFristende(zusageJetzt, jetzt));
+  const vorname = ap.name.split(" ")[0];
+  const zeigeStoerung = () => useUI.getState().zeigeHilfe("bea-stoerung");
 
   const schliessen = () => {
     onClose();
     setTimeout(() => {
       setZusage(null);
       setThema("");
-      setWunsch("sofort");
+      setThemaFehler(false);
+      setWunsch(null);
       setWunschzeit("");
       setDringend(false);
       setAnliegen("");
@@ -137,14 +161,19 @@ function RueckrufModal({ open, onClose, ap }: { open: boolean; onClose: () => vo
   };
 
   const senden = () => {
-    if (!thema) return setFehler(`Bitte wählen Sie ein Thema – so kann sich ${ap.name.split(" ")[0]} auf den Rückruf vorbereiten.`);
+    if (!thema) {
+      setFehler(null);
+      setThemaFehler(true);
+      document.getElementById("rr-thema")?.focus();
+      return;
+    }
     if (wunsch === "wunschzeit" && !wunschzeit.trim()) return setFehler("Bitte nennen Sie Ihre Wunschzeit, z. B. „morgen ab 14 Uhr“ – oder wählen Sie „So bald wie möglich“.");
     if (nummer.trim() && !/^[+\d][\d\s/()-]{5,}$/.test(nummer.trim())) {
       setFehler("Bitte geben Sie eine Telefonnummer mit Ziffern an, z. B. +49 30 1234567 – oder lassen Sie das Feld leer.");
       return;
     }
     setFehler(null);
-    const text = wunsch === "sofort" ? jetztZusage : `Rückruf zu Ihrer Wunschzeit: ${wunschzeit.trim()}`;
+    const text = wunsch === "wunschzeit" ? `Rückruf zu Ihrer Wunschzeit: ${wunschzeit.trim()}` : jetztZusage;
     const prio = dringend ? " · Priorität: dringend (Frist läuft heute ab)" : "";
     useData.getState().log({ akteur: "nutzer", userId: user.id, text: `Rückruf angefordert bei ${ap.name}: ${thema} – ${text}${prio}` });
     setZusage(text);
@@ -189,6 +218,7 @@ function RueckrufModal({ open, onClose, ap }: { open: boolean; onClose: () => vo
             Thema: {thema}
             {dringend && " · Priorität: dringend (Frist läuft heute ab)"}
           </p>
+          {nachFristende && <ErsatzeinreichungHinweis datum={wunsch === "wunschzeit" ? undefined : zusageJetzt.datum} onWissen={zeigeStoerung} className="mt-4 text-left" />}
           <p className="mt-4 rounded-[12px] bg-amber-soft px-3 py-2 text-[12.5px] text-fg-2">{RUECKRUF_SIMULIERT.replace(/^\(|\)$/g, "").replace(/^i/, "I")}. Der Wunsch steht im Aktivitätsprotokoll.</p>
         </div>
       ) : (
@@ -201,30 +231,64 @@ function RueckrufModal({ open, onClose, ap }: { open: boolean; onClose: () => vo
             </span>
           </div>
           <Field label="Worum geht es? (Pflicht)" htmlFor="rr-thema">
-            <Select id="rr-thema" value={thema} onChange={(e) => setThema(e.target.value)} aria-required="true">
+            <Select
+              id="rr-thema"
+              value={thema}
+              onChange={(e) => {
+                setThema(e.target.value);
+                if (e.target.value) setThemaFehler(false);
+              }}
+              aria-required="true"
+              aria-invalid={themaFehler || undefined}
+              aria-describedby={themaFehler ? "rr-thema-fehler" : undefined}
+              className={cn(themaFehler && "!ring-2 !ring-[var(--seal)]")}
+            >
               <option value="">Bitte wählen …</option>
               {THEMEN.map((t) => (
                 <option key={t}>{t}</option>
               ))}
             </Select>
+            {themaFehler && (
+              <p id="rr-thema-fehler" role="alert" className="mt-1.5 flex items-start gap-1.5 text-[12.5px] font-medium text-seal">
+                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                Bitte wählen Sie ein Thema – so kann sich {vorname} auf den Rückruf vorbereiten.
+              </p>
+            )}
           </Field>
           <label htmlFor="rr-dringend" className="flex cursor-pointer items-center gap-2.5 rounded-[12px] px-1 text-[13.5px] text-fg-2">
             <input id="rr-dringend" type="checkbox" checked={dringend} onChange={(e) => setDringend(e.target.checked)} className="size-4 accent-[var(--seal)]" />
             <AlarmClock className="size-4 text-seal" />
             Frist läuft heute ab – bitte vorrangig
           </label>
-          <Field label="Wann passt es Ihnen?">
-            <Segmented<Wunsch>
-              full
-              size="sm"
-              value={wunsch}
-              onChange={setWunsch}
-              options={[
-                { value: "sofort", label: "Sofort" },
-                { value: "wunschzeit", label: "Wunschzeit" },
-              ]}
-            />
-          </Field>
+          {dringend &&
+            (nachFristende ? (
+              <ErsatzeinreichungHinweis datum={wunsch === "wunschzeit" ? undefined : zusageJetzt.datum} onWissen={zeigeStoerung} />
+            ) : (
+              <p className="flex items-start gap-2 rounded-[12px] bg-[var(--ink-softer)] px-3 py-2 text-[12.5px] text-fg-2">
+                <BookOpen className="mt-0.5 size-3.5 shrink-0 text-ink" />
+                <span>
+                  Ist das beA gestört? Was Sie bis zum Fristablauf tun können:{" "}
+                  <button type="button" onClick={zeigeStoerung} className="font-semibold text-ink underline underline-offset-2">
+                    Wissenskarte „beA-Störung – was tun?“
+                  </button>
+                </span>
+              </p>
+            ))}
+          <fieldset className="min-w-0">
+            <legend className="label">Wann passt es Ihnen?</legend>
+            <div className="grid gap-1.5">
+              <WunschOption
+                id="rr-sofort"
+                checked={wunsch === "sofort"}
+                disabled={!imDienst}
+                onChange={() => setWunsch("sofort")}
+                titel="Sofort"
+                text={imDienst ? jetztZusage : `nicht möglich – außerhalb der Servicezeit ${ap.verfuegbar}`}
+              />
+              {!imDienst && <WunschOption id="rr-naechste" checked={wunsch === "naechste"} onChange={() => setWunsch("naechste")} titel="Nächste mögliche Zeit" text={jetztZusage} />}
+              <WunschOption id="rr-wunsch" checked={wunsch === "wunschzeit"} onChange={() => setWunsch("wunschzeit")} titel="Wunschzeit" text="Sie nennen eine Zeit innerhalb der Servicezeit." />
+            </div>
+          </fieldset>
           {wunsch === "wunschzeit" && (
             <Field label="Ihre Wunschzeit" htmlFor="rr-zeit">
               <Input id="rr-zeit" placeholder="z. B. morgen ab 14 Uhr" value={wunschzeit} onChange={(e) => setWunschzeit(e.target.value)} />
@@ -247,6 +311,49 @@ function RueckrufModal({ open, onClose, ap }: { open: boolean; onClose: () => vo
         </div>
       )}
     </Modal>
+  );
+}
+
+/** Auswahl „Wann passt es Ihnen?“ – echte Optionsfelder, damit „Sofort“ mit Grund deaktiviert sein kann. */
+function WunschOption({ id, checked, disabled, onChange, titel, text }: { id: string; checked: boolean; disabled?: boolean; onChange: () => void; titel: string; text: string }) {
+  return (
+    <label
+      htmlFor={id}
+      className={cn(
+        "flex items-start gap-2.5 rounded-[12px] px-3 py-2 ring-1 transition-colors",
+        disabled ? "cursor-not-allowed bg-[var(--surface-2)] ring-[var(--line)]" : "cursor-pointer ring-[var(--line)] hover:ring-[var(--line-strong)]",
+        checked && "bg-ink-soft ring-[var(--ink)]",
+      )}
+    >
+      <input id={id} type="radio" name="rr-wann" checked={checked} disabled={disabled} onChange={onChange} className="mt-0.5 size-4 accent-[var(--ink)]" aria-describedby={`${id}-text`} />
+      <span className="min-w-0">
+        <span className="block text-[13.5px] font-semibold text-fg">{titel}</span>
+        <span id={`${id}-text`} className="block text-[12.5px] text-fg-2">
+          {text}
+        </span>
+      </span>
+    </label>
+  );
+}
+
+/**
+ * Hinweis, wenn der Rückruf erst nach Fristablauf kommt: nicht warten, sondern nach den allgemeinen Vorschriften einreichen.
+ * Bewusst ohne Notfallnummer – eine Erreichbarkeit außerhalb der Servicezeit sagt nur der Auftraggeber zu.
+ */
+function ErsatzeinreichungHinweis({ datum, onWissen, className }: { datum?: string; onWissen: () => void; className?: string }) {
+  return (
+    <div role="note" className={cn("flex items-start gap-2.5 rounded-[14px] border border-[color-mix(in_oklab,var(--seal)_45%,transparent)] bg-seal-soft px-3.5 py-3 text-[13px] text-fg", className)}>
+      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-seal" aria-hidden />
+      <div className="min-w-0">
+        <p className="font-semibold">Warten Sie nicht auf den Rückruf – {datum ? `er kommt erst am ${fmtDateWd(datum)}.` : "er kommt womöglich erst nach Fristablauf."}</p>
+        <p className="mt-1 leading-relaxed text-fg-2">
+          Ist das beA gestört, reichen Sie nach den allgemeinen Vorschriften ein (Ersatzeinreichung, § 130d S. 2, 3 ZPO; vor den Arbeitsgerichten § 46g S. 3, 4 ArbGG) und machen Sie die Störung glaubhaft.
+        </p>
+        <button type="button" onClick={onWissen} className="mt-1.5 inline-flex items-center gap-1.5 font-semibold text-ink underline underline-offset-2">
+          <BookOpen className="size-3.5" /> Wissenskarte „beA-Störung – was tun?“
+        </button>
+      </div>
+    </div>
   );
 }
 

@@ -188,6 +188,9 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
         kiAnalyseVom: ergebnis.erstelltAm,
         version: neu,
         autorId: user.id,
+        // Neue Fassung = wieder Entwurf: nicht freigegeben und nicht im Mandantenportal (B-02/B-04)
+        status: "entwurf",
+        portal: undefined,
         groesseKb: Math.max(8, Math.round(ergebnis.entwurf.text.length / 900)),
         seiten: Math.max(1, Math.round(ergebnis.entwurf.text.length / 2600)),
       });
@@ -210,6 +213,7 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
       quelle: "generiert",
       autorId: user.id,
       version: 1,
+      status: "entwurf",
       createdAt: nowLocal(),
       ki: { zusammenfassung: "Von der KI-Fallanalyse erstellter Entwurf – bitte prüfen." },
     });

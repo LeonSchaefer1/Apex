@@ -57,7 +57,9 @@ Stand: 16.10.2026 · Finale Fassung für die 5 End-to-End-Testiterationen · Gru
 | Akte | Inhalt | genutzt in |
 |---|---|---|
 | 118/26 Neumann ./. Arslan Autohaus GmbH | Urteil per beA „gegen eEB“, Berufung zum Kammergericht | T02, T03 |
-| 142/26 Weber ./. Kröger Logistik GmbH | Kündigungsschutz (Bagatellkündigung), Arbeitsvertrag mit Ausschlussfrist, Gegenstandswert 10.200 €, RSV Nordlicht Rechtsschutz AG (Vers.-Nr. RS-4471209, Selbstbeteiligung 150 €), Mandantenportal aktiv | T04, T05, T06, T14, T17, T19, T23 |
+| 142/26 Weber ./. Kröger Logistik GmbH | Kündigungsschutz (Bagatellkündigung), Arbeitsvertrag mit Ausschlussfrist, Gegenstandswert 10.200 €, RSV Nordlicht Rechtsschutz AG (Vers.-Nr. RS-4471209, Selbstbeteiligung 150 €), Mandantenportal aktiv | T04, T05, T06, T17, T19, T23 |
+| 151/26 Ostermann ./. Havelbrück Pflegedienste GmbH | Kündigungsschutz, Arbeitsgericht Berlin (28 Ca 11873/26), Klage per beA eingereicht (Klagefrist erledigt, mit Versandnachweis), Gegenstandswert 11.700 €, RSV Spreebogen Rechtsschutz VVaG (Deckung erteilt), Gegenseite vertreten durch Tanneberg & Sternberg Rechtsanwälte PartG mbB; Gütetermin drei Tage nach „heute“ (auf den nächsten Werktag verschoben) um 9:00 Uhr, Magdeburger Platz 1, Saal 3; Kündigungsschreiben, Klageschrift und Ladung als PDF; Mandantenportal aktiv | T14 |
+| 152/26 Engelke ./. Stadtwerke Spreetal GmbH, 153/26 Rehbein ./. Wohnungsgenossenschaft Marzahn-Ost eG, 154/26 Vossberg ./. Reiseveranstalter Sonnenkap GmbH | außergerichtlich, Deckungszusage der RSV liegt vor – zusammen mit 151/26 vier RSV-Akten für die Sammelabrechnung | T07, T22 |
 | 126/26 Berger Haustechnik GmbH ./. Lenz | Forderungskonto, Vollstreckung | T09 |
 | 137/26 Schneider ./. Lindenhof Hausverwaltung GmbH | Mietrecht, gerichtlich | T20, T23 |
 | 131/26 Yilmaz ./. Elbtal Versicherung AG | Verkehrsunfall, Fremdgeld | T08 |
@@ -448,9 +450,9 @@ Aktennummer;Kurzrubrum;Mandant;Gegner;Sachgebiet;Angelegt am;Nächste Frist;Fris
 
 *Bereich:* Akten, Fristen (mobil), Navigation · *Viewport:* M; in Iteration 3 zusätzlich Th · *Richtwert Mensch:* 3 Min.
 
-**Situation:** 8:40 Uhr vor Saal 3, um 9:00 Uhr ist Gütetermin in 142/26. Das WLAN im Gericht ist schwach.
+**Situation:** 8:40 Uhr vor Saal 3, um 9:00 Uhr ist Gütetermin in 151/26 Ostermann ./. Havelbrück Pflegedienste GmbH (Arbeitsgericht Berlin). Das WLAN im Gericht ist schwach. In den Demodaten liegt der Termin drei Tage nach „heute“; die Testleitung spielt den Termintag durch.
 
-**Aufgabe:** Akte am iPhone öffnen: Termin, Gericht und Aktenzeichen, Gegenseite, letzte Schriftsätze, Kündigungsschreiben als PDF. Nach dem Termin eine Sitzungsnotiz und eine Frist „Widerruf des Vergleichs bis …“ anlegen.
+**Aufgabe:** Akte am iPhone öffnen: Termin, Gericht und Aktenzeichen, Gegenseite, letzte Schriftsätze, Kündigungsschreiben als PDF. Nach dem Termin eine Sitzungsnotiz und eine Frist „Widerruf des Vergleichs bis …“ (Fristart „Widerrufsfrist (Vergleich)“) anlegen.
 
 **Erfolgskriterium:** Die Akte ist in ≤ 3 Taps erreicht, **und** Sitzungsnotiz plus Widerrufsfrist sind in ≤ 10 Aktionen angelegt, ohne horizontales Scrollen.
 

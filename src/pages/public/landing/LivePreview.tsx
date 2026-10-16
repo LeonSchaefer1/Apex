@@ -169,7 +169,7 @@ export function LivePreview() {
                   {praezedenz.map((e, k) => (
                     <motion.li
                       key={e.id}
-                      animate={{ opacity: s >= 11 + k * 0.5 || s === SCHRITTE - 1 ? 1 : 0.25, x: s >= 11 + k * 0.5 || s === SCHRITTE - 1 ? 0 : -4 }}
+                      animate={{ opacity: s >= 11 + k * 0.5 || s === SCHRITTE - 1 ? 1 : 0.65, x: s >= 11 + k * 0.5 || s === SCHRITTE - 1 ? 0 : -4 }}
                       transition={{ type: "spring", stiffness: 420, damping: 32 }}
                       className="flex min-w-0 items-center gap-1.5 text-[12px]"
                     >
@@ -200,13 +200,19 @@ export function LivePreview() {
                 <div className="eyebrow mb-1.5">Rechenweg</div>
                 <ol className="grid grid-cols-1 gap-1">
                   {f.rechenweg.map((z, k) => (
+                    // Rechenweg von Anfang an in voller Deckkraft lesbar – der Ablauf markiert nur den aktuellen Schritt
                     <motion.li
                       key={k}
-                      animate={{ opacity: k < zeilen ? 1 : 0.18, y: k < zeilen ? 0 : 3 }}
-                      transition={{ type: "spring", stiffness: 420, damping: 34 }}
-                      className={cn("flex gap-1.5 text-[12px] leading-snug", k === f.rechenweg.length - 2 ? "font-semibold text-fg" : "text-fg-2")}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.25, delay: Math.min(k, 6) * 0.03 }}
+                      className={cn(
+                        "flex gap-1.5 rounded-[6px] text-[12px] leading-snug transition-colors duration-300",
+                        k === f.rechenweg.length - 2 ? "font-semibold text-fg" : "text-fg-2",
+                        k === zeilen - 1 && "bg-[var(--surface)]",
+                      )}
                     >
-                      <span className="num mt-px grid size-4 shrink-0 place-items-center rounded-full bg-ink-soft text-[10px] font-bold text-ink">{k + 1}</span>
+                      <span className={cn("num mt-px grid size-4 shrink-0 place-items-center rounded-full text-[10px] font-bold transition-colors duration-300", k < zeilen ? "bg-ink text-white" : "bg-ink-soft text-ink")}>{k + 1}</span>
                       <span className="min-w-0">{kurz(z)}</span>
                     </motion.li>
                   ))}

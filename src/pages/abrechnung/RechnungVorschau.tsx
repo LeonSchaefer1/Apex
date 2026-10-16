@@ -11,7 +11,7 @@ import { fassungFuerAuftrag } from "@/core/rvg";
 import type { Aktivitaet, Akte, Kontakt, Rechnung, RechnungsPosition, Tenant, User, Zeiteintrag } from "@/core/types";
 import { cn } from "@/lib/cn";
 import { aktiveZahlungen, aktualisierePositionen, belegArt, erfasseZahlung, korrigiereRechnung, loescheEntwurf, nimmZahlungZurueck, sendeZahlungserinnerungen, setzeFormat, stelleRechnung, storniereRechnung } from "./aktionen";
-import { ERECHNUNG_PFLICHT, FASSUNG_LABEL, fmtDauer, fmtSatz, istEntwurfsKennung, istOffen, korrekturText, leistungszeitraum, offenerBetrag, parseBetrag, RSV_VORSTEUER_HINWEIS, rsvBlockText, satzAusPosition } from "./lib";
+import { betragFuerMinuten, ERECHNUNG_PFLICHT, FASSUNG_LABEL, fmtDauer, fmtSatz, istEntwurfsKennung, istOffen, istReineZeitrechnung, korrekturText, leistungszeitraum, offenerBetrag, parseBetrag, RSV_VORSTEUER_HINWEIS, rsvBlockText, satzAusPosition } from "./lib";
 import { Anschrift, Betrag, Briefkopf, FORMAT_INFO, FormatChip, InfoZeile, StatusChip, useLookups } from "./ui";
 import { xrechnungXml, zugferdXml } from "./erechnung";
 import { DateiDialog, type AusgabeDatei } from "@/pages/fristen/dateiAusgabe";
@@ -36,7 +36,8 @@ function steuerAngabe(t: Tenant): { label: string; wert: string; platzhalter: bo
 function PositionZeile({ p }: { p: RechnungsPosition }) {
   const std = p.vv === "Std";
   const satz = std ? `${fmtSatz(p.menge ?? 0)} Std.` : p.satz !== undefined ? fmtSatz(p.satz) : "";
-  const wert = std ? (p.menge ? `à ${fmtEUR(p.betrag / p.menge)}` : "") : p.gegenstandswert ? fmtEUR(p.gegenstandswert) : "";
+  // Zeitposition: der Stundensatz aus der Position (Betrag ist aus den Minuten gerechnet, nicht aus gerundeten Stunden)
+  const wert = std ? (p.menge ? `à ${fmtEUR(satzAusPosition(p))}` : "") : p.gegenstandswert ? fmtEUR(p.gegenstandswert) : "";
   return (
     <tr className="border-b border-black/[0.07] align-top">
       <td className="mono py-2 pr-2 text-[12.5px] opacity-70">{vvAnzeige(p.vv)}</td>
@@ -82,7 +83,7 @@ function Taetigkeitsnachweis({ r, zeiten, users }: { r: Rechnung; zeiten: Zeitei
     const p = stdPos.find((x) => name && x.bezeichnung.includes(name)) ?? stdPos[0];
     return p ? satzAusPosition(p) : 0;
   };
-  const zeilen = eintraege.map((z) => ({ z, betrag: round2((z.minuten / 60) * satzFuer(z.userId)) }));
+  const zeilen = eintraege.map((z) => ({ z, betrag: betragFuerMinuten(z.minuten, satzFuer(z.userId)) }));
   const summe = round2(zeilen.reduce((s, x) => s + x.betrag, 0));
   const minuten = eintraege.reduce((s, z) => s + z.minuten, 0);
   return (
@@ -144,10 +145,12 @@ export function RechnungPapier({
   zeiten?: Zeiteintrag[];
   users?: Map<string, User>;
 }) {
-  const [von, bis] = leistungszeitraum(akte, r);
+  const [von, bis] = leistungszeitraum(akte, r, zeiten);
   const rvg = r.positionen.some((p) => /^\d{4}$/.test(p.vv) && p.vv !== "7002");
   const fassung = akte ? fassungFuerAuftrag(akte.createdAt.slice(0, 10)) : "2025";
-  const wert = r.positionen.find((p) => p.gegenstandswert)?.gegenstandswert ?? akte?.gegenstandswert;
+  // Reine Zeitrechnung (§ 3a RVG): kein Gegenstandswert im Kopf – er ist für die Vergütung ohne Bedeutung.
+  const reineZeit = istReineZeitrechnung(r);
+  const wert = reineZeit ? undefined : (r.positionen.find((p) => p.gegenstandswert)?.gegenstandswert ?? akte?.gegenstandswert);
   const entwurf = r.status === "entwurf" || istEntwurfsKennung(r.nummer);
   const vorschuss = r.art === "vorschuss";
   const steuer = steuerAngabe(tenant);
@@ -200,10 +203,11 @@ export function RechnungPapier({
       <table className="mt-5 w-full border-collapse text-[12.5px]">
         <thead>
           <tr className="border-b border-black/15 text-left text-[12.5px] uppercase tracking-[0.06em] opacity-60">
-            <th className="py-2 pr-2 font-semibold">Nr. VV</th>
-            <th className="py-2 pr-3 font-semibold">Gebührentatbestand</th>
-            <th className="py-2 pr-3 text-right font-semibold">Satz</th>
-            <th className="hidden py-2 pr-3 text-right font-semibold sm:table-cell">Gegenstandswert</th>
+            {/* Reine Zeitrechnung (§ 3a RVG): Spalten nach Zeit und Stundensatz benannt – ein Gegenstandswert spielt keine Rolle */}
+            <th className="py-2 pr-2 font-semibold">{reineZeit ? "Art" : "Nr. VV"}</th>
+            <th className="py-2 pr-3 font-semibold">{reineZeit ? "Leistung" : "Gebührentatbestand"}</th>
+            <th className="py-2 pr-3 text-right font-semibold">{reineZeit ? "Zeit" : "Satz"}</th>
+            <th className="hidden py-2 pr-3 text-right font-semibold sm:table-cell">{reineZeit ? "Stundensatz" : "Gegenstandswert"}</th>
             <th className="py-2 text-right font-semibold">Betrag</th>
           </tr>
         </thead>
@@ -351,7 +355,7 @@ export function RechnungVorschau({ id, onClose }: { id: string | null; onClose: 
   /** XRechnung bzw. ZUGFeRD einer Rechnung abrufen – Vorschau mit „Datei speichern“ und Kopieren. */
   const formatAbrufen = (f: "XRechnung" | "ZUGFeRD") => {
     if (!r) return;
-    const ktx = { akte, empfaenger, tenant, hinweise: r.rsv ? [rsvBlockText(r.rsv, fmtEUR)] : [] };
+    const ktx = { akte, empfaenger, tenant, hinweise: r.rsv ? [rsvBlockText(r.rsv, fmtEUR)] : [], zeiten: zeitenAlle };
     const nr = r.nummer.replace(/[^A-Za-z0-9-]+/g, "_");
     setDatei(
       f === "XRechnung"

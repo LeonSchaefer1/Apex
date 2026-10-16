@@ -10,7 +10,7 @@ import { addDays, fmtDate, fmtDateShort, fmtDateWd, fmtEUR, relDays, round2, tod
 import type { Zeiteintrag } from "@/core/types";
 import { cn } from "@/lib/cn";
 import { erstelleRechnungen } from "./aktionen";
-import { fmtDauer, fmtStunden, hatVerguetungsvereinbarung, isoWoche, parseBetrag, satzFuerAbrechnung, STANDARD_STUNDENSATZ, stundenPositionen, summen, type TabKey } from "./lib";
+import { fmtDauer, fmtStunden, hatVerguetungsvereinbarung, isoWoche, parseBetrag, satzFuerAbrechnung, satzFuerEintrag, STANDARD_STUNDENSATZ, stundenPositionen, summen, wertEintrag, type TabKey } from "./lib";
 import { useAbrechnungUI } from "./store";
 import { TabKopf, useLookups } from "./ui";
 
@@ -54,9 +54,10 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
   const [wer, setWer] = useState<"alle" | "meine">("alle");
   const [abrAkte, setAbrAkte] = useState("");
 
-  const satzVon = (userId: string) => users.get(userId)?.stundensatz ?? user.stundensatz ?? STANDARD_STUNDENSATZ;
-  // Wert einer Zeit: vereinbarter Stundensatz der Akte (§ 3a RVG) hat Vorrang vor dem Satz der Person
-  const wert = (z: Zeiteintrag) => round2((z.minuten / 60) * (akten.get(z.akteId)?.verguetungsvereinbarung?.stundensatz ?? satzVon(z.userId)));
+  const satzVon = (userId: string) => users.get(userId)?.stundensatz ?? STANDARD_STUNDENSATZ;
+  // Wert einer Zeit: vereinbarter Stundensatz der Akte (§ 3a RVG) vor dem Satz der Person, die die Zeit erfasst hat –
+  // dieselbe Funktion wie in der Abrechnungsvorschau, der Rechnung und dem Tätigkeitsnachweis (nie der Satz der angemeldeten Person).
+  const wert = (z: Zeiteintrag) => wertEintrag(z, akten.get(z.akteId), users);
 
   const heute = today();
   const wocheJetzt = isoWoche(heute).montag;
@@ -93,7 +94,18 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
       .sort((a, b) => b.min - a.min);
   }, [zeiten, akten]);
   const abrAkteObj = akten.get(abrAkte || abrechenbareAkten[0]?.akte?.id || "");
-  const abrEintraege = abrAkteObj ? zeiten.filter((z) => z.akteId === abrAkteObj.id && z.abrechenbar && !z.abgerechnet) : [];
+  const offeneEintraege = abrAkteObj ? zeiten.filter((z) => z.akteId === abrAkteObj.id && z.abrechenbar && !z.abgerechnet).sort((a, b) => a.datum.localeCompare(b.datum)) : [];
+  // Einzelauswahl: standardmäßig alle offenen Einträge; abgewählte bleiben offen und können später abgerechnet werden.
+  const [abgewaehlt, setAbgewaehlt] = useState<Set<string>>(new Set());
+  useEffect(() => setAbgewaehlt(new Set()), [abrAkteObj?.id]);
+  const abrEintraege = offeneEintraege.filter((z) => !abgewaehlt.has(z.id));
+  const umschaltenAuswahl = (id: string) =>
+    setAbgewaehlt((alt) => {
+      const neu = new Set(alt);
+      if (neu.has(id)) neu.delete(id);
+      else neu.add(id);
+      return neu;
+    });
   const vv = abrAkteObj?.verguetungsvereinbarung;
   // Stundensatz dieser Abrechnung: vorbelegt mit dem vereinbarten Satz, sichtbar und je Abrechnung überschreibbar
   const [satzEingabe, setSatzEingabe] = useState("");
@@ -101,8 +113,9 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
     setSatzEingabe(vv?.stundensatz ? String(vv.stundensatz).replace(".", ",") : "");
   }, [abrAkteObj?.id, vv?.stundensatz]);
   const eingabeSatz = satzEingabe.trim() ? parseBetrag(satzEingabe) : undefined;
-  const satzWahl = satzFuerAbrechnung(abrAkteObj, eingabeSatz, user.stundensatz ?? STANDARD_STUNDENSATZ);
-  const abrPositionen = stundenPositionen(abrEintraege, users, user.stundensatz ?? STANDARD_STUNDENSATZ, vv?.stundensatz, { satz: satzWahl.satz, quelle: satzWahl.quelle, vereinbarungDatum: vv?.datum });
+  // Quelle des Satzes dieser Abrechnung (für Hinweise); die Beträge rechnet stundenPositionen je Eintrag mit satzFuerEintrag.
+  const satzWahl = satzFuerAbrechnung(abrAkteObj, eingabeSatz, STANDARD_STUNDENSATZ);
+  const abrPositionen = stundenPositionen(abrEintraege, abrAkteObj, users, { abrechnungsSatz: eingabeSatz });
   const abrSummen = summen(abrPositionen);
   // Abrechnung nach Zeit nur mit Vergütungsvereinbarung in Textform (§ 3a Abs. 1 RVG) – sonst gelten die gesetzlichen Gebühren.
   const abrVereinbarung = abrAkteObj ? hatVerguetungsvereinbarung(abrAkteObj, dokumente) : false;
@@ -159,16 +172,17 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
 
   const abrechnen = () => {
     if (!abrAkteObj || !abrEintraege.length || !abrVereinbarung) return;
+    const offenBleiben = offeneEintraege.length - abrEintraege.length;
     const [r] = erstelleRechnungen([{ akte: abrAkteObj, positionen: abrPositionen, summen: abrSummen, zeitIds: abrEintraege.map((z) => z.id) }], "auto", "entwurf", user.id);
     useData.getState().log({
       akteur: "nutzer",
       userId: user.id,
       akteId: abrAkteObj.id,
-      text: `Rechnungsentwurf aus ${fmtStunden(abrEintraege.reduce((s, z) => s + z.minuten, 0))} Std. erstellt (${r.nummer}) zu ${fmtEUR(satzWahl.satz)}/Std.${satzWahl.quelle === "vereinbarung" ? " lt. Vergütungsvereinbarung" : satzWahl.quelle === "abrechnung" ? " (abweichend für diese Abrechnung)" : " (kein vereinbarter Stundensatz hinterlegt)"} – ${abrAkteObj.aktenzeichen}`,
+      text: `Rechnungsentwurf aus ${fmtStunden(abrEintraege.reduce((s, z) => s + z.minuten, 0))} Std. (${abrEintraege.length} ${abrEintraege.length === 1 ? "Eintrag" : "Einträge"}) erstellt (${r.nummer}) ${satzWahl.quelle === "person" ? "zum Satz der jeweiligen Person (kein vereinbarter Stundensatz hinterlegt)" : `zu ${fmtEUR(satzWahl.satz)}/Std.${satzWahl.quelle === "vereinbarung" ? " lt. Vergütungsvereinbarung" : " (abweichend für diese Abrechnung)"}`}${offenBleiben ? ` – ${offenBleiben} ${offenBleiben === 1 ? "Eintrag bleibt" : "Einträge bleiben"} offen` : ""} – ${abrAkteObj.aktenzeichen}`,
     });
     setAbrAkte("");
     toast("Rechnungsentwurf aus Zeiten erstellt", {
-      text: `${r.nummer} · ${fmtEUR(r.brutto)}`,
+      text: `${r.nummer} · ${fmtEUR(r.brutto)}${offenBleiben ? ` · ${offenBleiben} ${offenBleiben === 1 ? "Eintrag bleibt" : "Einträge bleiben"} offen` : ""}`,
       ton: "erfolg",
       aktion: {
         label: "Ansehen",
@@ -419,7 +433,56 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                     ))}
                   </Select>
                 </Field>
-                <ul className="mt-3 grid grid-cols-1 gap-1.5">
+                {/* Einzelauswahl der offenen Einträge – die Summe läuft mit, nicht gewählte bleiben offen */}
+                <fieldset className="mt-3">
+                  <legend className="mb-1.5 flex w-full items-baseline justify-between gap-2 text-[12.5px] font-medium text-fg-2">
+                    <span>Offene Einträge abrechnen</span>
+                    <span className="num font-normal text-fg-3">
+                      {abrEintraege.length} von {offeneEintraege.length} gewählt
+                    </span>
+                  </legend>
+                  <ul className="grid max-h-[260px] grid-cols-1 gap-0.5 overflow-y-auto rounded-[14px] border border-[var(--line)] p-1">
+                    {offeneEintraege.map((z) => {
+                      const an = !abgewaehlt.has(z.id);
+                      const u = users.get(z.userId);
+                      const { satz } = satzFuerEintrag(z, abrAkteObj, users, eingabeSatz);
+                      return (
+                        <li key={z.id}>
+                          <label className={cn("flex min-h-[44px] cursor-pointer items-start gap-2.5 rounded-[10px] px-2 py-1.5 text-[12.5px] transition-colors hover:bg-ink-softer", !an && "opacity-60")}>
+                            <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[var(--ink)]" checked={an} onChange={() => umschaltenAuswahl(z.id)} />
+                            <span className="min-w-0 flex-1">
+                              <span className="block break-words font-medium text-fg">{z.taetigkeit}</span>
+                              <span className="block text-fg-3">
+                                {fmtDateShort(z.datum)} · {u?.name ?? "–"} · {fmtEUR(satz, { cents: false })}/Std.
+                              </span>
+                            </span>
+                            <span className="shrink-0 text-right">
+                              <span className="num block font-medium">{fmtDauer(z.minuten)}</span>
+                              <span className="num block text-fg-3">{fmtEUR(wertEintrag(z, abrAkteObj, users, eingabeSatz))}</span>
+                            </span>
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {offeneEintraege.length > 1 && (
+                    <div className="mt-1.5 flex flex-wrap gap-2 text-[12.5px]">
+                      <button type="button" className="rounded-full px-2 py-1 font-medium text-ink hover:bg-ink-soft" onClick={() => setAbgewaehlt(new Set())}>
+                        Alle wählen
+                      </button>
+                      <button type="button" className="rounded-full px-2 py-1 font-medium text-ink hover:bg-ink-soft" onClick={() => setAbgewaehlt(new Set(offeneEintraege.map((z) => z.id)))}>
+                        Keine
+                      </button>
+                    </div>
+                  )}
+                </fieldset>
+                {!abrVereinbarung && abrPositionen.length > 0 && (
+                  <p className="mt-3 flex items-start gap-1.5 text-[12.5px] font-medium text-amber">
+                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                    Satz der Person – ohne Vereinbarung, nur Vorschau
+                  </p>
+                )}
+                <ul className="mt-3 grid grid-cols-1 gap-1.5" aria-label="Positionen der Abrechnung">
                   {abrPositionen.map((p, i) => (
                     <li key={i} className="flex items-baseline justify-between gap-3 text-[12.5px]">
                       <span className="min-w-0 text-fg-2">
@@ -503,14 +566,14 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                           : undefined
                     }
                   >
-                    <Input id="ze-abr-satz" inputMode="decimal" value={satzEingabe} onChange={(e) => setSatzEingabe(e.target.value)} placeholder={String(user.stundensatz ?? STANDARD_STUNDENSATZ)} className="num" />
+                    <Input id="ze-abr-satz" inputMode="decimal" value={satzEingabe} onChange={(e) => setSatzEingabe(e.target.value)} placeholder="Satz der jeweiligen Person" className="num" />
                   </Field>
                 )}
                 {abrVereinbarung && satzWahl.quelle === "person" && (
                   <p className="mt-2 flex items-start gap-1.5 rounded-[12px] bg-amber-soft px-3 py-2 text-[12.5px] leading-snug text-fg-2">
                     <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber" />
                     <span>
-                      Kein vereinbarter Stundensatz hinterlegt – abgerechnet wird mit {fmtEUR(satzWahl.satz)}/Std. ohne den Zusatz „lt. Vergütungsvereinbarung“. Bitte den Satz der Vereinbarung erfassen.
+                      Kein vereinbarter Stundensatz hinterlegt – abgerechnet wird mit dem Satz der jeweiligen Person ohne den Zusatz „lt. Vergütungsvereinbarung“. Bitte den Satz der Vereinbarung erfassen.
                     </span>
                   </p>
                 )}
@@ -524,7 +587,9 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                     <span className="num">{fmtEUR(abrSummen.ust)}</span>
                   </div>
                   <div className="flex items-baseline justify-between">
-                    <span className="text-fg-3">{abrEintraege.length} Einträge · brutto</span>
+                    <span className="text-fg-3">
+                      {abrEintraege.length} {abrEintraege.length === 1 ? "Eintrag" : "Einträge"} · {fmtDauer(abrEintraege.reduce((s, z) => s + z.minuten, 0))} · brutto
+                    </span>
                     <span className="num text-[17px] font-semibold">{fmtEUR(abrSummen.brutto)}</span>
                   </div>
                 </div>
@@ -533,8 +598,8 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                     Nach Zeit abrechnen setzt eine Vergütungsvereinbarung in Textform voraus (§ 3a Abs. 1 RVG). Ohne Vereinbarung gelten die gesetzlichen Gebühren – dann über den RVG-Rechner.
                   </p>
                 )}
-                <Button variant="primary" className="mt-3 w-full" icon={<FilePlus2 className="size-4" />} onClick={abrechnen} disabled={!abrVereinbarung}>
-                  Aus Zeiten abrechnen
+                <Button variant="primary" className="mt-3 w-full" icon={<FilePlus2 className="size-4" />} onClick={abrechnen} disabled={!abrVereinbarung || !abrEintraege.length}>
+                  {abrEintraege.length && abrEintraege.length < offeneEintraege.length ? `${abrEintraege.length} von ${offeneEintraege.length} Einträgen abrechnen` : "Aus Zeiten abrechnen"}
                 </Button>
                 <p className="mt-2 text-center text-[12.5px] text-fg-3">Erstellt einen Rechnungsentwurf mit Tätigkeitsnachweis; die Zeiten werden als abgerechnet markiert und beim Löschen des Entwurfs wieder frei.</p>
               </>

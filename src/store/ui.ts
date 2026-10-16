@@ -67,6 +67,9 @@ interface UIState {
   theme: ThemeWahl;
   dichte: Dichte;
   schrift: Schriftgroesse;
+  /** Apex Island in der Kopfleiste anzeigen (ausblendbar direkt an der Island und unter Einstellungen → Darstellung). */
+  island: boolean;
+  setIsland: (an: boolean) => void;
   /** Apex Island zeigt Live-Meldungen des 38h-Motors (aus = ruhige, statische Anzeige ohne Aus- und Einklappen). */
   liveMeldungen: boolean;
   /** Assistent-Kugel unten rechts anzeigen (ausgeblendet bleibt der Assistent über Strg+K bzw. das Menü erreichbar). */
@@ -90,6 +93,12 @@ interface UIState {
   /** Schnelle Wiedervorlage (Taste „W“) – optional mit vorbelegter Akte */
   wiedervorlage: { akteId?: string } | null;
   setWiedervorlage: (w: { akteId?: string } | null) => void;
+  /** Schnelle Zeiterfassung (Taste „Z“) – optional mit vorbelegter Akte */
+  zeiterfassung: { akteId?: string } | null;
+  setZeiterfassung: (z: { akteId?: string } | null) => void;
+  /** Kürzel mit einzelnen Buchstaben (W, F, Z, ?, Posteingang J/K/U/E) – abschaltbar (WCAG 2.1.4); Alt+Taste wirkt immer. */
+  einzeltastenKuerzel: boolean;
+  setEinzeltastenKuerzel: (an: boolean) => void;
   toggleSidebar: () => void;
   oeffneAssistent: (prompt?: string) => void;
   schliesseAssistent: () => void;
@@ -102,11 +111,14 @@ export const useUI = create<UIState>((set, get) => ({
   theme: read<ThemeWahl>("aa:theme", "system"),
   dichte: read<Dichte>("aa:dichte", "comfortable"),
   schrift: ((g) => (SCHRIFTGROESSEN.includes(g) ? g : 100))(read<Schriftgroesse>("aa:schrift", 100)),
+  island: read<boolean>("aa:island", true) !== false,
   liveMeldungen: read<boolean>("aa:live-meldungen", true),
   kugel: read<boolean>("aa:kugel", true),
   kugelEingeklappt: read<boolean>("aa:kugel-eingeklappt", false),
   kuerzelOffen: false,
   wiedervorlage: null,
+  zeiterfassung: null,
+  einzeltastenKuerzel: read<boolean>("aa:einzeltasten", true) !== false,
   sidebarKompakt: read<boolean>("aa:sidebar", false),
   assistentOffen: false,
   assistentPrompt: null,
@@ -127,6 +139,10 @@ export const useUI = create<UIState>((set, get) => ({
     applySchrift(g);
     set({ schrift: g });
   },
+  setIsland: (an) => {
+    write("aa:island", an);
+    set({ island: an });
+  },
   setLiveMeldungen: (an) => {
     write("aa:live-meldungen", an);
     set({ liveMeldungen: an });
@@ -141,6 +157,11 @@ export const useUI = create<UIState>((set, get) => ({
   },
   setKuerzel: (o) => set({ kuerzelOffen: o }),
   setWiedervorlage: (w) => set({ wiedervorlage: w }),
+  setZeiterfassung: (z) => set({ zeiterfassung: z }),
+  setEinzeltastenKuerzel: (an) => {
+    write("aa:einzeltasten", an);
+    set({ einzeltastenKuerzel: an });
+  },
   toggleSidebar: () => {
     const v = !get().sidebarKompakt;
     write("aa:sidebar", v);

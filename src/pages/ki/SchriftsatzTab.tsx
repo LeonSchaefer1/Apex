@@ -12,12 +12,12 @@ import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
 import { nowLocal, uid } from "@/core/dates";
 import type { Dokument } from "@/core/types";
-import { AiChip, Button, Card, Chip, Field, Segmented, Select, Textarea } from "@/components/ui";
+import { AiChip, Button, Card, Chip, Field, Segmented, Select, Textarea, confirmDialog } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { kopiereText } from "@/pages/falldb/zwischenablage";
 import { pruefeZitate } from "@/pages/falldb/recherche";
 import { KiSchritte, type KiSchritt } from "./KiSchritte";
-import { artInfo, artenFuer, dokumentName, entwurfOffline, entwurfPrompt, mandantRolle, type SchriftsatzArt, type Ton } from "./schriftsatz";
+import { artInfo, artenFuer, dokumentName, entwurfOffline, entwurfPrompt, fruehereFassung, mandantRolle, type SchriftsatzArt, type Ton } from "./schriftsatz";
 import { standardAkte } from "./FallanalyseTab";
 
 const ICONS: Record<SchriftsatzArt, ReactNode> = {
@@ -204,13 +204,44 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
 
   const nurText = (t: string) => t.replace(/\*\*/g, "");
 
-  const speichern = () => {
+  const speichern = async () => {
     if (!erzeugt || !text.trim()) return;
     const a = data.akten.find((x) => x.id === erzeugt.akteId);
     if (!a) return;
     const info = artInfo(erzeugt.art);
     const inhalt = nurText(text);
     const offenePlatzhalter = (inhalt.match(/\[[^\]\n]+\]/g) ?? []).length;
+    const kiText = `${info.titel} – Entwurf (${erzeugt.quelle === "live" ? "Claude" : "Vorlage"})${offenePlatzhalter ? `, ${offenePlatzhalter} Platzhalter offen` : ""}`;
+    // Gleiches Schreiben an denselben Empfänger schon in der Akte (noch nicht versandt)? Dann neue Version statt zweitem Dokument.
+    const frueher = fruehereFassung(erzeugt.art, a, useData.getState().data);
+    if (frueher) {
+      const neu = frueher.version + 1;
+      const ok = await confirmDialog({
+        titel: `Als Version ${neu} von „${frueher.name}“ speichern?`,
+        text: `In ${a.aktenzeichen} liegt bereits „${frueher.name}“ vom ${frueher.createdAt.slice(0, 10).split("-").reverse().join(".")} (Version ${frueher.version}${frueher.status === "freigegeben" ? ", freigegeben" : frueher.status === "entwurf" ? ", Entwurf" : ""}). Der neue Entwurf wird als Version ${neu} desselben Dokuments gespeichert – es entsteht keine zweite Datei${frueher.status === "freigegeben" ? "; die Freigabe muss danach erneuert werden" : ""}.`,
+        bestaetigen: `Als Version ${neu} speichern`,
+      });
+      if (!ok) return;
+      useData.getState().patch("dokumente", frueher.id, {
+        inhalt,
+        version: neu,
+        status: "entwurf",
+        autorId: user.id,
+        createdAt: nowLocal(),
+        portal: undefined,
+        groesseKb: Math.max(14, Math.round(inhalt.length / 60)),
+        seiten: Math.max(1, Math.ceil(inhalt.length / 2800)),
+        ki: { zusammenfassung: kiText },
+      });
+      useData.getState().log({ akteur: "nutzer", userId: user.id, akteId: a.id, text: `KI-Entwurf als Version ${neu} von „${frueher.name}“ gespeichert (${info.titel})${offenePlatzhalter ? ` – ${offenePlatzhalter} Platzhalter offen` : ""} – ${a.aktenzeichen}` });
+      setGespeichert(frueher.id);
+      toast(`Version ${neu} gespeichert`, {
+        text: `${frueher.name} · ${a.aktenzeichen}`,
+        ton: "erfolg",
+        aktion: { label: "Akte öffnen", onClick: () => nav(`/akten/${a.id}?tab=dokumente&dok=${frueher.id}`) },
+      });
+      return;
+    }
     const dok: Dokument = {
       id: uid("d"),
       akteId: a.id,
@@ -224,8 +255,9 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
       quelle: "generiert",
       autorId: user.id,
       version: 1,
+      status: "entwurf",
       createdAt: nowLocal(),
-      ki: { zusammenfassung: `${info.titel} – Entwurf (${erzeugt.quelle === "live" ? "Claude" : "Vorlage"})${offenePlatzhalter ? `, ${offenePlatzhalter} Platzhalter offen` : ""}` },
+      ki: { zusammenfassung: kiText },
     };
     useData.getState().upsert("dokumente", dok);
     // „KI gespart“ je Akte und Vorgangsart nur einmal: erneutes Speichern desselben Entwurfs zählt nicht noch einmal.
@@ -341,7 +373,7 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
         </div>
 
         <Field label="Zusätzliche Hinweise (optional)" htmlFor="schrift-hinweise" className="mt-4">
-          <Textarea id="schrift-hinweise" rows={3} value={hinweise} onChange={(e) => setHinweise(e.target.value)} placeholder="z. B. „Vergleichsbereitschaft andeuten“ oder „Zeugen Pohl erwähnen“" className="text-[13px]" />
+          <Textarea id="schrift-hinweise" rows={3} value={hinweise} onChange={(e) => setHinweise(e.target.value)} placeholder="z. B. „Vergleichsbereitschaft andeuten“ oder „Zeugen Seifert erwähnen“" className="text-[13px]" />
         </Field>
 
         <AnimatePresence initial={false}>

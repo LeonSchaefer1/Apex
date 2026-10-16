@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Zap } from "lucide-react";
+import { X, Zap } from "lucide-react";
 import { useMotorStore } from "@/lib/motor";
 import { useData } from "@/store/data";
-import { useUI } from "@/store/ui";
+import { toast, useUI } from "@/store/ui";
 import { fmtNum, today } from "@/core/dates";
 import { motorZahlen } from "@/core/kennzahlen";
 
@@ -13,7 +13,18 @@ const RUHE_MS = 90_000;
 /** So lange bleibt eine Live-Meldung stehen. */
 const ANZEIGE_MS = 8_000;
 
-const ERKLAERUNG = "Apex Island – zeigt, was der 38h-Motor zuletzt erledigt hat (Beispielwerte). Klick öffnet den 38h-Motor.";
+const ERKLAERUNG = "Apex Island – zeigt, was der 38h-Motor zuletzt erledigt hat (Beispielwerte). Klick öffnet den 38h-Motor; × blendet sie aus.";
+
+/** Island ausblenden – mit Hinweis, wo sie sich wieder einschalten lässt, und „Rückgängig“. */
+export function islandAusblenden() {
+  const ui = useUI.getState();
+  ui.setIsland(false);
+  toast("Apex Island ausgeblendet", {
+    text: "Wieder einschalten unter Einstellungen → Darstellung.",
+    ton: "info",
+    aktion: { label: "Rückgängig", onClick: () => useUI.getState().setIsland(true) },
+  });
+}
 
 /**
  * „Apex Island“: schwarze Kapsel mit der Bilanz des 38h-Motors. Feste Breite (kein Aus- und Einklappen), keine Daueranimation;
@@ -24,6 +35,7 @@ export function ApexIsland() {
   const aktuell = useMotorStore((s) => s.aktuell);
   const akt = useData((s) => s.data.aktivitaeten);
   const live = useUI((s) => s.liveMeldungen);
+  const sichtbar = useUI((s) => s.island);
   const reduziert = useReducedMotion();
   const nav = useNavigate();
   // Gesparte Zeit der letzten 7 Tage – dieselbe Berechnung wie Cockpit und Apex Assistent
@@ -43,6 +55,7 @@ export function ApexIsland() {
     if (!live) setMeldung(null);
   }, [live]);
 
+  if (!sichtbar) return null;
   const zahl = `${fmtNum(stunden, 1)} Std.`;
   const label = meldung
     ? `Apex Island: ${meldung.text}${meldung.minuten > 0 ? `, ${meldung.minuten} Minuten gespart` : ""} – Beispielwerte, im Prototyp simuliert. 38h-Motor öffnen`
@@ -63,21 +76,29 @@ export function ApexIsland() {
         <span className="relative min-w-0 flex-1 text-left">
           <AnimatePresence initial={false} mode="wait">
             {meldung ? (
-              <motion.span key="meldung" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }} className="block truncate text-[13px] font-medium">
+              <motion.span key="meldung" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }} className="block truncate text-[13px] font-medium" title={meldung.text}>
                 {meldung.text}
                 {meldung.minuten > 0 && <span className="text-[#7ee2b8]"> · +{meldung.minuten} Min.</span>}
               </motion.span>
             ) : (
               <motion.span key="ruhe" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }} className="flex min-w-0 items-baseline gap-1 text-[13px] font-medium">
                 <span className="num shrink-0 text-[#7ee2b8]">{zahl}</span>
-                <span className="min-w-0 truncate">
-                  gespart<span className="hidden xl:inline"> · letzte 7 Tage</span>
-                </span>
+                <span className="min-w-0 whitespace-nowrap">in 7 Tagen</span>
               </motion.span>
             )}
           </AnimatePresence>
         </span>
         <span className="shrink-0 rounded-full bg-white/14 px-1.5 py-0.5 text-[12px] font-semibold leading-none text-white/90 ring-1 ring-white/15">Beispiel</span>
+      </button>
+      {/* Ausblenden direkt an der Island (1 Aktion) – wieder einschalten unter Einstellungen → Darstellung */}
+      <button
+        type="button"
+        onClick={islandAusblenden}
+        className="absolute -right-1.5 -top-1.5 z-10 grid size-5 place-items-center rounded-full bg-[var(--surface)] text-fg-2 opacity-0 shadow ring-1 ring-[var(--line-strong)] transition-opacity hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"
+        aria-label="Apex Island ausblenden"
+        title="Apex Island ausblenden"
+      >
+        <X className="size-3" />
       </button>
       <span
         id="apex-island-tipp"

@@ -43,3 +43,37 @@ export function rueckrufZusage(jetzt: Date, verfuegbar: string, land: Bundesland
   for (let i = 0; i < 10 && !werktag(d); i++) d = addDays(d, 1);
   return { datum: d, uhrzeit: morgens, heute: false, text: `Rückruf am ${fmtDateWd(d)} bis spätestens ${hhmm(morgens)} Uhr` };
 }
+
+const tagVon = (d: Date): ISODate => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/** Liegt `jetzt` in der Servicezeit (Mo–Fr, kein Feiertag im Land, zwischen Beginn und Ende)? */
+export function inServicezeit(jetzt: Date, verfuegbar: string, land: Bundesland = "BE"): boolean {
+  const { von, bis } = servicezeit(verfuegbar);
+  const tag = tagVon(jetzt);
+  const wd = weekday(tag);
+  if (wd < 1 || wd > 5 || !istWerktag(tag, land)) return false;
+  const min = jetzt.getHours() * 60 + jetzt.getMinutes();
+  return min >= von && min < bis;
+}
+
+/**
+ * Kommt der zugesagte Rückruf erst nach heute 24 Uhr? Dann hilft er bei einer heute ablaufenden Frist nicht mehr –
+ * die Oberfläche verweist auf die Ersatzeinreichung (§ 130d S. 2, 3 ZPO; § 46g S. 3, 4 ArbGG).
+ */
+export function rueckrufNachFristende(zusage: Pick<RueckrufZusage, "datum">, jetzt: Date): boolean {
+  return zusage.datum !== tagVon(jetzt);
+}
+
+/** Beginn der nächsten Servicezeit (heute, wenn sie noch nicht begonnen hat), z. B. „Mo, 19.10.2026 ab 7:30 Uhr“. */
+export function naechsteServicezeit(jetzt: Date, verfuegbar: string, land: Bundesland = "BE"): { datum: ISODate; ab: number; text: string } {
+  const { von } = servicezeit(verfuegbar);
+  const tag = tagVon(jetzt);
+  const min = jetzt.getHours() * 60 + jetzt.getMinutes();
+  const werktag = (d: ISODate) => weekday(d) >= 1 && weekday(d) <= 5 && istWerktag(d, land);
+  let d = tag;
+  if (!(werktag(tag) && min < von)) {
+    d = addDays(tag, 1);
+    for (let i = 0; i < 10 && !werktag(d); i++) d = addDays(d, 1);
+  }
+  return { datum: d, ab: von, text: `${d === tag ? "heute" : fmtDateWd(d)} ab ${hhmm(von)} Uhr` };
+}

@@ -87,8 +87,8 @@ export function FristenKarte({ d, i, className }: { d: CockpitDaten; i: number; 
               <UserCheck className="size-4 shrink-0 text-violet" />
               <span className="min-w-0">
                 <span className="font-semibold text-fg">Sie vertreten heute {v.person.name}</span> – {anzahl(v.fristen, "Frist", "Fristen")}
-                {v.weitere > 0 && `, dazu ${anzahl(v.weitere, "Wiedervorlage oder Vorfrist", "Wiedervorlagen und Vorfristen")}`} bis {wochentagName(addDays(d.heute, 7), true)}, {fmtDateShort(addDays(d.heute, 7))}
-                {v.person.abwesenheit?.bis && <span className="text-fg-3"> · abwesend bis {fmtDateShort(v.person.abwesenheit.bis)}</span>}
+                {v.weitere > 0 && `, dazu ${anzahl(v.weitere, "Wiedervorlage oder Vorfrist", "Wiedervorlagen und Vorfristen")}`} bis <span className="whitespace-nowrap">{wochentagName(v.bis, true)}, {fmtDateShort(v.bis)}</span>
+                {v.bisAbwesenheitsende ? <span className="text-fg-3"> (Ende der Abwesenheit)</span> : <span className="text-fg-3"> (nächste 7 Tage)</span>}
               </span>
             </Link>
           ))}

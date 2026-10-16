@@ -202,7 +202,8 @@ export default function Kontakte() {
       )}
 
       <KontaktDrawer k={offen} akten={offen ? aktenJeKontakt.get(offen.id) ?? [] : []} konflikt={offen ? konflikte.get(offen.id) : undefined} onClose={() => oeffne(null)} />
-      <NeuerKontakt open={neu} onClose={() => setNeu(false)} rolle={rolle === "alle" || rolle === "sonstige" ? "mandant" : rolle} onAngelegt={(id) => oeffne(id)} />
+      {/* Keine stille Vorbelegung der Rolle – der Filter bestimmt nur, ob eine Person oder Organisation vorgeschlagen wird */}
+      <NeuerKontakt open={neu} onClose={() => setNeu(false)} rolle={rolle === "alle" || rolle === "sonstige" ? undefined : rolle} onAngelegt={(id) => oeffne(id)} />
     </div>
   );
 }
@@ -261,7 +262,7 @@ function KontaktKarte({ k, q, akten, konflikt, aktiv, onClick }: { k: Kontakt; q
           ) : (
             <>
               <span className="num font-semibold text-fg">{akten.length}</span> {akten.length === 1 ? "Akte" : "Akten"}
-              {offene.length !== akten.length && <span className="text-fg-3"> · {offene.length} offen</span>}
+              {offene.length !== akten.length && <span className="text-fg-3">, {offene.length === 0 ? "keine offen" : `davon ${offene.length} offen`}</span>}
             </>
           )}
         </span>

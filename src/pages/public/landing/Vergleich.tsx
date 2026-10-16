@@ -11,7 +11,7 @@ export const VERGLEICH: { thema: string; klassisch: string; apex: string }[] = [
   { thema: "Forderungskonto", klassisch: "Lückenhaft: Zinsen und Verrechnung werden nachgerechnet.", apex: "Taggenaue Zinsen nach § 288 BGB, Verrechnung nach § 367 BGB, Forderungsaufstellung." },
   { thema: "Kontext nach E-Mail-Versand", klassisch: "Nach dem Versand ist der Fall aus dem Blick – Ablage von Hand.", apex: "Versand aus der Akte bleibt in der Akte – Sie arbeiten ohne Unterbrechung weiter." },
   { thema: "Sicherheit ohne Admin-Rechte", klassisch: "Lokale Admin-Rechte und Virenscanner-Ausnahmen als Notlösung.", apex: "Läuft ohne lokale Admin-Rechte; Rollen und Rechte zentral verwaltet." },
-  { thema: "Kostenmodell", klassisch: "Monatliche Gebühren – Preiserhöhungen inklusive.", apex: "Einmalige Investition, unbefristete Lizenz ohne Monatsgebühren; Wartung optional (Richtwert 15 % des Lizenzpreises pro Jahr, erstes Jahr enthalten)." },
+  { thema: "Kostenmodell", klassisch: "Monatliche Gebühren – Preiserhöhungen inklusive.", apex: "Einmalige Investition, unbefristete Lizenz ohne Monatsgebühren; Wartung optional – Umfang und Preis regelt das Angebot." },
   { thema: "Umzug", klassisch: "Hoher Migrationsaufwand bindet an den Anbieter.", apex: "Umzug in fünf Schritten – mit Vorschau und Rückgängig: Akten, Kontakte und Fristen ziehen mit Dublettenprüfung um." },
 ];
 
@@ -51,7 +51,7 @@ export function Vergleich() {
         eyebrow="Der Unterschied im Alltag"
         titel={
           <>
-            AnwaltApex vs.
+            AnwaltApex gegenüber
             <br /> <span className="text-fg-3">klassische Kanzleisoftware</span>
           </>
         }

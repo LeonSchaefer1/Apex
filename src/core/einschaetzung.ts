@@ -1,6 +1,6 @@
 // Einschätzung der Erfolgsaussicht ohne Scheingenauigkeit: verbale Stufe, Faktoren mit Quelle, Status der Deckungsanfrage.
 // Reine Funktionen – genutzt von der KI-Fallanalyse (src/ai/fallanalyse.ts), dem Panel und dem Cockpit.
-import type { Aktivitaet, Dokument, ID, ISODateTime } from "./types";
+import type { Aktivitaet, Dokument, ID, ISODateTime, Rechtsschutz } from "./types";
 
 export type Stufe = "hoch" | "mittel" | "gering";
 
@@ -106,23 +106,38 @@ export interface DeckungsStatus {
  * Tatsächlicher Stand der Deckungsanfrage einer Akte: versandt (Freigabe durch eine Person protokolliert), Entwurf (Dokument
  * liegt vor, Versand erst nach Freigabe) oder noch keine. Vorlagen des 38h-Motors gelten nicht als Versand.
  */
-export function deckungsanfrageStatus(akteId: ID, aktivitaeten: Aktivitaet[], dokumente: Pick<Dokument, "id" | "akteId" | "name" | "createdAt">[]): DeckungsStatus {
+export function deckungsanfrageStatus(akteId: ID, aktivitaeten: Aktivitaet[], dokumente: Pick<Dokument, "id" | "akteId" | "name" | "createdAt" | "status">[]): DeckungsStatus {
   const versand = aktivitaeten
     .filter((a) => a.akteId === akteId && a.akteur === "nutzer" && /deckungsanfrage/i.test(a.text) && /\b(versandt|versendet|verschickt)\b/i.test(a.text) && !/nicht\s+(versandt|versendet)/i.test(a.text))
     .sort((a, b) => b.zeit.localeCompare(a.zeit))[0];
   if (versand) return { status: "versandt", am: versand.zeit, vonId: versand.userId };
-  const dok = dokumente.filter((d) => d.akteId === akteId && /deckungsanfrage/i.test(d.name)).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
-  if (dok) return { status: "entwurf", dokumentId: dok.id };
+  const doks = dokumente.filter((d) => d.akteId === akteId && /deckungsanfrage/i.test(d.name)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  // Freigabestatus am Dokument (A-00): ein als versandt markiertes Schreiben gilt auch ohne Protokolleintrag als versandt
+  const versandtesDok = doks.find((d) => d.status === "versandt");
+  if (versandtesDok) return { status: "versandt", dokumentId: versandtesDok.id };
+  if (doks[0]) return { status: "entwurf", dokumentId: doks[0].id };
   return { status: "keine" };
 }
 
-/** „Entwurf – wartet auf Ihre Freigabe“ / „versandt am 14.10.2026 von Mia Becker“ / „noch nicht gestellt“. */
+/** „vorbereitet, noch nicht versandt“ / „versandt am 14.10.2026 von Mia Becker“ / „noch nicht gestellt“. */
 export function deckungsText(s: DeckungsStatus, name?: (id: ID) => string | undefined, datum?: (iso: string) => string): string {
   if (s.status === "versandt") {
     const wer = s.vonId ? name?.(s.vonId) : undefined;
     const wann = s.am ? (datum ? datum(s.am) : s.am.slice(0, 10).split("-").reverse().join(".")) : undefined;
     return `versandt${wann ? ` am ${wann}` : ""}${wer ? ` von ${wer}` : ""}`;
   }
-  if (s.status === "entwurf") return "Entwurf – wartet auf Ihre Freigabe";
+  if (s.status === "entwurf") return "vorbereitet, noch nicht versandt";
   return "noch nicht gestellt";
+}
+
+/**
+ * Ein Satz zum Rechtsschutz für alle Stellen (nächste Schritte, Risiken, Cockpit): aus der Deckung der Akte und dem
+ * tatsächlichen Stand der Deckungsanfrage. Nie „angefragt“, solange nichts versandt ist.
+ * „Deckung erteilt (Schaden-Nr. S26-41207)“ · „Deckungsanfrage versandt am … von …“ · „Deckungsanfrage vorbereitet, noch nicht versandt“.
+ */
+export function deckungsSatz(rsv: Pick<Rechtsschutz, "deckung" | "schadennummer"> | undefined, s: DeckungsStatus, name?: (id: ID) => string | undefined, datum?: (iso: string) => string): string {
+  if (rsv?.deckung === "erteilt") return `Deckung erteilt${rsv.schadennummer ? ` (Schaden-Nr. ${rsv.schadennummer})` : ""}`;
+  if (rsv?.deckung === "abgelehnt") return "Deckung abgelehnt";
+  if (!rsv && s.status === "keine") return "kein Rechtsschutz hinterlegt";
+  return `Deckungsanfrage ${deckungsText(s, name, datum)}`;
 }

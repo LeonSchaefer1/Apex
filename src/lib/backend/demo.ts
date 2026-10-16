@@ -7,12 +7,12 @@ import { baueKunde, baueNutzer, profilFuer } from "@/core/seed/kunde";
 import type { Aktivitaet, CollectionKey, TenantData, Tenant, User } from "@/core/types";
 import { neuerSchluessel, neueWiederherstellungscodes, otpauthUri, pruefeTotp, wiederherstellungNormal } from "@/core/totp";
 import {
-  ANMELDUNG_FALSCH, AZUBI_GESPERRT, AZUBI_KEIN_ZUGRIFF, PASSWORT_MAX, PasswortWechselNoetig, SPERRE_MINUTEN, ZUGANG_DEAKTIVIERT, ZweiFaktorNoetig,
+  ANMELDUNG_FALSCH, AZUBI_GESPERRT, AZUBI_KEIN_ZUGRIFF, BUNDESLAENDER, PASSWORT_MAX, PasswortWechselNoetig, SPERRE_MINUTEN, ZUGANG_DEAKTIVIERT, ZweiFaktorNoetig,
   darfSammlung, darfVerwalten, istEmail, kanzleiSicherheit, pruefeNeuesPasswort, pruefeTeamAenderung,
   type Backend, type ConsoleKunde, type KanzleiProfil, type KanzleiSicherheit, type NeuerKunde, type Sitzung, type TeamAenderung,
 } from "./types";
 import { sicheresPasswort, zufallsKennung, zufallsZahl } from "./zufall";
-import { VORGANG, letzteEchteAktivitaet, mischeVorgaenge, vorgang, zeitBerlin } from "./protokoll";
+import { ANMELDE_WARN_SCHWELLE, VORGANG, anmeldeVorgang, letzteEchteAktivitaet, mischeVorgaenge, vorgang, zaehleFehlversuch, zeitBerlin, type FehlGrund } from "./protokoll";
 import { festeAnsprechperson, rollenLabel } from "@/lib/rollen";
 
 const LS_SESSION = "aa:session";
@@ -26,6 +26,7 @@ const LS_NUTZER_AENDERUNG = "aa:user-aenderungen"; // Abwesenheit, Deaktivierung
 const LS_VORGAENGE = "aa:vorgaenge"; // echte Vorgänge je Kanzlei (Anmeldung, Passwortvergabe …) – überdauern das Neuerzeugen der Beispieldaten
 const LS_ANMELDUNG = "aa:letzte-anmeldung"; // userId → Zeitpunkt der letzten Anmeldung
 const LS_ZWEIFAKTOR = "aa:zweifaktor"; // userId → Zwei-Faktor-Einrichtung (nur in diesem Browser)
+const LS_START_ALT = "aa:pw-start-alt"; // userId → SHA-256 des ersetzten Startpassworts (nur, um „Startpasswort nicht mehr gültig“ zu erkennen)
 
 type NutzerAenderung = Pick<User, "abwesenheit" | "deaktiviert">;
 interface ZweiFaktorDaten {
@@ -156,13 +157,49 @@ function protokolliere(tenantId: string, a: Aktivitaet) {
   alle[tenantId] = [a, ...(alle[tenantId] ?? [])].slice(0, 300);
   lsSet(LS_VORGAENGE, alle);
 }
-/** Anmeldung festhalten; die erste Anmeldung einer Person wird protokolliert. */
+/** Anmeldung festhalten: die erste Anmeldung als „Erste Anmeldung“, jede weitere als „Anmeldung“ (Filter „Anmeldungen“). */
 function merkeAnmeldung(t: DemoTenant, u: DemoUser) {
   const m = lsGet<Record<string, string>>(LS_ANMELDUNG) ?? {};
   const erste = !m[u.id];
   m[u.id] = zeitBerlin();
   lsSet(LS_ANMELDUNG, m);
-  if (erste) protokolliere(t.tenant.id, vorgang(VORGANG.ersteAnmeldung(u.name), { akteur: "nutzer", userId: u.id }));
+  protokolliere(t.tenant.id, anmeldeVorgang(erste ? VORGANG.ersteAnmeldung(u.name) : VORGANG.anmeldung(u.name), { akteur: "nutzer", userId: u.id }));
+}
+
+/** Fehlversuche je Konto für den Hinweis an Partner und Administration (nur im Arbeitsspeicher). */
+const kontoFehler = new Map<string, number[]>();
+
+/**
+ * Fehlgeschlagene Anmeldung protokollieren – nur, wenn die E-Mail-Adresse zu einem Konto der Kanzlei gehört; nie das Passwort.
+ * Beim dritten Fehlversuch innerhalb von 15 Minuten zusätzlich ein Hinweis für Partner und Administration.
+ */
+function protokolliereFehlversuch(t: DemoTenant, u: DemoUser, grund: FehlGrund) {
+  protokolliere(t.tenant.id, anmeldeVorgang(VORGANG.anmeldungFehlgeschlagen(u.name, grund), { akteur: "system", userId: u.id }));
+  if (zaehleFehlversuch(kontoFehler, u.id) === ANMELDE_WARN_SCHWELLE) {
+    protokolliere(t.tenant.id, anmeldeVorgang(VORGANG.fehlversucheWarnung(u.name, ANMELDE_WARN_SCHWELLE), { akteur: "system", userId: u.id, meldung: true }));
+  }
+}
+
+/** SHA-256 (hex) im Browser – fehlt WebCrypto (unsicherer Kontext), gibt es keine Erkennung des alten Startpassworts. */
+async function sha256Hex(text: string): Promise<string | null> {
+  try {
+    const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(h), (b) => b.toString(16).padStart(2, "0")).join("");
+  } catch {
+    return null;
+  }
+}
+async function istAltesStartpasswort(userId: string, passwort: string): Promise<boolean> {
+  const alt = (lsGet<Record<string, string>>(LS_START_ALT) ?? {})[userId];
+  if (!alt) return false;
+  return (await sha256Hex(passwort)) === alt;
+}
+async function merkeAltesStartpasswort(userId: string, startPasswort: string) {
+  const h = await sha256Hex(startPasswort);
+  const m = lsGet<Record<string, string>>(LS_START_ALT) ?? {};
+  if (h) m[userId] = h;
+  else delete m[userId];
+  lsSet(LS_START_ALT, m);
 }
 
 // ───────────── Zwei-Faktor-Anmeldung (TOTP) ─────────────
@@ -425,6 +462,7 @@ export function createDemoBackend(): Backend {
       // Gleiche Meldung für unbekannte Adresse und falsches Passwort – wie auf dem Server (kein Hinweis auf bestehende Zugänge).
       if (!t || !u || u.passwort !== passwort) {
         fehlversuch(key);
+        if (t && u) protokolliereFehlversuch(t, u, (await istAltesStartpasswort(u.id, passwort)) ? "startpasswort" : "passwort");
         throw new Error(ANMELDUNG_FALSCH);
       }
       fehlversuche.delete(key);
@@ -454,6 +492,7 @@ export function createDemoBackend(): Backend {
       const art = await zfPruefen(u.id, code);
       if (!art) {
         fehlversuch(key);
+        protokolliereFehlversuch(t, u, "zweifaktor");
         throw new Error("Der Code stimmt nicht. Bitte geben Sie den aktuellen 6-stelligen Code aus Ihrer Authenticator-App ein (er wechselt alle 30 Sekunden) – oder einen Ihrer Wiederherstellungscodes.");
       }
       fehlversuche.delete(key);
@@ -469,6 +508,7 @@ export function createDemoBackend(): Backend {
       const u = t?.users.find((x) => x.email.toLowerCase() === e);
       if (!t || !u || u.passwort !== startPasswort) {
         fehlversuch(key);
+        if (t && u) protokolliereFehlversuch(t, u, "startpasswort");
         throw new Error("Das Startpasswort stimmt nicht mehr (z. B. inzwischen neu vergeben). Bitte melden Sie sich erneut mit dem zuletzt erhaltenen Startpasswort an.");
       }
       const sperre = zugangsSperre(t.tenant);
@@ -480,6 +520,7 @@ export function createDemoBackend(): Backend {
       map[u.id] = neuesPasswort;
       lsSet(LS_PW, map);
       setzePasswortWechsel(u.id, false);
+      await merkeAltesStartpasswort(u.id, startPasswort);
       if (zfAktiv(u.id)) {
         protokolliere(t.tenant.id, vorgang(VORGANG.eigenesPasswort(u.name), { akteur: "nutzer", userId: u.id }));
         const v = zufallsKennung(24);
@@ -510,8 +551,24 @@ export function createDemoBackend(): Backend {
     },
     async logout() {
       await flushSave();
+      const s = lsGet<DemoSession>(LS_SESSION);
+      if (s?.kind === "tenant") {
+        const t = findTenant(s.tenantId);
+        const u = t?.users.find((x) => x.id === s.userId);
+        if (t && u) protokolliere(t.tenant.id, anmeldeVorgang(VORGANG.abmeldung(u.name), { akteur: "nutzer", userId: u.id }));
+      }
       lsSet(LS_SESSION, null);
       current = null;
+    },
+    async sperreProtokollieren() {
+      const s = lsGet<DemoSession>(LS_SESSION);
+      if (s?.kind !== "tenant") return null;
+      const t = findTenant(s.tenantId);
+      const u = t?.users.find((x) => x.id === s.userId);
+      if (!t || !u) return null;
+      const a = anmeldeVorgang(VORGANG.sperreInaktivitaet(u.name), { akteur: "system", userId: u.id });
+      protokolliere(t.tenant.id, a);
+      return a;
     },
     async loadData() {
       const { t, u } = kanzleiSitzung();
@@ -571,6 +628,10 @@ export function createDemoBackend(): Backend {
         };
         if (!profil.name) throw new Error("Bitte geben Sie den Namen der Kanzlei an.");
         if (!profil.adresse) throw new Error("Bitte geben Sie die Anschrift an.");
+        if (p.bundesland !== undefined) {
+          if (!BUNDESLAENDER.includes(p.bundesland)) throw new Error("Bitte wählen Sie ein Bundesland aus der Liste.");
+          profil.bundesland = p.bundesland;
+        }
         const o = lsGet<Record<string, Partial<Tenant>>>(LS_OVERRIDES) ?? {};
         o[t.tenant.id] = { ...(o[t.tenant.id] ?? {}), ...profil };
         lsSet(LS_OVERRIDES, o);

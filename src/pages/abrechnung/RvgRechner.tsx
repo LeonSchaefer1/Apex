@@ -2,8 +2,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Calculator, CalendarDays, ChevronDown, FilePlus2, Info, Minus, Plus, Table2, Users } from "lucide-react";
-import { AnimatedNumber, Button, Card, CardHeader, Checkbox, Chip, Field, Input, Select, Switch } from "@/components/ui";
+import { AnimatedNumber, Button, Card, CardHeader, Checkbox, Chip, Field, Input, Modal, Select, Switch } from "@/components/ui";
 import { useCol } from "@/store/data";
+import type { Rechnung, RechnungsPosition } from "@/core/types";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
 import { fmtDate, fmtEUR, round2, today } from "@/core/dates";
@@ -24,8 +25,12 @@ type PosState = Record<string, { an: boolean; satz: number }>;
 const ANZEIGE_PHASE: Record<string, VVPosition["phase"]> = { "1000": "Außergerichtlich", "1003": "Gerichtlich" };
 const anzeigePhase = (p: VVPosition) => ANZEIGE_PHASE[p.nr] ?? p.phase;
 
-/** Eingaben des Rechners bleiben je Sitzung erhalten (sessionStorage) – auch über ein Neuladen. */
+/**
+ * Eingaben des Rechners bleiben je Person erhalten – auch über ein Neuladen und ein geschlossenes Fenster (localStorage dieses
+ * Browsers; nur Rechenwerte und die gewählte Akten-ID, keine Mandantendaten).
+ */
 const SPEICHER = "apex.rvg.eingaben";
+const speicherKey = (userId: string) => `${SPEICHER}.${userId}`;
 interface Eingaben {
   wertText: string;
   auftrag: string;
@@ -36,13 +41,18 @@ interface Eingaben {
   ust: boolean;
   akteId: string;
 }
-function ladeEingaben(): Partial<Eingaben> {
-  try {
-    const e = JSON.parse(sessionStorage.getItem(SPEICHER) ?? "{}") as Partial<Eingaben>;
-    return e && typeof e === "object" ? e : {};
-  } catch {
-    return {};
+function ladeEingaben(userId: string): Partial<Eingaben> {
+  for (const lies of [() => localStorage.getItem(speicherKey(userId)), () => sessionStorage.getItem(SPEICHER)]) {
+    try {
+      const roh = lies();
+      if (!roh) continue;
+      const e = JSON.parse(roh) as Partial<Eingaben>;
+      if (e && typeof e === "object") return e;
+    } catch {
+      /* Speicher gesperrt – nächste Quelle */
+    }
   }
+  return {};
 }
 
 function SatzRegler({ p, satz, onChange }: { p: VVPosition; satz: number; onChange: (v: number) => void }) {
@@ -71,11 +81,20 @@ function SatzRegler({ p, satz, onChange }: { p: VVPosition; satz: number; onChan
   );
 }
 
+/** Gleiche Positionen (Nr., Satz, Wert, Betrag) – erkennt einen schon angelegten, identischen Entwurf. */
+function gleichePositionen(a: RechnungsPosition[], b: RechnungsPosition[]): boolean {
+  const sig = (ps: RechnungsPosition[]) => ps.map((p) => `${p.vv}|${p.satz ?? ""}|${p.gegenstandswert ?? ""}|${round2(p.betrag)}`).sort().join(";");
+  return sig(a) === sig(b);
+}
+
 export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
   const akten = useCol("akten");
+  const rechnungen = useCol("rechnungen");
+  // Für diese Akte liegt schon ein Entwurf mit denselben Positionen vor → Rückfrage „öffnen / trotzdem neu anlegen“
+  const [dublette, setDublette] = useState<Rechnung | null>(null);
   const { user } = useKanzlei();
   const oeffne = useAbrechnungUI((s) => s.oeffneRechnung);
-  const [gespeichert] = useState(ladeEingaben);
+  const [gespeichert] = useState(() => ladeEingaben(user.id));
   const [wertText, setWertText] = useState(gespeichert.wertText ?? "10.000");
   const [auftrag, setAuftrag] = useState(gespeichert.auftrag ?? today());
   const [pos, setPos] = useState<PosState>(() => ({
@@ -89,10 +108,11 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
   const [akteId, setAkteId] = useState(gespeichert.akteId ?? "");
   useEffect(() => {
     try {
-      sessionStorage.setItem(SPEICHER, JSON.stringify({ wertText, auftrag, pos, auftraggeber, anrechnung, pauschale, ust, akteId } satisfies Eingaben));
+      localStorage.setItem(speicherKey(user.id), JSON.stringify({ wertText, auftrag, pos, auftraggeber, anrechnung, pauschale, ust, akteId } satisfies Eingaben));
     } catch {
       /* Speicher nicht verfügbar – Eingaben gelten dann nur bis zum Neuladen */
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wertText, auftrag, pos, auftraggeber, anrechnung, pauschale, ust, akteId]);
   const [tabelleOffen, setTabelleOffen] = useState(false);
 
@@ -125,9 +145,12 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
     toast("Werte übernommen", { text: `Gegenstandswert und Auftragsdatum aus Akte ${akte.aktenzeichen}`, ton: "info" });
   };
 
-  const alsRechnung = () => {
+  const alsRechnung = (trotzdem = false) => {
     if (!akte || !hatPositionen) return;
     const positionen = rvgRechnungsPositionen(erg.angelegenheiten);
+    const gleich = rechnungen.find((x) => x.akteId === akte.id && x.status === "entwurf" && gleichePositionen(x.positionen, positionen));
+    if (gleich && !trotzdem) return setDublette(gleich);
+    setDublette(null);
     const [r] = erstelleRechnungen([{ akte, positionen, summen: { netto: erg.netto, ust: erg.ust, brutto: erg.brutto } }], "auto", "entwurf", user.id);
     toast("Rechnungsentwurf erstellt", {
       text: `${r.nummer} · ${akte.aktenzeichen} · ${fmtEUR(r.brutto)}`,
@@ -447,13 +470,52 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
                 </motion.div>
               )}
             </AnimatePresence>
-            <Button variant="primary" className="mt-3 w-full" icon={<FilePlus2 className="size-4" />} disabled={!akte || !hatPositionen} onClick={alsRechnung}>
+            <Button variant="primary" className="mt-3 w-full" icon={<FilePlus2 className="size-4" />} disabled={!akte || !hatPositionen} onClick={() => alsRechnung()}>
               Als Rechnung für Akte erstellen
             </Button>
             <p className="mt-2 text-center text-[12.5px] text-fg-3">Wird als Entwurf angelegt – Sie prüfen und stellen die Rechnung anschließend.</p>
           </div>
         </Card>
       </div>
+      <Modal
+        open={!!dublette}
+        onClose={() => setDublette(null)}
+        title="Entwurf bereits vorhanden"
+        icon={<FilePlus2 className="size-[18px]" />}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setDublette(null)}>
+              Abbrechen
+            </Button>
+            <Button variant="secondary" onClick={() => alsRechnung(true)}>
+              Trotzdem neu anlegen
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => {
+                const id = dublette?.id;
+                setDublette(null);
+                if (!id) return;
+                onTab("rechnungen");
+                oeffne(id);
+              }}
+            >
+              Vorhandenen Entwurf öffnen
+            </Button>
+          </>
+        }
+      >
+        <p className="text-[13.5px] leading-relaxed text-fg-2">
+          Für <span className="mono font-medium text-fg">{akte?.aktenzeichen}</span> liegt bereits ein Entwurf mit denselben Positionen vor
+          {dublette ? (
+            <>
+              {" "}
+              (<span className="mono">{dublette.nummer}</span>, {fmtEUR(dublette.brutto)} brutto, angelegt am {fmtDate(dublette.createdAt.slice(0, 10))})
+            </>
+          ) : null}
+          . Öffnen Sie ihn – oder legen Sie bewusst einen zweiten Entwurf an.
+        </p>
+      </Modal>
     </div>
   );
 }

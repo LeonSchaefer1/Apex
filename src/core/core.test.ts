@@ -540,3 +540,68 @@ test("Demodaten: letzter Lauf = jüngste Aktivität, Zeitpläne eingehalten, E-R
     assert.ok(in14.length >= 5, `${t.tenant.kurzname}: ${in14.length} Fristen in 14 Tagen`);
   }
 });
+
+test("Demodaten (SEED_VERSION 10): Zusatzakten am Ende – übrige Akten, Fristen und Nachrichten unverändert", async () => {
+  const { createHash } = await import("node:crypto");
+  const { generateTenantData, SEED_VERSION } = await import("./seed/generate");
+  const { DEMO_TENANTS, publicUser } = await import("./seed/tenants");
+  const { fristenLage } = await import("./fristenLage");
+  const { posteingangZahlen } = await import("./kennzahlen");
+  assert.equal(SEED_VERSION, 10);
+  // Fingerabdrücke vor der Änderung (SEED_VERSION 9, 16.10.2026): IDs und Aktenzeichen der Akten, IDs/Akte/Datum/Typ der Fristen, IDs/Akte/Eingangstag der Nachrichten
+  const VORHER: Record<string, [number, string, number, string, number, string]> = {
+    "t-hartmann": [40, "8a921adc7dc38837", 76, "eb23078db1b0964b", 15, "2fc48309e70f5546"],
+    "t-lindner": [37, "1bc9b63a9ae42a01", 78, "c3cf51f67535a736", 11, "e93e917105970674"],
+    "t-demir": [37, "89d85650579a5f86", 61, "beb72b254253c2f8", 9, "1332ab9176c80ce3"],
+  };
+  const h = (x: string[]) => createHash("sha256").update(x.join("\n")).digest("hex").slice(0, 16);
+  const zusatz = (id: string) => /^hero-(guete|rsv)-/.test(id);
+  for (const t of DEMO_TENANTS) {
+    const d = generateTenantData({ tenant: t.tenant, users: t.users.map(publicUser), profil: t.profil }, "2026-10-16");
+    const ak = d.akten.filter((a) => !zusatz(a.id)).map((a) => `${a.id}|${a.aktenzeichen}`).sort();
+    const fr = d.fristen.filter((f) => !zusatz(f.id)).map((f) => `${f.id}|${f.akteId}|${f.datum}|${f.typ}`).sort();
+    const na = d.nachrichten.map((n) => `${n.id}|${n.akteId ?? ""}|${n.eingang.slice(0, 10)}`).sort();
+    assert.deepEqual([ak.length, h(ak), fr.length, h(fr), na.length, h(na)], VORHER[t.tenant.id], t.tenant.kurzname);
+  }
+  // Hartmann & Partner: ArbG-Akte mit Gütetermin (T14), Klagefrist erledigt mit Nachweis, keine Frist und kein Termin heute
+  const t = DEMO_TENANTS[0];
+  const heute = "2026-10-16";
+  const d = generateTenantData({ tenant: t.tenant, users: t.users.map(publicUser), profil: t.profil }, heute);
+  const ost = d.akten.find((a) => a.id === "hero-guete-a1")!;
+  assert.equal(ost.aktenzeichen, "151/26");
+  assert.equal(ost.phase, "Gerichtlich");
+  assert.equal(ost.gerichtsAz, "28 Ca 11873/26");
+  assert.equal(d.kontakte.find((k) => k.id === ost.gerichtId)?.name, "Arbeitsgericht Berlin");
+  const termin = d.fristen.find((f) => f.akteId === ost.id && f.typ === "termin")!;
+  assert.equal(termin.titel, "Gütetermin");
+  assert.equal(termin.uhrzeit, "09:00");
+  assert.ok(termin.datum > heute && termin.datum <= "2026-10-23", termin.datum);
+  assert.match(termin.ort ?? "", /Magdeburger Platz 1, Saal 3/);
+  const klage = d.fristen.find((f) => f.akteId === ost.id && f.regelKey === "kschg_klage")!;
+  assert.equal(klage.status, "erledigt");
+  assert.equal(klage.erledigtNachweis?.art, "bea");
+  assert.ok(klage.erledigtNachweis?.versandAm);
+  const doks = d.dokumente.filter((x) => x.akteId === ost.id);
+  assert.ok(doks.some((x) => x.name.startsWith("Kündigungsschreiben") && x.quelle === "scan" && !x.autorId));
+  assert.ok(doks.some((x) => x.name.startsWith("Klageschrift") && x.status === "versandt" && x.portal));
+  assert.ok(doks.some((x) => x.name.startsWith("Ladung zum Gütetermin") && x.ordner === "Gericht"));
+  assert.ok(doks.some((x) => x.name.startsWith("Arbeitsvertrag")) && doks.some((x) => x.name === "Gesprächsnotiz Erstberatung"));
+  // Morgenzahlen aus T01 bleiben: 2 Fristen heute, keine Termine heute, 6 neue Nachrichten
+  assert.equal(fristenLage(d.fristen, heute).heute.length, 2);
+  assert.equal(d.fristen.filter((f) => f.typ === "termin" && f.status === "offen" && f.datum === heute).length, 0);
+  assert.equal(posteingangZahlen(d.nachrichten).neu.length, 6);
+  // mindestens 4 abrechenbare RSV-Akten mit erteilter Deckung, ohne Rechnung
+  const rsv = d.akten.filter((a) => a.status === "offen" && a.rsv?.deckung === "erteilt" && (a.phase === "Außergerichtlich" || a.phase === "Gerichtlich") && !d.rechnungen.some((r) => r.akteId === a.id));
+  assert.ok(rsv.length >= 4, rsv.map((a) => a.aktenzeichen).join(", "));
+  // 142/26: Deckungsanfrage als Brief-Entwurf, nicht im Portal; Zeuge „Seifert“; Portal nur für freigegebene eigene Schreiben
+  const weber = d.akten.find((a) => a.aktenzeichen === "142/26")!;
+  const deckung = d.dokumente.find((x) => x.akteId === weber.id && /^Deckungsanfrage/.test(x.name))!;
+  assert.equal(deckung.art, "brief");
+  assert.equal(deckung.status, "entwurf");
+  assert.equal(deckung.portal, undefined);
+  assert.ok(d.dokumente.filter((x) => x.portal).every((x) => x.status !== "entwurf" && x.quelle === "generiert"));
+  assert.ok(!JSON.stringify(d).includes("Pohl"));
+  assert.ok(d.nachrichten.some((n) => n.betreff === "Unterlagen + wichtiger Hinweis zu Herrn Seifert"));
+  // Vorgerichtliche Phasen ohne Gerichts-Az.
+  assert.ok(d.akten.filter((a) => a.phase === "Außergerichtlich" || a.phase === "Mandatsaufnahme").every((a) => !a.gerichtsAz));
+});

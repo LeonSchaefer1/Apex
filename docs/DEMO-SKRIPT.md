@@ -19,7 +19,7 @@
 
 - „Ein Werkzeug. Volle Kontrolle.“: Akten, beA, Fristen, Abrechnung und KI in einer Oberfläche.
 - Vergleich mit klassischer Kanzleisoftware. Jeder Punkt stammt aus echten Kundenbewertungen am Markt: Updates, Hotline, Suche, Forderungskonto, Kosten, Umzug.
-- „Lifetime statt Abo“: einmal investieren, keine Monatsgebühren. Die Wartung ist optional (Richtwert 15 % des Lizenzpreises pro Jahr, erstes Jahr enthalten) – die Kostenkurve zeigt beide Linien.
+- „Lifetime statt Abo“: einmal investieren, keine Monatsgebühren. Die Wartung ist optional; Umfang und Preis regelt das Angebot. Die Kostenkurve zeigt beide Linien schematisch, ohne Prozentsatz. Preis auf Anfrage – verbindlich im Angebot.
 - „Testzugang anfordern“ zeigt das Anfrageformular und den Kontakt zur festen Ansprechpartnerin.
 
 ## 2 · Anmeldung & getrennte Kanzleien (30 Sek.)
@@ -63,6 +63,8 @@
    - **Entwurf der Kündigungsschutzklage** → „In E-Akte speichern“.
 4. Reiter **Fristen**: Die Klagefrist nach § 4 KSchG kam von der KI, hat einen Rechenweg und geht in die Vier-Augen-Kontrolle.
 
+**Optional am iPhone – mobil am Gericht:** Akte **151/26 Ostermann ./. Havelbrück Pflegedienste GmbH** (Arbeitsgericht Berlin, 28 Ca 11873/26). Der Gütetermin liegt drei Tage nach „heute“ (fällt das auf ein Wochenende oder einen Feiertag, auf den nächsten Werktag), 9:00 Uhr, Magdeburger Platz 1, Saal 3. In der E-Akte liegen Kündigungsschreiben, Klageschrift und Ladung als PDF. Nach dem Termin eine Sitzungsnotiz und die Fristart „Widerrufsfrist (Vergleich)“ anlegen. Die Akte 142/26 bleibt dabei unverändert (Mandatsaufnahme, Klage noch nicht eingereicht).
+
 ## 6 · Apex Assistent – der sprechende KI-Avatar (2 Min.)
 
 Unten rechts die Kugel antippen (oder Strg+K → „Apex Assistent öffnen“) und das Mikrofon nutzen:
@@ -71,7 +73,7 @@ Unten rechts die Kugel antippen (oder Strg+K → „Apex Assistent öffnen“) u
 - „**Lege eine Wiedervorlage für Akte 137 in drei Tagen an.**“ Der Assistent zeigt eine Bestätigungskarte (Akte, Titel, Datum mit Wochentag). Erst nach „Eintragen“ erscheint der Eintrag im Fristenkalender – mit „Rückgängig“ und dem Etikett „Durch Assistent angelegt“.
 - „**beA ist gestört, die Frist läuft heute ab – was tun?**“ Die Wissenskarte nennt Ersatzeinreichung und Glaubhaftmachung (§ 130d S. 2, 3 ZPO; § 46g S. 3, 4 ArbGG).
 - „**Wie funktioniert der Bankabgleich?**“ Support aus dem Wiki, mit Link direkt in den Bereich.
-- „**Ich brauche meine Ansprechpartnerin.**“ Lena Vogt mit Durchwahl und Rückruf auf Wunsch statt Hotline-Warteschleife.
+- „**Ich brauche meine Ansprechpartnerin.**“ Lena Vogt mit Durchwahl und Rückruf auf Wunsch statt Hotline-Warteschleife. Außerhalb der Servicezeit sagt der Assistent ehrlich „jetzt nicht erreichbar“ und nennt die nächste Servicezeit; läuft eine Frist heute ab, verweist der Rückruf-Dialog auf die Ersatzeinreichung.
 
 ## 7 · Abrechnung (2 Min.)
 
@@ -83,7 +85,7 @@ Unten rechts die Kugel antippen (oder Strg+K → „Apex Assistent öffnen“) u
 
 ## 8 · Fall-Datenbank & Suche (1 Min.)
 
-- **⌘K / Strg+K** drücken und „pfandbon kündigung“ tippen. Treffer aus Akten, Dokumenten und Rechtsprechung erscheinen mit Millisekunden-Anzeige.
+- **Strg+K** (Mac: ⌘K) drücken und „pfandbon kündigung“ tippen. Treffer aus Akten, Dokumenten und Rechtsprechung erscheinen mit Millisekunden-Anzeige.
 - Fall-Datenbank → „KI-Recherche“: einen Sachverhalt beschreiben, passende Entscheidungen mit Begründung erhalten.
 
 ## 9 · Umzug (1 Min.)
@@ -97,7 +99,7 @@ Unten rechts die Kugel antippen (oder Strg+K → „Apex Assistent öffnen“) u
 
 - Hilfe & Support zeigen: persönliche Ansprechpartnerin, **Systemstatus**, **Geprüfte Updates** (Staging plus Regressionstests). Das antwortet direkt auf die häufigste Kritik am Markt.
 - Das **?** neben jedem Seitentitel öffnet das animierte Wiki genau dort, wo man arbeitet.
-- Einstellungen → Lizenz: **Lifetime-Lizenz**, keine Monatsgebühren; Abschnitte „Wartung“ und „Übertragbarkeit & Escrow“ (Richtwert/Entwurf – verbindlich im Angebot).
+- Einstellungen → Lizenz: **Lifetime-Lizenz**, keine Monatsgebühren; Abschnitte „Wartung“ und „Übertragbarkeit & Escrow“. Gekennzeichnet als Entwurf der Lizenzbedingungen: Wartung und Übertragbarkeit regelt das Angebot, die Quellcode-Hinterlegung gibt es auf Anfrage. Keine Zusage nennen, die nicht im Angebot steht.
 - Einstellungen → Datenschutz: Zwei-Faktor-Anmeldung, Sperre bei Inaktivität, Protokoll mit gekennzeichneten Beispieleinträgen, Muster für § 43e BRAO und Art. 28 DSGVO.
 
 ## 11 · Abschluss: Testzugang live anlegen (1 Min.)
@@ -112,10 +114,10 @@ Unten rechts die Kugel antippen (oder Strg+K → „Apex Assistent öffnen“) u
 
 | Frage | Antwort |
 |---|---|
-| Wo liegen unsere Daten? | In einem deutschen Rechenzentrum oder auf einem eigenen Server in der Kanzlei. Live-KI: Anthropic, PBC (USA) – der Kanzlei-Server sendet nur die nötigen Inhalte, ohne Nutzung zum Training (Art. 44 ff. DSGVO, § 43e Abs. 4 BRAO). Die Demo-KI arbeitet offline. Eine EU-Verarbeitung ist nur auf Wunsch über einen EU-Cloud-Zugang möglich – im Prototyp nicht eingerichtet. |
+| Wo liegen unsere Daten? | In einem deutschen Rechenzentrum oder auf einem eigenen Server in der Kanzlei. Live-KI: Anthropic, PBC (USA) – der Kanzlei-Server sendet nur die nötigen Inhalte, ohne Nutzung zum Training. Für die Übermittlung in die USA gelten Art. 44 ff. DSGVO. Nach § 43e Abs. 4 BRAO muss der Geheimnisschutz in den USA dem Schutz im Inland vergleichbar sein – das prüft die Kanzlei vor dem Einschalten der Live-KI. Die Demo-KI arbeitet offline. Verarbeitung der Live-KI in der EU: auf Anfrage. |
 | Was, wenn die KI irrt? | Fristen berechnet nie die KI. Jede KI-Frist geht in die Vier-Augen-Kontrolle. Quellen und Rechenweg sind immer sichtbar. |
 | Funktioniert das beA wirklich? | Im Prototyp ist die beA-Anbindung simuliert. Die produktive Anbindung über die BRAK-Schnittstelle ist Phase 3 der Umsetzung. |
-| Was kostet das? | Eine einmalige Lifetime-Lizenz nach Kanzleigröße, ohne Monatsgebühren. Die Wartung ist optional: Richtwert 15 % des Lizenzpreises pro Jahr, das erste Jahr ist enthalten. Verbindlich ist das Angebot. |
+| Was kostet das? | Eine einmalige Lifetime-Lizenz nach Kanzleigröße, ohne Monatsgebühren. Preis auf Anfrage – verbindlich im Angebot. Die Wartung ist optional; Umfang und Preis regelt ebenfalls das Angebot. |
 | Wie kommen wir aus der alten Software heraus? | Mit dem Umzug in fünf Schritten – mit Vorschau, Dublettenprüfung und Rückgängig. Ihre Ansprechpartnerin begleitet den Umzug. |
 
 ## Was im Prototyp simuliert ist

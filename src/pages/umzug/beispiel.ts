@@ -11,6 +11,8 @@ interface Format {
   az: (n: number, jahr: number) => string;
   datum: (iso: string) => string;
   betrag: (n: number) => string;
+  /** Status-Begriffe des Systems: laufend bzw. abgelegt */
+  status: [string, string];
 }
 
 const de2 = (n: number) => n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -20,24 +22,24 @@ const pad = (n: number, l: number) => String(n).padStart(l, "0");
 
 const FORMATE: Record<QuellSystem, Format> = {
   ramicro: {
-    kopf: ["Aktennummer", "Kurzbezeichnung", "Mandant", "Gegner", "Sachgebiet", "Gegenstandswert", "Anlagedatum", "Nächste Frist", "Fristart"],
-    trenn: ";", bom: false, az: (n, j) => `${n}/${String(j).slice(2)}`, datum: dmy, betrag: de2,
+    kopf: ["Aktennummer", "Kurzbezeichnung", "Mandant", "Gegner", "Sachgebiet", "Gegenstandswert", "Anlagedatum", "Nächste Frist", "Fristart", "Aktenstatus", "Ablagedatum"],
+    trenn: ";", bom: false, az: (n, j) => `${n}/${String(j).slice(2)}`, datum: dmy, betrag: de2, status: ["laufend", "abgelegt"],
   },
   actaport: {
-    kopf: ["Aktenzeichen", "Bezeichnung", "Mandant Name", "Gegner Name", "Rechtsgebiet", "Streitwert", "Angelegt am", "Fristdatum", "Fristbezeichnung"],
-    trenn: ",", bom: true, az: (n, j) => `${j}-${pad(n, 4)}`, datum: (iso) => iso, betrag: (n) => `${de2(n)} €`,
+    kopf: ["Aktenzeichen", "Bezeichnung", "Mandant Name", "Gegner Name", "Rechtsgebiet", "Streitwert", "Angelegt am", "Fristdatum", "Fristbezeichnung", "Status", "Abgeschlossen am"],
+    trenn: ",", bom: true, az: (n, j) => `${j}-${pad(n, 4)}`, datum: (iso) => iso, betrag: (n) => `${de2(n)} €`, status: ["offen", "abgeschlossen"],
   },
   advoware: {
-    kopf: ["Az.", "Rubrum", "Auftraggeber", "Gegenseite", "Referat", "Gegenstandswert", "Anlage", "Frist", "Fristgrund"],
-    trenn: ";", bom: false, az: (n, j) => `${pad(n, 5)}/${String(j).slice(2)}`, datum: dmy, betrag: de2,
+    kopf: ["Az.", "Rubrum", "Auftraggeber", "Gegenseite", "Referat", "Gegenstandswert", "Anlage", "Frist", "Fristgrund", "Status", "Erledigt am"],
+    trenn: ";", bom: false, az: (n, j) => `${pad(n, 5)}/${String(j).slice(2)}`, datum: dmy, betrag: de2, status: ["in Bearbeitung", "erledigt"],
   },
   renostar: {
-    kopf: ["AktenNr", "Aktenbezeichnung", "Mandant", "Gegner", "Sachgebiet", "Wert", "Datum Anlage", "Wiedervorlage/Frist", "Art der Frist"],
-    trenn: ";", bom: false, az: (n, j) => `${String(j).slice(2)}/${n}`, datum: dmyKurz, betrag: (n) => de2(n).replace(/\./g, ""),
+    kopf: ["AktenNr", "Aktenbezeichnung", "Mandant", "Gegner", "Sachgebiet", "Wert", "Datum Anlage", "Wiedervorlage/Frist", "Art der Frist", "Zustand", "Abgelegt am"],
+    trenn: ";", bom: false, az: (n, j) => `${String(j).slice(2)}/${n}`, datum: dmyKurz, betrag: (n) => de2(n).replace(/\./g, ""), status: ["aktiv", "archiviert"],
   },
   csv: {
-    kopf: ["Aktenzeichen", "Titel", "Mandant", "Gegner", "Sachgebiet", "Gegenstandswert", "Angelegt", "Frist", "Fristart"],
-    trenn: ";", bom: true, az: (n, j) => `${n}/${String(j).slice(2)}`, datum: dmy, betrag: de2,
+    kopf: ["Aktenzeichen", "Titel", "Mandant", "Gegner", "Sachgebiet", "Gegenstandswert", "Angelegt", "Frist", "Fristart", "Status", "Abgeschlossen am"],
+    trenn: ";", bom: true, az: (n, j) => `${n}/${String(j).slice(2)}`, datum: dmy, betrag: de2, status: ["offen", "abgeschlossen"],
   },
 };
 
@@ -92,7 +94,17 @@ function zelle(v: string, trenn: string): string {
   return v.includes(trenn) || /["\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
 }
 
-/** Beispiel-Export: 16 Akten im Stil des Systems, inkl. einer Aktenzeichen- und einer Bezeichnungs-Dublette. */
+/** Abgeschlossene Akten: eine außerhalb der Aufbewahrung, eine innerhalb, eine ohne Abschlussdatum (zur Entscheidung). */
+const ARCHIV: (Fall & { angelegtVorJahren: number; abgeschlossenVorJahren?: number })[] = [
+  { mandant: "Ingrid Hoffmann", gegner: "Autohaus Seidel GmbH", sg: "Vertragsrecht", wert: 6900, angelegtVorJahren: 9, abgeschlossenVorJahren: 8 },
+  { mandant: "Bernd Kowalski", gegner: "Hausverwaltung Lindenhof GmbH", sg: "Mietrecht", wert: 2180.5, angelegtVorJahren: 4, abgeschlossenVorJahren: 3 },
+  { mandant: "Werner Baumgart", gegner: "Gemeinde Falkensee", sg: "Verwaltungsrecht", wert: 5000, angelegtVorJahren: 8 },
+];
+
+/**
+ * Beispiel-Export: 16 Akten im Stil des Systems, inkl. einer Aktenzeichen- und einer Bezeichnungs-Dublette im Bestand,
+ * einer Dublette innerhalb der Datei und drei abgeschlossenen Akten (eine davon ohne Abschlussdatum).
+ */
 export function beispielExport(system: QuellSystem, akten: Akte[], kontakte: Kontakt[], heute: string): { name: string; text: string } {
   const f = FORMATE[system];
   const r = rng(system + heute.slice(0, 7));
@@ -100,9 +112,12 @@ export function beispielExport(system: QuellSystem, akten: Akte[], kontakte: Kon
   const zeilen: string[][] = [];
   let n = 300 + Math.floor(r() * 400);
 
-  const zeile = (az: string, titel: string, fall: Fall, angelegt: string, frist?: string) => [
+  const zeile = (az: string, titel: string, fall: Fall, angelegt: string, frist?: string, abgeschlossen?: string | null) => [
     az, titel, fall.mandant, fall.gegner, fall.sg, fall.wert ? f.betrag(fall.wert) : "", f.datum(angelegt), frist ? f.datum(frist) : "", frist ? fall.frist ?? "" : "",
+    abgeschlossen === undefined ? f.status[0] : f.status[1], abgeschlossen ? f.datum(abgeschlossen) : "",
   ];
+  const titelFuer = (fall: Fall) => fall.titel ?? (fall.gegner ? `${kurz(fall.mandant)} ./. ${fall.gegner.split(",")[0]}` : `${kurz(fall.mandant)} – ${fall.sg}`);
+  let dateiDublette: string[] | null = null;
 
   // Ein Mandant, der in AnwaltApex bereits als Kontakt existiert (wird zusammengeführt statt doppelt angelegt)
   const vorhandenerMandant = kontakte.find((k) => k.rollen.includes("mandant") && k.typ === "person");
@@ -112,8 +127,10 @@ export function beispielExport(system: QuellSystem, akten: Akte[], kontakte: Kon
     const angelegt = addDays(heute, -Math.floor(40 + r() * 620));
     const jahrAnlage = Number(angelegt.slice(0, 4));
     const frist = fall.frist ? werktag(addDays(heute, Math.floor(4 + r() * 40))) : undefined;
-    const titel = fall.titel ?? (fall.gegner ? `${kurz(fall.mandant)} ./. ${fall.gegner.split(",")[0]}` : `${kurz(fall.mandant)} – ${fall.sg}`);
+    const titel = titelFuer(fall);
     zeilen.push(zeile(f.az(n, jahrAnlage), titel, fall, angelegt, frist));
+    // Dieselbe Akte ein zweites Mal im Export (anderes Aktenzeichen, gleiche Frist) – wird zusammengeführt
+    if (i === 1) dateiDublette = zeile(f.az(n + 500, jahrAnlage), titel, fall, angelegt, frist);
     n += 1 + Math.floor(r() * 3);
     // Dubletten an Position 4 und 11 einstreuen
     if (i === 3 || i === 10) {
@@ -127,6 +144,13 @@ export function beispielExport(system: QuellSystem, akten: Akte[], kontakte: Kon
       zeilen.push(zeile(az, a.titel, dupFall, a.createdAt.slice(0, 10), werktag(addDays(heute, 9 + i))));
     }
   });
+
+  if (dateiDublette) zeilen.splice(Math.min(zeilen.length, 8), 0, dateiDublette);
+  for (const a of ARCHIV) {
+    const angelegt = addDays(heute, -Math.round(a.angelegtVorJahren * 365.25 + r() * 60));
+    const abgeschlossen = a.abgeschlossenVorJahren === undefined ? null : addDays(heute, -Math.round(a.abgeschlossenVorJahren * 365.25 + r() * 60));
+    zeilen.push(zeile(f.az(n++, Number(angelegt.slice(0, 4))), titelFuer(a), a, angelegt, undefined, abgeschlossen));
+  }
 
   const text = (f.bom ? "﻿" : "") + [f.kopf, ...zeilen].map((z) => z.map((v) => zelle(v, f.trenn)).join(f.trenn)).join("\r\n") + "\r\n";
   const datei = { ramicro: "RA-MICRO_Aktenliste", actaport: "actaport-akten-export", advoware: "Advoware_Aktenauswertung", renostar: "ReNoStar_Akten", csv: "Aktenliste" }[system];

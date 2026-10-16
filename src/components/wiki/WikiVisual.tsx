@@ -1,5 +1,6 @@
 import { motion } from "motion/react";
-import { Check, FileText, Folder, Mail, Search, Sparkles, X, ShieldCheck, Infinity as InfinityIcon, Zap, Landmark, Receipt, ArrowRight } from "lucide-react";
+import { Check, FileText, Folder, Mail, Search, Sparkles, X, ShieldCheck, Infinity as InfinityIcon, Zap, Landmark, Receipt, ArrowRight, AlertTriangle, Camera, Printer, FileSignature, Upload } from "lucide-react";
+import { SIMULIERT_STATUS } from "@/lib/betriebsstatus";
 import type { WikiVisual } from "@/content/wiki";
 import { LogoMark } from "@/components/Logo";
 import { fmtEUR } from "@/core/dates";
@@ -38,6 +39,12 @@ export function WikiVisualScene({ visual }: { visual: WikiVisual }) {
       return <UmzugScene />;
     case "akte":
       return <AkteScene />;
+    case "stoerung":
+      return <StoerungScene stufe={0} />;
+    case "ersatzeinreichung":
+      return <StoerungScene stufe={1} />;
+    case "glaubhaft":
+      return <StoerungScene stufe={2} />;
     default:
       return <StatusScene />;
   }
@@ -305,18 +312,66 @@ function AkteScene() {
   );
 }
 
+/** Systemstatus im Wiki – wie Kopfleiste und Systemstatus ausdrücklich „simuliert“ (im Prototyp gibt es keine echte Verbindung). */
 function StatusScene() {
-  const items = [["beA", "verbunden"], ["E-Mail (Microsoft 365)", "verbunden"], ["Bank (CAMT.053)", "verbunden"], ["KI", "bereit"]];
+  const items = [["beA", "verbunden (simuliert)"], ["E-Mail (Microsoft 365)", "verbunden (simuliert)"], ["Bank (CAMT.053)", "verbunden (simuliert)"], ["KI", "bereit"]];
   return (
     <div className="flex h-full items-center justify-center">
-      <div className="glass-strong w-[270px] rounded-[16px] p-3">
+      <div className="glass-strong w-[290px] rounded-[16px] p-3">
         {items.map((it, k) => (
-          <motion.div key={it[0]} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: k * 0.15 }} className="flex items-center justify-between py-1.5 text-[12px]">
-            <span className="flex items-center gap-2"><span className="size-2 rounded-full bg-green" />{it[0]}</span>
-            <span className="text-fg-3">{it[1]}</span>
+          <motion.div key={it[0]} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: k * 0.15 }} className="flex items-center justify-between gap-2 py-1.5 text-[12px]">
+            <span className="flex items-center gap-2"><span className={`size-2 rounded-full ${it[0] === "KI" ? "bg-green" : "bg-amber"}`} />{it[0]}</span>
+            <span className="text-fg-2">{it[1]}</span>
           </motion.div>
         ))}
-        <div className="mt-2 flex items-center gap-1.5 border-t border-[var(--line)] pt-2 text-[12.5px] text-fg-3"><InfinityIcon className="size-3.5 text-ink" /> Lifetime-Lizenz aktiv</div>
+        <div className="mt-2 border-t border-[var(--line)] pt-2 text-[12px] text-fg-2">{SIMULIERT_STATUS}</div>
+        <div className="mt-1 flex items-center gap-1.5 text-[12.5px] text-fg-2"><InfinityIcon className="size-3.5 text-ink" /> Lifetime-Lizenz aktiv</div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Störungsbild für „beA-Störung – was tun?“: beA gestört → dokumentieren → Ersatzeinreichung → glaubhaft machen → nachreichen.
+ * Die aktuelle Stufe ist hervorgehoben; einmaliges Einblenden ohne Dauerschleife (Bewegung reduzieren wird global beachtet).
+ */
+function StoerungScene({ stufe }: { stufe: 0 | 1 | 2 }) {
+  const schritte = [
+    { icon: <Camera className="size-3.5" />, t: "Störung dokumentieren", s: "Screenshot, Uhrzeit, Fehlermeldung" },
+    { icon: <Printer className="size-3.5" />, t: "Ersatzeinreichung", s: "Telefax, Papier oder Bote · § 130d S. 2 ZPO, § 46g S. 3 ArbGG" },
+    { icon: <FileSignature className="size-3.5" />, t: "Glaubhaft machen", s: "anwaltliche Versicherung · § 130d S. 3 ZPO, § 46g S. 4 ArbGG" },
+    { icon: <Upload className="size-3.5" />, t: "Nachreichen", s: "elektronisches Dokument auf Anforderung" },
+  ];
+  return (
+    <div className="flex h-full items-center justify-center">
+      <div className="glass-strong w-[360px] max-w-full rounded-[16px] p-2">
+        <div className="mb-1 flex items-center gap-2 rounded-[10px] bg-seal-soft px-2.5 py-0.5 text-[12px] font-semibold text-seal">
+          <AlertTriangle className="size-3.5 shrink-0" /> beA gestört – Beispiel
+        </div>
+        <ol className="grid gap-0.5">
+          {schritte.map((x, k) => {
+            const aktiv = k === stufe;
+            const erledigt = k < stufe;
+            return (
+              <motion.li
+                key={x.t}
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.1 + k * 0.12 }}
+                className={`flex items-start gap-2 rounded-[10px] px-2 py-0.5 text-[12px] ${aktiv ? "bg-ink-soft py-1 ring-1 ring-[var(--ink)]" : ""}`}
+              >
+                <span className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-full ${erledigt ? "bg-green-soft text-green" : aktiv ? "bg-ink text-white" : "bg-[var(--ink-softer)] text-fg-2"}`}>
+                  {erledigt ? <Check className="size-3" /> : x.icon}
+                </span>
+                <span className="min-w-0">
+                  <span className={`block font-semibold ${aktiv ? "text-fg" : "text-fg-2"}`}>{x.t}</span>
+                  {/* nur der aktuelle Schritt mit Details – so passt die Szene ohne Abschneiden in die Bildfläche */}
+                  {aktiv && <span className="block text-[12px] leading-snug text-fg-2">{x.s}</span>}
+                </span>
+              </motion.li>
+            );
+          })}
+        </ol>
       </div>
     </div>
   );

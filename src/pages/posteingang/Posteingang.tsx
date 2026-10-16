@@ -7,6 +7,7 @@ import type { Akte, Nachricht } from "@/core/types";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { useMedia } from "@/lib/useMedia";
+import { einzeltasteErlaubt } from "@/lib/tastatur";
 import { cn } from "@/lib/cn";
 import { Button, Card, PageHeader, SearchField, Segmented } from "@/components/ui";
 import { NachrichtenListe } from "./NachrichtenListe";
@@ -136,6 +137,31 @@ export default function Posteingang() {
 
   const ansicht = useMemo(() => (sel ? kiAnsicht(sel, data, tenant.bundesland, ergebnisse[sel.id]) : null), [sel, data, tenant.bundesland, ergebnisse]);
 
+  // Einzeltasten-Kürzel (abschaltbar, WCAG 2.1.4): J/K nächste bzw. vorige Nachricht, U „Fristen übernehmen“, E eEB-Dialog.
+  // Die Aktionen lösen genau die sichtbaren Knöpfe aus (data-kuerzel) – gesperrte Knöpfe bleiben gesperrt.
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (!einzeltasteErlaubt(e)) return;
+      const k = e.key.toLowerCase();
+      if (k === "j" || k === "k") {
+        if (!sichtbar.length) return;
+        const i = sichtbar.findIndex((n) => n.id === selId);
+        const ziel = i < 0 ? sichtbar[0] : sichtbar[k === "j" ? Math.min(sichtbar.length - 1, i + 1) : Math.max(0, i - 1)];
+        if (!ziel) return;
+        e.preventDefault();
+        oeffnen(ziel.id);
+        requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-nachricht="${CSS.escape(ziel.id)}"]`)?.focus({ preventScroll: false }));
+      } else if ((k === "u" || k === "e") && selId) {
+        const knopf = document.querySelector<HTMLButtonElement>(`[data-kuerzel="${k}"]:not(:disabled)`);
+        if (!knopf) return;
+        e.preventDefault();
+        knopf.click();
+      }
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [sichtbar, selId, oeffnen]);
+
   const ausstehend = eingang.filter((n) => n.kiStatus === "ausstehend" || !n.ki);
   const fristenErkannt = eingang.filter((n) => n.ki?.frist && n.kiStatus === "analysiert").length;
   const naechsteNeue = eingang.find((n) => n.status === "neu");
@@ -148,7 +174,15 @@ export default function Posteingang() {
   const liste = (
     <Card padded={false} className={cn("flex min-w-0 flex-col overflow-hidden", zweispaltig && "h-full")}>
       <div className="space-y-2.5 border-b border-[var(--line)] p-2.5 sm:p-3">
-        <Segmented<Filter> size="sm" full options={FILTER.map((f) => ({ value: f.value, label: f.label, count: f.value === "alle" || schmal ? undefined : zaehler[f.value] }))} value={filter} onChange={setFilter} />
+        {/* Zähler nur dort, wo sie zum Handeln auffordern (neu, ohne Akte) – so stehen die Segmente mit Abstand; bei Platzmangel Umbruch */}
+        <Segmented<Filter>
+          size="sm"
+          full
+          wrap
+          options={FILTER.map((f) => ({ value: f.value, label: f.label, count: (f.value === "neu" || f.value === "ohne") && !schmal ? zaehler[f.value] : undefined }))}
+          value={filter}
+          onChange={setFilter}
+        />
         <SearchField id="posteingang-suche" value={q} onChange={setQ} placeholder="Absender, Betreff, Aktenzeichen …" />
       </div>
       <div data-listscroll className={cn("min-h-0 flex-1", zweispaltig && "overflow-y-auto")}>
@@ -156,6 +190,9 @@ export default function Posteingang() {
       </div>
       <div className="border-t border-[var(--line)] px-4 py-2.5 text-[12.5px] text-fg-3">
         {eingang.length} Nachrichten · {zaehler.neu} neu · {ausstehend.length} warten auf KI
+        <span id="posteingang-tipp" className="mt-0.5 hidden lg:block">
+          <span className="kbd">↑</span> <span className="kbd">↓</span> wählen · <span className="kbd">Enter</span> öffnet · <span className="kbd">J</span>/<span className="kbd">K</span> nächste bzw. vorige
+        </span>
       </div>
     </Card>
   );

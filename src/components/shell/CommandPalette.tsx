@@ -2,14 +2,14 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { Command } from "cmdk";
 import { AnimatePresence, motion } from "motion/react";
-import { FolderOpen, FileText, User, CalendarClock, CalendarPlus, Inbox, Keyboard, Library, Sparkles, Plus, Calculator, CornerDownLeft, Zap, Landmark, Percent, Receipt, Scale, Timer, UsersRound, Palette, X } from "lucide-react";
-import { useUI } from "@/store/ui";
+import { FolderOpen, FileText, User, CalendarClock, CalendarPlus, Inbox, Keyboard, Library, Sparkles, Plus, Calculator, CornerDownLeft, Zap, Landmark, Percent, Receipt, Scale, Timer, UsersRound, Palette, X, Building2, Infinity as InfinityIcon, KeyRound, FileStack } from "lucide-react";
+import { toast, useUI } from "@/store/ui";
 import { useData } from "@/store/data";
 import { useSession } from "@/store/session";
 import { bereichErlaubt, navFuer } from "@/app/nav";
-import { darfVerwalten, istConsole } from "@/lib/backend";
+import { darfLizenzSehen, darfVerwalten, istConsole } from "@/lib/backend";
 import type { Rolle } from "@/core/types";
-import { akteAusPfad } from "./Tastenkuerzel";
+import { akteAusPfad, oeffneZeiterfassung } from "./Tastenkuerzel";
 import { search, snippet } from "@/core/search";
 import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
 import { fmtDate } from "@/core/dates";
@@ -27,7 +27,7 @@ interface Ziel {
   /** Tastaturkürzel außerhalb der Suche (z. B. „W“) */
   kuerzel?: string;
   /** statt Navigation: Aktion im Rahmen (Dialog, Übersicht) */
-  aktion?: "wiedervorlage" | "kuerzel" | "assistent";
+  aktion?: "wiedervorlage" | "zeit" | "kuerzel" | "assistent";
 }
 
 /** Schnellaktionen – die KI-Fallanalyse startet direkt für die zuletzt bearbeitete offene Akte. */
@@ -36,13 +36,14 @@ function schnellaktionen(akten: Akte[]): Ziel[] {
   return [
     { to: "/akten?neu=1", label: "Neue Akte anlegen", sub: "Mandatsaufnahme mit automatischer Vollmacht & Deckungsanfrage", icon: <Plus />, stichworte: "Mandat Mandatsaufnahme" },
     { to: "#wiedervorlage", aktion: "wiedervorlage", label: "Wiedervorlage anlegen", sub: "Akte, Datum, Titel – in einer Akte für diese Akte", icon: <CalendarPlus />, kuerzel: "W", stichworte: "Wiedervorlage WV Erinnerung" },
+    { to: "#zeit", aktion: "zeit", label: "Zeit erfassen", sub: "Minuten tippen, Enter – in einer Akte für diese Akte, abrechenbar", icon: <Timer />, kuerzel: "Z", stichworte: "Zeiteintrag Zeiterfassung Stunden buchen Zeit buchen Arbeitszeit Minuten erfassen" },
     { to: "/fristen?rechner=1", label: "Frist berechnen", sub: "Fristenrechner nach § 222 ZPO mit Feiertagen Ihres Bundeslands", icon: <Calculator />, kuerzel: "F", stichworte: "Fristenrechner Rechner" },
     { to: "/abrechnung?tab=rvg", label: "RVG-Gebühren berechnen", sub: "Gebührentabelle 2025 inkl. Anrechnung und Auslagen", icon: <Calculator />, stichworte: "RVG-Rechner Gebührenrechner" },
     { to: "/abrechnung?tab=zinsen", label: "Zinsrechner", sub: "Verzugszinsen nach § 288 BGB mit Basiszins", icon: <Percent />, stichworte: "Zinsen Verzugszinsen Basiszins Zinsrechner" },
     zuletzt
       ? { to: `/ki?akte=${encodeURIComponent(zuletzt.id)}&start=1`, label: "KI-Fallanalyse starten", sub: `Zuletzt bearbeitet: ${zuletzt.aktenzeichen} · ${zuletzt.titel}`, icon: <Sparkles />, stichworte: "Erfolgsaussicht Präzedenzfälle Analyse" }
       : { to: "/ki", label: "Apex KI öffnen – Fallanalyse", sub: "Akte wählen – Erfolgsaussicht, Präzedenzfälle, nächste Schritte", icon: <Sparkles />, stichworte: "Erfolgsaussicht Präzedenzfälle Analyse" },
-    { to: "/automatisierung", label: "38h-Motor öffnen", sub: "Automationen, Protokoll und gesparte Zeit der letzten 7 Tage", icon: <Zap />, stichworte: "Automatisierung Automationen" },
+    { to: "/automatisierung", label: "38h-Motor öffnen", sub: "Automatiken, Protokoll und gesparte Zeit der letzten 7 Tage", icon: <Zap />, stichworte: "Automatisierung Automatiken" },
     { to: "#assistent", aktion: "assistent", label: "Apex Assistent öffnen", sub: "Fragen, suchen, Wiedervorlagen vorschlagen – per Text oder Sprache", icon: <Sparkles className="text-violet" />, stichworte: "Assistent Kugel Sprache KI fragen" },
     { to: "#kuerzel", aktion: "kuerzel", label: "Tastaturkürzel", sub: "Alle Kürzel auf einen Blick", icon: <Keyboard />, kuerzel: "?", stichworte: "Shortcuts Tasten Kürzel" },
   ];
@@ -50,7 +51,10 @@ function schnellaktionen(akten: Akte[]): Ziel[] {
 
 /** Nur Ziele, die die Rolle öffnen darf (Auszubildende: keine Abrechnung, kein Zinsrechner, kein RVG, kein Bankabgleich). */
 function erlaubt(z: Ziel, rolle: Rolle | undefined): boolean {
+  if (z.aktion === "zeit") return bereichErlaubt("/abrechnung", rolle);
   if (z.to.startsWith("#")) return true;
+  // Lizenz nur für Partner und Administration
+  if (z.to.startsWith("/einstellungen?tab=lizenz")) return darfLizenzSehen(rolle);
   return bereichErlaubt(z.to.split("?")[0], rolle);
 }
 
@@ -59,10 +63,16 @@ const UNTERBEREICHE: Ziel[] = [
   { to: "/abrechnung?tab=rechnungen", label: "Rechnungen", sub: "Abrechnung · alle Rechnungen mit Zahlungsstatus", icon: <Receipt /> },
   { to: "/abrechnung?tab=bank", label: "Bankabgleich", sub: "Abrechnung · Kontoumsätze automatisch zuordnen", icon: <Landmark />, stichworte: "Bank Kontoumsätze Zahlungen" },
   { to: "/abrechnung?tab=forderung", label: "Forderungskonto", sub: "Abrechnung · Hauptforderung, Zinsen und Kosten", icon: <Scale />, stichworte: "Forderung Kosten" },
-  { to: "/abrechnung?tab=zeit", label: "Zeiterfassung", sub: "Abrechnung · Stoppuhr und Zeiteinträge", icon: <Timer />, stichworte: "Zeiten Stoppuhr" },
-  { to: "/einstellungen?tab=team", label: "Team & Zugänge", sub: "Einstellungen · Personen einladen und verwalten", icon: <UsersRound />, stichworte: "Benutzer Nutzer Mitarbeiter" },
-  { to: "/einstellungen?tab=darstellung", label: "Darstellung", sub: "Einstellungen · Hell, Dunkel, Schriftgröße, Assistent-Kugel", icon: <Palette />, stichworte: "Dunkelmodus Hellmodus Theme Schriftgröße Schrift größer Kugel Live-Meldungen" },
-  { to: "/einstellungen?tab=datenschutz", label: "Anmeldung & Sicherheit", sub: "Einstellungen · Zwei-Faktor-Anmeldung, Sperre, Protokoll", icon: <Scale />, stichworte: "Zwei-Faktor 2FA MFA Authenticator Sperre Protokoll Datenschutz Löschkonzept AVV" },
+  { to: "/abrechnung?tab=zeit", label: "Zeiterfassung", sub: "Abrechnung · Stoppuhr und Zeiteinträge", icon: <Timer />, stichworte: "Zeiten Stoppuhr Zeitliste" },
+  { to: "/abrechnung?aktion=sammelabrechnung", label: "Sammelabrechnung", sub: "Abrechnung · mehrere Akten in einem Durchgang abrechnen", icon: <FileStack />, stichworte: "Sammelrechnung Stapelabrechnung RSV-Akten abrechnen mehrere Akten" },
+  // Einstellungen: jeder Reiter mit Direktlink und Synonymen
+  { to: "/einstellungen?tab=kanzlei", label: "Kanzlei", sub: "Einstellungen · Name, Anschrift, Bundesland (Feiertage), Steuernummer", icon: <Building2 />, stichworte: "Kanzleidaten Anschrift Adresse Bundesland Kanzleisitz Steuernummer USt-IdNr Briefkopf" },
+  { to: "/einstellungen?tab=team", label: "Team & Zugänge", sub: "Einstellungen · Personen einladen, Rollen, Abwesenheit und Vertretung", icon: <UsersRound />, stichworte: "Benutzer Nutzer Mitarbeiter Einladen Rolle Abwesenheit Vertretung Startpasswort" },
+  { to: "/einstellungen?tab=lizenz", label: "Lizenz", sub: "Einstellungen · Lifetime-Lizenz, Arbeitsplätze, Wartung, Übertragbarkeit", icon: <InfinityIcon />, stichworte: "Lizenz Lifetime Wartung Arbeitsplätze Lizenznummer Escrow Übertragbarkeit Preis" },
+  { to: "/einstellungen?tab=datenschutz", label: "Datenschutz & Verträge", sub: "Einstellungen · § 43e BRAO, AVV, Unterauftragnehmer, Löschkonzept, Protokoll", icon: <Scale />, stichworte: "Datenschutz 43e BRAO AVV Auftragsverarbeitung Art. 28 DSGVO Unterauftragnehmer Löschkonzept Aufbewahrung Protokoll Verschwiegenheit 203 Verträge Muster" },
+  { to: "/einstellungen?tab=ki", label: "KI-Einstellungen", sub: "Einstellungen · Live-KI oder Demo-KI, Datenfluss, Verarbeitungsort", icon: <Sparkles />, stichworte: "KI Künstliche Intelligenz Claude Anthropic Demo-KI Live-KI Verarbeitungsort Datenfluss" },
+  { to: "/einstellungen?tab=darstellung", label: "Darstellung", sub: "Einstellungen · Hell, Dunkel, Schriftgröße, Apex Island, Kugel, Tastaturkürzel", icon: <Palette />, stichworte: "Dunkelmodus Hellmodus Theme Schriftgröße Schrift größer Kugel Apex Island Live-Meldungen Tastaturkürzel Einzeltasten Kürzel abschalten" },
+  { to: "/einstellungen?tab=datenschutz&abschnitt=sicherheit", label: "Anmeldung & Sicherheit", sub: "Einstellungen · Passwort, Zwei-Faktor-Anmeldung, Sperre bei Inaktivität", icon: <KeyRound />, stichworte: "Sicherheit Passwort Passwort ändern Kennwort Zwei-Faktor 2FA MFA Authenticator Sperre Inaktivität Anmeldung" },
 ];
 
 function bereicheFuer(rolle: Rolle | undefined): Ziel[] {
@@ -100,6 +110,11 @@ export function CommandPalette() {
         e.preventDefault();
         // gesperrter Bildschirm: keine Suche über verborgenen Inhalten
         if (useSession.getState().gesperrt) return;
+        // Ein modaler Dialog hält den Fokus (Hintergrund inert) – die Suche öffnet erst nach dem Schließen
+        if (!useUI.getState().paletteOffen && document.querySelector('[aria-modal="true"]')) {
+          toast("Suche gerade nicht verfügbar", { text: "Bitte schließen Sie zuerst den offenen Dialog (Esc).", ton: "info" });
+          return;
+        }
         setPalette(!useUI.getState().paletteOffen);
       }
     };
@@ -190,6 +205,7 @@ export function CommandPalette() {
     setPalette(false);
     const ui = useUI.getState();
     if (z.aktion === "wiedervorlage") ui.setWiedervorlage({ akteId: akteAusPfad(loc.pathname) });
+    else if (z.aktion === "zeit") oeffneZeiterfassung(loc.pathname);
     else if (z.aktion === "kuerzel") ui.setKuerzel(true);
     else oeffneAssistent();
   };

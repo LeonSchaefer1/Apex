@@ -38,7 +38,7 @@ export function MotorAbschnitt() {
             <br /> <span className="text-fg-3">Sie bleiben beim Mandat.</span>
           </>
         }
-        text="Jede Automation misst, wie viel Zeit sie je bearbeitetem Vorgang spart. Nach außen geht nichts ohne Ihre Freigabe. Unser Ziel: Ø 38 Stunden Routinearbeit pro Woche und Kanzlei – fast eine volle Stelle, die wieder für Mandate frei wird."
+        text="Jede Automatik misst, wie viel Zeit sie je bearbeitetem Vorgang spart. Nach außen geht nichts ohne Ihre Freigabe. Unser Ziel: Ø 38 Stunden Routinearbeit pro Woche und Kanzlei – fast eine volle Stelle, die wieder für Mandate frei wird."
       />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
         <Reveal className="sheet relative overflow-hidden rounded-[28px] p-6 sm:p-7">
@@ -62,7 +62,7 @@ export function MotorAbschnitt() {
               </Reveal>
             ))}
           </ul>
-          <p className="mt-4 text-[13px] leading-relaxed text-fg-2">Alle Automationen laufen im Hintergrund, protokollieren jeden Schritt und lassen sich einzeln ein- und ausschalten. Was die Kanzlei verlässt, legt der Motor immer zur Freigabe vor; Fristen gehen in die Vier-Augen-Kontrolle. Gezählt wird nur, was tatsächlich bearbeitet wurde – ein Bankabruf ohne neue Zahlung spart keine Minute.</p>
+          <p className="mt-4 text-[13px] leading-relaxed text-fg-2">Alle Automatiken laufen im Hintergrund, protokollieren jeden Schritt und lassen sich einzeln ein- und ausschalten. Was die Kanzlei verlässt, legt der Motor immer zur Freigabe vor; Fristen gehen in die Vier-Augen-Kontrolle. Gezählt wird nur, was tatsächlich bearbeitet wurde – ein Bankabruf ohne neue Zahlung spart keine Minute.</p>
         </Reveal>
         <Rechner />
       </div>

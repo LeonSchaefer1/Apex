@@ -1,19 +1,49 @@
 // „Frist anlegen“: gesetzliche Frist mit Rechenweg (Fristenrechner) oder freie Wiedervorlage / Termin.
+// Keine stille Vorbelegung: Fristart per Suche wählen, Ereignisdatum ist Pflicht (Vorschlag nur mit Quelle), Warnung vor Dubletten.
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { AlertTriangle, CalendarClock, CalendarPlus, Calculator, Info, ShieldAlert } from "lucide-react";
-import type { Akte, Bundesland, Frist, FristTyp } from "@/core/types";
+import { AlertTriangle, CalendarClock, CalendarPlus, Calculator, Info, ShieldAlert, Sparkles } from "lucide-react";
+import type { Akte, Bundesland, Dokument, Frist, FristTyp, Nachricht } from "@/core/types";
 import { FRIST_REGELN, berechneNachRegel, berechnungsNormen, fristArt, gerichtsortDerAkte, type Einheit, type FristRegel } from "@/core/fristen";
 import { bundeslandName, feiertagAm, istWerktag } from "@/core/feiertage";
 import { fmtDate, fmtDateWd, nowLocal, relDays, schuetzeLeerzeichen, today, uid, wochentagName } from "@/core/dates";
+import { istBerufstraeger } from "@/core/vertretung";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
 import { Button, Chip, Field, Input, Modal, Select, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { FRIST_TYP_LABEL, beruehreAkte, dringlichkeit, useTeam } from "./helfer";
+import { FristartAuswahl } from "@/pages/fristen/FristartAuswahl";
 
-const GEBIETE = [...new Set(FRIST_REGELN.map((r) => r.gebiet))];
+const DATUM_RE = /(\d{1,2})\.(\d{1,2})\.(\d{4})/;
+const isoAus = (m: RegExpMatchArray) => `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+
+/**
+ * Vorschläge für das fristauslösende Ereignis – immer mit Quelle, nie still übernommen:
+ * Zugang der Kündigung aus dem Kündigungsschreiben bzw. einer notierten Klagefrist, Zustellung aus dem eEB.
+ */
+export function ereignisVorschlaege(regel: FristRegel | undefined, akte: Akte, dokumente: Dokument[], fristen: Frist[], nachrichten: Nachricht[]): { datum: string; quelle: string }[] {
+  if (!regel) return [];
+  const out: { datum: string; quelle: string }[] = [];
+  const dazu = (datum: string, quelle: string) => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(datum) && !out.some((v) => v.datum === datum)) out.push({ datum, quelle });
+  };
+  if (/kündigung/i.test(regel.ereignis)) {
+    for (const d of dokumente.filter((x) => x.akteId === akte.id && /kündigung/i.test(x.name))) {
+      const m = d.inhalt.match(/(?:zugegangen|zugestellt|Zugang)[^\n]{0,60}?(\d{1,2}\.\d{1,2}\.\d{4})/i);
+      const mm = m?.[1].match(DATUM_RE);
+      if (mm) dazu(isoAus(mm), `aus „${d.name}“`);
+    }
+  }
+  if (/zustellung|bekanntgabe/i.test(regel.ereignis)) {
+    for (const n of nachrichten.filter((x) => x.akteId === akte.id && x.eebZustellungsdatum).sort((a, b) => b.eingang.localeCompare(a.eingang)).slice(0, 2))
+      dazu(n.eebZustellungsdatum!, `Zustellungsdatum laut eEB zu „${n.betreff}“`);
+  }
+  for (const f of fristen.filter((x) => x.akteId === akte.id && x.regelKey === regel.key && x.ereignisDatum && x.typ !== "vorfrist"))
+    dazu(f.ereignisDatum!, `aus der notierten Frist „${f.titel}“`);
+  return out;
+}
 
 /**
  * Umschalter, der auf schmalen Bildschirmen umbricht statt abzuschneiden (Optionsfeld-Gruppe mit Pillen).
@@ -44,28 +74,16 @@ function Wahl<T extends string>({ value, onChange, options, label, full }: { val
   );
 }
 
-/** Passende Startregel nach Sachgebiet. */
-function startRegel(akte: Akte): string {
-  switch (akte.sachgebiet) {
-    case "Arbeitsrecht":
-      return akte.phase === "Urteil" ? "berufung_arbg" : "kschg_klage";
-    case "Strafrecht":
-      return "einspruch_strafbefehl";
-    case "Forderungseinzug":
-      return "widerspruch_mb";
-    case "Verwaltungsrecht":
-      return "widerspruch_va";
-    default:
-      return akte.phase === "Urteil" ? "berufung" : "klageerwiderung";
-  }
-}
-
 export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { akte: Akte; open: boolean; onClose: () => void; startModus?: "regel" | "frei" }) {
   const { tenant, user } = useKanzlei();
   const { team } = useTeam();
   const [modus, setModus] = useState<"regel" | "frei">("regel");
-  const [regelKey, setRegelKey] = useState(startRegel(akte));
-  const [ereignis, setEreignis] = useState(today());
+  // Keine Vorbelegung nach Sachgebiet: Fristart bewusst wählen (Suche wie im Fristenrechner)
+  const [regelKey, setRegelKey] = useState("");
+  const [suche, setSuche] = useState("");
+  // Ereignisdatum leer und Pflicht – „heute“ nur als Schnellwahl, Vorschläge aus der Akte mit Quelle
+  const [ereignis, setEreignis] = useState("");
+  const [dubletteOk, setDubletteOk] = useState(false);
   const [titel, setTitel] = useState("");
   const [freiTyp, setFreiTyp] = useState<Extract<FristTyp, "wiedervorlage" | "termin" | "frist">>("wiedervorlage");
   const [datum, setDatum] = useState("");
@@ -80,14 +98,19 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
   const [festesEnde, setFestesEnde] = useState("");
   // Feiertage am Gerichtsort laut Akte (§ 222 Abs. 2 ZPO, § 43 Abs. 2 StPO) – sonst Kanzleisitz
   const kontakte = useCol("kontakte");
+  const alleDoks = useCol("dokumente");
+  const alleFristen = useCol("fristen");
+  const nachrichten = useCol("nachrichten");
   const gerichtsort = useMemo(() => gerichtsortDerAkte(akte, kontakte), [akte, kontakte]);
   const land: Bundesland = gerichtsort?.land ?? tenant.bundesland;
 
   useEffect(() => {
     if (!open) return;
     setModus(startModus);
-    setRegelKey(startRegel(akte));
-    setEreignis(today());
+    setRegelKey("");
+    setSuche("");
+    setEreignis("");
+    setDubletteOk(false);
     setTitel("");
     setFreiTyp("wiedervorlage");
     setDatum("");
@@ -101,19 +124,25 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, akte.id, startModus]);
 
-  const regel = FRIST_REGELN.find((r) => r.key === regelKey) ?? FRIST_REGELN[0];
+  const gewaehlt = FRIST_REGELN.find((r) => r.key === regelKey);
+  const regel = gewaehlt ?? FRIST_REGELN[0];
   useEffect(() => {
     setDauer("");
     setFestesEnde("");
+    setDubletteOk(false);
     setFestModus(regel.festesDatum === "pflicht" ? "datum" : "dauer");
     if (regel.einheit !== "jahresende") setEinheit(regel.einheit);
   }, [regelKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const vorschlaege = useMemo(() => ereignisVorschlaege(gewaehlt, akte, alleDoks, alleFristen, nachrichten), [gewaehlt, akte, alleDoks, alleFristen, nachrichten]);
+  // Dublette: offene Frist derselben Fristart in dieser Akte
+  const dublette = gewaehlt ? alleFristen.find((f) => f.akteId === akte.id && f.status === "offen" && f.typ !== "vorfrist" && f.regelKey === gewaehlt.key) : undefined;
   const mitDatum = regel.festesDatum === "pflicht" || (regel.festesDatum === "moeglich" && festModus === "datum");
   const dauerNum = dauer.trim() ? Math.max(0, Math.min(999, parseInt(dauer, 10) || 0)) || undefined : undefined;
   /** Was fehlt noch? – nennt den nächsten Schritt statt still einen Standardwert anzunehmen */
-  const fehlt =
-    !/^\d{4}-\d{2}-\d{2}$/.test(ereignis)
-      ? "Bitte das Datum des fristauslösenden Ereignisses wählen."
+  const fehlt = !gewaehlt
+    ? "Bitte zuerst die Fristart wählen – Suche oder Liste."
+    : !/^\d{4}-\d{2}-\d{2}$/.test(ereignis)
+      ? `Bitte das Datum eintragen: ${regel.ereignis}${vorschlaege.length ? " – oder einen Vorschlag aus der Akte übernehmen" : ""}.`
       : mitDatum && !/^\d{4}-\d{2}-\d{2}$/.test(festesEnde)
         ? `Bitte das Fristende laut ${regel.key === "widerruf_vergleich" ? "Vergleich" : "Vereinbarung"} eintragen – dann erscheint die Frist mit Vorfrist.`
         : !mitDatum && regel.dauerPflicht && !dauerNum
@@ -134,11 +163,20 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
     }
   }, [modus, fehlt, regelKey, ereignis, land, gerichtsort, tenant.bundesland, mitDatum, regel.dauerPflicht, dauerNum, einheit, festesEnde]);
 
+  // Fristen und Notfristen verantworten nur Berufsträger (§ 53 BRAO, A-14) – Wiedervorlagen und Termine auch Fachangestellte
+  const nurBerufstraeger = modus === "regel" || freiTyp === "frist";
+  const waehlbar = useMemo(() => team.filter((u) => !u.deaktiviert && (!nurBerufstraeger || istBerufstraeger(u))), [team, nurBerufstraeger]);
+  useEffect(() => {
+    if (!open || waehlbar.some((u) => u.id === verantwortlich)) return;
+    const standard = waehlbar.find((u) => u.id === akte.bearbeiterId) ?? waehlbar.find((u) => u.id === user.id) ?? waehlbar[0];
+    if (standard) setVerantwortlich(standard.id);
+  }, [open, waehlbar, verantwortlich, akte.bearbeiterId, user.id]);
+
   const freiDatumOk = /^\d{4}-\d{2}-\d{2}$/.test(datum);
   const freiFeiertag = freiDatumOk ? feiertagAm(datum, land) : undefined;
   const freiKeinWerktag = freiDatumOk && !istWerktag(datum, land);
 
-  const kannSpeichern = modus === "regel" ? !!ergebnis : freiDatumOk && !!titel.trim();
+  const kannSpeichern = modus === "regel" ? !!ergebnis && (!dublette || dubletteOk) : freiDatumOk && !!titel.trim();
 
   const speichere = () => {
     const st = useData.getState();
@@ -161,7 +199,12 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
         id: uid("f"), akteId: akte.id, titel: `Vorfrist: ${f.titel}`, typ: "vorfrist", datum: ergebnis.vorfrist, bezugId: f.id, status: "offen",
         verantwortlichId: sb, quelle: "automatisch", createdAt: jetzt,
       });
-      st.log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Frist eingetragen: ${f.titel} bis ${fmtDate(f.datum)} – ${akte.aktenzeichen}` });
+      st.log({
+        akteur: "nutzer",
+        userId: user.id,
+        akteId: akte.id,
+        text: `Frist eingetragen: ${f.titel} bis ${fmtDate(f.datum)} (Ereignis ${fmtDate(ereignis)})${dublette ? ` – trotz bereits notierter „${dublette.titel}“ bis ${fmtDate(dublette.datum)} (bestätigt)` : ""} – ${akte.aktenzeichen}`,
+      });
       st.log({ akteur: "automation", automationKey: "vorfristen", akteId: akte.id, minutenGespart: 4, text: `Vorfrist am ${fmtDate(ergebnis.vorfrist)} gesetzt und Verantwortliche informiert – ${akte.aktenzeichen}` });
       toast("Frist eingetragen", { ton: "erfolg", text: `${FRIST_TYP_LABEL[r.typ]} bis ${fmtDateWd(ergebnis.ende)} · Vorfrist ${fmtDateWd(ergebnis.vorfrist)}` });
     } else {
@@ -211,20 +254,17 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
         {modus === "regel" ? (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_1.1fr]">
             <div className="grid grid-cols-1 content-start gap-3.5">
-              <Field label="Fristart" htmlFor="fa-regel">
-                <Select id="fa-regel" value={regelKey} onChange={(e) => setRegelKey(e.target.value)}>
-                  {GEBIETE.map((g) => (
-                    <optgroup key={g} label={g}>
-                      {FRIST_REGELN.filter((r) => r.gebiet === g).map((r) => (
-                        <option key={r.key} value={r.key}>
-                          {r.titel} ({r.grundlage})
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </Select>
-              </Field>
-              {regel.festesDatum === "moeglich" && (
+              <FristartAuswahl
+                id="fa-regel"
+                pflicht
+                suche={suche}
+                onSuche={setSuche}
+                value={regelKey}
+                onWaehle={(x) => setRegelKey(x.key)}
+                naechstesFeldId="fa-ereignis"
+                hoehe="max-h-[188px] sm:max-h-[220px]"
+              />
+              {gewaehlt && regel.festesDatum === "moeglich" && (
                 <Wahl
                   label="Fristende bestimmen"
                   value={festModus}
@@ -236,12 +276,36 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
                 />
               )}
               <Field
-                label={regel.ereignis}
+                label={`${gewaehlt ? regel.ereignis : "Fristauslösendes Ereignis"} (Pflicht)`}
                 htmlFor="fa-ereignis"
-                hint={/^\d{4}-\d{2}-\d{2}$/.test(ereignis) ? `${wochentagName(ereignis)} – der Tag des Ereignisses zählt nicht mit (${berechnungsNormen(regel)}).` : undefined}
+                hint={/^\d{4}-\d{2}-\d{2}$/.test(ereignis) && gewaehlt ? `${wochentagName(ereignis)} – der Tag des Ereignisses zählt nicht mit (${berechnungsNormen(regel)}).` : undefined}
               >
-                <Input id="fa-ereignis" type="date" value={ereignis} onChange={(e) => setEreignis(e.target.value)} />
+                <div className="flex gap-2">
+                  <Input id="fa-ereignis" type="date" required aria-required="true" value={ereignis} onChange={(e) => setEreignis(e.target.value)} className="min-w-0 flex-1" />
+                  <Button size="sm" variant="secondary" className="!h-11 shrink-0" onClick={() => setEreignis(today())} title="Heutiges Datum eintragen">
+                    heute
+                  </Button>
+                </div>
               </Field>
+              {vorschlaege.length > 0 && (
+                <ul className="-mt-1.5 grid gap-1.5" aria-label="Vorschläge aus der Akte">
+                  {vorschlaege.map((v) => (
+                    <li key={v.datum + v.quelle} className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-[12px] bg-ink-softer px-3 py-2 text-[12.5px] text-fg-2 ring-1 ring-inset ring-[var(--line)]">
+                      <Sparkles className="size-3.5 shrink-0 text-ink" aria-hidden />
+                      <span className="min-w-0 flex-1">
+                        {v.quelle}: <span className="num font-semibold text-fg">{fmtDate(v.datum)}</span>
+                      </span>
+                      {ereignis === v.datum ? (
+                        <span className="font-medium text-green">übernommen</span>
+                      ) : (
+                        <button type="button" className="min-h-[32px] rounded-full px-2 font-medium text-ink hover:bg-ink-soft" onClick={() => setEreignis(v.datum)}>
+                          übernehmen
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
               {mitDatum ? (
                 <Field label={`Fristende laut ${regel.key === "widerruf_vergleich" ? "Vergleich" : "Vereinbarung"} (Pflicht)`} htmlFor="fa-festes-ende">
                   <Input id="fa-festes-ende" type="date" required aria-required="true" min={ereignis} value={festesEnde} onChange={(e) => setFestesEnde(e.target.value)} />
@@ -261,12 +325,31 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
               <Field label="Bezeichnung (optional)" htmlFor="fa-titel">
                 <Input id="fa-titel" value={titel} onChange={(e) => setTitel(e.target.value)} placeholder={ergebnis?.regel.titel} />
               </Field>
-              <Verantwortlich id="fa-verantw" value={verantwortlich} onChange={setVerantwortlich} team={team} />
+              <Verantwortlich id="fa-verantw" value={verantwortlich} onChange={setVerantwortlich} team={waehlbar} nurBerufstraeger />
               <Field label="Notiz" htmlFor="fa-notiz">
                 <Textarea id="fa-notiz" rows={2} value={notiz} onChange={(e) => setNotiz(e.target.value)} placeholder="z. B. Zustellung per beA, eEB abgegeben" />
               </Field>
             </div>
-            <Vorschau ergebnis={ergebnis} land={ergebnis?.land ?? land} fehlt={fehlt} />
+            <div className="grid content-start gap-3">
+              {dublette && (
+                <div role="alert" className="grid gap-2 rounded-[16px] bg-seal-soft p-3.5 text-[12.5px] leading-relaxed text-seal">
+                  <div className="flex gap-2">
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+                    <span>
+                      <strong className="font-semibold">
+                        {dublette.titel} bis {fmtDateWd(dublette.datum)} ist schon notiert.
+                      </strong>{" "}
+                      {dublette.ereignisDatum ? `Ereignis dort: ${fmtDate(dublette.ereignisDatum)}. ` : ""}Eine zweite Frist mit anderem Datum führt leicht zu einer versäumten Frist.
+                    </span>
+                  </div>
+                  <label className="flex items-start gap-2 font-medium">
+                    <input type="checkbox" className="mt-0.5 size-4 accent-[var(--seal)]" checked={dubletteOk} onChange={(e) => setDubletteOk(e.target.checked)} />
+                    <span>Trotzdem anlegen (wird protokolliert)</span>
+                  </label>
+                </div>
+              )}
+              <Vorschau ergebnis={ergebnis} land={ergebnis?.land ?? land} fehlt={fehlt} />
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3.5">
@@ -316,7 +399,7 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
               </Field>
             )}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Verantwortlich id="fa-frei-verantw" value={verantwortlich} onChange={setVerantwortlich} team={team} />
+              <Verantwortlich id="fa-frei-verantw" value={verantwortlich} onChange={setVerantwortlich} team={waehlbar} nurBerufstraeger={nurBerufstraeger} />
               <Field label="Notiz" htmlFor="fa-frei-notiz">
                 <Input id="fa-frei-notiz" value={notiz} onChange={(e) => setNotiz(e.target.value)} />
               </Field>
@@ -328,9 +411,9 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
   );
 }
 
-function Verantwortlich({ id, value, onChange, team }: { id: string; value: string; onChange: (v: string) => void; team: { id: string; name: string; titel: string }[] }) {
+function Verantwortlich({ id, value, onChange, team, nurBerufstraeger }: { id: string; value: string; onChange: (v: string) => void; team: { id: string; name: string; titel: string }[]; nurBerufstraeger?: boolean }) {
   return (
-    <Field label="Verantwortlich" htmlFor={id}>
+    <Field label="Verantwortlich" htmlFor={id} hint={nurBerufstraeger ? "Fristen verantworten Partner und Anwälte (Berufsträger)." : undefined}>
       <Select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
         {team.map((u) => (
           <option key={u.id} value={u.id}>

@@ -4,14 +4,14 @@ import { useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { addDays, diffDays, fmtDateShort, fmtEUR, today, wochentagName } from "@/core/dates";
 import { istWerktag } from "@/core/feiertage";
-import { vertreteneIds } from "@/core/vertretung";
+import { vertreteneIds, vertretungsUmfang } from "@/core/vertretung";
 import { gruss as foermlicherGruss } from "@/lib/rollen";
 import { aktenMitFrist, fristenLage, istKritisch, nachDringlichkeit, zaehltAlsFrist, type FristenLage } from "@/core/fristenLage";
 import {
   briefingText, finanzZahlen, fristArtLabel, motorZahlen, naechsteTermine, posteingangZahlen, tagesbriefing,
   type BriefingSatz, type BriefingTeil, type FinanzZahlen,
 } from "@/core/kennzahlen";
-import type { Akte, Aktivitaet, Bundesland, Frist, FristTyp, Nachricht, User } from "@/core/types";
+import type { Akte, Aktivitaet, Bundesland, Frist, FristTyp, ISODate, Nachricht, User } from "@/core/types";
 
 /** Ziel des 38h-Motors (Stunden je Woche und Kanzlei). */
 export const ZIEL_STUNDEN = 38;
@@ -95,7 +95,7 @@ export interface CockpitDaten {
   /** Termine heute (typ 'termin', offen) – nach Uhrzeit, in „Nur meine“ auch die der vertretenen Personen */
   termineHeute: Frist[];
   /** Personen, die heute abwesend sind und von mir vertreten werden (§ 53 BRAO) – mit ihren heute und bald fälligen Einträgen */
-  vertretung: { person: User; fristen: number; weitere: number }[];
+  vertretung: { person: User; fristen: number; weitere: number; bis: ISODate; bisAbwesenheitsende: boolean }[];
   /** verantwortlichId → vertretene Person, für die Kennzeichnung „Vertretung für …“ */
   vertreten: Map<string, User>;
   /** Wochenblick: Fristen und Termine je Werktag; Wiedervorlagen getrennt (nur im Tooltip) */
@@ -180,12 +180,8 @@ export function useCockpitDaten(ansicht: Ansicht): CockpitDaten {
     // Termine (offen, ab heute; in „Meine Sicht“ nur eigene)
     const termine = naechsteTermine(fristen, heute, meine ? user.id : undefined);
     const termineHeute = offen.filter((f) => f.typ === "termin" && f.datum === heute).sort((a, b) => (a.uhrzeit ?? "99").localeCompare(b.uhrzeit ?? "99"));
-    const in7 = addDays(heute, 7);
-    const vertretung = [...vertreten.values()].map((person) => {
-      const seine = fristen.filter((f) => f.status === "offen" && f.verantwortlichId === person.id && f.typ !== "termin" && f.datum <= in7);
-      const echte = seine.filter(zaehltAlsFrist).length;
-      return { person, fristen: echte, weitere: seine.length - echte };
-    });
+    // über den ganzen Abwesenheitszeitraum (nicht nur 7 Tage) – sonst fehlt z. B. die Frist kurz vor der Rückkehr
+    const vertretung = [...vertreten.values()].map((person) => ({ person, ...vertretungsUmfang(fristen, person, heute) }));
 
     // Wochenblick: die nächsten 5 Werktage ab heute
     const wochenTage: CockpitDaten["wochenTage"] = [];

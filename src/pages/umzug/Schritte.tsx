@@ -5,13 +5,13 @@ import {
   UploadCloud, Users, Wand2, X,
 } from "lucide-react";
 import { fmtDate, fmtEUR, fmtNum } from "@/core/dates";
-import type { Ansprechpartner, FristTyp, Kontakt } from "@/core/types";
+import type { Ansprechpartner, FristTyp } from "@/core/types";
 import { AnimatedNumber, Avatar, Button, Chip, DataTable, Segmented, Select, type ColumnDef } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { festeAnsprechperson } from "@/lib/rollen";
 import { TRENNZEICHEN_NAME, type CsvErgebnis, type DateiInfo } from "./csv";
-import { SYSTEME, ZIELFELDER, normName, type DateiDublettenAktion, type DublettenAktion, type MigZeile, type QuellSystem, type Umfang, type ZielFeld } from "./zuordnung";
-import type { Entitaet, Ergebnis, Fortschritt } from "./uebernahme";
+import { SYSTEME, ZIELFELDER, type DateiDublettenAktion, type DublettenAktion, type MigZeile, type OhneDatumAktion, type QuellSystem, type Umfang, type ZielFeld } from "./zuordnung";
+import type { Entitaet, Ergebnis, Fortschritt, UmzugPlan } from "./uebernahme";
 
 /* ───────── Schritt 1: Altsystem ───────── */
 
@@ -187,14 +187,15 @@ const FRIST_KURZ: Record<FristTyp, string> = { notfrist: "Notfrist", frist: "Fri
 const FRIST_TON: Record<FristTyp, "seal" | "ink" | "outline" | "neutral" | "violet"> = { notfrist: "seal", frist: "ink", vorfrist: "outline", wiedervorlage: "neutral", termin: "violet" };
 
 export function SchrittZuordnung({
-  csv, zuordnung, auto, setZuordnung, zeilen, kontakte, modus, setModus, ausnahmen, setAusnahme, dateiAktionen = {}, setDateiAktion,
+  csv, zuordnung, auto, setZuordnung, zeilen, modus, setModus, ausnahmen, setAusnahme, dateiAktionen = {}, setDateiAktion, plan,
 }: {
   csv: CsvErgebnis;
   zuordnung: (ZielFeld | null)[];
   auto: (ZielFeld | null)[];
   setZuordnung: (z: (ZielFeld | null)[]) => void;
   zeilen: MigZeile[];
-  kontakte: Kontakt[];
+  /** dieselbe Rechnung wie Schritt 4 und die Übernahme – die Zähler stimmen überein */
+  plan: UmzugPlan;
   modus: DublettenAktion;
   setModus: (m: DublettenAktion) => void;
   ausnahmen: Record<number, DublettenAktion>;
@@ -215,23 +216,6 @@ export function SchrittZuordnung({
   const sgPruefen = zeilen.filter((z) => !z.fehler && !z.sachgebietErkannt).length;
   const [alleHinweise, setAlleHinweise] = useState(false);
 
-  // Kontakte so zählen wie die Übernahme: nur Zeilen, die tatsächlich übernommen werden (übersprungene Dubletten nicht)
-  const kontaktZahl = useMemo(() => {
-    const vorhanden = new Set(kontakte.map((k) => normName(k.name)));
-    const namen = new Set<string>();
-    let bekannt = 0;
-    for (const z of zeilen) {
-      if (z.fehler || (z.dublette && (ausnahmen[z.nr] ?? modus) === "skip")) continue;
-      for (const n of [z.mandant, z.gegner]) {
-        const k = normName(n);
-        if (!k || namen.has(k)) continue;
-        namen.add(k);
-        if (vorhanden.has(k)) bekannt++;
-      }
-    }
-    return { gesamt: namen.size, bekannt };
-  }, [zeilen, kontakte, ausnahmen, modus]);
-
   const setze = (spalte: number, wert: ZielFeld | null) => {
     const next = zuordnung.map((z, i) => (i === spalte ? wert : wert && z === wert ? null : z));
     setZuordnung(next);
@@ -239,54 +223,76 @@ export function SchrittZuordnung({
 
   const spalten = useMemo<ColumnDef<MigZeile, unknown>[]>(
     () => [
-      { id: "nr", header: "Zeile", size: 64, accessorFn: (z) => z.nr, cell: ({ row }) => <span className="num text-fg-3">{row.original.nr}</span> },
-      { id: "az", header: "Aktenzeichen", size: 120, accessorFn: (z) => z.quellAz, cell: ({ row }) => <span className="mono">{row.original.quellAz || "neu"}</span> },
+      // Fünf Spalten, die bei 1440 px ohne Querscrollen passen: Akte (zweizeilig), Wert und Frist vorn, Parteien zweizeilig
       {
-        id: "titel", header: "Bezeichnung", size: 260, accessorFn: (z) => z.titel,
-        cell: ({ row }) => (
-          <span className="flex min-w-0 items-center gap-1.5">
-            <span className="truncate">{row.original.titel || "–"}</span>
-            {row.original.dublette && <Chip tone="amber">Dublette</Chip>}
-            {row.original.dateiDublette && <Chip tone="amber">doppelt in der Datei</Chip>}
-            {row.original.status !== "offen" && <Chip tone="outline">{row.original.status}</Chip>}
-          </span>
-        ),
+        id: "akte", header: "Akte", size: 300, accessorFn: (z) => `${z.quellAz} ${z.titel}`,
+        cell: ({ row }) => {
+          const z = row.original;
+          return (
+            <span className="block min-w-0 whitespace-normal">
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="mono shrink-0 text-[12.5px] font-semibold">{z.quellAz || "neu"}</span>
+                <span className="num shrink-0 text-[12px] text-fg-3">Zeile {z.nr}</span>
+              </span>
+              <span className="mt-0.5 block break-words leading-snug">{z.titel || "–"}</span>
+              {(z.dublette || z.dateiDublette || z.status !== "offen") && (
+                <span className="mt-1 flex flex-wrap gap-1">
+                  {z.dublette && <Chip tone="amber">Dublette</Chip>}
+                  {z.dateiDublette && <Chip tone="amber">doppelt in der Datei</Chip>}
+                  {z.status !== "offen" && <Chip tone="outline">{z.status}{z.status === "abgeschlossen" && z.abgeschlossenAm ? ` ${fmtDate(z.abgeschlossenAm)}` : z.status === "abgeschlossen" ? " ohne Datum" : ""}</Chip>}
+                </span>
+              )}
+            </span>
+          );
+        },
       },
-      { id: "mandant", header: "Mandant", size: 170, accessorFn: (z) => z.mandant, cell: ({ row }) => <span className="truncate">{row.original.mandant || "–"}</span> },
-      { id: "gegner", header: "Gegner", size: 170, accessorFn: (z) => z.gegner, cell: ({ row }) => <span className="truncate">{row.original.gegner || "–"}</span> },
       {
-        id: "sg", header: "Sachgebiet", size: 150, accessorFn: (z) => z.sachgebiet,
-        cell: ({ row }) => (
-          <span className="flex min-w-0 items-center gap-1.5" title={row.original.sachgebietHinweis ?? (row.original.sachgebietRoh ? `Original: ${row.original.sachgebietRoh}` : undefined)}>
-            <span className="truncate">{row.original.sachgebiet}</span>
-            {!row.original.sachgebietErkannt && <Chip tone="amber">prüfen</Chip>}
-          </span>
-        ),
+        id: "wert", header: "Gegenstandswert", size: 132, meta: { align: "right" }, accessorFn: (z) => z.gegenstandswert,
+        cell: ({ row }) => <span className="num">{row.original.gegenstandswert ? fmtEUR(row.original.gegenstandswert) : "–"}</span>,
       },
-      { id: "wert", header: "Gegenstandswert", size: 130, accessorFn: (z) => z.gegenstandswert, cell: ({ row }) => <span className="num">{row.original.gegenstandswert ? fmtEUR(row.original.gegenstandswert) : "–"}</span> },
       {
-        id: "frist", header: "Frist", size: 250, accessorFn: (z) => z.fristDatum ?? "",
+        id: "frist", header: "Frist", size: 210, accessorFn: (z) => z.fristDatum ?? "",
         cell: ({ row }) => {
           const z = row.original;
           if (!z.fristDatum) return <span className="text-fg-3">–</span>;
           return (
-            <span className="flex min-w-0 items-center gap-1.5" title={z.fristWarnung}>
-              {z.fristWarnung && <AlertTriangle className="size-3.5 shrink-0 text-amber" aria-label="Fristende prüfen" />}
-              <Chip tone={FRIST_TON[z.fristTyp]}>{FRIST_KURZ[z.fristTyp]}</Chip>
-              <span className="num font-medium">{fmtDate(z.fristDatum)}</span>
-              <span className="truncate text-fg-3">{z.fristTitel}</span>
+            <span className="block min-w-0 whitespace-normal" title={z.fristWarnung}>
+              <span className="flex min-w-0 items-center gap-1.5">
+                {z.fristWarnung && <AlertTriangle className="size-3.5 shrink-0 text-amber" aria-label="Fristende prüfen" />}
+                <Chip tone={FRIST_TON[z.fristTyp]}>{FRIST_KURZ[z.fristTyp]}</Chip>
+                <span className="num font-medium">{fmtDate(z.fristDatum)}</span>
+              </span>
+              {z.fristTitel && <span className="mt-0.5 block break-words text-[12.5px] leading-snug text-fg-3">{z.fristTitel}</span>}
             </span>
           );
         },
+      },
+      {
+        id: "parteien", header: "Mandant / Gegner", size: 230, accessorFn: (z) => `${z.mandant} ${z.gegner}`,
+        cell: ({ row }) => (
+          <span className="block min-w-0 whitespace-normal leading-snug">
+            <span className="block break-words">{row.original.mandant || "–"}</span>
+            <span className="block break-words text-[12.5px] text-fg-3">{row.original.gegner ? `./. ${row.original.gegner}` : "ohne Gegner"}</span>
+          </span>
+        ),
+      },
+      {
+        id: "sg", header: "Sachgebiet", size: 140, accessorFn: (z) => z.sachgebiet,
+        cell: ({ row }) => (
+          <span className="block min-w-0 whitespace-normal" title={row.original.sachgebietHinweis ?? (row.original.sachgebietRoh ? `Original: ${row.original.sachgebietRoh}` : undefined)}>
+            <span className="block break-words leading-snug">{row.original.sachgebiet}</span>
+            {!row.original.sachgebietErkannt && <Chip tone="amber" className="mt-1">prüfen</Chip>}
+          </span>
+        ),
       },
     ],
     [],
   );
 
-  // wie in der Übernahme: nur Zeilen, die übernommen werden; Wiedervorlagen und Termine getrennt von Fristen
-  const uebernommen = zeilen.filter((z) => z.fristDatum && !z.fehler && !(z.dublette && (ausnahmen[z.nr] ?? modus) === "skip"));
-  const mitFrist = uebernommen.filter((z) => z.fristTyp === "notfrist" || z.fristTyp === "frist").length;
-  const mitWv = uebernommen.length - mitFrist;
+  // Zähler wie in Schritt 4 und in der Übernahme (Umfang, Dubletten, Zusammenführung); Wiedervorlagen/Termine getrennt
+  const aktenZahl = plan.akten + plan.aktualisieren;
+  const mitFrist = plan.fristen;
+  const mitWv = plan.wiedervorlagen;
 
   return (
     <div className="flex flex-col gap-6">
@@ -295,10 +301,11 @@ export function SchrittZuordnung({
         <p className="mt-1 text-[13.5px] text-fg-3">Die Spalten wurden automatisch erkannt. Sie können jede Zuordnung ändern – die Vorschau aktualisiert sich sofort.</p>
         <div className="mt-3 flex flex-wrap gap-1.5">
           <Chip tone="ink" icon={<FolderOpen className="size-3" />}>
-            {zeilen.length - fehler.length - dateiDubletten.filter((z) => (dateiAktionen[z.nr] ?? "merge") !== "keep").length} Akten
+            {aktenZahl} {aktenZahl === 1 ? "Akte" : "Akten"}
           </Chip>
           <Chip tone="ink" icon={<Users className="size-3" />}>
-            {kontaktZahl.gesamt} Kontakte{kontaktZahl.bekannt ? ` · ${kontaktZahl.bekannt} bereits vorhanden` : ""}
+            {plan.kontakte} {plan.kontakte === 1 ? "Kontakt" : "Kontakte"}
+            {plan.kontakteVorhanden ? ` · ${plan.kontakteVorhanden} bereits vorhanden` : ""}
           </Chip>
           <Chip tone="ink" icon={<CalendarClock className="size-3" />}>
             {mitFrist} {mitFrist === 1 ? "Frist" : "Fristen"}
@@ -527,29 +534,71 @@ const ENTITAETEN: { key: Entitaet; label: string; icon: React.ReactNode }[] = [
   { key: "dokumente", label: "Dokumente-Verweise", icon: <FileText className="size-4" /> },
 ];
 
-const UMFANG: { value: Umfang; titel: string; sub: string }[] = [
+const umfangOptionen = (jahr: number): { value: Umfang; titel: string; sub: string }[] => [
   { value: "offen", titel: "Nur offene Akten", sub: "Abgeschlossene bleiben im Altsystem." },
-  { value: "sechsJahre", titel: "Offene + abgeschlossene der letzten 6 Jahre", sub: "Aufbewahrung der Handakte (§ 50 Abs. 1 BRAO)." },
+  {
+    value: "sechsJahre",
+    titel: "Offene + abgeschlossene der letzten 6 Jahre",
+    sub: `Abgeschlossen ${jahr - 6} oder später. Bezugsdatum: Ende des Kalenderjahres der Auftragsbeendigung (§ 50 Abs. 1 BRAO). Ohne Abschlussdatum entscheiden Sie je Akte.`,
+  },
   { value: "alle", titel: "Alle – ältere als Archiv (abgeschlossen)", sub: "Abgeschlossene Akten werden als abgeschlossen angelegt, nie offen." },
 ];
 
+const OHNE_DATUM: { value: OhneDatumAktion; label: string; hinweis: string }[] = [
+  { value: "uebernehmen", label: "Übernehmen (ruhend)", hinweis: "als ruhend zur Prüfung angelegt" },
+  { value: "archiv", label: "Als Archiv", hinweis: "als abgeschlossen angelegt, Aufbewahrung ab Übernahme" },
+  { value: "auslassen", label: "Auslassen", hinweis: "bleibt im Altsystem" },
+];
+
+/** Entscheidung je Akte ohne Abschlussdatum – Gruppe von Umschaltknöpfen (anfangs keiner gewählt). */
+function OhneDatumWahl({ nr, wert, onWahl, label }: { nr: number; wert?: OhneDatumAktion; onWahl: (a: OhneDatumAktion) => void; label: string }) {
+  return (
+    <div role="group" aria-label={label} className="flex w-full flex-wrap gap-1.5 sm:w-auto">
+      {OHNE_DATUM.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          aria-pressed={wert === o.value}
+          id={`ohne-datum-${nr}-${o.value}`}
+          onClick={() => onWahl(o.value)}
+          className={cn(
+            "min-h-9 flex-1 rounded-full px-3 text-[12.5px] font-medium ring-1 ring-inset transition-colors max-sm:min-h-11 sm:flex-none",
+            wert === o.value ? "bg-ink-soft text-fg ring-2 ring-[var(--ink)]" : "bg-[var(--surface)] text-fg-2 ring-[var(--line)] hover:bg-ink-softer",
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function SchrittUebernahme({
-  plan, fortschritt, laeuft, onStart, systemName, umfang = "alle", setUmfang,
+  plan, fortschritt, laeuft, onStart, systemName, umfang = "alle", setUmfang, ohneDatum = {}, setOhneDatum, setOhneDatumAlle, heute = new Date().toISOString().slice(0, 10),
 }: {
-  plan: { akten: number; archiv?: number; aktualisieren: number; ueberspringen: number; zusammengefuehrt?: number; ausserhalb?: number; fristen: number; wiedervorlagen: number; kontakte: number; kontakteVorhanden: number };
+  plan: UmzugPlan;
   fortschritt: Partial<Record<Entitaet, Fortschritt>>;
   laeuft: boolean;
   onStart: () => void;
   systemName: string;
   umfang?: Umfang;
   setUmfang?: (u: Umfang) => void;
+  ohneDatum?: Record<number, OhneDatumAktion>;
+  setOhneDatum?: (nr: number, a: OhneDatumAktion) => void;
+  setOhneDatumAlle?: (a: OhneDatumAktion) => void;
+  heute?: string;
 }) {
   const gestartet = laeuft || Object.keys(fortschritt).length > 0;
+  const UMFANG = umfangOptionen(Number(heute.slice(0, 4)));
+  const offen = plan.ohneDatumOffen;
+  const neueKontakte = plan.kontakte - plan.kontakteVorhanden;
   return (
     <div>
       <h2 className="title-lg">{gestartet ? "Übernahme läuft …" : "Bereit zur Übernahme"}</h2>
       <p className="mt-1 text-[13.5px] text-fg-3">
-        {gestartet ? "Bitte lassen Sie dieses Fenster geöffnet. Es dauert nur einen Moment." : `Ein Klick übernimmt alles aus ${systemName}. Sie können den Umzug danach jederzeit rückgängig machen.`}
+        {gestartet
+          ? "Bitte lassen Sie dieses Fenster geöffnet. Wird es geschlossen, nimmt AnwaltApex den unvollständigen Lauf beim nächsten Öffnen vollständig zurück."
+          : `Prüfen Sie Umfang und Zahlen für ${systemName}. Jeder Lauf lässt sich danach im Umzugsprotokoll rückgängig machen – auch nach dem Neuladen.`}
       </p>
 
       {!gestartet && (
@@ -578,15 +627,19 @@ export function SchrittUebernahme({
             </fieldset>
           )}
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-            <PlanZahl label="Neue Akten" wert={plan.akten} sub={plan.archiv ? `davon ${plan.archiv} abgeschlossen (Archiv)` : undefined} />
+            <PlanZahl
+              label="Neue Akten"
+              wert={plan.akten}
+              sub={[plan.archiv ? `davon ${plan.archiv} abgeschlossen (Archiv)` : "", plan.ruhendPruefung ? `${plan.ruhendPruefung} ruhend zur Prüfung` : ""].filter(Boolean).join(" · ") || undefined}
+            />
             <PlanZahl label="Akten aktualisieren" wert={plan.aktualisieren} />
-            <PlanZahl label="Kontakte" wert={plan.kontakte} sub={plan.kontakteVorhanden ? `davon ${plan.kontakteVorhanden} bereits vorhanden` : undefined} />
+            <PlanZahl label="Neue Kontakte" wert={neueKontakte} sub={plan.kontakteVorhanden ? `${plan.kontakteVorhanden} mit vorhandenen zusammengeführt` : undefined} />
             <PlanZahl label="Fristen zur Kontrolle" wert={plan.fristen} sub={plan.wiedervorlagen ? `+ ${plan.wiedervorlagen} ${plan.wiedervorlagen === 1 ? "Wiedervorlage/Termin" : "Wiedervorlagen/Termine"}` : undefined} />
           </div>
           {(plan.ueberspringen > 0 || !!plan.zusammengefuehrt || !!plan.ausserhalb) && (
             <p className="text-[12.5px] text-fg-3">
               {[
-                plan.zusammengefuehrt ? `${plan.zusammengefuehrt} ${plan.zusammengefuehrt === 1 ? "Dublette" : "Dubletten"} der Datei werden zusammengeführt` : "",
+                plan.zusammengefuehrt ? `${plan.zusammengefuehrt} ${plan.zusammengefuehrt === 1 ? "Dublette der Datei wird" : "Dubletten der Datei werden"} zusammengeführt` : "",
                 plan.ueberspringen ? `${plan.ueberspringen} ${plan.ueberspringen === 1 ? "Dublette wird" : "Dubletten werden"} übersprungen` : "",
                 plan.ausserhalb ? `${plan.ausserhalb} abgeschlossene ${plan.ausserhalb === 1 ? "Akte liegt" : "Akten liegen"} außerhalb des gewählten Umfangs und ${plan.ausserhalb === 1 ? "bleibt" : "bleiben"} im Altsystem` : "",
               ]
@@ -595,10 +648,57 @@ export function SchrittUebernahme({
               .
             </p>
           )}
+          {plan.ohneDatum.length > 0 && (
+            <section aria-labelledby="ohne-datum-titel" className="rounded-[18px] bg-amber-soft px-3.5 py-3.5">
+              <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+                <div className="min-w-0 flex-1 basis-[260px]">
+                  <div id="ohne-datum-titel" className="flex items-center gap-1.5 text-[13px] font-semibold">
+                    <AlertTriangle className="size-4 shrink-0 text-amber" />
+                    {plan.ohneDatum.length === 1 ? "1 abgeschlossene Akte ohne Abschlussdatum" : `${plan.ohneDatum.length} abgeschlossene Akten ohne Abschlussdatum`}
+                  </div>
+                  <p className="mt-1 text-[12.5px] text-fg-2">Ohne Abschlussdatum lässt sich die Aufbewahrung (§ 50 Abs. 1 BRAO) nicht berechnen. Bitte entscheiden Sie – nichts wird still ausgelassen.</p>
+                </div>
+                {plan.ohneDatum.length > 1 && setOhneDatumAlle && (
+                  <div className="flex flex-wrap items-center gap-1.5 text-[12.5px]">
+                    <span className="text-fg-3">Für alle:</span>
+                    {OHNE_DATUM.map((o) => (
+                      <Button key={o.value} size="sm" variant="ghost" onClick={() => setOhneDatumAlle(o.value)}>
+                        {o.label}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <ul className="mt-3 grid grid-cols-1 gap-2">
+                {plan.ohneDatum.map((z) => {
+                  const w = ohneDatum[z.nr];
+                  const titel = `Zeile ${z.nr}: ${z.quellAz || "ohne Az."} · ${z.titel}`;
+                  return (
+                    <li key={z.nr} className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[14px] bg-[var(--surface)] px-3 py-2.5 ring-1 ring-[var(--line)]">
+                      <div className="min-w-0 flex-1 basis-[220px]">
+                        <div className="break-words text-[13px] font-semibold">
+                          Zeile {z.nr}: <span className="mono">{z.quellAz || "ohne Az."}</span> · {z.titel}
+                        </div>
+                        <div className="text-[12.5px] text-fg-3">
+                          Im Altsystem „{z.statusRoh}“{z.angelegt ? ` · angelegt ${fmtDate(z.angelegt)}` : ""}
+                          {w ? ` · ${OHNE_DATUM.find((o) => o.value === w)!.hinweis}` : " · noch nicht entschieden"}
+                        </div>
+                      </div>
+                      <OhneDatumWahl nr={z.nr} wert={w} onWahl={(a) => setOhneDatum?.(z.nr, a)} label={`Entscheidung für ${titel}`} />
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
           <div className="flex flex-col items-center gap-3 rounded-[22px] bg-[radial-gradient(120%_140%_at_50%_0%,var(--ink-soft),transparent_70%)] px-5 py-8 text-center ring-1 ring-[var(--line)]">
-            <Button variant="primary" size="lg" icon={<ArrowRight className="size-4" />} onClick={onStart} data-autofocus>
-              Jetzt übernehmen
+            <Button variant="primary" size="lg" icon={<ArrowRight className="size-4" />} onClick={onStart} disabled={offen > 0} aria-describedby="umzug-start-hinweis" data-autofocus>
+              Übernahme starten
             </Button>
+            <p id="umzug-start-hinweis" className="flex items-center gap-1.5 text-[12.5px] font-medium text-fg-2">
+              {offen > 0 && <AlertTriangle className="size-3.5 shrink-0 text-amber" aria-hidden />}
+              {offen > 0 ? `Bitte zuerst für ${offen === 1 ? "1 Akte" : `${offen} Akten`} ohne Abschlussdatum entscheiden.` : "mit Vorschau und Rückgängig – Ihr Altsystem bleibt unverändert"}
+            </p>
             <p className="max-w-[48ch] text-[12.5px] text-fg-3">Fristen werden mit Vorfrist (eine Woche vorher) angelegt und als aus dem Umzug übernommen gekennzeichnet – eine zweite Person prüft und bestätigt sie in der Vier-Augen-Kontrolle.</p>
           </div>
         </div>
@@ -724,11 +824,11 @@ export function SchrittFertig({
       </div>
       {(e.uebersprungen > 0 || e.aktenUmbenannt > 0 || e.fehlerhaft > 0 || e.zusammengefuehrt > 0 || e.ausserhalbUmfang > 0) && (
         <div className="flex flex-wrap gap-1.5">
-          {e.uebersprungen > 0 && <Chip>{e.uebersprungen} Dublette(n) übersprungen</Chip>}
-          {e.zusammengefuehrt > 0 && <Chip>{e.zusammengefuehrt} Dublette(n) der Datei zusammengeführt</Chip>}
+          {e.uebersprungen > 0 && <Chip>{e.uebersprungen} {e.uebersprungen === 1 ? "Dublette" : "Dubletten"} übersprungen</Chip>}
+          {e.zusammengefuehrt > 0 && <Chip>{e.zusammengefuehrt} {e.zusammengefuehrt === 1 ? "Dublette" : "Dubletten"} der Datei zusammengeführt</Chip>}
           {e.ausserhalbUmfang > 0 && <Chip>{e.ausserhalbUmfang} außerhalb des Umfangs (im Altsystem)</Chip>}
           {e.aktenUmbenannt > 0 && <Chip tone="amber">{e.aktenUmbenannt} Aktenzeichen ergänzt (bereits vergeben)</Chip>}
-          {e.fehlerhaft > 0 && <Chip tone="seal">{e.fehlerhaft} Zeile(n) nicht übernommen</Chip>}
+          {e.fehlerhaft > 0 && <Chip tone="seal">{e.fehlerhaft} {e.fehlerhaft === 1 ? "Zeile" : "Zeilen"} nicht übernommen</Chip>}
         </div>
       )}
 

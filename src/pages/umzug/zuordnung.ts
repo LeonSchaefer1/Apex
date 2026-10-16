@@ -256,6 +256,17 @@ export function statusAus(roh: string): Akte["status"] | undefined {
   return undefined;
 }
 
+/** Entscheidung für abgeschlossene Akten ohne Abschlussdatum beim Umfang „letzte 6 Jahre“. */
+export type OhneDatumAktion = "uebernehmen" | "archiv" | "auslassen";
+
+/**
+ * Abgeschlossen, aber ohne Abschlussdatum im Export – beim Umfang „letzte 6 Jahre“ lässt sich die Aufbewahrungsfrist
+ * (§ 50 Abs. 1 BRAO) nicht berechnen: Die Akte wird zur Entscheidung vorgelegt, nie still ausgelassen.
+ */
+export function ohneAbschlussdatum(z: Pick<MigZeile, "status" | "abgeschlossenAm" | "fehler">, umfang: Umfang): boolean {
+  return umfang === "sechsJahre" && !z.fehler && z.status === "abgeschlossen" && !z.abgeschlossenAm;
+}
+
 /** Stichtag für den Umfang „letzte 6 Jahre“: Abschlussdatum, sonst Anlagedatum (vorsichtige Schätzung). */
 export function imUmfang(z: Pick<MigZeile, "status" | "abgeschlossenAm" | "angelegt">, umfang: Umfang, heute: ISODate = today()): boolean {
   if (z.status !== "abgeschlossen" || umfang === "alle") return true;

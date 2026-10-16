@@ -2,19 +2,19 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { motion } from "motion/react";
-import { ArrowUpRight, AtSign, BadgeCheck, FileText, HandCoins, Hash, Info, Link2, MapPin, PenLine, Phone, Plus, Send, ShieldCheck, Unlink } from "lucide-react";
-import type { Akte, Kontakt, KontaktRolle, Rechtsschutz } from "@/core/types";
+import { AlertTriangle, ArrowUpRight, AtSign, BadgeCheck, Eye, FileText, HandCoins, Hash, Info, Link2, MapPin, PenLine, Phone, Plus, Send, ShieldCheck, Unlink } from "lucide-react";
+import type { Akte, Dokument, Kontakt, KontaktRolle, Rechtsschutz } from "@/core/types";
 import { fmtDate, fmtEUR, fmtTime, nowLocal } from "@/core/dates";
 import { deckungsanfrageStatus } from "@/core/einschaetzung";
 import { darfEebAbgeben } from "@/lib/backend";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
-import { Button, Card, Chip, Field, Input, Modal, confirmDialog } from "@/components/ui";
+import { Button, Card, Chip, Field, Input, Modal } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { CopyButton, KontaktAvatar, kontaktAdresse } from "@/pages/kontakte/kontaktHelfer";
 import { KontaktAuswahl } from "@/pages/kontakte/KontaktFormular";
-import { DECKUNG_INFO } from "./helfer";
+import { DECKUNG_INFO, DOK_STATUS_INFO, dokumentBezeichnung, offenePlatzhalter, ohneEntwurfsVermerk } from "./helfer";
 import { parseEuro } from "./Mandatsaufnahme";
 import { VorschussDialog } from "./Vorschuss";
 
@@ -141,7 +141,7 @@ export function TabBeteiligte({ akte }: { akte: Akte }) {
                     </Button>
                   ))}
               </div>
-              <DeckungsanfrageZeile akte={akte} email={versicherung?.email} />
+              <DeckungsanfrageZeile akte={akte} email={versicherung?.email} anschrift={versicherung ? [versicherung.strasse, [versicherung.plz, versicherung.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ") : undefined} />
               <p className="mt-3 flex items-start gap-1.5 text-[12.5px] text-fg-3">
                 <Info className="mt-0.5 size-3.5 shrink-0" />
                 Elektronischer Austausch mit Rechtsschutzversicherern (drebis): im Prototyp nicht angebunden – Versand per E-Mail oder Brief.
@@ -231,14 +231,14 @@ const sbText = (n?: number) => (n === undefined ? "–" : fmtEUR(n));
  * Deckungsanfrage: Der 38h-Motor legt sie nur als Entwurf vor. Versandt wird erst nach anwaltlicher Freigabe – mit Protokoll
  * („… freigegeben und versandt“), das auch die KI-Fallanalyse als „versandt am … von …“ ausweist.
  */
-function DeckungsanfrageZeile({ akte, email }: { akte: Akte; email?: string }) {
+function DeckungsanfrageZeile({ akte, email, anschrift }: { akte: Akte; email?: string; anschrift?: string }) {
   const { user, team } = useKanzlei();
   const aktivitaeten = useCol("aktivitaeten");
   const dokumente = useCol("dokumente");
+  const [dialog, setDialog] = useState(false);
   if (!akte.rsv) return null;
   const s = deckungsanfrageStatus(akte.id, aktivitaeten, dokumente);
   if (s.status === "keine") return null;
-  const vers = akte.rsv.versicherung;
 
   if (s.status === "versandt") {
     const wer = s.vonId ? team.find((u) => u.id === s.vonId)?.name : undefined;
@@ -253,38 +253,143 @@ function DeckungsanfrageZeile({ akte, email }: { akte: Akte; email?: string }) {
     );
   }
 
-  const freigeben = async () => {
-    const ok = await confirmDialog({
-      titel: "Deckungsanfrage freigeben und versenden?",
-      text: `Die Deckungsanfrage geht an ${vers}${email ? ` (${email})` : " per Post"}. Im Prototyp wird nichts versendet – Freigabe und Versand werden protokolliert.`,
-      bestaetigen: "Freigeben und versenden",
-    });
-    if (!ok) return;
-    const st = useData.getState();
-    if (akte.rsv && akte.rsv.deckung === "offen") st.patch("akten", akte.id, { rsv: { ...akte.rsv, deckung: "angefragt" }, updatedAt: nowLocal() });
-    st.log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Deckungsanfrage an ${vers} freigegeben und versandt – ${akte.aktenzeichen}` });
-    toast("Deckungsanfrage versandt", { text: `${vers} · im Prototyp simuliert, es wurde nichts verschickt`, ton: "erfolg" });
-  };
-
+  const entwuerfe = deckungsanfragenDerAkte(akte.id, dokumente);
   return (
     <div className="mt-3 rounded-[12px] bg-amber-soft px-3 py-2.5">
       <p className="flex items-start gap-1.5 text-[12.5px] font-medium text-fg">
         <FileText className="mt-0.5 size-3.5 shrink-0" />
-        Deckungsanfrage: Entwurf – wartet auf Ihre Freigabe
+        Deckungsanfrage: Entwurf – wartet auf Ihre Freigabe{entwuerfe.length > 1 ? ` (${entwuerfe.length} Fassungen in der E-Akte)` : ""}
       </p>
       <div className="mt-2 flex flex-wrap gap-2">
         <Link to={`/akten/${akte.id}?tab=dokumente&dok=${encodeURIComponent(s.dokumentId ?? "")}`} className="btn btn-sm btn-ghost">
           Entwurf ansehen
         </Link>
         {darfEebAbgeben(user.rolle) ? (
-          <Button size="sm" variant="secondary" icon={<Send className="size-4" />} onClick={() => void freigeben()}>
-            Freigeben und versenden
+          <Button size="sm" variant="secondary" icon={<Send className="size-4" />} onClick={() => setDialog(true)}>
+            Freigeben und versenden …
           </Button>
         ) : (
           <span className="self-center text-[12.5px] text-fg-3">Freigabe durch die Anwältin bzw. den Anwalt</span>
         )}
       </div>
+      <FreigabeVersandDialog open={dialog} onClose={() => setDialog(false)} akte={akte} entwuerfe={entwuerfe} email={email} anschrift={anschrift} />
     </div>
+  );
+}
+
+/** Deckungsanfragen der Akte, die noch nicht versandt sind – neueste zuerst. */
+function deckungsanfragenDerAkte(akteId: string, dokumente: Dokument[]): Dokument[] {
+  return dokumente.filter((d) => d.akteId === akteId && /deckungsanfrage/i.test(d.name) && d.status !== "versandt").sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+/**
+ * Freigabe und Versand der Deckungsanfrage: welches Dokument (Name, Datum, Version), an wen, auf welchem Weg – mit Vorschau.
+ * Offene Platzhalter („[Anschrift der Versicherung]“) sperren den Versand; Protokoll mit Dokument und Version.
+ */
+function FreigabeVersandDialog({ open, onClose, akte, entwuerfe, email, anschrift }: { open: boolean; onClose: () => void; akte: Akte; entwuerfe: Dokument[]; email?: string; anschrift?: string }) {
+  const { user } = useKanzlei();
+  const [wahl, setWahl] = useState(entwuerfe[0]?.id ?? "");
+  useEffect(() => {
+    if (open) setWahl(entwuerfe[0]?.id ?? "");
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const d = entwuerfe.find((x) => x.id === wahl) ?? entwuerfe[0];
+  if (!akte.rsv || !d) return null;
+  const vers = akte.rsv.versicherung;
+  const platzhalter = offenePlatzhalter(d.inhalt);
+  const weg = email ? `E-Mail an ${email}` : `Post${anschrift ? ` an ${anschrift}` : " (Anschrift laut Schreiben)"}`;
+  const ansehen = `/akten/${akte.id}?tab=dokumente&dok=${encodeURIComponent(d.id)}`;
+
+  const versenden = () => {
+    if (platzhalter.length) return;
+    const st = useData.getState();
+    const bezeichnung = dokumentBezeichnung(d);
+    const name = ohneEntwurfsVermerk(d.name);
+    st.patch("dokumente", d.id, { status: "versandt", name });
+    if (akte.rsv && akte.rsv.deckung === "offen") st.patch("akten", akte.id, { rsv: { ...akte.rsv, deckung: "angefragt" }, updatedAt: nowLocal() });
+    st.log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Deckungsanfrage „${bezeichnung}“ an ${vers} freigegeben und versandt (${email ? "E-Mail" : "Post"}) – ${akte.aktenzeichen}` });
+    onClose();
+    toast("Deckungsanfrage versandt", { text: `${bezeichnung} · ${vers} · im Prototyp simuliert, es wurde nichts verschickt`, ton: "erfolg" });
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="lg"
+      title="Deckungsanfrage freigeben und versenden"
+      subtitle={`${akte.aktenzeichen} · ${akte.titel}`}
+      icon={<Send className="size-[18px]" />}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Abbrechen
+          </Button>
+          <Button variant="primary" icon={<Send className="size-4" />} onClick={versenden} disabled={platzhalter.length > 0} title={platzhalter.length ? "Erst alle Platzhalter ausfüllen" : undefined}>
+            Freigeben und versenden
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-4 text-[13.5px]">
+        {entwuerfe.length > 1 && (
+          <fieldset>
+            <legend className="label">Welche Fassung? ({entwuerfe.length} Deckungsanfragen in der E-Akte)</legend>
+            <div className="grid gap-1.5">
+              {entwuerfe.map((x) => (
+                <label key={x.id} className={cn("flex min-h-[44px] cursor-pointer items-center gap-2.5 rounded-[12px] px-3 py-2 ring-1 ring-inset", x.id === d.id ? "bg-ink-soft ring-[var(--ink)]" : "ring-[var(--line)] hover:bg-ink-softer")}>
+                  <input type="radio" name="deckung-fassung" className="size-4 accent-[var(--ink)]" checked={x.id === d.id} onChange={() => setWahl(x.id)} />
+                  <span className="min-w-0 flex-1 break-words">{dokumentBezeichnung(x)}</span>
+                  {x.status && <Chip tone={DOK_STATUS_INFO[x.status].tone}>{DOK_STATUS_INFO[x.status].label}</Chip>}
+                  {offenePlatzhalter(x.inhalt).length > 0 && <Chip tone="amber">{offenePlatzhalter(x.inhalt).length} Platzhalter</Chip>}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
+        <dl className="grid gap-x-4 gap-y-2 rounded-[16px] bg-ink-softer p-4 ring-1 ring-inset ring-[var(--line)] sm:grid-cols-[140px_minmax(0,1fr)]">
+          <dt className="text-fg-3">Dokument</dt>
+          <dd className="break-words font-medium">{ohneEntwurfsVermerk(d.name)}</dd>
+          <dt className="text-fg-3">Datum · Version</dt>
+          <dd className="num">
+            {fmtDate(d.createdAt.slice(0, 10))}, {fmtTime(d.createdAt)} Uhr · Version {d.version}
+            {d.status ? ` · ${DOK_STATUS_INFO[d.status].label}` : ""}
+          </dd>
+          <dt className="text-fg-3">Empfänger</dt>
+          <dd className="break-words">
+            {vers}
+            {akte.rsv.schadennummer ? ` · Schaden-Nr. ${akte.rsv.schadennummer}` : akte.rsv.versicherungsnummer ? ` · VS-Nr. ${akte.rsv.versicherungsnummer}` : ""}
+          </dd>
+          <dt className="text-fg-3">Versandweg</dt>
+          <dd className="break-words">{weg}</dd>
+        </dl>
+        <Link to={ansehen} onClick={onClose} className="inline-flex items-center gap-1.5 justify-self-start rounded-full px-1 text-[13px] font-medium text-ink hover:underline">
+          <Eye className="size-4" /> Dokument ansehen
+        </Link>
+        {platzhalter.length > 0 ? (
+          <div role="alert" className="grid gap-2 rounded-[14px] bg-seal-soft p-3.5 text-[12.5px] leading-relaxed text-seal">
+            <div className="flex gap-2 font-semibold">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+              {platzhalter.length} {platzhalter.length === 1 ? "Platzhalter ist" : "Platzhalter sind"} noch offen – so geht das Schreiben nicht hinaus:
+            </div>
+            <ul className="list-disc pl-9 text-fg">
+              {platzhalter.map((p) => (
+                <li key={p} className="break-words">
+                  {p}
+                </li>
+              ))}
+            </ul>
+            <Link to={`${ansehen}&bearbeiten=1`} onClick={onClose} className="inline-flex items-center gap-1.5 justify-self-start pl-6 font-medium text-ink hover:underline">
+              <PenLine className="size-3.5" /> Platzhalter im Dokument ausfüllen
+            </Link>
+          </div>
+        ) : (
+          <p className="flex items-start gap-2 text-[12.5px] text-fg-3">
+            <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-green" />
+            Keine offenen Platzhalter. Im Prototyp wird nichts versendet – Freigabe, Dokument, Version und Versandweg werden protokolliert.
+          </p>
+        )}
+      </div>
+    </Modal>
   );
 }
 

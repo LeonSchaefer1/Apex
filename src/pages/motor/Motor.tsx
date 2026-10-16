@@ -17,8 +17,8 @@ import { ARBEITSWOCHEN, FLOW_CSS, JAHRESARBEITSSTUNDEN, KATEGORIEN, PERSONALKOST
 
 type Filter = "alle" | Automation["kategorie"];
 
-/** Interner Kostensatz je gesparter Stunde: Personalkosten ÷ Jahresarbeitsstunden (50.000 € ÷ 1.920 Std. = 26,04 €/Std.). */
-const KOSTENSATZ = kostensatz();
+/** Interner Kostensatz je gesparter Stunde: Personalkosten ÷ Jahresarbeitsstunden (50.000 € ÷ 1.920 Std. = 26,04 €/Std.) – auf Cent, wie angezeigt. */
+const KOSTENSATZ = Math.round(kostensatz() * 100) / 100;
 
 export default function Motor() {
   const automationen = useCol("automationen");
@@ -70,10 +70,12 @@ export default function Motor() {
 
   const wochenMin = tage.reduce((s, t) => s + t.minuten, 0);
   const vorgaengeWoche = tage.reduce((s, t) => s + t.laeufe, 0);
-  const stunden = wochenMin / 60;
+  // Angezeigte Faktoren = gerechnete Faktoren (Stunden auf 2 Nachkommastellen, Satz auf Cent)
+  const stunden = Math.round((wochenMin / 60) * 100) / 100;
   const anteil = stunden / ZIEL_STUNDEN;
-  const wertWoche = stunden * KOSTENSATZ;
-  const wertJahr = wertWoche * ARBEITSWOCHEN;
+  const wertWoche = Math.round(stunden * KOSTENSATZ * 100) / 100;
+  // Gleiche Rechenfolge wie der Ersparnis-Rechner (Std./Woche × Arbeitswochen × Kostensatz) – beide zeigen denselben Jahreswert
+  const wertJahr = Math.round(stunden * ARBEITSWOCHEN * KOSTENSATZ * 100) / 100;
   const aktiv = automationen.filter((a) => a.aktiv).length;
 
   const gefiltert = filter === "alle" ? automationen : automationen.filter((a) => a.kategorie === filter);
@@ -93,10 +95,10 @@ export default function Motor() {
         </div>
       )}
       <PageHeader
-        eyebrow={`${aktiv} von ${automationen.length} Automationen aktiv`}
+        eyebrow={`${aktiv} von ${automationen.length} Automatiken aktiv`}
         title="38h-Motor"
         hilfe="motor"
-        subtitle="Routineprozesse laufen im Hintergrund – mit messbarer Zeitersparnis und klarer Freigabe: Was die Kanzlei verlässt, geht erst nach Ihrer Freigabe hinaus. Jede Automation lässt sich einzeln ein- und ausschalten."
+        subtitle="Routineprozesse laufen im Hintergrund – mit messbarer Zeitersparnis und klarer Freigabe: Was die Kanzlei verlässt, geht erst nach Ihrer Freigabe hinaus. Jede Automatik lässt sich einzeln ein- und ausschalten."
         actions={
           <Button icon={<Calculator className="size-4" />} onClick={() => document.getElementById("roi")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
             Ersparnis berechnen
@@ -146,10 +148,10 @@ export default function Motor() {
               <Kpi
                 icon={<Euro className="size-3.5" />}
                 label="Gesparte Kosten · letzte 7 Tage"
-                wert={fmtEUR(Math.round(wertWoche), { cents: false })}
-                sub={`zu Personalkosten ${fmtEUR(KOSTENSATZ)}/Std. (${fmtEUR(PERSONALKOSTEN_JAHR, { cents: false })} ÷ ${fmtNum(JAHRESARBEITSSTUNDEN)} Std.)`}
+                wert={fmtEUR(wertWoche)}
+                sub={`${fmtNum(stunden, 2)} Std. × ${fmtEUR(KOSTENSATZ)}/Std. (${fmtEUR(PERSONALKOSTEN_JAHR, { cents: false })} ÷ ${fmtNum(JAHRESARBEITSSTUNDEN)} Std.)`}
               />
-              <Kpi icon={<Target className="size-3.5" />} label="Hochgerechnet pro Jahr" wert={`≈ ${fmtEUR(ungefaehr(wertJahr), { cents: false })}`} sub={`7-Tage-Wert × ${ARBEITSWOCHEN} Arbeitswochen`} betont />
+              <Kpi icon={<Target className="size-3.5" />} label="Hochgerechnet pro Jahr" wert={`≈ ${fmtEUR(ungefaehr(wertJahr), { cents: false })}`} sub={`${fmtNum(stunden, 2)} Std. × ${ARBEITSWOCHEN} Arbeitswochen × ${fmtEUR(KOSTENSATZ)}/Std. = ${fmtEUR(wertJahr)}`} betont />
               <Kpi icon={<Repeat className="size-3.5" />} label="Bearbeitete Vorgänge" wert={fmtNum(vorgaengeWoche)} sub="in den letzten 7 Tagen – je Vorgang gezählt" />
             </div>
           </div>
@@ -169,7 +171,7 @@ export default function Motor() {
       <section className="mt-8">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="title-lg">Automationen</h2>
+            <h2 className="title-lg">Automatiken</h2>
             <p className="mt-1 text-[13px] text-fg-3">Was im Hintergrund läuft, wodurch es ausgelöst wird, wer freigibt und wie viel Zeit es je Vorgang spart.</p>
           </div>
           <Segmented<Filter>
@@ -204,7 +206,7 @@ export default function Motor() {
           <h2 className="title-lg">So rechnet sich das</h2>
           <p className="mt-1 text-[13px] text-fg-3">Gesparte Zeit in Euro – und der Kostenvergleich zwischen Lifetime-Lizenz und Abo-Modell.</p>
         </div>
-        <RoiRechner startSatz={satz} startArbeitsplaetze={tenant.lizenz.arbeitsplaetze} automationen={automationen} mengen={mengen} demo={demo} />
+        <RoiRechner startSatz={satz} startArbeitsplaetze={tenant.lizenz.arbeitsplaetze} automationen={automationen} mengen={mengen} demo={demo} kanzleiId={tenant.id} kanzleiName={tenant.name} />
       </section>
 
       <AutomationDrawer a={offen} onClose={() => setOffenId(null)} aktivitaeten={aktivitaeten} now={now} />

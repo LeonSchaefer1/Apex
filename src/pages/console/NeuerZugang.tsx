@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Building2, Check, CheckCircle2, Copy, Link2, Mail, Plus, Send } from "lucide-react";
-import { Button, Chip, Field, Input, Modal, Select, Switch } from "@/components/ui";
+import { Button, Chip, Field, Input, Modal, Select, Switch, confirmDialog } from "@/components/ui";
 import { BUNDESLAENDER } from "@/core/feiertage";
 import { addDays, fmtDate, today } from "@/core/dates";
 import { getBackend, type NeuerKunde, type NeuerKundeErgebnis } from "@/lib/backend";
@@ -87,6 +87,22 @@ export function NeuerZugang({ open, onClose, onAngelegt }: { open: boolean; onCl
     }
   };
 
+  /** Escape, „Abbrechen“ und Klick daneben: Bei ausgefüllten Feldern erst nachfragen, leeres Formular schließt sofort. */
+  const schliessen = async () => {
+    if (laedt) return;
+    if (!ergebnis && JSON.stringify(form) !== JSON.stringify(LEER())) {
+      const ok = await confirmDialog({
+        titel: "Eingaben verwerfen?",
+        text: "Der Testzugang ist noch nicht angelegt. Ihre Eingaben gehen beim Schließen verloren.",
+        bestaetigen: "Verwerfen",
+        abbrechen: "Weiter bearbeiten",
+        gefahr: true,
+      });
+      if (!ok) return;
+    }
+    onClose();
+  };
+
   const zeige = (k: string) => (geprueft ? probleme[k] : undefined);
   // Stadt und Bundesland gehen zusammen an die Erzeugung der Beispieldaten (Gerichte, Feiertage).
   const landHinweis = zeige("bundesland") ? (
@@ -103,7 +119,7 @@ export function NeuerZugang({ open, onClose, onAngelegt }: { open: boolean; onCl
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={() => void schliessen()}
       size="lg"
       icon={ergebnis ? <CheckCircle2 className="size-5" /> : <Plus className="size-5" />}
       title={ergebnis ? "Testzugang ist bereit" : "Neuen Testzugang anlegen"}
@@ -120,7 +136,7 @@ export function NeuerZugang({ open, onClose, onAngelegt }: { open: boolean; onCl
           </>
         ) : (
           <>
-            <Button variant="ghost" onClick={onClose}>
+            <Button variant="ghost" onClick={() => void schliessen()}>
               Abbrechen
             </Button>
             <Button variant="primary" loading={laedt} icon={<Building2 className="size-4" />} onClick={() => void anlegen()}>

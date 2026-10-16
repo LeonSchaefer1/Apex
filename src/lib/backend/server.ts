@@ -1,5 +1,5 @@
 // Server-Betrieb: echte Mehrmandanten-Instanz mit Anmeldung, Datenhaltung je Kanzlei und KI-Proxy.
-import type { CollectionKey, Tenant, TenantData } from "@/core/types";
+import type { Aktivitaet, CollectionKey, Tenant, TenantData } from "@/core/types";
 import { CODE_SITZUNG_GEWECHSELT, PasswortWechselNoetig, ZweiFaktorNoetig, istConsole, type AiStreamRequest, type AiStreamResult, type Backend, type BackendInfo, type Sitzung, type ZweiFaktorEinrichtung, type ZweiFaktorStatus } from "./types";
 import { meldeSitzungsproblem } from "./ereignisse";
 
@@ -90,6 +90,7 @@ export function createServerBackend(): Backend {
       }
     },
     logout: () => api("/auth/logout", { method: "POST" }),
+    sperreProtokollieren: () => api<Aktivitaet>("/auth/sperre", { method: "POST" }, true).catch(() => null),
     bindeSitzung(s) {
       bindung = s && !istConsole(s) ? { tenantId: s.tenant.id, userId: s.user.id } : null;
     },
