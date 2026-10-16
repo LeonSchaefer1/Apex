@@ -4,6 +4,7 @@ import { useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { addDays, diffDays, fmtDateShort, fmtEUR, fmtNum, today, wochentagName } from "@/core/dates";
 import { istWerktag } from "@/core/feiertage";
+import { fristenLage, zaehltAlsFrist, type FristenLage } from "@/core/fristenLage";
 import type { Akte, Aktivitaet, Bundesland, Frist, FristTyp, Nachricht, User } from "@/core/types";
 
 /** Ziel des 38h-Motors (Stunden je Woche und Kanzlei). */
@@ -68,11 +69,14 @@ export interface CockpitDaten {
   user: User;
   team: Map<string, User>;
   akten: Map<string, Akte>;
-  faellig: Frist[]; // offen, ≤ nächster Werktag, ohne Termine
+  /** Einheitliche Fristenzählung (wie Navigation, Fristenkalender und Assistent) – ohne Vorfristen und Termine. */
+  lage: FristenLage;
+  /** Liste der Fristenkarte: offen, ≤ nächster Werktag, ohne Termine (inkl. Vorfristen und Wiedervorlagen). */
+  bisWerktag: Frist[];
   ueberfaellig: number;
   heuteFaellig: number;
   notfristenWoche: Frist[]; // Notfristen der nächsten 7 Tage
-  woche: Frist[]; // offen, heute < datum ≤ heute + 7
+  woche: Frist[]; // offene Fristen, heute < datum ≤ heute + 7 (ohne Vorfristen)
   kritischste?: Frist;
   posteingang: Nachricht[];
   wartetAufKi: number;
@@ -140,18 +144,20 @@ export function useCockpitDaten(ansicht: Ansicht): CockpitDaten {
 
     const offen = fristen.filter((f) => f.status === "offen" && (!meine || f.verantwortlichId === user.id));
     const ohneTermine = offen.filter((f) => f.typ !== "termin");
-    const faellig = ohneTermine.filter((f) => f.datum <= bisTag).sort(sortiereFristen);
-    const ueberfaellig = faellig.filter((f) => f.datum < heute).length;
-    const heuteFaellig = faellig.filter((f) => f.datum === heute).length;
-    const woche = ohneTermine.filter((f) => f.datum > heute && f.datum <= in7).sort(sortiereFristen);
+    // Zahlen für Briefing und Kennzahlen: dieselbe Zählweise wie Navigation, Fristenkalender und Apex Assistent.
+    const lage = fristenLage(fristen, heute, meine ? user.id : undefined);
+    const bisWerktag = ohneTermine.filter((f) => f.datum <= bisTag).sort(sortiereFristen);
+    const ueberfaellig = lage.ueberfaellig.length;
+    const heuteFaellig = lage.heute.length;
+    const woche = lage.woche;
     // bei gleichem Datum: Akten mit hoher Priorität zuerst
     const prio = (f: Frist) => (akten.get(f.akteId)?.prioritaet === "hoch" ? 0 : 1);
-    const nachDringlichkeit = (a: Frist, b: Frist) => a.datum.localeCompare(b.datum) || TYP_RANG[a.typ] - TYP_RANG[b.typ] || prio(a) - prio(b);
-    const notfristenWoche = ohneTermine.filter((f) => f.typ === "notfrist" && f.datum >= heute && f.datum <= in7).sort(nachDringlichkeit);
+    const nachPrio = (a: Frist, b: Frist) => a.datum.localeCompare(b.datum) || TYP_RANG[a.typ] - TYP_RANG[b.typ] || prio(a) - prio(b);
+    const notfristenWoche = [...lage.notfristenWoche].sort(nachPrio);
     const kritischste =
-      ohneTermine.filter((f) => f.datum < heute).sort(nachDringlichkeit)[0] ??
+      [...lage.ueberfaellig].sort(nachPrio)[0] ??
       notfristenWoche[0] ??
-      ohneTermine.filter((f) => f.typ === "frist" && f.datum >= heute && f.datum <= in7).sort(nachDringlichkeit)[0];
+      [...lage.heute, ...lage.woche].filter((f) => f.typ === "frist").sort(nachPrio)[0];
 
     // Posteingang (eingehend, neu)
     const posteingang = nachrichten.filter((n) => n.richtung === "ein" && n.status === "neu").sort((a, b) => b.eingang.localeCompare(a.eingang));
@@ -172,7 +178,7 @@ export function useCockpitDaten(ansicht: Ansicht): CockpitDaten {
       const tagF = offen.filter((f) => f.datum === d);
       wochenTage.push({
         datum: d,
-        fristen: tagF.filter((f) => f.typ !== "termin").length,
+        fristen: tagF.filter(zaehltAlsFrist).length,
         termine: tagF.filter((f) => f.typ === "termin").length,
         notfrist: tagF.some((f) => f.typ === "notfrist"),
       });
@@ -262,23 +268,37 @@ export function useCockpitDaten(ansicht: Ansicht): CockpitDaten {
 
     // ── KI-Tagesbriefing: drei Sätze aus den Daten ──
     const briefing: Satz[] = [];
-    const wer = meine ? "Für Sie" : "Heute";
     {
+      // „fällig" = heute fällig + überfällig, ohne Vorfristen und Termine (wie Badge, Fristen-KPI und Assistent);
+      // Vorfristen werden getrennt genannt.
       const s: Satz = [];
-      if (faellig.length === 0 && woche.length === 0) {
+      const nF = lage.faellig.length;
+      const nU = lage.ueberfaellig.length;
+      const nV = lage.vorfristen.length;
+      const nW = lage.woche.length;
+      if (nF + nV + nW === 0) {
         s.push({ t: meine ? "Für Sie sind in den nächsten sieben Tagen keine Fristen notiert." : "In den nächsten sieben Tagen sind keine Fristen notiert." });
       } else {
-        if (heuteFaellig + ueberfaellig > 0) {
-          s.push({ t: `${wer} ${heuteFaellig + ueberfaellig === 1 ? "ist" : "sind"} ` });
-          s.push({ t: plural(heuteFaellig + ueberfaellig, "Frist", "Fristen"), ton: "fg" });
-          s.push({ t: meine ? " heute fällig" : " fällig" });
-          if (ueberfaellig > 0) s.push({ t: ` (davon ${fmtNum(ueberfaellig)} überfällig)`, ton: "seal" });
+        if (nF > 0) {
+          s.push({ t: meine ? `Für Sie ${nF === 1 ? "ist" : "sind"} heute ` : `Heute ${nF === 1 ? "ist" : "sind"} ` });
+          s.push({ t: plural(nF, "Frist", "Fristen"), ton: "fg" });
+          s.push({ t: " fällig" });
+          if (nU > 0) s.push({ t: nU === nF ? (nF === 1 ? " (bereits überfällig)" : " (alle bereits überfällig)") : ` (davon ${fmtNum(nU)} überfällig)`, ton: "seal" });
+          if (nV > 0) s.push({ t: ", dazu " }, { t: plural(nV, "Vorfrist", "Vorfristen"), ton: "fg" });
         } else {
           s.push({ t: meine ? "Für Sie ist heute keine Frist fällig" : "Heute ist keine Frist fällig" });
+          if (nV > 0) s.push({ t: ", nur " }, { t: plural(nV, "Vorfrist", "Vorfristen"), ton: "fg" });
         }
-        if (woche.length > 0) {
-          s.push({ t: ", in den nächsten sieben Tagen folgen " });
-          s.push({ t: `${fmtNum(woche.length)} weitere`, ton: "fg" });
+        if (nW > 0) {
+          s.push({ t: ". In den nächsten sieben Tagen " });
+          if (nF > 0) {
+            s.push({ t: nW === 1 ? "folgt " : "folgen " });
+            s.push({ t: nW === 1 ? "eine weitere" : `${fmtNum(nW)} weitere`, ton: "fg" });
+          } else {
+            s.push({ t: nW === 1 ? "steht " : "stehen " });
+            s.push({ t: plural(nW, "Frist", "Fristen"), ton: "fg" });
+            s.push({ t: " an" });
+          }
         }
         if (kritischste) {
           const a = akten.get(kritischste.akteId);
@@ -286,7 +306,9 @@ export function useCockpitDaten(ansicht: Ansicht): CockpitDaten {
           s.push({ t: ueber ? " – sofort zu erledigen ist " : " – am dringendsten ist " });
           s.push({ t: `die ${TYP_LABEL[kritischste.typ]} „${kritischste.titel}“`, ton: kritischste.typ === "notfrist" || ueber ? "seal" : "amber" });
           if (a) s.push({ t: " in " }, { t: a.aktenzeichen, ton: "ink", href: `/akten/${a.id}?tab=fristen` });
-          s.push({ t: ueber ? ` (fällig seit ${tagLabel(kritischste.datum, heute)})` : ` bis ${tagLabel(kritischste.datum, heute)}`, s: ueber ? undefined : ` bis ${langDatum(kritischste.datum)}` });
+          if (ueber) s.push({ t: ` (fällig seit ${tagLabel(kritischste.datum, heute)})` });
+          else if (kritischste.datum === heute) s.push({ t: " (heute fällig)" });
+          else s.push({ t: ` bis ${tagLabel(kritischste.datum, heute)}`, s: ` bis ${langDatum(kritischste.datum)}` });
         }
         punkt(s);
       }
@@ -332,7 +354,7 @@ export function useCockpitDaten(ansicht: Ansicht): CockpitDaten {
 
     return {
       heute, bisTag, wochenende: bisTag !== addDays(heute, 1), user, team: teamMap, akten,
-      faellig, ueberfaellig, heuteFaellig, notfristenWoche, woche, kritischste,
+      lage, bisWerktag, ueberfaellig, heuteFaellig, notfristenWoche, woche, kritischste,
       posteingang, wartetAufKi, kiFertig, eeb, termine, wochenTage, handlungsbedarf, motor, finanzen,
       kiAkte, kiAkteFrist, briefing,
     };

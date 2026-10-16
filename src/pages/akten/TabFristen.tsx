@@ -2,14 +2,18 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { Calculator, CalendarCheck2, CalendarPlus, Check, ChevronDown, Clock, MapPin, RotateCcw, ShieldAlert, ShieldCheck, Sparkles } from "lucide-react";
+import { Calculator, CalendarCheck2, CalendarPlus, Check, ChevronDown, Clock, MapPin, RotateCcw, ShieldAlert, Sparkles } from "lucide-react";
 import type { Akte, Frist } from "@/core/types";
-import { fmtDate, fmtDateWd, monatName, nowLocal, relTime, wochentagName, fromISO } from "@/core/dates";
-import { useCol, useData } from "@/store/data";
+import { fmtDate, fmtDateWd, monatName, relTime, wochentagName, fromISO } from "@/core/dates";
+import { useCol } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
-import { Avatar, Button, Card, Chip, Empty, Segmented, confirmDialog } from "@/components/ui";
+import { Avatar, Button, Card, Chip, Empty, Segmented } from "@/components/ui";
 import { cn } from "@/lib/cn";
+// Erledigen, Wiederöffnen und Vier-Augen-Kontrolle laufen über dieselben Helfer wie im Fristenkalender –
+// damit gelten in Akte und Kalender dieselben Regeln (u. a. keine Selbstkontrolle der verantwortlichen Person).
+import { bestaetigeKontrolle, brauchtKontrolle, erledigeFrist, oeffneFristWieder } from "@/pages/fristen/logik";
+import { KontrolleAktion, KontrollStatus } from "@/pages/fristen/FristZeile";
 import { FRIST_TYP_LABEL, beruehreAkte, dringlichkeit, useTeam } from "./helfer";
 
 export function TabFristen({ akte, onNeu }: { akte: Akte; onNeu: () => void }) {
@@ -18,13 +22,16 @@ export function TabFristen({ akte, onNeu }: { akte: Akte; onNeu: () => void }) {
   // Vorfristen erscheinen in der Karte ihrer Hauptfrist – nur „verwaiste“ Vorfristen als eigene Karte
   const fristen = useMemo(() => {
     const eigene = alle.filter((f) => f.akteId === akte.id);
+    const hauptIds = new Set(eigene.filter((f) => f.typ !== "vorfrist").map((f) => f.id));
     const haupt = new Set(eigene.filter((f) => f.typ !== "vorfrist").map((f) => `Vorfrist: ${f.titel}`));
-    return eigene.filter((f) => f.typ !== "vorfrist" || !haupt.has(f.titel));
+    // Zuordnung wie `vorfristenZu`: über bezugId, bei älteren Einträgen ohne Bezug über den Titel
+    return eigene.filter((f) => f.typ !== "vorfrist" || !(f.bezugId ? hauptIds.has(f.bezugId) : haupt.has(f.titel)));
   }, [alle, akte.id]);
   const offen = useMemo(() => fristen.filter((f) => f.status === "offen").sort((a, b) => a.datum.localeCompare(b.datum)), [fristen]);
   const erledigt = useMemo(() => fristen.filter((f) => f.status === "erledigt").sort((a, b) => (b.erledigtAm ?? b.datum).localeCompare(a.erledigtAm ?? a.datum)), [fristen]);
   const liste = ansicht === "offen" ? offen : erledigt;
-  const ohneKontrolle = offen.filter((f) => !f.kontrolliertVon && (f.typ === "notfrist" || f.typ === "frist") && f.regelKey).length;
+  // gleiche Regel wie im Fristenkalender: jede offene Notfrist/Frist ohne Kontrolle – auch KI-Fristen ohne Fristregel
+  const ohneKontrolle = offen.filter(brauchtKontrolle).length;
 
   return (
     <div className="grid grid-cols-1 gap-4">
@@ -93,56 +100,37 @@ export function TabFristen({ akte, onNeu }: { akte: Akte; onNeu: () => void }) {
 
 function FristKarte({ f, akte }: { f: Frist; akte: Akte }) {
   const { user } = useKanzlei();
-  const { byId } = useTeam();
+  const { team, byId } = useTeam();
   const [rechenweg, setRechenweg] = useState(false);
   const verantw = byId.get(f.verantwortlichId);
-  const kontrolleur = f.kontrolliertVon ? byId.get(f.kontrolliertVon) : undefined;
   const erledigtVon = f.erledigtVon ? byId.get(f.erledigtVon) : undefined;
   const d = dringlichkeit(f.datum);
   const istOffen = f.status === "offen";
-  const kontrollPflicht = (f.typ === "notfrist" || f.typ === "frist") && !!f.regelKey;
   const dt = fromISO(f.datum);
   const tonDatum = !istOffen ? "bg-green-soft text-green" : d.tone === "seal" ? "bg-seal-soft text-seal" : d.tone === "amber" ? "bg-amber-soft text-amber" : "bg-ink-softer text-fg";
 
   const erledige = () => {
-    const st = useData.getState();
-    st.patch("fristen", f.id, { status: "erledigt", erledigtAm: nowLocal(), erledigtVon: user.id });
-    // zugehörige Vorfrist mit erledigen
-    const vf = st.data.fristen.find((x) => x.akteId === f.akteId && x.typ === "vorfrist" && x.status === "offen" && x.titel === `Vorfrist: ${f.titel}`);
-    if (vf) st.patch("fristen", vf.id, { status: "erledigt", erledigtAm: nowLocal(), erledigtVon: user.id });
-    st.log({ akteur: "nutzer", userId: user.id, akteId: f.akteId, text: `${FRIST_TYP_LABEL[f.typ]} erledigt: ${f.titel} – ${akte.aktenzeichen}` });
+    // erledigt Frist und zugehörige Vorfrist mit einem gemeinsamen Zeitstempel und protokolliert es
+    erledigeFrist(f, user.id);
     beruehreAkte(akte.id);
     toast(`${FRIST_TYP_LABEL[f.typ]} erledigt`, {
       ton: "erfolg",
       text: f.titel,
-      aktion: {
-        label: "Rückgängig",
-        onClick: () => {
-          const s = useData.getState();
-          s.patch("fristen", f.id, { status: "offen", erledigtAm: undefined, erledigtVon: undefined });
-          if (vf) s.patch("fristen", vf.id, { status: "offen", erledigtAm: undefined, erledigtVon: undefined });
-        },
-      },
+      aktion: { label: "Rückgängig", onClick: () => oeffneFristWieder(f) },
     });
   };
 
   const wiederOeffnen = () => {
-    useData.getState().patch("fristen", f.id, { status: "offen", erledigtAm: undefined, erledigtVon: undefined });
+    // öffnet die mit erledigte Vorfrist wieder mit
+    oeffneFristWieder(f);
+    beruehreAkte(akte.id);
     toast("Frist wieder geöffnet", { ton: "info", text: f.titel });
   };
 
-  const kontrolliere = async () => {
-    if (user.id === f.verantwortlichId) {
-      const ok = await confirmDialog({
-        titel: "Kontrolle durch eine zweite Person?",
-        text: "Sie sind für diese Frist selbst verantwortlich. Nach dem Vier-Augen-Prinzip sollte eine andere Person Fristart, Ereignisdatum und Rechenweg prüfen. Trotzdem bestätigen?",
-        bestaetigen: "Ich habe unabhängig geprüft",
-      });
-      if (!ok) return;
-    }
-    useData.getState().patch("fristen", f.id, { kontrolliertVon: user.id });
-    useData.getState().log({ akteur: "nutzer", userId: user.id, akteId: f.akteId, text: `Fristkontrolle bestätigt (Vier-Augen-Prinzip): ${f.titel} – ${akte.aktenzeichen}` });
-    toast("Kontrolle bestätigt", { ton: "erfolg", text: `${f.titel} · geprüft von ${user.name}` });
+  const kontrolliere = () => {
+    if (!bestaetigeKontrolle(f, user.id)) return;
+    beruehreAkte(akte.id);
+    toast("Kontrolle bestätigt", { ton: "erfolg", text: `Vier-Augen-Prinzip erfüllt: ${f.titel} (${fmtDate(f.datum)})` });
   };
 
   return (
@@ -192,16 +180,8 @@ function FristKarte({ f, akte }: { f: Frist; akte: Akte }) {
                 <Avatar initialen={verantw.initialen} farbe={verantw.farbe} size={20} /> {verantw.name}
               </span>
             )}
-            {kontrollPflicht &&
-              (kontrolleur ? (
-                <Chip tone="green" icon={<ShieldCheck className="size-3" />}>
-                  Kontrolliert von {kontrolleur.name}
-                </Chip>
-              ) : (
-                <Chip tone="amber" icon={<ShieldAlert className="size-3" />}>
-                  Kontrolle ausstehend
-                </Chip>
-              ))}
+            <KontrollStatus f={f} team={team} />
+            {istOffen && <KontrolleAktion f={f} user={user} kontrollieren={kontrolliere} verantwortlich={verantw} />}
             {!istOffen && (
               <span className="text-[12px] text-fg-3">
                 Erledigt {f.erledigtAm ? relTime(f.erledigtAm) : ""}
@@ -243,16 +223,9 @@ function FristKarte({ f, akte }: { f: Frist; akte: Akte }) {
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
           {istOffen ? (
-            <>
-              <Button size="sm" variant="secondary" icon={<Check className="size-4" />} onClick={erledige} aria-label="Als erledigt markieren" title="Als erledigt markieren">
-                <span className="hidden sm:inline">Erledigt</span>
-              </Button>
-              {kontrollPflicht && !kontrolleur && (
-                <Button size="sm" variant="ghost" icon={<ShieldCheck className="size-4" />} onClick={() => void kontrolliere()} className="!px-2.5 sm:!px-3" aria-label="Kontrolle bestätigen (Vier-Augen-Prinzip)" title="Kontrolle bestätigen (Vier-Augen-Prinzip)">
-                  <span className="hidden sm:inline">Kontrolle bestätigen</span>
-                </Button>
-              )}
-            </>
+            <Button size="sm" variant="secondary" icon={<Check className="size-4" />} onClick={erledige} aria-label="Als erledigt markieren" title="Als erledigt markieren">
+              <span className="hidden sm:inline">Erledigt</span>
+            </Button>
           ) : (
             <Button size="sm" variant="ghost" icon={<RotateCcw className="size-4" />} onClick={wiederOeffnen} aria-label="Frist wieder öffnen" title="Frist wieder öffnen">
               <span className="hidden sm:inline">Wieder öffnen</span>

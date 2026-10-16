@@ -161,3 +161,30 @@ export function findeKontaktNachName(kontakte: Kontakt[], name: string): Kontakt
   if (!n) return undefined;
   return kontakte.find((k) => k.name.trim().toLowerCase() === n);
 }
+
+/**
+ * Telefonnummer auf Ziffern reduzieren und Ländervorwahl vereinheitlichen –
+ * „+49 176 2214 8830“, „+49 (0)176 22148830“, „0049 176…“ und „0176 2214 8830“ ergeben „017622148830“.
+ */
+export function telefonZiffern(s: string): string {
+  const t = s.replace(/\(0\)/g, "").trim();
+  let d = t.replace(/\D/g, "");
+  if (t.startsWith("+") || t.startsWith("00")) {
+    d = d.replace(/^00/, "");
+    if (d.startsWith("49")) d = `0${d.slice(2)}`;
+  }
+  return d;
+}
+
+/** Sieht die Suchanfrage wie (ein Teil) einer Telefonnummer aus? Mindestens drei Ziffern, sonst nur Trennzeichen. */
+export function istTelefonSuche(q: string): boolean {
+  const t = q.trim();
+  return /^[\d\s+()/.-]+$/.test(t) && t.replace(/\D/g, "").length >= 3;
+}
+
+/** Passt die Telefonnummer zur Suche – unabhängig von Leerzeichen, Bindestrichen und +49/0? */
+export function telefonPasst(telefon: string | undefined, q: string): boolean {
+  if (!telefon) return false;
+  const qz = telefonZiffern(q);
+  return !!qz && telefonZiffern(telefon).includes(qz);
+}

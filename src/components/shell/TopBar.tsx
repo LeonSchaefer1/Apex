@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { Bell, Search, Sun, Moon, MonitorSmartphone, LogOut, Settings, LifeBuoy, Building2, Sparkles, Zap, User as UserIcon } from "lucide-react";
 import { navFor } from "@/app/nav";
@@ -31,6 +32,26 @@ export function TopBar() {
 
   const naechstesTheme: ThemeWahl = theme === "system" ? "light" : theme === "light" ? "dark" : "system";
   const meldungen = akt.filter((a) => a.akteur !== "nutzer").slice(0, 8);
+  // Gelesen-Zustand der Glocke: Zeitpunkt der neuesten gesehenen Meldung je Person (nur in diesem Browser).
+  const gesehenKey = `aa:meldungen-gesehen:${user.id}`;
+  const [gesehen, setGesehen] = useState(() => {
+    try {
+      return localStorage.getItem(gesehenKey) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const neuesteMeldung = meldungen.reduce((max, m) => (m.zeit > max ? m.zeit : max), "");
+  const ungelesen = meldungen.filter((m) => m.zeit > gesehen).length;
+  const alsGelesenMarkieren = () => {
+    if (!neuesteMeldung || neuesteMeldung <= gesehen) return;
+    setGesehen(neuesteMeldung);
+    try {
+      localStorage.setItem(gesehenKey, neuesteMeldung);
+    } catch {
+      /* optional – dann gilt der Zustand nur für diese Sitzung */
+    }
+  };
 
   return (
     <header className="sticky top-0 z-40 px-3 pt-[max(12px,env(safe-area-inset-top))] md:px-5">
@@ -44,15 +65,19 @@ export function TopBar() {
         <button
           type="button"
           onClick={() => setPalette(true)}
-          className="group hidden h-10 min-w-0 flex-1 items-center gap-2.5 rounded-full bg-[var(--ink-softer)] px-4 text-left text-[13.5px] text-fg-3 shadow-[inset_0_0_0_1px_var(--line)] transition-colors hover:bg-[var(--ink-soft)] md:flex md:max-w-[460px]"
+          aria-label="Suchen (Strg+K)"
+          className="group hidden h-10 min-w-[132px] flex-1 items-center gap-2.5 rounded-full bg-[var(--ink-softer)] px-4 text-left text-[13.5px] text-fg-3 shadow-[inset_0_0_0_1px_var(--line)] transition-colors hover:bg-[var(--ink-soft)] md:flex md:max-w-[460px]"
         >
           <Search className="size-4 shrink-0" />
-          <span className="flex-1 truncate">Akten, Dokumente, Fristen, Urteile durchsuchen …</span>
-          <span className="kbd">{isMac ? "⌘" : "Strg"}</span>
-          <span className="kbd -ml-1.5">K</span>
+          <span className="flex-1 truncate">
+            <span className="2xl:hidden">Akten, Fristen, Urteile …</span>
+            <span className="hidden 2xl:inline">Akten, Dokumente, Fristen, Urteile durchsuchen …</span>
+          </span>
+          <span className="kbd hidden xl:inline-grid">{isMac ? "⌘" : "Strg"}</span>
+          <span className="kbd -ml-1.5 hidden xl:inline-grid">K</span>
         </button>
 
-        <div className="flex flex-1 justify-center">
+        <div className="flex min-w-0 flex-1 justify-center md:max-lg:grow-[0.25]">
           <ApexIsland />
         </div>
 
@@ -64,20 +89,29 @@ export function TopBar() {
           type="button"
           onClick={() => nav("/hilfe#status")}
           className="hidden h-8 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium text-fg-3 hover:bg-ink-softer xl:inline-flex"
-          title="Systemstatus: beA, E-Mail, Bank und KI"
+          title="Systemstatus: beA, E-Mail, Bank und KI – alle Dienste verbunden"
         >
           <span className="relative flex size-2">
             <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--green)] opacity-50 [animation-duration:2.4s]" />
             <span className="relative inline-flex size-2 rounded-full bg-[var(--green)]" />
           </span>
-          Alle Dienste verbunden
+          <span className="2xl:hidden">Verbunden</span>
+          <span className="hidden 2xl:inline">Alle Dienste verbunden</span>
         </button>
 
         <Menu
-          trigger={({ toggle }) => (
-            <button type="button" onClick={toggle} className="icon-btn relative" aria-label="Benachrichtigungen">
+          trigger={({ open, toggle }) => (
+            <button
+              type="button"
+              onClick={() => {
+                if (!open) alsGelesenMarkieren();
+                toggle();
+              }}
+              className="icon-btn relative"
+              aria-label={ungelesen ? `Benachrichtigungen – ${ungelesen} neu` : "Benachrichtigungen"}
+            >
               <Bell className="size-[18px]" />
-              {meldungen.length > 0 && <span className="absolute right-2 top-2 size-2 rounded-full bg-seal ring-2 ring-[var(--glass-strong)]" />}
+              {ungelesen > 0 && <span className="absolute right-2 top-2 size-2 rounded-full bg-seal ring-2 ring-[var(--glass-strong)]" />}
             </button>
           )}
           items={[
@@ -105,9 +139,9 @@ export function TopBar() {
 
         <Menu
           trigger={({ toggle }) => (
-            <button type="button" onClick={toggle} className="ml-0.5 flex items-center gap-2 rounded-full p-0.5 pr-0.5 transition-colors hover:bg-ink-softer lg:pr-3" aria-label="Benutzermenü">
+            <button type="button" onClick={toggle} className="ml-0.5 flex shrink-0 items-center gap-2 rounded-full p-0.5 pr-0.5 transition-colors hover:bg-ink-softer xl:pr-3" aria-label="Benutzermenü">
               <Avatar initialen={user.initialen} farbe={user.farbe} size={34} />
-              <span className="hidden text-left leading-tight lg:block">
+              <span className="hidden text-left leading-tight xl:block">
                 <span className="block max-w-[150px] truncate text-[13px] font-semibold">{user.name}</span>
                 <span className={cn("block text-[11px]", ai.quelle === "demo" ? "text-fg-3" : "text-green")}>{ai.label}</span>
               </span>

@@ -71,6 +71,16 @@ export function NeuerZugang({ open, onClose, onAngelegt }: { open: boolean; onCl
   };
 
   const zeige = (k: string) => (geprueft ? probleme[k] : undefined);
+  // Stadt und Bundesland gehen zusammen an die Erzeugung der Beispieldaten (Gerichte, Feiertage).
+  const stadtErkannt = !!form.stadt.trim() && !!landFuerStadt(form.stadt);
+  const landHinweis =
+    !form.stadt.trim() || landBeruehrt ? (
+      "Bestimmt die Feiertage für die Fristberechnung."
+    ) : stadtErkannt ? (
+      "Aus der Stadt übernommen – bestimmt die Feiertage für die Fristberechnung."
+    ) : (
+      <span className="text-amber">„{form.stadt.trim()}“ kennt die Liste nicht – bitte das Bundesland prüfen.</span>
+    );
 
   return (
     <Modal
@@ -126,7 +136,7 @@ export function NeuerZugang({ open, onClose, onAngelegt }: { open: boolean; onCl
                   aria-invalid={!!zeige("stadt")}
                 />
               </Field>
-              <Field label="Bundesland" htmlFor="nk-land" hint="Bestimmt die Feiertage für die Fristberechnung.">
+              <Field label="Bundesland" htmlFor="nk-land" hint={landHinweis}>
                 <Select
                   id="nk-land"
                   value={form.bundesland}

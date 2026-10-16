@@ -13,7 +13,7 @@ import { COLLECTIONS, type CollectionKey, type SessionInfo, type Tenant, type Te
 import { DEMO_TENANTS, DEMO_PASSWORT, publicUser } from "../src/core/seed/tenants";
 import { generateTenantData, SEED_VERSION, type SeedInput } from "../src/core/seed/generate";
 import { baueKunde, baueNutzer, profilFuer, zufallsPasswort } from "../src/core/seed/kunde";
-import { today } from "../src/core/dates";
+import { fmtDate, today } from "../src/core/dates";
 
 // ───────────── Konfiguration ─────────────
 const PORT = Number(process.env.PORT ?? 8787);
@@ -210,8 +210,11 @@ app.post("/api/auth/login", async (c) => {
   if (!u || !pruefePw(pw, u.pw_hash)) return fehler(c, 401, "E-Mail-Adresse oder Passwort stimmen nicht.");
   const t = tenantById(u.tenant_id);
   if (!t) return fehler(c, 403, "Kanzlei nicht gefunden.");
-  if (t.tenant.status === "pausiert") return fehler(c, 403, "Der Zugang dieser Kanzlei ist pausiert. Bitte wenden Sie sich an Ihre Ansprechpartnerin.");
-  if (t.tenant.testBis && t.tenant.testBis < today() && t.tenant.status === "test") return fehler(c, 403, "Der Testzeitraum ist abgelaufen. Ihre Ansprechpartnerin verlängert ihn gern.");
+  const ap = t.tenant.ansprechpartner;
+  const kontakt = `Ihr fester Ansprechpartner: ${ap.name} (${ap.telefon}).`;
+  if (t.tenant.status === "pausiert") return fehler(c, 403, `Der Zugang dieser Kanzlei ist pausiert. ${kontakt}`);
+  // Präsentationskanzleien (demo = 1) sind fest eingebaut – ihr Testzeitraum läuft nicht ab.
+  if (t.tenant.testBis && t.tenant.testBis < today() && t.tenant.status === "test" && !t.demo) return fehler(c, 403, `Der Testzeitraum ist am ${fmtDate(t.tenant.testBis)} abgelaufen. ${kontakt} ${ap.name} verlängert den Zugang gern.`);
   db.prepare("UPDATE users SET last_login = ? WHERE id = ?").run(new Date().toISOString(), u.id);
   const s = { kind: "tenant" as const, userId: u.id, tenantId: u.tenant_id };
   neueSitzung(c, s);
@@ -262,7 +265,9 @@ app.put("/api/data/:col/:id", async (c) => {
   }
   if (!doc || doc.id !== id) return fehler(c, 400, "ID stimmt nicht überein");
   db.prepare("INSERT OR REPLACE INTO docs (tenant_id, col, id, json, updated_at) VALUES (?, ?, ?, ?, ?)").run(s.tenantId, col, id, raw, Date.now());
-  db.prepare("UPDATE tenant_state SET dirty = 1 WHERE tenant_id = ?").run(s.tenantId);
+  // Hintergrundläufe (simulierter 38h-Motor, ?system=1) zählen nicht als Änderung durch die Kanzlei –
+  // unveränderte Demodaten werden dann weiter täglich relativ zu „heute" neu erzeugt.
+  if (c.req.query("system") !== "1") db.prepare("UPDATE tenant_state SET dirty = 1 WHERE tenant_id = ?").run(s.tenantId);
   return c.body(null, 204);
 });
 

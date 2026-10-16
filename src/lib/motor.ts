@@ -40,8 +40,11 @@ export function useMotor(enabled: boolean) {
             const a = autos[Math.floor(Math.random() * autos.length)];
             const akte = akten[Math.floor(Math.random() * akten.length)];
             const text = TEXTE[a.key](akte.aktenzeichen);
-            st.patch("automationen", a.id, { laeufe: a.laeufe + 1, letzterLauf: nowLocal() });
-            st.log({ akteur: "automation", automationKey: a.key, akteId: ["bankabgleich", "zeiterfassung"].includes(a.key) ? undefined : akte.id, text, minutenGespart: a.minutenProLauf });
+            // Simulierte Läufe sind Systemschreibvorgänge: Sie markieren die Demodaten nicht als geändert,
+            // damit sie weiterhin täglich relativ zu „heute" neu erzeugt werden.
+            const system = { system: true };
+            st.patch("automationen", a.id, { laeufe: a.laeufe + 1, letzterLauf: nowLocal() }, system);
+            st.log({ akteur: "automation", automationKey: a.key, akteId: ["bankabgleich", "zeiterfassung"].includes(a.key) ? undefined : akte.id, text, minutenGespart: a.minutenProLauf }, system);
             useMotorStore.getState().zeige(text, a.minutenProLauf);
           }
         }

@@ -1,6 +1,6 @@
 // Demo-Betrieb: läuft vollständig im Browser (IndexedDB) – ideal für Präsentationen und Artefakt-Vorschau.
-import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
-import { today } from "@/core/dates";
+import { createStore, get as idbGet, set as idbSet, del as idbDel, type UseStore } from "idb-keyval";
+import { fmtDate, today } from "@/core/dates";
 import { generateTenantData, SEED_VERSION } from "@/core/seed/generate";
 import { DEMO_TENANTS, CONSOLE_DEMO, publicUser, type DemoTenant, type DemoUser } from "@/core/seed/tenants";
 import { baueKunde, baueNutzer, profilFuer, zufallsPasswort } from "@/core/seed/kunde";
@@ -34,11 +34,32 @@ function lsSet(key: string, value: unknown) {
   }
 }
 
+let kv: UseStore | undefined;
+/** Wie der Standardspeicher von idb-keyval, schreibt aber sofort fest (`commit()`), damit Schreibvorgänge auch beim Neuladen oder Schließen des Tabs ankommen. */
+function kvStore(): UseStore {
+  if (!kv) {
+    const basis = createStore("keyval-store", "keyval");
+    kv = (modus, cb) =>
+      basis(modus, (s) => {
+        const r = cb(s);
+        if (modus === "readwrite") {
+          try {
+            s.transaction.commit?.();
+          } catch {
+            /* ältere Browser schreiben beim Ende der Aufgabe fest */
+          }
+        }
+        return r;
+      });
+  }
+  return kv;
+}
+
 async function store<T>(key: string, value?: T | null): Promise<T | undefined> {
   if (value === undefined) {
     if (idbOk) {
       try {
-        return (await idbGet(key)) as T | undefined;
+        return (await idbGet(key, kvStore())) as T | undefined;
       } catch {
         idbOk = false;
       }
@@ -48,8 +69,8 @@ async function store<T>(key: string, value?: T | null): Promise<T | undefined> {
   memory.set(key, value);
   if (idbOk) {
     try {
-      if (value === null) await idbDel(key);
-      else await idbSet(key, value);
+      if (value === null) await idbDel(key, kvStore());
+      else await idbSet(key, value, kvStore());
     } catch {
       idbOk = false;
     }
@@ -92,12 +113,51 @@ function sitzungFuer(s: DemoSession): Sitzung | null {
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 let current: { tenantId: string; stored: StoredData } | null = null;
+let ausstehend: { key: string; stored: StoredData } | null = null;
+
+/** Schreibt einen ausstehenden Speichervorgang sofort weg (Ende der Wartezeit, Neuladen, Tab schließen, Abmelden). */
+function flushSave(): Promise<unknown> {
+  clearTimeout(saveTimer);
+  saveTimer = undefined;
+  const p = ausstehend;
+  ausstehend = null;
+  return p ? store(p.key, p.stored) : Promise.resolve();
+}
 
 function scheduleSave() {
   if (!current) return;
   clearTimeout(saveTimer);
-  const snap = current;
-  saveTimer = setTimeout(() => void store(`aa:data:${snap.tenantId}`, snap.stored), 250);
+  ausstehend = { key: `aa:data:${current.tenantId}`, stored: current.stored };
+  saveTimer = setTimeout(() => void flushSave(), 250);
+}
+
+let flushHorcher = false;
+/** Beim Verlassen der Seite (Neuladen, Tab schließen, App wechseln) nicht auf die Wartezeit warten. */
+function registriereFlush() {
+  if (flushHorcher || typeof window === "undefined") return;
+  flushHorcher = true;
+  const sofort = () => void flushSave();
+  window.addEventListener("pagehide", sofort);
+  window.addEventListener("beforeunload", sofort);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") sofort();
+  });
+}
+
+/** Präsentationskanzleien sind fest eingebaut – ihr Testzeitraum läuft nicht ab (wie im Server-Betrieb). */
+function istPraesentationskanzlei(tenantId: string) {
+  return DEMO_TENANTS.some((t) => t.tenant.id === tenantId);
+}
+
+/** Gleiche Zugangsprüfung wie im Server-Betrieb: pausierte Kanzleien und abgelaufene Testzugänge werden abgewiesen. */
+function zugangsSperre(t: Tenant): string | null {
+  const ap = t.ansprechpartner;
+  const kontakt = `Ihr fester Ansprechpartner: ${ap.name} (${ap.telefon}).`;
+  if (t.status === "pausiert") return `Der Zugang dieser Kanzlei ist pausiert. ${kontakt}`;
+  if (t.status === "test" && t.testBis && t.testBis < today() && !istPraesentationskanzlei(t.id)) {
+    return `Der Testzeitraum ist am ${fmtDate(t.testBis)} abgelaufen. ${kontakt} ${ap.name} verlängert den Zugang gern.`;
+  }
+  return null;
 }
 
 async function ladeOderSeed(t: DemoTenant, force = false): Promise<StoredData> {
@@ -124,6 +184,7 @@ function statsFuer(data?: TenantData): ConsoleKunde["stats"] {
 }
 
 export function createDemoBackend(): Backend {
+  registriereFlush();
   return {
     modus: "demo",
     async info() {
@@ -152,7 +213,8 @@ export function createDemoBackend(): Backend {
         const u = t.users.find((x) => x.email.toLowerCase() === e);
         if (u) {
           if (u.passwort !== passwort) throw new Error("Das Passwort stimmt nicht. Bitte prüfen Sie die Groß- und Kleinschreibung.");
-          if (t.tenant.status === "pausiert") throw new Error("Der Zugang dieser Kanzlei ist pausiert. Bitte wenden Sie sich an Ihre Ansprechpartnerin.");
+          const sperre = zugangsSperre(t.tenant);
+          if (sperre) throw new Error(sperre);
           const s: DemoSession = { kind: "tenant", tenantId: t.tenant.id, userId: u.id };
           lsSet(LS_SESSION, s);
           return sitzungFuer(s)!;
@@ -165,6 +227,7 @@ export function createDemoBackend(): Backend {
       return s ? sitzungFuer(s) : null;
     },
     async logout() {
+      await flushSave();
       lsSet(LS_SESSION, null);
       current = null;
     },
@@ -172,17 +235,20 @@ export function createDemoBackend(): Backend {
       const s = lsGet<DemoSession>(LS_SESSION);
       if (!s || s.kind !== "tenant") throw new Error("Nicht angemeldet");
       const t = findTenant(s.tenantId)!;
+      await flushSave();
       const stored = await ladeOderSeed(t);
       current = { tenantId: t.tenant.id, stored };
       return stored.data;
     },
-    async putDoc(col, doc) {
+    async putDoc(col, doc, opts) {
       if (!current) return;
       const arr = current.stored.data[col] as { id: string }[];
       const i = arr.findIndex((x) => x.id === doc.id);
       if (i >= 0) arr[i] = doc;
       else arr.unshift(doc);
-      current.stored.dirty = true;
+      // Hintergrundläufe (simulierter 38h-Motor) werden gespeichert, gelten aber nicht als Änderung durch die Kanzlei –
+      // sonst würden die Demodaten nicht mehr täglich relativ zu „heute" neu erzeugt.
+      if (!opts?.system) current.stored.dirty = true;
       scheduleSave();
     },
     async deleteDoc(col: CollectionKey, id: string) {
@@ -197,6 +263,8 @@ export function createDemoBackend(): Backend {
       const s = lsGet<DemoSession>(LS_SESSION);
       if (!s || s.kind !== "tenant") throw new Error("Nicht angemeldet");
       const t = findTenant(s.tenantId)!;
+      ausstehend = null;
+      clearTimeout(saveTimer);
       const stored = await ladeOderSeed(t, true);
       current = { tenantId: t.tenant.id, stored };
       return stored.data;

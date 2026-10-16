@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowUp, Mic, MicOff, Volume2, VolumeX, X, RotateCcw, Square, Phone, Wrench, ArrowRight } from "lucide-react";
 import { useUI } from "@/store/ui";
 import { useKanzlei } from "@/store/session";
 import { useAiStatus } from "@/ai/status";
-import { frageAssistent, VORSCHLAEGE, type AssistentLink } from "@/ai/assistent";
+import { frageAssistent, vorschlaege, type AssistentLink } from "@/ai/assistent";
+import { useData } from "@/store/data";
 import type { LlmMessage } from "@/ai/llm";
 import { hoeren, sprechen, spracheingabeVerfuegbar, sprachausgabeVerfuegbar } from "@/lib/speech";
 import { useIsMobile } from "@/lib/useMedia";
@@ -31,6 +32,9 @@ export function AssistantDock() {
   const ai = useAiStatus();
   const nav = useNavigate();
   const mobile = useIsMobile();
+  const akten = useData((s) => s.data.akten);
+  // Vorschläge aus den tatsächlichen Daten der Kanzlei (z. B. eine vorhandene Akte statt eines festen Aktenzeichens)
+  const chips = useMemo(() => vorschlaege({ ...useData.getState().data, akten }), [akten]);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [eingabe, setEingabe] = useState("");
   const [zustand, setZustand] = useState<OrbZustand>("ruhe");
@@ -49,6 +53,7 @@ export function AssistantDock() {
   const ctl = useRef<AbortController | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
   const beschaeftigt = zustand === "denkt";
 
   useEffect(() => {
@@ -163,6 +168,33 @@ export function AssistantDock() {
     } else setTimeout(() => inputRef.current?.focus(), 300);
   }, [assistentOffen]);
 
+  // Escape schließt den Assistenten – außer ein Dialog oder Menü liegt darüber und der Fokus ist dort
+  // (die globale Suche fängt Escape selbst ab).
+  useEffect(() => {
+    if (!assistentOffen) return;
+    const h = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || useUI.getState().paletteOffen) return;
+      const imPanel = !!panelRef.current?.contains(document.activeElement);
+      if (!imPanel && document.querySelector('[aria-modal="true"], [role="menu"]')) return;
+      schliesseAssistent();
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [assistentOffen, schliesseAssistent]);
+
+  // Öffnet sich ein Dialog (z. B. der Fristenrechner über einen Link des Assistenten), tritt der Assistent zurück –
+  // sonst läge er weichgezeichnet und unbedienbar hinter dem Dialog. Das Gespräch bleibt erhalten.
+  useEffect(() => {
+    if (!assistentOffen) return;
+    const dialoge = () => Array.from(document.querySelectorAll('[aria-modal="true"]'));
+    const vorher = new Set(dialoge());
+    const obs = new MutationObserver(() => {
+      if (dialoge().some((d) => !vorher.has(d))) schliesseAssistent();
+    });
+    obs.observe(document.body, { childList: true });
+    return () => obs.disconnect();
+  }, [assistentOffen, schliesseAssistent]);
+
   const vorname = sitzung.user.name.replace(/^(Dr\.|Prof\.)\s+/, "").split(" ")[0];
   const statusText = zustand === "hoert" ? "Ich höre zu …" : zustand === "denkt" ? "Denkt nach …" : zustand === "spricht" ? "Spricht …" : ai.quelle === "demo" ? "Demo-KI · offline" : "Live · Claude";
 
@@ -198,6 +230,7 @@ export function AssistantDock() {
           <>
             {mobile && <motion.div className="fixed inset-0 z-[84] bg-[var(--scrim)]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={schliesseAssistent} />}
             <motion.section
+              ref={panelRef}
               role="dialog"
               aria-label="Apex Assistent"
               initial={{ opacity: 0, scale: 0.6, y: 40, x: mobile ? 0 : 40 }}
@@ -243,7 +276,7 @@ export function AssistantDock() {
                       <p className="mt-1.5 max-w-[30ch] text-[13px] leading-snug text-fg-3">Fragen Sie per Sprache oder Text – zu Ihren Akten, Fristen oder zur Bedienung von AnwaltApex.</p>
                     </div>
                     <div className="mt-6 flex flex-wrap justify-center gap-2">
-                      {VORSCHLAEGE.map((v, i) => (
+                      {chips.map((v, i) => (
                         <motion.button
                           key={v}
                           type="button"
@@ -260,7 +293,7 @@ export function AssistantDock() {
                     <div className="mt-auto pt-6">
                       <button
                         type="button"
-                        onClick={() => void senden("Ich brauche meine Ansprechpartnerin")}
+                        onClick={() => void senden("Ich möchte mit meinem Ansprechpartner sprechen")}
                         className="flex w-full items-center gap-3 rounded-[18px] p-3 text-left ring-1 ring-[var(--line)] transition-colors hover:bg-ink-softer"
                       >
                         <span className="grid size-9 place-items-center rounded-full bg-green-soft text-green">

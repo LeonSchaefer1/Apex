@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { AlarmClock, Calculator, CalendarDays, CalendarRange, List, ShieldAlert, Sparkles, X, CalendarClock } from "lucide-react";
 import { addDays, fmtDateShort, fmtDateWd, today } from "@/core/dates";
+import { fristenLage, zaehltAlsFrist } from "@/core/fristenLage";
 import type { Akte, FristTyp } from "@/core/types";
 import { useCol } from "@/store/data";
 import { useKanzlei } from "@/store/session";
@@ -14,7 +15,7 @@ import { MonatsAnsicht } from "./MonatsAnsicht";
 import { FristDetail } from "./FristDetail";
 import { Fristenrechner } from "./Fristenrechner";
 import { FeiertageInfo } from "./FeiertageInfo";
-import { TYP_META, TYP_REIHENFOLGE, brauchtKontrolle, wochenStart } from "./logik";
+import { TYP_META, TYP_REIHENFOLGE, istUngeprueft, wochenStart } from "./logik";
 
 type Ansicht = "liste" | "woche" | "monat";
 type Fokus = "heute" | "woche" | "notfristen" | "unkontrolliert";
@@ -25,6 +26,17 @@ const FOKUS_LABEL: Record<Fokus, string> = {
   notfristen: "Offene Notfristen",
   unkontrolliert: "Unkontrollierte KI-Fristen",
 };
+
+/** Deep-Link `?filter=…` → Kennzahl-Filter (`kontrolle` = Vier-Augen-Kontrolle ausstehend). */
+const FILTER_PARAM: Record<string, Fokus> = {
+  kontrolle: "unkontrolliert",
+  unkontrolliert: "unkontrolliert",
+  heute: "heute",
+  woche: "woche",
+  notfristen: "notfristen",
+};
+
+const istDatum = (d: string | null): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(`${d}T12:00:00Z`));
 
 function ladeAnsicht(): Ansicht {
   try {
@@ -41,15 +53,61 @@ export default function Fristen() {
   const aktenListe = useCol("akten");
   const [params, setParams] = useSearchParams();
   const heute = today();
-  const [ansicht, setAnsichtRaw] = useState<Ansicht>(ladeAnsicht);
+
+  // Deep-Links: ?datum=YYYY-MM-DD (Tag anspringen + hervorheben), ?filter=kontrolle|heute|woche|notfristen,
+  // ?akte=<id> (Liste auf eine Akte begrenzen, nur ohne Rechner). Die Adresse bleibt Quelle der Wahrheit,
+  // damit der Zustand auch beim Seitenwechsel-Übergang und nach dem Neuladen erhalten bleibt.
+  const pFilter = params.get("filter");
+  const pDatum = params.get("datum");
+  const pAkte = params.get("rechner") === "1" ? null : params.get("akte");
+  const dlFokus = (pFilter && FILTER_PARAM[pFilter]) || null;
+  const dlDatum = istDatum(pDatum) ? pDatum : null;
+
+  const [ansicht, setAnsichtRaw] = useState<Ansicht>(() => (dlFokus ? "liste" : dlDatum ? "woche" : ladeAnsicht()));
   const [typ, setTyp] = useState<"alle" | FristTyp>("alle");
   const [nurMeine, setNurMeine] = useState(false);
   const [erledigte, setErledigte] = useState(false);
-  const [fokus, setFokus] = useState<Fokus | null>(null);
-  const [wocheStart, setWocheStart] = useState(() => wochenStart(heute));
-  const [monat, setMonat] = useState(() => heute.slice(0, 7));
-  const [tag, setTag] = useState(heute);
+  const [fokus, setFokusRaw] = useState<Fokus | null>(dlFokus);
+  const [wocheStart, setWocheStart] = useState(() => wochenStart(dlDatum ?? heute));
+  const [monat, setMonat] = useState(() => (dlDatum ?? heute).slice(0, 7));
+  const [tag, setTag] = useState(dlDatum ?? heute);
   const [detailId, setDetailId] = useState<string | null>(null);
+  /** Deep-Link-Filter auf eine Akte (`?akte=` ohne Rechner) */
+  const [akteFilter, setAkteFilterRaw] = useState<string | null>(pAkte);
+  /** Per Deep-Link angesprungener Tag (`?datum=`), wird im Kalender hervorgehoben */
+  const [markiert, setMarkiert] = useState<string | null>(dlDatum);
+
+  // Neuer Deep-Link, während die Seite schon offen ist (z. B. aus dem Apex Assistenten)
+  useEffect(() => {
+    if (dlFokus) {
+      setFokusRaw(dlFokus);
+      setAnsichtRaw("liste");
+    }
+    if (pAkte) setAkteFilterRaw(pAkte);
+    if (dlDatum) {
+      setTag(dlDatum);
+      setWocheStart(wochenStart(dlDatum));
+      setMonat(dlDatum.slice(0, 7));
+      setMarkiert(dlDatum);
+      if (!dlFokus) setAnsichtRaw("woche");
+    }
+  }, [dlFokus, pAkte, dlDatum]);
+
+  /** Entfernt Deep-Link-Parameter, sobald der Nutzer den Filter selbst ändert. */
+  const entferneParam = (...keys: string[]) => {
+    if (!keys.some((k) => params.has(k))) return;
+    const next = new URLSearchParams(params);
+    keys.forEach((k) => next.delete(k));
+    setParams(next, { replace: true });
+  };
+  const setFokus = (f: Fokus | null | ((cur: Fokus | null) => Fokus | null)) => {
+    setFokusRaw(f);
+    entferneParam("filter");
+  };
+  const setAkteFilter = (a: string | null) => {
+    setAkteFilterRaw(a);
+    if (params.get("rechner") !== "1") entferneParam("akte");
+  };
 
   const setAnsicht = (a: Ansicht) => {
     setAnsichtRaw(a);
@@ -68,23 +126,23 @@ export default function Fristen() {
   };
   const schliesseRechner = () => {
     const next = new URLSearchParams(params);
-    ["rechner", "akte", "regel"].forEach((k) => next.delete(k));
+    ["rechner", "akte", "regel", "ereignis"].forEach((k) => next.delete(k));
     setParams(next, { replace: true });
   };
 
   const akten = useMemo(() => new Map<string, Akte>(aktenListe.map((a) => [a.id, a])), [aktenListe]);
 
-  // Kennzahlen (immer über alle Fristen)
+  // Kennzahlen (immer über alle Fristen). „Heute fällig“ = fristenLage().faellig (heute + überfällig, ohne Vorfristen und Termine) –
+  // dieselbe Zählweise wie Seitenleiste, Cockpit und Apex Assistent.
   const kpi = useMemo(() => {
     const offen = fristen.filter((f) => f.status === "offen");
+    const lage = fristenLage(fristen, heute);
     const mo = wochenStart(heute);
     const so = addDays(mo, 6);
-    const heuteFaellig = offen.filter((f) => f.datum <= heute && f.typ !== "vorfrist");
-    const ueberfaellig = heuteFaellig.filter((f) => f.datum < heute).length;
     const woche = offen.filter((f) => f.datum >= mo && f.datum <= so && f.typ !== "vorfrist");
     const notfristen = offen.filter((f) => f.typ === "notfrist").sort((a, b) => a.datum.localeCompare(b.datum));
-    const unkontrolliert = offen.filter((f) => f.quelle === "ki" && brauchtKontrolle(f));
-    return { heute: heuteFaellig.length, ueberfaellig, woche: woche.length, so, notfristen, unkontrolliert: unkontrolliert.length };
+    const unkontrolliert = offen.filter(istUngeprueft);
+    return { heute: lage.faellig.length, ueberfaellig: lage.ueberfaellig.length, woche: woche.length, so, notfristen, unkontrolliert: unkontrolliert.length };
   }, [fristen, heute]);
 
   const gefiltert = useMemo(() => {
@@ -94,13 +152,14 @@ export default function Fristen() {
       if (!erledigte && f.status === "erledigt") return false;
       if (typ !== "alle" && f.typ !== typ) return false;
       if (nurMeine && f.verantwortlichId !== user.id) return false;
-      if (fokus === "heute" && !(f.status === "offen" && f.datum <= heute && f.typ !== "vorfrist")) return false;
+      if (akteFilter && f.akteId !== akteFilter) return false;
+      if (fokus === "heute" && !(f.status === "offen" && f.datum <= heute && zaehltAlsFrist(f))) return false;
       if (fokus === "woche" && !(f.status === "offen" && f.datum >= mo && f.datum <= so && f.typ !== "vorfrist")) return false;
       if (fokus === "notfristen" && !(f.status === "offen" && f.typ === "notfrist")) return false;
-      if (fokus === "unkontrolliert" && !(f.quelle === "ki" && brauchtKontrolle(f))) return false;
+      if (fokus === "unkontrolliert" && !istUngeprueft(f)) return false;
       return true;
     });
-  }, [fristen, erledigte, typ, nurMeine, user.id, fokus, heute]);
+  }, [fristen, erledigte, typ, nurMeine, user.id, fokus, heute, akteFilter]);
 
   const detail = detailId ? fristen.find((f) => f.id === detailId) : undefined;
 
@@ -113,7 +172,8 @@ export default function Fristen() {
     setAnsicht("liste");
   };
 
-  const istGefiltert = typ !== "alle" || nurMeine || !!fokus;
+  const istGefiltert = typ !== "alle" || nurMeine || !!fokus || !!akteFilter;
+  const filterAkte = akteFilter ? akten.get(akteFilter) : undefined;
 
   return (
     <div>
@@ -186,16 +246,30 @@ export default function Fristen() {
       </div>
 
       <AnimatePresence>
-        {fokus && (
+        {(fokus || akteFilter) && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
             <div className="mb-4 flex flex-wrap items-center gap-2 text-[13px] text-fg-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-ink-soft py-1 pl-3 pr-1 font-medium text-ink">
-                {FOKUS_LABEL[fokus]} · {gefiltert.length}
-                <button type="button" onClick={() => setFokus(null)} className="grid size-6 place-items-center rounded-full hover:bg-[var(--ink-soft)]" aria-label="Filter entfernen">
-                  <X className="size-3.5" />
-                </button>
-              </span>
-              {fokus === "unkontrolliert" && <span className="text-fg-3">Von der KI erkannte Fristen müssen von einer zweiten Person bestätigt werden.</span>}
+              {fokus && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-ink-soft py-1 pl-3 pr-1 font-medium text-ink">
+                  {FOKUS_LABEL[fokus]}
+                  {!akteFilter && ` · ${gefiltert.length}`}
+                  <button type="button" onClick={() => setFokus(null)} className="grid size-6 place-items-center rounded-full hover:bg-[var(--ink-soft)]" aria-label="Filter entfernen">
+                    <X className="size-3.5" />
+                  </button>
+                </span>
+              )}
+              {akteFilter && (
+                <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full bg-ink-soft py-1 pl-3 pr-1 font-medium text-ink">
+                  <span className="truncate">
+                    Akte <span className="mono">{filterAkte?.aktenzeichen ?? "–"}</span>
+                    {filterAkte ? ` ${filterAkte.titel}` : ""} · {gefiltert.length}
+                  </span>
+                  <button type="button" onClick={() => setAkteFilter(null)} className="grid size-6 shrink-0 place-items-center rounded-full hover:bg-[var(--ink-soft)]" aria-label="Aktenfilter entfernen">
+                    <X className="size-3.5" />
+                  </button>
+                </span>
+              )}
+              {fokus === "unkontrolliert" && <span className="text-fg-3">Von der KI erkannte Fristen müssen von einer zweiten Person bestätigt werden – nie von der verantwortlichen Person selbst.</span>}
             </div>
           </motion.div>
         )}
@@ -203,8 +277,20 @@ export default function Fristen() {
 
       <AnimatePresence mode="wait" initial={false}>
         <motion.div key={ansicht} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}>
-          {ansicht === "liste" && <FristListe fristen={gefiltert} akten={akten} team={team} user={user} heute={heute} land={tenant.bundesland} gefiltert={istGefiltert} />}
-          {ansicht === "woche" && <WochenAnsicht fristen={gefiltert} akten={akten} start={wocheStart} setStart={setWocheStart} land={tenant.bundesland} heute={heute} onOpen={(f) => setDetailId(f.id)} />}
+          {ansicht === "liste" && (
+            <FristListe
+              fristen={gefiltert}
+              akten={akten}
+              team={team}
+              user={user}
+              heute={heute}
+              land={tenant.bundesland}
+              gefiltert={istGefiltert}
+              ohneHorizont={!!akteFilter || fokus === "unkontrolliert" || fokus === "notfristen"}
+              markiert={markiert ?? undefined}
+            />
+          )}
+          {ansicht === "woche" && <WochenAnsicht fristen={gefiltert} akten={akten} start={wocheStart} setStart={setWocheStart} land={tenant.bundesland} heute={heute} markiert={markiert ?? undefined} onOpen={(f) => setDetailId(f.id)} />}
           {ansicht === "monat" && (
             <MonatsAnsicht fristen={gefiltert} akten={akten} monat={monat} setMonat={setMonat} auswahl={tag} setAuswahl={setTag} land={tenant.bundesland} heute={heute} onOpen={(f) => setDetailId(f.id)} />
           )}
@@ -221,7 +307,13 @@ export default function Fristen() {
       </div>
 
       <FristDetail f={detail} akte={detail ? akten.get(detail.akteId) : undefined} team={team} user={user} onClose={() => setDetailId(null)} />
-      <Fristenrechner open={rechnerOffen} onClose={schliesseRechner} startAkteId={params.get("akte") ?? undefined} startRegel={params.get("regel") ?? undefined} />
+      <Fristenrechner
+        open={rechnerOffen}
+        onClose={schliesseRechner}
+        startAkteId={rechnerOffen ? params.get("akte") ?? undefined : undefined}
+        startRegel={params.get("regel") ?? undefined}
+        startEreignis={params.get("ereignis") ?? undefined}
+      />
     </div>
   );
 }

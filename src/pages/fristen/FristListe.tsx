@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { CalendarCheck2, ChevronDown } from "lucide-react";
 import { addDays, diffDays, fmtDateWd, relDays } from "@/core/dates";
@@ -37,12 +37,33 @@ function gruppiere(fristen: Frist[], heute: string, land: Bundesland): Gruppe[] 
   return gruppen;
 }
 
-export function FristListe({ fristen, akten, team, user, heute, land, gefiltert }: { fristen: Frist[]; akten: Map<string, Akte>; team: User[]; user: User; heute: string; land: Bundesland; gefiltert: boolean }) {
+export function FristListe({
+  fristen, akten, team, user, heute, land, gefiltert, ohneHorizont, markiert,
+}: {
+  fristen: Frist[];
+  akten: Map<string, Akte>;
+  team: User[];
+  user: User;
+  heute: string;
+  land: Bundesland;
+  gefiltert: boolean;
+  /** Alle späteren Fristen sofort zeigen (z. B. bei Akten- oder Kontrollfilter aus einem Deep-Link) */
+  ohneHorizont?: boolean;
+  /** Per Deep-Link angesprungener Tag: Gruppe hervorheben und hinscrollen */
+  markiert?: string;
+}) {
   const [alle, setAlle] = useState(false);
   const gruppen = useMemo(() => gruppiere(fristen, heute, land), [fristen, heute, land]);
   const grenze = addDays(heute, HORIZONT_TAGE);
-  const sichtbar = alle ? gruppen : gruppen.filter((g) => g.key === "ueber" || g.key === "erledigt" || g.key <= grenze);
+  const ohneGrenze = alle || ohneHorizont || (!!markiert && markiert > grenze);
+  const sichtbar = ohneGrenze ? gruppen : gruppen.filter((g) => g.key === "ueber" || g.key === "erledigt" || g.key <= grenze);
   const versteckt = gruppen.filter((g) => !sichtbar.includes(g)).reduce((s, g) => s + g.items.length, 0);
+  const markRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!markiert) return;
+    const t = setTimeout(() => markRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 260);
+    return () => clearTimeout(t);
+  }, [markiert]);
 
   if (!gruppen.length)
     return (
@@ -63,7 +84,17 @@ export function FristListe({ fristen, akten, team, user, heute, land, gefiltert 
           const start = zaehler;
           zaehler += g.items.length;
           return (
-            <motion.section key={g.key} layout="position" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, transition: { duration: 0.2 } }} transition={{ type: "spring", stiffness: 420, damping: 36 }}>
+            <motion.section
+              key={g.key}
+              ref={g.key === markiert ? markRef : undefined}
+              data-gruppe={g.key}
+              layout="position"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, transition: { duration: 0.2 } }}
+              transition={{ type: "spring", stiffness: 420, damping: 36 }}
+              className={cn(g.key === markiert && "-m-2 rounded-[24px] bg-ink-softer p-2 ring-2 ring-[var(--ink)]")}
+            >
               <div className="mb-2 flex items-baseline gap-2.5 px-1">
                 <h3 className={cn("title-md", g.ton === "seal" && "text-seal", g.ton === "ink" && "text-ink", g.ton === "green" && "text-green")}>{g.titel}</h3>
                 {g.sub && <span className="num truncate text-[12.5px] text-fg-3">{g.sub}</span>}

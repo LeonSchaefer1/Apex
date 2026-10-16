@@ -1,10 +1,11 @@
 // Mandatsaufnahme: neue Akte in vier Schritten – inkl. automatischem Mandatsaufnahme-Paket.
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { AlertTriangle, ArrowLeft, ArrowRight, Check, CheckCircle2, FilePlus2, FolderPlus, Inbox, ShieldCheck, Sparkles, Zap } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, CheckCircle2, FilePlus2, FolderOpen, FolderPlus, Inbox, Info, ShieldCheck, Sparkles, Zap } from "lucide-react";
+import { Link } from "react-router";
 import type { Akte, Dokument, Frist, Kontakt, Nachricht, Sachgebiet } from "@/core/types";
 import { fmtDate, fmtDateWd, fmtEUR, nowLocal, today, uid } from "@/core/dates";
-import { VERSICHERUNGEN } from "@/core/seed/pools";
+import { VERSICHERUNGEN, VORNAMEN_M, VORNAMEN_W } from "@/core/seed/pools";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { Button, Chip, Field, Input, Modal, Segmented, Select, Switch, Textarea } from "@/components/ui";
@@ -24,6 +25,8 @@ const SCHRITT_VARIANTEN = {
 interface Sache {
   titel: string;
   titelManuell: boolean;
+  /** Stichwort für den Aktentitel, z. B. aus dem Betreff einer Mandatsanfrage („Eigenbedarfskündigung“) */
+  thema: string;
   sachgebiet: Sachgebiet;
   gegner: string;
   wert: string;
@@ -72,6 +75,30 @@ function titelAusBetreff(betreff: string): string {
   return betreff.replace(/^\s*((AW|WG|RE|Re|Fwd|FW|Anfrage)\s*:\s*)+/i, "").trim();
 }
 
+// Stichwort aus dem Betreff einer Anfrage – ohne Ich-Form („Eigenbedarfskündigung meiner Wohnung“ → „Eigenbedarfskündigung“)
+const ALLGEMEIN = /^(frage|fragen|anfrage|hilfe|problem|termin|terminanfrage|beratung|kontakt|rechtsberatung|mandat|anliegen)$/i;
+export function themaAusBetreff(betreff: string): string {
+  let t = titelAusBetreff(betreff).split(/\s+(?:meine[rsmn]?|mein|unsere[rsmn]?|unser|ich|wir|mir|mich|bitte)\b/i)[0] ?? "";
+  t = t.replace(/\s+(?:zu[mr]?|wegen|für|bei|mit|über|von|vom|gegen|bzgl\.?|bezüglich)$/i, "").replace(/[?!.,;:–-]+$/, "").trim();
+  if (t.length < 3 || t.length > 48 || ALLGEMEIN.test(t) || /\b(ich|mein\w*|wir|unser\w*)\b/i.test(t)) return "";
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+const WEIBLICH = new Set([...VORNAMEN_W, "Maria", "Elisabeth", "Renate", "Helga", "Karin", "Brigitte", "Ingrid", "Erika", "Andrea", "Gisela", "Susanne", "Christine", "Christina", "Barbara", "Gabriele", "Heike", "Sandra", "Stefanie", "Julia", "Lisa", "Lena", "Hannah", "Sophie", "Emma", "Mia", "Jana", "Katrin", "Nicole", "Martina", "Ingeborg", "Hildegard", "Gertrud", "Ilse", "Christa", "Ute", "Doris", "Angelika", "Silke", "Anja", "Tanja", "Daniela", "Simone", "Kerstin", "Bettina", "Jutta", "Marion", "Elke", "Waltraud", "Irmgard", "Ayşe", "Zeynep", "Agnieszka", "Olga"].map((n) => n.toLowerCase()));
+const MAENNLICH = new Set([...VORNAMEN_M, "Peter", "Wolfgang", "Hans", "Jürgen", "Dieter", "Uwe", "Werner", "Manfred", "Horst", "Günter", "Gerhard", "Frank", "Bernd", "Ralf", "Jörg", "Holger", "Martin", "Alexander", "Maximilian", "Paul", "Felix", "Jonas", "Leon", "Lars", "Sven", "Torsten", "Thorsten", "Heinz", "Helmut", "Karl", "Kurt", "Walter", "Josef", "Joachim", "Detlef", "Volker", "Norbert", "Hartmut", "Georg", "Robert", "Patrick", "Philipp", "David", "Simon", "Benjamin", "Mustafa", "Ahmet", "Hasan", "Tomasz", "Krzysztof"].map((n) => n.toLowerCase()));
+
+/** Anrede für die Briefe vorschlagen – aus „Frau/Herr <Nachname>“ im Text oder aus dem Vornamen. Unklar → leer. */
+export function anredeVorschlag(vorname: string, nachname: string, text = ""): KontaktEntwurf["anrede"] {
+  if (nachname) {
+    const m = new RegExp(`\\b(Frau|Herr)\\s+(?:Dr\\.\\s+)?${regexEscape(nachname)}\\b`).exec(text);
+    if (m) return m[1] as "Frau" | "Herr";
+  }
+  const erster = vorname.trim().split(/[\s-]+/)[0]?.toLowerCase() ?? "";
+  if (WEIBLICH.has(erster)) return "Frau";
+  if (MAENNLICH.has(erster)) return "Herr";
+  return "";
+}
+
 function kurzName(k: { typ: Kontakt["typ"]; name: string; nachname?: string }): string {
   return k.typ === "person" ? k.nachname || k.name : k.name;
 }
@@ -88,11 +115,14 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
   const [mandantId, setMandantId] = useState<string | undefined>();
   const [entwurf, setEntwurf] = useState<KontaktEntwurf>(leererEntwurf());
   const standardBearbeiter = anwaelte.some((a) => a.id === user.id) ? user.id : anwaelte[0]?.id ?? user.id;
-  const [sache, setSache] = useState<Sache>({ titel: "", titelManuell: false, sachgebiet: "Arbeitsrecht", gegner: "", wert: "", beschreibung: "", prioritaet: "normal", bearbeiterId: standardBearbeiter });
+  const [sache, setSache] = useState<Sache>({ titel: "", titelManuell: false, thema: "", sachgebiet: "Arbeitsrecht", gegner: "", wert: "", beschreibung: "", prioritaet: "normal", bearbeiterId: standardBearbeiter });
   const [rsv, setRsv] = useState<Rsv>({ aktiv: false, versicherung: "", nummer: "", schadennummer: "", selbstbeteiligung: "" });
   const [portal, setPortal] = useState(true);
   const [erfolg, setErfolg] = useState<{ akte: Akte; schritte: { text: string; sub?: string }[]; minuten: number } | null>(null);
   const [quelle, setQuelle] = useState<Nachricht | undefined>();
+  // Anfrage ist schon einer Akte zugeordnet (z. B. nach Browser-Zurück) → keine zweite Akte aus derselben Nachricht
+  const [bereits, setBereits] = useState<{ nachricht: Nachricht; akte?: Akte } | undefined>();
+  const [zeigeFehler, setZeigeFehler] = useState(false);
 
   // Beim Öffnen frisch beginnen
   useEffect(() => {
@@ -101,15 +131,21 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
     setModus("bestehend");
     setMandantId(undefined);
     setEntwurf(leererEntwurf());
-    setSache({ titel: "", titelManuell: false, sachgebiet: (tenant.schwerpunkte[0] as Sachgebiet) ?? "Arbeitsrecht", gegner: "", wert: "", beschreibung: "", prioritaet: "normal", bearbeiterId: standardBearbeiter });
+    setSache({ titel: "", titelManuell: false, thema: "", sachgebiet: (tenant.schwerpunkte[0] as Sachgebiet) ?? "Arbeitsrecht", gegner: "", wert: "", beschreibung: "", prioritaet: "normal", bearbeiterId: standardBearbeiter });
     setRsv({ aktiv: false, versicherung: "", nummer: "", schadennummer: "", selbstbeteiligung: "" });
     setPortal(true);
     setErfolg(null);
     setQuelle(undefined);
+    setBereits(undefined);
+    setZeigeFehler(false);
 
     // Aus dem Posteingang: /akten?neu=1&nachricht=<id> – Anfrage übernehmen
     const st = useData.getState().data;
     const n = nachrichtId ? st.nachrichten.find((x) => x.id === nachrichtId) : undefined;
+    if (n?.akteId) {
+      setBereits({ nachricht: n, akte: st.akten.find((a) => a.id === n.akteId) });
+      return;
+    }
     if (n) {
       setQuelle(n);
       const adresse = n.vonAdresse?.trim().toLowerCase();
@@ -119,18 +155,21 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
       } else {
         const org = istOrganisationsName(n.von);
         const teile = n.von.trim().split(/\s+/);
+        const vorname = org ? "" : teile.slice(0, -1).join(" ");
+        const nachname = org ? "" : teile[teile.length - 1] ?? "";
         setModus("neu");
         setEntwurf({
           ...leererEntwurf(org ? "organisation" : "person"),
-          vorname: org ? "" : teile.slice(0, -1).join(" "),
-          nachname: org ? "" : teile[teile.length - 1] ?? "",
+          anrede: org ? "" : anredeVorschlag(vorname, nachname, `${n.text}\n${n.ki?.zusammenfassung ?? ""}`),
+          vorname,
+          nachname,
           firma: org ? n.von.trim() : "",
           email: n.vonAdresse ?? "",
         });
       }
       const text = `${n.betreff}\n${n.text}\n${n.ki?.zusammenfassung ?? ""}`;
-      const titelVorschlag = titelAusBetreff(n.betreff);
-      setSache((s) => ({ ...s, titel: titelVorschlag, titelManuell: !!titelVorschlag, beschreibung: n.text.trim(), sachgebiet: sachgebietAusText(text) ?? s.sachgebiet }));
+      // Titel nicht wörtlich aus dem Betreff (oft Ich-Form), sondern „Mandant ./. Gegner – Thema“ automatisch bilden
+      setSache((s) => ({ ...s, titel: "", titelManuell: false, thema: themaAusBetreff(n.betreff), beschreibung: n.text.trim(), sachgebiet: sachgebietAusText(text) ?? s.sachgebiet }));
       const versicherer = [...new Set([...VERSICHERUNGEN, ...st.kontakte.filter((k) => k.rollen.includes("versicherung")).map((k) => k.name)])];
       const treffer = versicherer.find((v) => new RegExp(`\\b${regexEscape(v.split(/\s+/)[0])}`, "i").test(text));
       if (treffer || /rechtsschutz/i.test(text)) setRsv((r) => ({ ...r, aktiv: true, versicherung: treffer ?? "" }));
@@ -141,7 +180,12 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
   const mandant = modus === "bestehend" ? kontakte.find((k) => k.id === mandantId) : undefined;
   const mandantName = modus === "bestehend" ? mandant?.name ?? "" : entwurfName(entwurf);
   const mandantKurz = modus === "bestehend" ? (mandant ? kurzName(mandant) : "") : entwurf.typ === "person" ? entwurf.nachname.trim() : entwurf.firma.trim();
-  const titelVorschlag = mandantKurz ? (sache.gegner.trim() ? `${mandantKurz} ./. ${sache.gegner.trim()}` : `${mandantKurz} – ${sache.sachgebiet}`) : "";
+  const thema = sache.thema.trim();
+  const titelVorschlag = mandantKurz
+    ? sache.gegner.trim()
+      ? `${mandantKurz} ./. ${sache.gegner.trim()}${thema ? ` – ${thema}` : ""}`
+      : `${mandantKurz} – ${thema || sache.sachgebiet}`
+    : "";
   const titel = sache.titelManuell ? sache.titel : titelVorschlag;
   const wert = sache.wert.trim() ? parseEuro(sache.wert) : 0;
   const az = useMemo(() => naechstesAktenzeichen(akten), [akten]);
@@ -158,21 +202,71 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
 
   const versicherungen = useMemo(() => [...new Set([...VERSICHERUNGEN, ...kontakte.filter((k) => k.rollen.includes("versicherung")).map((k) => k.name)])], [kontakte]);
 
-  const gueltig = [
-    modus === "bestehend" ? !!mandant : entwurfGueltig(entwurf) && !emailUngueltig(entwurf.email),
-    !!titel.trim() && !!sache.bearbeiterId && !Number.isNaN(wert) && wert >= 0,
-    !rsv.aktiv || (!!rsv.versicherung.trim() && !!rsv.nummer.trim()),
-    true,
+  // Was fehlt noch? – erklärt, statt den Knopf kommentarlos zu sperren
+  const fehler: (string | undefined)[] = [
+    modus === "bestehend"
+      ? !mandant
+        ? "Bitte einen bestehenden Kontakt auswählen – oder oben „Neuer Mandant“ wählen."
+        : undefined
+      : !entwurfGueltig(entwurf)
+        ? entwurf.typ === "person"
+          ? "Bitte den Nachnamen des Mandanten eintragen."
+          : "Bitte den Firmennamen eintragen."
+        : emailUngueltig(entwurf.email)
+          ? "Die E-Mail-Adresse ist ungültig – bitte korrigieren oder das Feld leeren."
+          : undefined,
+    !titel.trim()
+      ? "Bitte einen Titel für die Akte eintragen."
+      : !sache.bearbeiterId
+        ? "Bitte die Bearbeitung (Rechtsanwalt) wählen."
+        : Number.isNaN(wert) || wert < 0
+          ? "Bitte einen gültigen Gegenstandswert eintragen, z. B. 10.200 – oder das Feld leeren."
+          : undefined,
+    rsv.aktiv && !rsv.versicherung.trim() ? "Bitte die Rechtsschutzversicherung eintragen – oder den Schalter ausschalten, wenn keine besteht." : undefined,
+    undefined,
   ];
+  const gueltig = fehler.map((f) => !f);
+
+  // Fehlermeldung sichtbar machen – auf dem Smartphone liegt sie sonst unterhalb des sichtbaren Bereichs
+  useEffect(() => {
+    if (!zeigeFehler) return;
+    const t = window.setTimeout(() => document.getElementById("ma-fehler")?.scrollIntoView({ block: "nearest", behavior: "smooth" }), 60);
+    return () => window.clearTimeout(t);
+  }, [zeigeFehler, schritt]);
 
   const gehe = (n: number) => {
     setRichtung(n > schritt ? 1 : -1);
     setSchritt(n);
+    setZeigeFehler(false);
+  };
+
+  const weiter = () => {
+    if (!gueltig[schritt]) {
+      setZeigeFehler(true);
+      return;
+    }
+    gehe(schritt + 1);
+  };
+
+  const anlegen = () => {
+    const erster = gueltig.findIndex((g) => !g);
+    if (erster >= 0) {
+      gehe(erster);
+      setZeigeFehler(true);
+      return;
+    }
+    erstelle();
   };
 
   const erstelle = () => {
     const st = useData.getState();
     const data = st.data;
+    // Schutz vor Doppelanlage: Anfrage inzwischen schon einer Akte zugeordnet?
+    const aktuell = quelle ? data.nachrichten.find((x) => x.id === quelle.id) : undefined;
+    if (aktuell?.akteId) {
+      setBereits({ nachricht: aktuell, akte: data.akten.find((a) => a.id === aktuell.akteId) });
+      return;
+    }
     const jetzt = nowLocal();
     const heute = today();
     const aktenzeichen = naechstesAktenzeichen(data.akten);
@@ -271,7 +365,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
       paket.push(
         dok({
           name: `Deckungsanfrage ${akte.rsv.versicherung}`, art: "schriftsatz", ordner: "Korrespondenz", format: "docx",
-          inhalt: `${akte.rsv.versicherung}\nSchadenabteilung\n\n${ort}, ${fmtDate(heute)}\n\nVersicherungsnehmer: ${m.name}\nVersicherungsnummer: ${akte.rsv.versicherungsnummer}${akte.rsv.schadennummer ? `\nSchadennummer: ${akte.rsv.schadennummer}` : ""}\nUnser Zeichen: ${aktenzeichen}\n\nDeckungsanfrage – ${akte.titel}\n\nSehr geehrte Damen und Herren,\n\nwir zeigen an, dass uns Ihr Versicherungsnehmer mit der Wahrnehmung seiner rechtlichen Interessen beauftragt hat, und bitten um Erteilung der Deckungszusage für die außergerichtliche und gegebenenfalls gerichtliche Tätigkeit (${akte.sachgebiet}).\n\nSachverhalt:\n${akte.beschreibung || "Die ausführliche Sachverhaltsschilderung reichen wir kurzfristig nach."}${gName ? `\n\nGegner: ${gName}` : ""}\nGegenstandswert (vorläufig): ${fmtEUR(akte.gegenstandswert)}\n\nFür eine kurzfristige Bestätigung wären wir dankbar.\n\n${gruss}`,
+          inhalt: `${akte.rsv.versicherung}\nSchadenabteilung\n\n${ort}, ${fmtDate(heute)}\n\nVersicherungsnehmer: ${m.name}\nVersicherungsnummer: ${akte.rsv.versicherungsnummer || "wird nachgereicht"}${akte.rsv.schadennummer ? `\nSchadennummer: ${akte.rsv.schadennummer}` : ""}\nUnser Zeichen: ${aktenzeichen}\n\nDeckungsanfrage – ${akte.titel}\n\nSehr geehrte Damen und Herren,\n\nwir zeigen an, dass uns Ihr Versicherungsnehmer mit der Wahrnehmung seiner rechtlichen Interessen beauftragt hat, und bitten um Erteilung der Deckungszusage für die außergerichtliche und gegebenenfalls gerichtliche Tätigkeit (${akte.sachgebiet}).\n\nSachverhalt:\n${akte.beschreibung || "Die ausführliche Sachverhaltsschilderung reichen wir kurzfristig nach."}${gName ? `\n\nGegner: ${gName}` : ""}\nGegenstandswert (vorläufig): ${fmtEUR(akte.gegenstandswert)}\n\nFür eine kurzfristige Bestätigung wären wir dankbar.\n\n${gruss}`,
         }),
       );
       wiedervorlage = werktagIn(7, tenant.bundesland);
@@ -340,6 +434,20 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
     <Button variant="primary" onClick={() => onErstellt(erfolg.akte.id)} iconRight={<ArrowRight className="size-4" />}>
       Akte öffnen
     </Button>
+  ) : bereits ? (
+    <>
+      <Button variant="ghost" onClick={onClose} className="mr-auto">
+        Schließen
+      </Button>
+      <Button variant="secondary" onClick={() => setBereits(undefined)}>
+        Andere neue Akte anlegen
+      </Button>
+      {bereits.akte && (
+        <Button variant="primary" iconRight={<ArrowRight className="size-4" />} onClick={() => onErstellt(bereits.akte!.id)}>
+          Akte öffnen
+        </Button>
+      )}
+    </>
   ) : (
     <>
       <Button variant="ghost" onClick={onClose} className="mr-auto">
@@ -351,11 +459,11 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
         </Button>
       )}
       {schritt < 3 ? (
-        <Button variant="primary" disabled={!gueltig[schritt]} iconRight={<ArrowRight className="size-4" />} onClick={() => gehe(schritt + 1)}>
+        <Button variant="primary" iconRight={<ArrowRight className="size-4" />} onClick={weiter} aria-describedby={zeigeFehler && fehler[schritt] ? "ma-fehler" : undefined}>
           {schritt === 2 && !rsv.aktiv ? "Ohne Rechtsschutz weiter" : "Weiter"}
         </Button>
       ) : (
-        <Button variant="primary" icon={<FolderPlus className="size-4" />} onClick={erstelle} disabled={!gueltig.slice(0, 3).every(Boolean)}>
+        <Button variant="primary" icon={<FolderPlus className="size-4" />} onClick={anlegen}>
           Akte anlegen
         </Button>
       )}
@@ -374,6 +482,8 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
     >
       {erfolg ? (
         <ErfolgsAnsicht erfolg={erfolg} />
+      ) : bereits ? (
+        <BereitsZugeordnet nachricht={bereits.nachricht} akte={bereits.akte} onOeffnen={onClose} />
       ) : (
         <>
           {quelle && (
@@ -410,7 +520,10 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                     {modus === "bestehend" ? (
                       <KontaktAuswahl id="ma-mandant" value={mandantId} onSelect={(k) => setMandantId(k.id)} bevorzugt={["mandant"]} hoehe={260} />
                     ) : (
-                      <KontaktFelder idPrefix="ma-neu" value={entwurf} onChange={setEntwurf} />
+                      <>
+                        <KontaktFelder idPrefix="ma-neu" value={entwurf} onChange={setEntwurf} />
+                        <PflichtHinweis />
+                      </>
                     )}
                     <KonfliktHinweis
                       treffer={mandantKonflikt.map((x) => `${x.akte.aktenzeichen} ${x.akte.titel}`)}
@@ -438,7 +551,11 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                         </datalist>
                       </Field>
                     </div>
-                    <Field label="Titel der Akte" htmlFor="ma-titel" hint={!sache.titelManuell && titelVorschlag ? "Automatisch aus Mandant und Gegner – Sie können ihn anpassen." : undefined}>
+                    <Field
+                      label="Titel der Akte *"
+                      htmlFor="ma-titel"
+                      hint={!sache.titelManuell && titelVorschlag ? (thema ? "Automatisch aus Mandant, Gegner und Betreff der Anfrage – Sie können ihn anpassen." : "Automatisch aus Mandant und Gegner – Sie können ihn anpassen.") : undefined}
+                    >
                       <Input id="ma-titel" value={titel} onChange={(e) => setSache({ ...sache, titel: e.target.value, titelManuell: true })} placeholder="z. B. Weber ./. Kröger Logistik GmbH" />
                     </Field>
                     <KonfliktHinweis treffer={gegnerKonflikt.map((x) => `${x.akte.aktenzeichen} ${x.akte.titel}`)} text={`${sache.gegner.trim()} ist Mandant in:`} />
@@ -449,7 +566,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                           <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[13px] text-fg-4">€</span>
                         </div>
                       </Field>
-                      <Field label="Bearbeitung (Rechtsanwalt)" htmlFor="ma-ra">
+                      <Field label="Bearbeitung (Rechtsanwalt) *" htmlFor="ma-ra">
                         <Select id="ma-ra" value={sache.bearbeiterId} onChange={(e) => setSache({ ...sache, bearbeiterId: e.target.value })}>
                           {anwaelte.map((u) => (
                             <option key={u.id} value={u.id}>
@@ -474,6 +591,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                         ]}
                       />
                     </div>
+                    <PflichtHinweis />
                   </div>
                 )}
 
@@ -501,7 +619,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                                 ))}
                               </datalist>
                             </Field>
-                            <Field label="Versicherungsnummer *" htmlFor="ma-vnr">
+                            <Field label="Versicherungsnummer" htmlFor="ma-vnr" hint="Optional – wird nachgereicht, falls noch nicht bekannt. Die Deckungsanfrage nennt dann den Versicherungsnehmer.">
                               <Input id="ma-vnr" value={rsv.nummer} onChange={(e) => setRsv({ ...rsv, nummer: e.target.value })} placeholder="z. B. RS-4471209" className="mono" autoComplete="off" />
                             </Field>
                             <Field label="Schadennummer" htmlFor="ma-snr" hint="Falls schon vergeben.">
@@ -513,6 +631,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                                 <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[13px] text-fg-4">€</span>
                               </div>
                             </Field>
+                            <PflichtHinweis className="sm:col-span-2" />
                           </div>
                         </motion.div>
                       )}
@@ -543,7 +662,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                           <span className="num">{fmtEUR(Number.isNaN(wert) ? 0 : wert)}</span>
                         </Zeile>
                         <Zeile label="Bearbeitung">{bearbeiter?.name ?? "–"}</Zeile>
-                        <Zeile label="Rechtsschutz">{rsv.aktiv ? `${rsv.versicherung} · ${rsv.nummer}` : "Keiner"}</Zeile>
+                        <Zeile label="Rechtsschutz">{rsv.aktiv ? `${rsv.versicherung} · ${rsv.nummer.trim() || "Nr. wird nachgereicht"}` : "Keiner"}</Zeile>
                         <Zeile label="Phase">Mandatsaufnahme</Zeile>
                       </dl>
                     </div>
@@ -572,9 +691,64 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
               </motion.div>
             </AnimatePresence>
           </div>
+          <AnimatePresence initial={false}>
+            {zeigeFehler && fehler[schritt] && (
+              <motion.div
+                key={`fehler-${schritt}`}
+                id="ma-fehler"
+                role="alert"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 6 }}
+                transition={{ type: "spring", stiffness: 460, damping: 36 }}
+                className="mt-3 flex items-start gap-2.5 rounded-[14px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal"
+              >
+                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                <span className="min-w-0 flex-1 font-medium">{fehler[schritt]}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </>
       )}
     </Modal>
+  );
+}
+
+function PflichtHinweis({ className }: { className?: string }) {
+  return <p className={cn("px-1 text-[12px] text-fg-4", className)}>* Pflichtfeld</p>;
+}
+
+function BereitsZugeordnet({ nachricht, akte, onOeffnen }: { nachricht: Nachricht; akte?: Akte; onOeffnen: () => void }) {
+  return (
+    <div className="grid grid-cols-1 gap-4 py-2">
+      <div className="flex items-start gap-3 rounded-[18px] bg-amber-soft p-4 text-[13.5px]" role="status">
+        <Info className="mt-0.5 size-5 shrink-0 text-amber" />
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold text-fg">Diese Anfrage ist bereits einer Akte zugeordnet</div>
+          <p className="mt-1 text-fg-2">
+            „{nachricht.betreff}“ von {nachricht.von} wurde schon übernommen. Damit keine doppelte Akte entsteht, legt AnwaltApex aus derselben Nachricht keine zweite an.
+          </p>
+        </div>
+      </div>
+      {akte ? (
+        <Link
+          to={`/akten/${akte.id}`}
+          onClick={onOeffnen}
+          className="group flex min-w-0 items-center gap-3 rounded-[18px] bg-[var(--surface)] p-4 shadow-[0_0_0_1px_var(--line)] transition-colors hover:bg-ink-softer"
+        >
+          <span className="grid size-10 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">
+            <FolderOpen className="size-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="mono block text-[12.5px] font-semibold text-ink">{akte.aktenzeichen}</span>
+            <span className="block truncate text-[14px] font-semibold">{akte.titel}</span>
+          </span>
+          <ArrowRight className="size-4 shrink-0 text-fg-4 transition-transform group-hover:translate-x-0.5 group-hover:text-ink" />
+        </Link>
+      ) : (
+        <p className="px-1 text-[13px] text-fg-3">Die zugeordnete Akte ist nicht mehr vorhanden.</p>
+      )}
+    </div>
   );
 }
 

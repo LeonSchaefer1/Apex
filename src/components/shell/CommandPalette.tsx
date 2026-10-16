@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { Command } from "cmdk";
 import { AnimatePresence, motion } from "motion/react";
-import { FolderOpen, FileText, User, CalendarClock, Inbox, Library, Sparkles, Plus, Calculator, CornerDownLeft, Zap } from "lucide-react";
+import { FolderOpen, FileText, User, CalendarClock, Inbox, Library, Sparkles, Plus, Calculator, CornerDownLeft, Zap, Landmark, Receipt, Scale, Timer, UsersRound, Palette, X } from "lucide-react";
 import { useUI } from "@/store/ui";
 import { useData } from "@/store/data";
 import { NAV } from "@/app/nav";
@@ -10,6 +10,41 @@ import { search, snippet } from "@/core/search";
 import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
 import { fmtDate } from "@/core/dates";
 import { Highlight } from "@/components/Highlight";
+
+/** Sprungziel der Suche: Schnellaktion, Bereich (Navigation) oder Unterbereich (Reiter). */
+interface Ziel {
+  to: string;
+  label: string;
+  sub: string;
+  icon: ReactNode;
+  /** zusätzliche Suchbegriffe (Synonyme) */
+  stichworte?: string;
+}
+
+const SCHNELLAKTIONEN: Ziel[] = [
+  { to: "/akten?neu=1", label: "Neue Akte anlegen", sub: "Mandatsaufnahme mit automatischer Vollmacht & Deckungsanfrage", icon: <Plus />, stichworte: "Mandat Mandatsaufnahme" },
+  { to: "/fristen?rechner=1", label: "Frist berechnen", sub: "Fristenrechner nach § 222 ZPO mit Feiertagen Ihres Bundeslands", icon: <Calculator />, stichworte: "Fristenrechner Rechner" },
+  { to: "/abrechnung?tab=rvg", label: "RVG-Gebühren berechnen", sub: "Gebührentabelle 2025 inkl. Anrechnung und Auslagen", icon: <Calculator />, stichworte: "RVG-Rechner Gebührenrechner" },
+  { to: "/ki", label: "KI-Fallanalyse starten", sub: "Akte wählen – Erfolgsaussicht, Präzedenzfälle, nächste Schritte", icon: <Sparkles /> },
+  { to: "/automatisierung", label: "38h-Motor öffnen", sub: "Was heute automatisch erledigt wurde", icon: <Zap /> },
+];
+
+/** Reiter, die nur bei passender Suche erscheinen („Bankabgleich", „Team" …). */
+const UNTERBEREICHE: Ziel[] = [
+  { to: "/abrechnung?tab=rechnungen", label: "Rechnungen", sub: "Abrechnung · alle Rechnungen mit Zahlungsstatus", icon: <Receipt /> },
+  { to: "/abrechnung?tab=bank", label: "Bankabgleich", sub: "Abrechnung · Kontoumsätze automatisch zuordnen", icon: <Landmark />, stichworte: "Bank Kontoumsätze Zahlungen" },
+  { to: "/abrechnung?tab=forderung", label: "Forderungskonto", sub: "Abrechnung · Hauptforderung, Zinsen und Kosten", icon: <Scale />, stichworte: "Verzugszinsen Zinsen" },
+  { to: "/abrechnung?tab=zeit", label: "Zeiterfassung", sub: "Abrechnung · Stoppuhr und Zeiteinträge", icon: <Timer />, stichworte: "Zeiten Stoppuhr" },
+  { to: "/einstellungen?tab=team", label: "Team & Zugänge", sub: "Einstellungen · Personen einladen und verwalten", icon: <UsersRound />, stichworte: "Benutzer Nutzer Mitarbeiter" },
+  { to: "/einstellungen?tab=darstellung", label: "Darstellung", sub: "Einstellungen · Hell, Dunkel und Dichte", icon: <Palette />, stichworte: "Dunkelmodus Hellmodus Theme" },
+];
+
+const BEREICHE: Ziel[] = NAV.map((n) => {
+  const Icon = n.icon;
+  return { to: n.to, label: n.label, sub: n.beschreibung, icon: <Icon />, stichworte: n.kurz };
+});
+
+const ZIELE: Ziel[] = [...BEREICHE, ...SCHNELLAKTIONEN, ...UNTERBEREICHE];
 
 /** Globale Suche (⌘K / Strg+K): Volltext über Akten, Dokumente (OCR), Kontakte, Fristen, Posteingang und Rechtsprechung – lokal, ohne Wartezeit. */
 export function CommandPalette() {
@@ -28,6 +63,19 @@ export function CommandPalette() {
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, [setPalette]);
+
+  // Escape schließt die Suche – vor allen anderen Ebenen (Assistent, Dialoge darunter bleiben offen).
+  useEffect(() => {
+    if (!paletteOffen) return;
+    const h = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      setPalette(false);
+    };
+    window.addEventListener("keydown", h, true);
+    return () => window.removeEventListener("keydown", h, true);
+  }, [paletteOffen, setPalette]);
 
   useEffect(() => {
     if (!paletteOffen) setQ("");
@@ -70,14 +118,38 @@ export function CommandPalette() {
       { get: (e) => e.schlagworte.join(" "), weight: 2 },
       { get: (e) => e.leitsatz, weight: 1 },
     ], 4);
-    const total = akten.length + dokumente.length + kontakte.length + fristen.length + nachrichten.length + urteile.length;
-    return { akten, dokumente, kontakte, fristen, nachrichten, urteile, total, ms: performance.now() - t0 };
+    // Bereiche, Schnellaktionen und Reiter („Fristen", „Abrechnung", „38h-Motor", „Bankabgleich" …)
+    const gesehen = new Set<string>();
+    const ziele = search(ZIELE, q, [
+      { get: (z) => z.label, weight: 5 },
+      { get: (z) => z.stichworte, weight: 3 },
+      { get: (z) => z.sub, weight: 1 },
+    ], 10)
+      .filter(({ item }) => {
+        // gleiche Zielseite nur einmal (z. B. „38h-Motor" und „38h-Motor öffnen")
+        if (gesehen.has(item.to)) return false;
+        gesehen.add(item.to);
+        return true;
+      })
+      .slice(0, 5);
+    // Passt der Name eines Bereichs, steht er ganz oben – sonst hinter den Inhalten.
+    const zieleZuerst = ziele.length > 0 && search([ziele[0].item], q, [{ get: (z) => `${z.label} ${z.stichworte ?? ""}`, weight: 1 }]).length > 0;
+    const total = ziele.length + akten.length + dokumente.length + kontakte.length + fristen.length + nachrichten.length + urteile.length;
+    return { ziele, zieleZuerst, akten, dokumente, kontakte, fristen, nachrichten, urteile, total, ms: performance.now() - t0 };
   }, [q, data]);
 
   const go = (path: string) => {
     setPalette(false);
     nav(path);
   };
+
+  const zielGruppe = res && res.ziele.length > 0 && (
+    <Command.Group heading="Bereiche & Aktionen">
+      {res.ziele.map(({ item: z }) => (
+        <Item key={z.to} icon={z.icon} onSelect={() => go(z.to)} title={<Highlight text={z.label} q={q} />} sub={z.sub} />
+      ))}
+    </Command.Group>
+  );
 
   const akteTitel = (id: string) => {
     const a = data.akten.find((x) => x.id === id);
@@ -109,41 +181,30 @@ export function CommandPalette() {
                 />
                 {res && (
                   <span className="num shrink-0 text-[11.5px] text-fg-4">
-                    {res.total} Treffer · {res.ms < 1 ? "<1" : Math.round(res.ms)} ms
+                    {res.total} Treffer<span className="hidden sm:inline"> · {res.ms < 1 ? "<1" : Math.round(res.ms)} ms</span>
                   </span>
                 )}
+                <button type="button" onClick={() => setPalette(false)} className="-mr-2 grid h-8 shrink-0 place-items-center rounded-full px-1.5 text-fg-3 transition-colors hover:bg-ink-softer hover:text-fg" aria-label="Suche schließen" title="Schließen (Esc)">
+                  <span className="kbd hidden sm:inline-flex">Esc</span>
+                  <X className="size-[18px] sm:hidden" />
+                </button>
               </div>
               <Command.List className="min-h-0 flex-1 overflow-y-auto p-2 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pb-1.5 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.08em] [&_[cmdk-group-heading]]:text-fg-3">
-                <Command.Empty className="px-4 py-8 text-center text-[13px] text-fg-3">Keine Treffer. Fragen Sie den Apex Assistenten.</Command.Empty>
-                {q.trim().length >= 2 && (
-                  <Command.Group heading="Apex Assistent">
-                    <Item
-                      icon={<Sparkles className="text-violet" />}
-                      onSelect={() => {
-                        setPalette(false);
-                        oeffneAssistent(q);
-                      }}
-                      title={<>„{q}“ den Assistenten fragen</>}
-                      sub="Antwortet, sucht und erledigt Aufgaben – per Text oder Sprache"
-                    />
-                  </Command.Group>
-                )}
                 {!res && (
                   <>
                     <Command.Group heading="Schnellaktionen">
-                      <Item icon={<Plus />} onSelect={() => go("/akten?neu=1")} title="Neue Akte anlegen" sub="Mandatsaufnahme mit automatischer Vollmacht & Deckungsanfrage" />
-                      <Item icon={<Calculator />} onSelect={() => go("/fristen?rechner=1")} title="Frist berechnen" sub="Fristenrechner nach § 222 ZPO mit Feiertagen Ihres Bundeslands" />
-                      <Item icon={<Calculator />} onSelect={() => go("/abrechnung?tab=rvg")} title="RVG-Gebühren berechnen" sub="Gebührentabelle 2025 inkl. Anrechnung und Auslagen" />
-                      <Item icon={<Sparkles />} onSelect={() => go("/ki")} title="KI-Fallanalyse starten" sub="Akte wählen – Erfolgsaussicht, Präzedenzfälle, nächste Schritte" />
-                      <Item icon={<Zap />} onSelect={() => go("/automatisierung")} title="38h-Motor öffnen" sub="Was heute automatisch erledigt wurde" />
+                      {SCHNELLAKTIONEN.map((z) => (
+                        <Item key={z.to} icon={z.icon} onSelect={() => go(z.to)} title={z.label} sub={z.sub} />
+                      ))}
                     </Command.Group>
                     <Command.Group heading="Bereiche">
-                      {NAV.map((n) => (
-                        <Item key={n.to} icon={<n.icon />} onSelect={() => go(n.to)} title={n.label} sub={n.beschreibung} />
+                      {BEREICHE.map((z) => (
+                        <Item key={z.to} icon={z.icon} onSelect={() => go(z.to)} title={z.label} sub={z.sub} />
                       ))}
                     </Command.Group>
                   </>
                 )}
+                {res && res.zieleZuerst && zielGruppe}
                 {res && res.akten.length > 0 && (
                   <Command.Group heading="Akten">
                     {res.akten.map(({ item: a }) => (
@@ -184,6 +245,20 @@ export function CommandPalette() {
                     {res.urteile.map(({ item: e }) => (
                       <Item key={e.id} icon={<Library />} onSelect={() => go(`/fall-datenbank?id=${e.id}`)} title={<><span className="mono mr-2 text-fg-3">{e.gericht} {e.az}</span><Highlight text={e.titel} q={q} /></>} sub={e.leitsatz.slice(0, 110) + "…"} />
                     ))}
+                  </Command.Group>
+                )}
+                {res && !res.zieleZuerst && zielGruppe}
+                {res && (
+                  <Command.Group heading="Apex Assistent">
+                    <Item
+                      icon={<Sparkles className="text-violet" />}
+                      onSelect={() => {
+                        setPalette(false);
+                        oeffneAssistent(q);
+                      }}
+                      title={<>„{q}“ den Assistenten fragen</>}
+                      sub={res.total === 0 ? "Keine Treffer im lokalen Index – der Assistent hilft weiter" : "Antwortet, sucht und erledigt Aufgaben – per Text oder Sprache"}
+                    />
                   </Command.Group>
                 )}
               </Command.List>

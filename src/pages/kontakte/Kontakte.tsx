@@ -8,7 +8,7 @@ import { useCol } from "@/store/data";
 import { Button, Chip, Empty, PageHeader, SearchField, Segmented } from "@/components/ui";
 import { Highlight } from "@/components/Highlight";
 import { cn } from "@/lib/cn";
-import { KontaktAvatar, ROLLE_LABEL, ROLLE_TONE, useInteressenkonflikte } from "./kontaktHelfer";
+import { KontaktAvatar, ROLLE_LABEL, ROLLE_TONE, istTelefonSuche, telefonPasst, useInteressenkonflikte } from "./kontaktHelfer";
 import { KontaktDrawer } from "./KontaktDrawer";
 import { NeuerKontakt } from "./NeuerKontakt";
 
@@ -71,13 +71,18 @@ export default function Kontakte() {
     let l = kontakte.filter((k) => passt(k, rolle));
     if (nurKonflikte) l = l.filter((k) => konflikte.has(k.id));
     if (q.trim()) {
-      return search(l, q, [
+      const treffer = search(l, q, [
         { get: (k) => k.name, weight: 4 },
         { get: (k) => k.firma, weight: 2 },
         { get: (k) => k.email, weight: 2 },
         { get: (k) => [k.strasse, k.plz, k.ort].filter(Boolean).join(" "), weight: 1 },
         { get: (k) => k.telefon?.replace(/\s/g, ""), weight: 1 },
       ], 500).map((h) => h.item);
+      if (!istTelefonSuche(q)) return treffer;
+      // Telefonnummern im angezeigten Format („030 1234 …“, „+49 30 …“) ziffernweise vergleichen
+      const tel = l.filter((k) => telefonPasst(k.telefon, q));
+      const schon = new Set(tel.map((k) => k.id));
+      return [...tel, ...treffer.filter((k) => !schon.has(k.id))];
     }
     return [...l].sort((a, b) => sortName(a).localeCompare(sortName(b), "de"));
   }, [kontakte, rolle, q, nurKonflikte, konflikte]);
@@ -244,7 +249,7 @@ function KontaktKarte({ k, q, akten, konflikt, aktiv, onClick }: { k: Kontakt; q
         </span>
         <span className="flex min-w-0 items-center gap-2">
           <Phone className="size-3.5 shrink-0 text-fg-4" />
-          <span className={cn("num truncate", !k.telefon && "text-fg-4")}>{k.telefon ?? "kein Telefon"}</span>
+          <span className={cn("num truncate", !k.telefon && "text-fg-4", istTelefonSuche(q) && telefonPasst(k.telefon, q) && "rounded-[6px] bg-ink-soft px-1 font-medium text-ink")}>{k.telefon ?? "kein Telefon"}</span>
         </span>
       </div>
       <div className="flex-1" />

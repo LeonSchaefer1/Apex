@@ -36,29 +36,31 @@ export function Menu({ trigger, items, align = "end", className }: { trigger: (p
             exit={{ opacity: 0, scale: 0.95, y: -4 }}
             transition={{ type: "spring", stiffness: 520, damping: 34 }}
             style={{ transformOrigin: align === "end" ? "top right" : "top left" }}
-            className={cn("glass-strong absolute z-50 mt-2 min-w-[220px] rounded-[18px] p-1.5", align === "end" ? "right-0" : "left-0")}
+            className={cn("glass-strong glass-menu absolute z-50 mt-2 min-w-[220px] rounded-[18px]", align === "end" ? "right-0" : "left-0")}
             role="menu"
           >
-            {items.map((it, i) =>
-              it === "sep" ? (
-                <div key={i} className="my-1 h-px bg-[var(--line)]" />
-              ) : (
-                <button
-                  key={i}
-                  role="menuitem"
-                  type="button"
-                  onClick={() => {
-                    setOpen(false);
-                    it.onClick();
-                  }}
-                  className={cn("flex w-full items-center gap-2.5 rounded-[12px] px-3 py-2 text-left text-[13.5px] transition-colors hover:bg-ink-softer", it.danger ? "text-seal" : "text-fg")}
-                >
-                  {it.icon && <span className="text-fg-3 [&>svg]:size-4">{it.icon}</span>}
-                  <span className="flex-1">{it.label}</span>
-                  {it.hint && <span className="text-[11.5px] text-fg-4">{it.hint}</span>}
-                </button>
-              ),
-            )}
+            <div className="max-h-[min(72dvh,560px)] overflow-y-auto overscroll-contain rounded-[inherit] p-1.5">
+              {items.map((it, i) =>
+                it === "sep" ? (
+                  <div key={i} className="my-1 h-px bg-[var(--line)]" />
+                ) : (
+                  <button
+                    key={i}
+                    role="menuitem"
+                    type="button"
+                    onClick={() => {
+                      setOpen(false);
+                      it.onClick();
+                    }}
+                    className={cn("flex w-full items-center gap-2.5 rounded-[12px] px-3 py-2 text-left text-[13.5px] transition-colors hover:bg-ink-softer", it.danger ? "text-seal" : "text-fg")}
+                  >
+                    {it.icon && <span className="text-fg-3 [&>svg]:size-4">{it.icon}</span>}
+                    <span className="flex-1">{it.label}</span>
+                    {it.hint && <span className="text-[11.5px] text-fg-4">{it.hint}</span>}
+                  </button>
+                ),
+              )}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

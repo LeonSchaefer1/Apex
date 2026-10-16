@@ -5,9 +5,21 @@ import { ArrowRight, Lock, Mail, ShieldCheck, Sparkles, Infinity as InfinityIcon
 import { useSession } from "@/store/session";
 import { useData } from "@/store/data";
 import { getBackend, getInfo, istConsole, type SchnellLogin } from "@/lib/backend";
-import { Avatar, Button, Input } from "@/components/ui";
+import { Avatar, Button, Chip, Input } from "@/components/ui";
+import { CONSOLE_DEMO, DEMO_PASSWORT, DEMO_TENANTS } from "@/core/seed/tenants";
 import { AppIcon, Wordmark } from "@/components/Logo";
 import { cn } from "@/lib/cn";
+
+/** E-Mail-Adressen der fest eingebauten Beispielkanzleien (Passwort öffentlich: Apex-Demo-2026). */
+const BEISPIEL_EMAILS = new Set(DEMO_TENANTS.flatMap((t) => t.users.map((u) => u.email.toLowerCase())));
+const BEISPIEL_STAEDTE = DEMO_TENANTS.map((t) => t.tenant.stadt).join(", ");
+
+type ZugangArt = "console" | "beispiel" | "beispiel-eigenes-pw" | "kundentest";
+function zugangArt(s: SchnellLogin): ZugangArt {
+  if (s.console) return "console";
+  if (!BEISPIEL_EMAILS.has(s.email.toLowerCase())) return "kundentest";
+  return s.passwort === DEMO_PASSWORT ? "beispiel" : "beispiel-eigenes-pw";
+}
 
 /** Anmeldung – jede Kanzlei hat eigene Zugänge und einen streng getrennten Datenbestand. */
 export default function Login() {
@@ -27,6 +39,9 @@ export default function Login() {
   }, [info?.schnellLogin]);
 
   if (status === "angemeldet" && sitzung) return <Navigate to={istConsole(sitzung) ? "/console" : "/cockpit"} replace />;
+
+  const arten = new Set(schnell.map(zugangArt));
+  const mitEigenen = arten.has("kundentest") || arten.has("beispiel-eigenes-pw");
 
   const anmelden = async (e?: string, p?: string, key = "form") => {
     setFehler(null);
@@ -139,7 +154,19 @@ export default function Login() {
                     >
                       <Avatar initialen={s.initialen} farbe={s.farbe} size={38} />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13.5px] font-semibold">{s.kanzlei}</span>
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate text-[13.5px] font-semibold">{s.kanzlei}</span>
+                          {zugangArt(s) === "kundentest" && (
+                            <Chip tone="ink" className="!h-[19px] shrink-0 !px-1.5 !text-[10.5px]" title="In der Apex Console angelegter Testzugang – eigenes Passwort">
+                              Kundentest
+                            </Chip>
+                          )}
+                          {zugangArt(s) === "beispiel-eigenes-pw" && (
+                            <Chip tone="amber" className="!h-[19px] shrink-0 !px-1.5 !text-[10.5px]" title="In der Apex Console wurde ein neues Passwort vergeben">
+                              neues Passwort
+                            </Chip>
+                          )}
+                        </span>
                         <span className="block truncate text-[12px] text-fg-3">
                           {s.name} · {s.stadt}
                         </span>
@@ -152,10 +179,22 @@ export default function Login() {
                     </button>
                   ))}
                 </div>
-                <p className="mt-3 text-[11.5px] leading-snug text-fg-4">
-                  Jede Testkanzlei sieht ausschließlich ihre eigenen Daten. Passwort aller Testzugänge: <span className="mono text-fg-3">Apex-Demo-2026</span>
-                  {info?.modus === "demo" && " · Demo-Modus: Ihre Änderungen bleiben in diesem Browser gespeichert."}
-                </p>
+                <div className="mt-3 text-[11.5px] leading-snug text-fg-4">
+                  <p>Ein Klick meldet direkt an. Jede Testkanzlei sieht ausschließlich ihre eigenen Daten.</p>
+                  <p className="mt-1.5 font-medium text-fg-3">Passwörter für die Anmeldung von Hand:</p>
+                  <ul className="mt-1 grid gap-0.5">
+                    <li>
+                      Beispielkanzleien ({BEISPIEL_STAEDTE}): <span className="mono text-fg-3">{DEMO_PASSWORT}</span>
+                    </li>
+                    {arten.has("console") && (
+                      <li>
+                        Apex Console: <span className="mono text-fg-3">{CONSOLE_DEMO.passwort}</span>
+                      </li>
+                    )}
+                    {mitEigenen && <li>Kundentests und neu vergebene Passwörter: das in der Apex Console angezeigte Passwort</li>}
+                  </ul>
+                  {info?.modus === "demo" && <p className="mt-1.5">Demo-Modus: Ihre Änderungen bleiben in diesem Browser gespeichert.</p>}
+                </div>
               </div>
             )}
           </div>

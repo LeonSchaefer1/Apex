@@ -8,12 +8,12 @@ import type {
   Akte, Aktivitaet, Automation, Dokument, Frist, Kontakt, KontaktRolle, Nachricht,
   Rechnung, Sachgebiet, Tenant, TenantData, Transaktion, User, Zeiteintrag,
 } from "../types";
-import { STAEDTE, type StadtKey, VORNAMEN_M, VORNAMEN_W, NACHNAMEN, BRANCHEN, HAUSVERWALTUNGEN, GEGNERANWAELTE, VERSICHERUNGEN, KFZ_VERSICHERER } from "./pools";
+import { stadtDatenFuer, type StadtDaten, type StadtKey, VORNAMEN_M, VORNAMEN_W, NACHNAMEN, BRANCHEN, HAUSVERWALTUNGEN, GEGNERANWAELTE, VERSICHERUNGEN, KFZ_VERSICHERER } from "./pools";
 import { createRng, hashString, type Rng } from "./rng";
 import { vorlagenFuer, type FallVorlage, type Parteien } from "./vorlagen";
 import { heroesBerlin, heroesMuenchen, heroesHamburg } from "./heroes";
 
-export const SEED_VERSION = 4;
+export const SEED_VERSION = 5;
 
 export interface SeedInput {
   tenant: Tenant;
@@ -30,6 +30,8 @@ export interface Ctx {
   anwaelte: User[];
   refas: User[];
   stadt: StadtKey;
+  /** Orts- und Gerichtsdaten passend zur Stadt der Kanzlei */
+  ort: StadtDaten;
   data: TenantData;
   usedAz: Set<number>;
   counters: Record<string, number>;
@@ -53,9 +55,31 @@ function slug(s: string) {
   return s.toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss").replace(/[^a-z0-9]+/g, ".").replace(/^\.|\.$/g, "");
 }
 
+const pad2 = (n: number) => String(n).padStart(2, "0");
+function uhr(sek: number): string {
+  return `${pad2(Math.floor(sek / 3600))}:${pad2(Math.floor(sek / 60) % 60)}:${pad2(sek % 60)}`;
+}
+
+/**
+ * Bildet einen Zeitpunkt von heute auf „nicht in der Zukunft“ ab: Alles ab (jetzt − 45 Min.) wird gleichmäßig in das
+ * Fenster [jetzt − 45 Min., jetzt − 1 Min.] gestaucht. Die Abbildung ist monoton – die Reihenfolge aller Ereignisse
+ * des Tages bleibt unabhängig von der Uhrzeit erhalten – und verbraucht keinen Zufall.
+ */
+export function zeitBisJetzt(sek: number, jetzt: number | undefined): number {
+  if (jetzt === undefined) return sek;
+  const fenster = Math.min(45 * 60, Math.max(0, jetzt - 60));
+  const start = jetzt - 60 - fenster;
+  if (sek <= start) return sek;
+  const anteil = (sek - start) / Math.max(1, 86399 - start);
+  return Math.max(0, Math.min(jetzt - 60, Math.round(start + anteil * fenster)));
+}
+
 export function createCtx(input: SeedInput, today: string): Ctx {
+  // Aktuelle Uhrzeit nur, wenn für heute erzeugt wird (sonst keine Korrektur)
+  const jetzt = typeof Date !== "undefined" ? new Date() : undefined;
+  const sekundenJetzt = jetzt && toLocalISO(jetzt).slice(0, 10) === today ? jetzt.getHours() * 3600 + jetzt.getMinutes() * 60 + jetzt.getSeconds() : undefined;
   const rng = createRng(hashString(input.tenant.id + "|apex"));
-  const s = STAEDTE[input.profil.stadt];
+  const s = stadtDatenFuer(input.tenant.stadt, input.tenant.bundesland, input.profil.stadt);
   const data = emptyData();
   const counters: Record<string, number> = {};
   const gerichte = new Map<string, Kontakt>();
@@ -68,22 +92,16 @@ export function createCtx(input: SeedInput, today: string): Ctx {
     anwaelte: input.users.filter((u) => u.rolle === "partner" || u.rolle === "anwalt"),
     refas: input.users.filter((u) => u.rolle === "refa"),
     stadt: input.profil.stadt,
+    ort: s,
     data,
     usedAz: new Set(),
     counters,
     d: (o) => addDays(today, o),
     dt: (o, hh = rng.int(8, 17), mm = rng.int(0, 59)) => {
-      if (o === 0 && typeof Date !== "undefined") {
-        // Zeitpunkte von heute nie in der Zukunft erzeugen
-        const jetzt = new Date();
-        const jetztMin = jetzt.getHours() * 60 + jetzt.getMinutes();
-        if (today === toLocalISO(jetzt).slice(0, 10) && hh * 60 + mm > jetztMin) {
-          const t = Math.max(0, jetztMin - rng.int(4, 75));
-          hh = Math.floor(t / 60);
-          mm = t % 60;
-        }
-      }
-      return `${addDays(today, o)}T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00`;
+      // Zeitpunkte von heute nie in der Zukunft erzeugen – ohne zusätzlichen Zufallszug, damit der Inhalt
+      // nur von Datum und Kanzlei abhängt (nicht von Uhrzeit oder Zeitzone des ersten Logins).
+      const sek = o === 0 ? zeitBisJetzt(hh * 3600 + mm * 60, sekundenJetzt) : hh * 3600 + mm * 60;
+      return `${addDays(today, o)}T${uhr(sek)}`;
     },
     id: (prefix) => {
       counters[prefix] = (counters[prefix] ?? 0) + 1;
@@ -287,7 +305,7 @@ function gegnerFuer(ctx: Ctx, v: FallVorlage): Kontakt | undefined {
     case "person":
       return ctx.person(["gegner"], { email: rng.chance(0.4) });
     case "behoerde":
-      return ctx.firma(v.sachgebiet === "Verkehrsrecht" ? STAEDTE[ctx.stadt].gerichte.bussgeld : STAEDTE[ctx.stadt].gerichte.sta, ["behoerde"]);
+      return ctx.firma(v.sachgebiet === "Verkehrsrecht" ? ctx.ort.gerichte.bussgeld : ctx.ort.gerichte.sta, ["behoerde"]);
     default:
       return undefined;
   }
@@ -298,7 +316,7 @@ function generischeAkte(ctx: Ctx, sachgebiet: Sachgebiet, azNummer: number) {
   const vorlagen = vorlagenFuer(sachgebiet);
   if (!vorlagen.length) return;
   const v = rng.pick(vorlagen);
-  const stadt = STAEDTE[ctx.stadt];
+  const stadt = ctx.ort;
   const mandantFirma = v.sachgebiet === "Forderungseinzug" || (v.key === "br-werklohn") || (v.key === "vt-pruefung");
   const mandant = mandantFirma
     ? ctx.firma(`${rng.pick(NACHNAMEN)} ${rng.pick(BRANCHEN)}`, ["mandant"])
@@ -548,7 +566,24 @@ function automationenUndAktivitaeten(ctx: Ctx) {
   }));
   data.automationen.push(...autos);
 
-  const offene = data.akten.filter((a) => a.status === "offen");
+  // Präsentationsakten („hero-…“) erzählen eine feste Geschichte – ihr Verlauf kommt aus heroes.ts, nicht vom Zufall.
+  const generisch = data.akten.filter((a) => !a.id.startsWith("hero"));
+  const offeneRechnung = new Set(data.rechnungen.filter((r) => r.status !== "bezahlt").map((r) => r.akteId));
+  const tag = (zeit: string) => zeit.slice(0, 10);
+  /** Passt die Automation fachlich zur Akte – und lag die Akte zu diesem Zeitpunkt schon vor? */
+  const passt = (key: string, a: Akte, zeit: string): boolean => {
+    if (a.createdAt > zeit) return false;
+    const alter = diffDays(tag(a.createdAt), tag(zeit));
+    switch (key) {
+      case "archivierung": return a.status === "abgeschlossen" && !!a.abgeschlossenAm && a.abgeschlossenAm <= tag(zeit);
+      case "kostenfestsetzung": return a.status === "offen" && (a.phase === "Urteil" || a.phase === "Vollstreckung");
+      case "mandatsaufnahme": return a.status === "offen" && alter <= 2;
+      case "deckungsanfrage": return a.status === "offen" && !!a.rsv && alter <= 14;
+      case "eeb": return a.status === "offen" && !!a.gerichtId;
+      case "mahnwesen": return offeneRechnung.has(a.id);
+      default: return a.status === "offen";
+    }
+  };
   const texte: Record<string, (a: Akte) => string> = {
     "posteingang-fristen": (a) => `Frist aus Posteingang erkannt und nach § 222 ZPO berechnet – ${a.aktenzeichen} ${a.titel}`,
     "mandatsaufnahme": (a) => `Mandatsaufnahme-Paket (Vollmacht, Mandatsbestätigung, Datenschutz) erstellt – ${a.aktenzeichen}`,
@@ -559,50 +594,51 @@ function automationenUndAktivitaeten(ctx: Ctx) {
     "bankabgleich": () => `Bankabgleich: ${rng.int(2, 6)} Zahlungen automatisch zugeordnet`,
     "mahnwesen": (a) => `Zahlungserinnerung versendet – ${a.aktenzeichen}`,
     "kostenfestsetzung": (a) => `Kostenfestsetzungsantrag vorbereitet – ${a.aktenzeichen}`,
-    "archivierung": (a) => `Akte archiviert, Aufbewahrungsfrist bis ${Number(ctx.today.slice(0, 4)) + 6} vorgemerkt – ${a.aktenzeichen}`,
+    "archivierung": (a) => `Akte archiviert, Aufbewahrungsfrist bis ${Number((a.abgeschlossenAm ?? ctx.today).slice(0, 4)) + 6} vorgemerkt – ${a.aktenzeichen}`,
     "zeiterfassung": () => `${rng.int(4, 11)} Zeiteinträge aus Telefonaten und E-Mails vorgeschlagen`,
     "zuordnung": (a) => `Nachricht automatisch der Akte ${a.aktenzeichen} zugeordnet`,
   };
-  // Woche: Ziel ≈ 38 Std. gesparte Zeit
-  let wochenMin = 0;
-  const ziel = 2280 + rng.int(-40, 60);
+  const ohneAkte = ["bankabgleich", "zeiterfassung"];
   const gewichte: [string, number][] = [
     ["posteingang-fristen", 10], ["zuordnung", 12], ["vorfristen", 8], ["mandanten-update", 7], ["bankabgleich", 4],
     ["mandatsaufnahme", 3], ["deckungsanfrage", 3], ["eeb", 4], ["mahnwesen", 3], ["zeiterfassung", 5], ["archivierung", 2], ["kostenfestsetzung", 1],
   ];
+  /** Eine Automations-Aktivität zum Zeitpunkt `zeit` – passt keine Akte, wird es ein Lauf ohne Aktenbezug. */
+  const eintrag = (zeit: string, faktor = 1): Aktivitaet => {
+    let key = pickWeighted(rng, gewichte);
+    const kandidaten = ohneAkte.includes(key) ? [] : generisch.filter((a) => passt(key, a, zeit));
+    const a = kandidaten.length ? rng.pick(kandidaten) : undefined;
+    if (!a && !ohneAkte.includes(key)) key = rng.chance(0.5) ? "bankabgleich" : "zeiterfassung";
+    const def = AUTOMATION_DEFS.find((x) => x.key === key)!;
+    return {
+      id: ctx.id("ak"), zeit, akteur: key === "posteingang-fristen" ? "ki" : "automation", automationKey: key,
+      akteId: a?.id, text: texte[key](a as Akte), minutenGespart: def.minutenProLauf * faktor,
+    };
+  };
+
+  // Woche: Ziel ≈ 38 Std. gesparte Zeit (inkl. der festen Einträge der Präsentationsakten)
+  const wochenStart = ctx.d(-6);
+  let wochenMin = data.aktivitaeten.filter((x) => x.zeit >= wochenStart).reduce((sum, x) => sum + (x.minutenGespart ?? 0), 0);
+  const ziel = 2280 + rng.int(-40, 60);
   const acts: Aktivitaet[] = [];
   while (wochenMin < ziel) {
-    const key = pickWeighted(rng, gewichte);
-    const def = AUTOMATION_DEFS.find((x) => x.key === key)!;
-    const a = rng.pick(offene);
-    let off = -rng.int(0, 6);
+    const off = -rng.int(0, 6);
     let hh = rng.int(7, 19);
     if (off === 0) hh = Math.min(hh, 9);
-    acts.push({
-      id: ctx.id("ak"), zeit: ctx.dt(off, hh), akteur: key === "posteingang-fristen" ? "ki" : "automation", automationKey: key,
-      akteId: ["bankabgleich", "zeiterfassung"].includes(key) ? undefined : a.id, text: texte[key](a), minutenGespart: def.minutenProLauf,
-    });
-    wochenMin += def.minutenProLauf;
-    off = 0;
+    const e = eintrag(ctx.dt(off, hh));
+    acts.push(e);
+    wochenMin += e.minutenGespart ?? 0;
   }
   // ältere Einträge (Vorwochen)
-  for (let i = 0; i < 70; i++) {
-    const key = pickWeighted(rng, gewichte);
-    const def = AUTOMATION_DEFS.find((x) => x.key === key)!;
-    const a = rng.pick(offene);
-    acts.push({
-      id: ctx.id("ak"), zeit: ctx.dt(-rng.int(7, 34)), akteur: "automation", automationKey: key,
-      akteId: ["bankabgleich", "zeiterfassung"].includes(key) ? undefined : a.id, text: texte[key](a), minutenGespart: def.minutenProLauf * rng.int(4, 9),
-    });
-  }
+  for (let i = 0; i < 70; i++) acts.push(eintrag(ctx.dt(-rng.int(7, 34)), rng.int(4, 9)));
   // menschliche Aktivitäten
   for (let i = 0; i < 18; i++) {
-    const a = rng.pick(offene);
+    const zeit = ctx.dt(-rng.int(0, 6));
+    const kandidaten = generisch.filter((a) => a.status === "offen" && a.createdAt <= zeit);
+    const a = rng.pick(kandidaten.length ? kandidaten : generisch);
     const u = rng.pick(ctx.users);
-    acts.push({
-      id: ctx.id("ak"), zeit: ctx.dt(-rng.int(0, 6)), akteur: "nutzer", userId: u.id, akteId: a.id,
-      text: rng.pick([`Schriftsatz bearbeitet – ${a.aktenzeichen}`, `Notiz hinzugefügt – ${a.aktenzeichen}`, `Frist als erledigt markiert – ${a.aktenzeichen}`, `Dokument hochgeladen – ${a.aktenzeichen}`]),
-    });
+    const text = rng.pick([`Schriftsatz bearbeitet – ${a.aktenzeichen}`, `Notiz hinzugefügt – ${a.aktenzeichen}`, `Frist als erledigt markiert – ${a.aktenzeichen}`, `Dokument hochgeladen – ${a.aktenzeichen}`]);
+    if (a.createdAt <= zeit) acts.push({ id: ctx.id("ak"), zeit, akteur: "nutzer", userId: u.id, akteId: a.id, text });
   }
   data.aktivitaeten.push(...acts);
 }

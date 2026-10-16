@@ -242,7 +242,7 @@ export function KiKarte({ d, i, className }: { d: CockpitDaten; i: number; class
           </ul>
         )}
         <div className="mt-auto pt-4">
-          <Button variant="ai" className="w-full" icon={<Sparkles className="size-4" />} iconRight={<ArrowRight className="size-4" />} onClick={() => nav(`/ki?akte=${encodeURIComponent(a.id)}`)}>
+          <Button variant="ai" className="w-full" icon={<Sparkles className="size-4" />} iconRight={<ArrowRight className="size-4" />} onClick={() => nav(`/ki?akte=${encodeURIComponent(a.id)}&start=1`)}>
             {analyse ? "Analyse öffnen" : "Fallanalyse starten"}
           </Button>
           <p className="mt-2 text-center text-[11px] text-fg-4">Mit Präzedenzfällen aus der Fall-Datenbank · Sie entscheiden</p>

@@ -53,8 +53,18 @@ function parseDatum(s: string): ISODate | undefined {
   return undefined;
 }
 
-/** Findet die passende Akte über Gerichtsaktenzeichen, eigenes Aktenzeichen oder Parteinamen. */
-export function findeAkte(text: string, data: TenantData, hinweise: string[] = []): { akteId?: string; sicherheit: number; grund?: string } {
+/** E-Mail-Adresse vereinheitlichen („Thomas Weber <Thomas.Weber@posteo.de>“ → „thomas.weber@posteo.de“). */
+function adresse(s?: string): string | undefined {
+  const m = s?.match(/[^\s<>"'(),;:]+@[^\s<>"'(),;:]+\.[a-z]{2,}/i)?.[0];
+  return m?.toLowerCase();
+}
+
+/**
+ * Findet die passende Akte über Gerichtsaktenzeichen, eigenes Aktenzeichen, Absenderadresse oder Parteinamen.
+ * Die Absenderadresse ist ein starkes Signal: Stimmt sie exakt mit der gespeicherten E-Mail des Mandanten (bzw. des
+ * Gegneranwalts) überein und gibt es dazu genau eine offene Akte, ist die Zuordnung sicher.
+ */
+export function findeAkte(text: string, data: TenantData, hinweise: string[] = [], absender?: string): { akteId?: string; sicherheit: number; grund?: string } {
   const norm = normalize(text + " " + hinweise.join(" ")).replace(/\s+/g, " ");
   for (const a of data.akten) {
     if (a.gerichtsAz && norm.includes(normalize(a.gerichtsAz).replace(/\s+/g, " "))) return { akteId: a.id, sicherheit: 0.99, grund: `Gerichtsaktenzeichen ${a.gerichtsAz}` };
@@ -63,24 +73,41 @@ export function findeAkte(text: string, data: TenantData, hinweise: string[] = [
     const re = new RegExp(`(^|[^0-9])${a.aktenzeichen.replace("/", "\\/")}([^0-9]|$)`);
     if (re.test(norm)) return { akteId: a.id, sicherheit: 0.97, grund: `Aktenzeichen ${a.aktenzeichen}` };
   }
+  const offen = data.akten.filter((x) => x.status !== "abgeschlossen");
+  const von = adresse(absender);
+  const kontaktMitAdresse = von ? data.kontakte.filter((k) => adresse(k.email) === von) : [];
+  const aktenDes = (rolle: "mandantId" | "gegneranwaltId" | "gegnerId", kontaktId: string) => offen.filter((a) => a[rolle] === kontaktId);
   let best: { akteId?: string; sicherheit: number; grund?: string } = { sicherheit: 0 };
-  for (const a of data.akten.filter((x) => x.status !== "abgeschlossen")) {
+  for (const a of offen) {
     const mandant = data.kontakte.find((k) => k.id === a.mandantId);
     const gegner = data.kontakte.find((k) => k.id === a.gegnerId);
     let s = 0;
     const gruende: string[] = [];
+    const vomMandanten = !!mandant && kontaktMitAdresse.some((k) => k.id === mandant.id);
+    const gegenseite = (["gegneranwaltId", "gegnerId"] as const).find((r) => !!a[r] && kontaktMitAdresse.some((k) => k.id === a[r]));
+    if (vomMandanten) {
+      // eindeutig, wenn der Mandant nur diese eine offene Akte hat – sonst entscheiden die übrigen Merkmale mit
+      const eindeutig = aktenDes("mandantId", mandant.id).length === 1;
+      s += eindeutig ? 0.95 : 0.55;
+      gruende.push(`Absender ${von} ist Mandant ${mandant.name}`);
+    } else if (gegenseite) {
+      const eindeutig = aktenDes(gegenseite, a[gegenseite]!).length === 1;
+      s += eindeutig ? 0.9 : 0.35;
+      gruende.push(`Absender ${von} ist ${gegenseite === "gegnerId" ? "Gegner" : "Gegenseite"} ${data.kontakte.find((k) => k.id === a[gegenseite])?.name ?? ""}`.trim());
+    }
     if (mandant && norm.includes(normalize(mandant.name))) {
-      s += 0.62;
-      gruende.push(`Mandant ${mandant.name}`);
+      s += vomMandanten ? 0.03 : 0.62;
+      if (!vomMandanten) gruende.push(`Mandant ${mandant.name}`);
     } else if (mandant?.nachname && new RegExp(`\\b${normalize(mandant.nachname)}\\b`).test(norm)) {
-      s += 0.38;
-      gruende.push(`Name ${mandant.nachname}`);
+      s += vomMandanten ? 0.02 : 0.38;
+      if (!vomMandanten) gruende.push(`Name ${mandant.nachname}`);
     }
     if (gegner && norm.includes(normalize(gegner.name))) {
       s += 0.33;
       gruende.push(`Gegner ${gegner.name}`);
     }
-    if (s > best.sicherheit) best = { akteId: a.id, sicherheit: Math.min(0.96, s + 0.02), grund: gruende.join(" · ") };
+    const obergrenze = vomMandanten || gegenseite ? 0.98 : 0.96;
+    if (s > best.sicherheit) best = { akteId: a.id, sicherheit: Math.min(obergrenze, s + 0.02), grund: gruende.join(" · ") };
   }
   // Nur Nachname allein reicht nicht für eine automatische Zuordnung (zu unsicher).
   return best.sicherheit >= 0.5 ? best : { sicherheit: 0 };
@@ -115,6 +142,7 @@ const GEWICHTE: [RegExp, number][] = [
   [/verurteilt|abgewiesen|stattgegeben|aufgehoben|zurückgewiesen/, 3],
   [/widerspruch erhoben|vermögensauskunft|vergleich|vorschlag|kündig|eigenbedarf|fristlos/, 2.5],
   [/aufgegeben|stellung zu nehmen|binnen|frist|termin|ladung|bestimmt/, 1.5],
+  [/kollege|kollegin|zeugin|schichtleiter|vorgesetzte/, 1.2],
   [/zeuge|bestätigen|gesehen|ablehn|lehnen|zahlung|zahlen|kosten|rechtsschutz|herzkrank|jahre alt/, 1],
   [/zugestellt|zustellung|übersandt|anbei/, 0.6],
 ];
@@ -151,11 +179,11 @@ function freieFrist(titel: string, dauer: number, einheit: Einheit, ereignis: IS
 }
 
 /** Regelbasierte Analyse (offline) – auch Basis zur Prüfung der Live-KI. */
-export function analysiereRegelbasiert(input: { text: string; betreff?: string; von?: string; eingang?: string; kanal?: string }, data: TenantData, land: Bundesland): Omit<DokAnalyse, "quelle" | "dauerMs"> {
+export function analysiereRegelbasiert(input: { text: string; betreff?: string; von?: string; vonAdresse?: string; eingang?: string; kanal?: string }, data: TenantData, land: Bundesland): Omit<DokAnalyse, "quelle" | "dauerMs"> {
   const voll = `${input.betreff ?? ""}\n${input.text}`;
   const n = voll.toLowerCase();
   const { typ, art } = klassifiziere(voll);
-  const match = findeAkte(voll, data, [input.von ?? ""]);
+  const match = findeAkte(voll, data, [input.von ?? ""], input.vonAdresse ?? input.von);
   const eingang = (input.eingang ?? today()).slice(0, 10);
   const fristen: FristVorschlag[] = [];
   const aktionen: string[] = [];
@@ -245,7 +273,7 @@ interface LlmDokErgebnis {
  * deterministisch geprüft bzw. berechnet. Ohne Live-KI: regelbasierte Analyse.
  */
 export async function analysiereDokument(
-  input: { text: string; betreff?: string; von?: string; eingang?: string; kanal?: string },
+  input: { text: string; betreff?: string; von?: string; vonAdresse?: string; eingang?: string; kanal?: string },
   data: TenantData,
   land: Bundesland,
   opts: { signal?: AbortSignal; onText?: (t: string) => void } = {},
@@ -276,7 +304,7 @@ export async function analysiereDokument(
       if (f.regelKey && FRIST_REGELN.some((r) => r.key === f.regelKey)) fristen.push(vorschlag(f.regelKey, ereignis, land));
       else if (f.dauer && f.einheit) fristen.push(freieFrist(f.titel ?? "Frist laut Schreiben", f.dauer, f.einheit, ereignis, land));
     }
-    const match = findeAkte(`${input.betreff ?? ""}\n${input.text}`, data, [...(res.hinweiseAkte ?? []), input.von ?? ""]);
+    const match = findeAkte(`${input.betreff ?? ""}\n${input.text}`, data, [...(res.hinweiseAkte ?? []), input.von ?? ""], input.vonAdresse ?? input.von);
     const termin = res.termin?.datum && /^\d{4}-\d{2}-\d{2}$/.test(res.termin.datum) ? { datum: res.termin.datum, uhrzeit: res.termin.uhrzeit, ort: res.termin.ort, titel: res.termin.titel ?? "Termin" } : basis.termin;
     return {
       ...basis,
@@ -299,7 +327,7 @@ export async function analysiereDokument(
 
 /** Analyse einer Posteingangs-Nachricht → speicherbarer KI-Vorschlag. */
 export async function analysiereNachricht(n: Nachricht, data: TenantData, land: Bundesland, opts: { signal?: AbortSignal } = {}): Promise<{ analyse: DokAnalyse; vorschlag: KiVorschlag }> {
-  const analyse = await analysiereDokument({ text: n.text, betreff: n.betreff, von: n.von, eingang: n.eingang, kanal: n.kanal }, data, land, opts);
+  const analyse = await analysiereDokument({ text: n.text, betreff: n.betreff, von: n.von, vonAdresse: n.vonAdresse, eingang: n.eingang, kanal: n.kanal }, data, land, opts);
   const f = analyse.fristen[0];
   const vorschlag: KiVorschlag = {
     akteId: analyse.akteId,

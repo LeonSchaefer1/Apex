@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { Check, FolderOpen, Gauge } from "lucide-react";
 import type { Akte } from "@/core/types";
@@ -17,14 +17,45 @@ export function standardAkte(akten: Akte[]): Akte | undefined {
   return offen.find((a) => a.aktenzeichen === "142/26") ?? offen.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
 }
 
-/** Fallanalyse: Akte wählen, dann analysiert die KI Sachverhalt, Präzedenzfälle und Erfolgsaussicht. */
-export function FallanalyseTab({ akteId, onAkte }: { akteId?: string; onAkte: (id: string) => void }) {
+/**
+ * Fallanalyse: Akte wählen, dann analysiert die KI Sachverhalt, Präzedenzfälle und Erfolgsaussicht.
+ * `autoStart` (Deep-Link aus dem Cockpit): scrollt zur Analyse der gewählten Akte und startet sie sofort.
+ */
+export function FallanalyseTab({ akteId, onAkte, autoStart, onAutoStart }: { akteId?: string; onAkte: (id: string) => void; autoStart?: boolean; onAutoStart?: () => void }) {
   const akten = useData((s) => s.data.akten);
   const kontakte = useData((s) => s.data.kontakte);
   const [q, setQ] = useState("");
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const offene = useMemo(() => akten.filter((a) => a.status === "offen"), [akten]);
   const gewaehlt = offene.find((a) => a.id === akteId) ?? akten.find((a) => a.id === akteId) ?? standardAkte(akten);
+  const gewaehltId = gewaehlt?.id;
+
+  // Akte, deren Analyse per Deep-Link gestartet wurde: Panel bekommt Bildschirmhöhe, damit es oben stehen kann.
+  const [fokusId, setFokusId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!autoStart || !gewaehltId) return;
+    setFokusId(gewaehltId);
+    // kurz warten, bis Panel und Einblendung stehen – erst hingleiten, dann starten
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    let t2: ReturnType<typeof setTimeout> | undefined;
+    const t1 = setTimeout(() => {
+      const el = panelRef.current;
+      if (!el) return;
+      el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+      t2 = setTimeout(() => {
+        // Liegt bereits ein Ergebnis vor, wird es nur angezeigt; sonst den Start-Knopf des Panels auslösen.
+        const knopf = Array.from(el.querySelectorAll<HTMLButtonElement>("button")).find((b) => b.textContent?.trim() === "Fallanalyse starten");
+        knopf?.click();
+        onAutoStart?.(); // ?start=1 aus der Adresse entfernen – Neuladen startet nicht erneut
+      }, reduce ? 0 : 520);
+    }, 380);
+    return () => {
+      clearTimeout(t1);
+      if (t2) clearTimeout(t2);
+    };
+  }, [autoStart, gewaehltId]);
 
   const liste = useMemo(() => {
     const name = (id?: string) => kontakte.find((k) => k.id === id)?.name ?? "";
@@ -125,7 +156,7 @@ export function FallanalyseTab({ akteId, onAkte }: { akteId?: string; onAkte: (i
       </Card>
 
       {gewaehlt && (
-        <motion.div key={gewaehlt.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", stiffness: 380, damping: 34 }} className="min-w-0">
+        <motion.div ref={panelRef} key={gewaehlt.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", stiffness: 380, damping: 34 }} className={cn("min-w-0 scroll-mt-24", fokusId === gewaehlt.id && "min-h-[calc(100dvh-8rem)]")}>
           <FallanalysePanel key={gewaehlt.id} akteId={gewaehlt.id} />
         </motion.div>
       )}

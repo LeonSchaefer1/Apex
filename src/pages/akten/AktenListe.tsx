@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { motion } from "motion/react";
-import { AlarmClock, CalendarClock, Check, FolderOpen, FolderPlus, Flag, Plus, Send, Sparkle, UserRound, UserRoundCog, ListChecks, X } from "lucide-react";
-import type { Akte } from "@/core/types";
+import { AlarmClock, AlertTriangle, Archive, CalendarClock, Check, FolderOpen, FolderPlus, Flag, Plus, Send, Sparkle, UserRound, UserRoundCog, ListChecks, X } from "lucide-react";
+import type { Akte, Frist } from "@/core/types";
 import { addDays, fmtDate, fmtDateShort, fmtEUR, nowLocal, relTime, today } from "@/core/dates";
 import { search } from "@/core/search";
 import { useCol, useData } from "@/store/data";
@@ -16,6 +16,7 @@ import {
   useKontaktMap, useNaechsteFristen, useTeam,
 } from "./helfer";
 import { Mandatsaufnahme } from "./Mandatsaufnahme";
+import { offeneEintraege, offeneEintraegeText, schliesseAkteAb } from "./AkteKopf";
 
 type StatusFilter = "offen" | "ruhend" | "abgeschlossen" | "alle";
 
@@ -47,7 +48,12 @@ export default function AktenListe() {
   const kontakte = useKontaktMap();
   const naechste = useNaechsteFristen();
   const [neuOffen, setNeuOffen] = useState(false);
-  const [bulk, setBulk] = useState<{ art: "bearbeiter" | "status"; rows: Akte[]; clear: () => void } | null>(null);
+  const [bulk, setBulkRoh] = useState<{ art: "bearbeiter" | "status"; rows: Akte[]; clear: () => void } | null>(null);
+  const [abschlussPruefen, setAbschlussPruefen] = useState(false);
+  const setBulk = (b: typeof bulk) => {
+    setBulkRoh(b);
+    setAbschlussPruefen(false);
+  };
 
   const q = params.get("q") ?? "";
   const filter: Filter = {
@@ -277,9 +283,36 @@ export default function AktenListe() {
     clear();
   };
 
+  /** Sammelaktion „Status ändern“ – mit Protokoll je Akte; Abschluss wie „Akte abschließen …“ (Archivierung, § 50 BRAO). */
+  const setzeBulkStatus = (s: Akte["status"]) => {
+    if (!bulk) return;
+    const betroffen = bulk.rows.filter((r) => r.status !== s);
+    const st = useData.getState();
+    let jahr = 0;
+    for (const r of betroffen) {
+      if (s === "abgeschlossen") {
+        jahr = schliesseAkteAb(r, user.id);
+        continue;
+      }
+      st.patch("akten", r.id, { status: s, phase: r.phase === "Abgeschlossen" ? "Außergerichtlich" : r.phase, abgeschlossenAm: undefined, updatedAt: nowLocal() });
+      st.log({ akteur: "nutzer", userId: user.id, akteId: r.id, text: `Status geändert: ${STATUS_INFO[s].label} – ${r.aktenzeichen}` });
+    }
+    const n = (k: number) => `${k} ${k === 1 ? "Akte" : "Akten"}`;
+    if (!betroffen.length) toast(`Bereits „${STATUS_INFO[s].label}“`, { ton: "info", text: `${n(bulk.rows.length)} unverändert` });
+    else
+      toast(s === "abgeschlossen" ? (betroffen.length === 1 ? "Akte abgeschlossen" : `${betroffen.length} Akten abgeschlossen`) : "Status geändert", {
+        ton: "erfolg",
+        text: s === "abgeschlossen" ? `Aufbewahrung bis 31.12.${jahr} vorgemerkt (§ 50 BRAO)` : `${n(betroffen.length)}: ${STATUS_INFO[s].label}${betroffen.length < bulk.rows.length ? ` · ${bulk.rows.length - betroffen.length} unverändert` : ""}`,
+      });
+    bulk.clear();
+    setBulk(null);
+  };
+
+  const neueAkte = () => setNeuOffen(true);
+  const ausUrl = params.get("neu") === "1" || !!params.get("nachricht");
   const schliesseNeu = useCallback(() => {
     setNeuOffen(false);
-    if (params.get("neu") || params.get("nachricht"))
+    if (ausUrl)
       setParams(
         (p) => {
           const n = new URLSearchParams(p);
@@ -289,8 +322,10 @@ export default function AktenListe() {
         },
         { replace: true },
       );
-  }, [params, setParams]);
-  const onErstellt = useCallback((id: string) => nav(`/akten/${id}`), [nav]);
+  }, [ausUrl, setParams]);
+  // Geöffnet über /akten?neu=1&nachricht=… (Posteingang, Befehlspalette, Cockpit): Den Eintrag beim Wechsel in die neue Akte
+  // ersetzen – sonst öffnet Browser-Zurück den Assistenten erneut vorbefüllt und eine doppelte Akte wäre möglich.
+  const onErstellt = useCallback((id: string) => nav(`/akten/${id}`, { replace: ausUrl }), [nav, ausUrl]);
 
   const filterAktiv = !!(q || filter.sg || filter.ra || filter.prio || filter.frist || filter.seit || filter.status !== "offen");
 
@@ -301,7 +336,7 @@ export default function AktenListe() {
         hilfe="akten"
         subtitle="Alle Mandate Ihrer Kanzlei an einem Ort – suchen, filtern und mit einem Klick in die E-Akte mit Dokumenten, Fristen, Beteiligten und Aktenkonto springen."
         actions={
-          <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => setNeuOffen(true)}>
+          <Button variant="primary" icon={<Plus className="size-4" />} onClick={neueAkte}>
             Neue Akte
           </Button>
         }
@@ -457,7 +492,7 @@ export default function AktenListe() {
                   Filter zurücksetzen
                 </Button>
               ) : (
-                <Button variant="primary" icon={<FolderPlus className="size-4" />} onClick={() => setNeuOffen(true)}>
+                <Button variant="primary" icon={<FolderPlus className="size-4" />} onClick={neueAkte}>
                   Neue Akte anlegen
                 </Button>
               )
@@ -474,9 +509,24 @@ export default function AktenListe() {
       <Modal
         open={!!bulk}
         onClose={() => setBulk(null)}
-        size="sm"
+        size={abschlussPruefen ? "md" : "sm"}
+        footer={
+          abschlussPruefen && bulk ? (
+            <>
+              <Button variant="ghost" onClick={() => setAbschlussPruefen(false)} className="mr-auto">
+                Zurück
+              </Button>
+              <Button variant="primary" icon={<Archive className="size-4" />} onClick={() => setzeBulkStatus("abgeschlossen")}>
+                {(() => {
+                  const n = bulk.rows.filter((r) => r.status !== "abgeschlossen").length;
+                  return n === 1 ? "Akte abschließen" : `${n} Akten abschließen`;
+                })()}
+              </Button>
+            </>
+          ) : undefined
+        }
         icon={bulk?.art === "bearbeiter" ? <UserRoundCog className="size-[18px]" /> : <ListChecks className="size-[18px]" />}
-        title={bulk?.art === "bearbeiter" ? "Bearbeiter ändern" : "Status ändern"}
+        title={bulk?.art === "bearbeiter" ? "Bearbeiter ändern" : abschlussPruefen ? (bulk && bulk.rows.filter((r) => r.status !== "abgeschlossen").length === 1 ? "Akte abschließen?" : "Akten abschließen?") : "Status ändern"}
         subtitle={bulk ? `${bulk.rows.length} ${bulk.rows.length === 1 ? "Akte" : "Akten"} ausgewählt` : undefined}
       >
         <div className="grid grid-cols-1 gap-1.5">
@@ -508,23 +558,19 @@ export default function AktenListe() {
                     </button>
                   );
                 })
-            : (["offen", "ruhend", "abgeschlossen"] as const).map((s) => (
+            : abschlussPruefen && bulk
+              ? (
+                  <AbschlussPruefung rows={bulk.rows.filter((r) => r.status !== "abgeschlossen")} fristen={fristen} />
+                )
+              : (["offen", "ruhend", "abgeschlossen"] as const).map((s) => (
                 <button
                   key={s}
                   type="button"
                   onClick={() => {
                     if (!bulk) return;
-                    const st = useData.getState();
-                    for (const r of bulk.rows)
-                      st.patch("akten", r.id, {
-                        status: s,
-                        phase: s === "abgeschlossen" ? "Abgeschlossen" : r.phase === "Abgeschlossen" ? "Außergerichtlich" : r.phase,
-                        abgeschlossenAm: s === "abgeschlossen" ? today() : undefined,
-                        updatedAt: nowLocal(),
-                      });
-                    toast("Status geändert", { ton: "erfolg", text: `${bulk.rows.length} ${bulk.rows.length === 1 ? "Akte" : "Akten"}: ${STATUS_INFO[s].label}` });
-                    bulk.clear();
-                    setBulk(null);
+                    // Abschließen nie ohne Rückfrage – mit Hinweis auf offene Fristen (wie „Akte abschließen …“ in der Akte)
+                    if (s === "abgeschlossen" && bulk.rows.some((r) => r.status !== "abgeschlossen")) setAbschlussPruefen(true);
+                    else setzeBulkStatus(s);
                   }}
                   className="flex items-center gap-3 rounded-[14px] px-3 py-3 text-left transition-colors hover:bg-ink-softer"
                 >
@@ -540,6 +586,47 @@ export default function AktenListe() {
               ))}
         </div>
       </Modal>
+    </div>
+  );
+}
+
+/** Prüfschritt vor dem Sammel-Abschluss: offene Fristen und Termine je Akte, damit nichts unbemerkt liegen bleibt. */
+function AbschlussPruefung({ rows, fristen }: { rows: Akte[]; fristen: Frist[] }) {
+  const mitOffenen = rows.map((a) => ({ a, o: offeneEintraege(a.id, fristen) })).filter((x) => x.o.fristen || x.o.termine);
+  const summe = mitOffenen.reduce((s, x) => ({ fristen: s.fristen + x.o.fristen, notfristen: s.notfristen + x.o.notfristen, termine: s.termine + x.o.termine }), { fristen: 0, notfristen: 0, termine: 0 });
+  return (
+    <div className="grid grid-cols-1 gap-3">
+      {mitOffenen.length > 0 ? (
+        <div className="flex gap-3 rounded-[16px] bg-seal-soft p-3.5 text-[13px]" role="alert">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-seal" />
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold text-seal">
+              {mitOffenen.length === 1 ? "In 1 Akte" : `In ${mitOffenen.length} Akten`} {summe.fristen + summe.termine === 1 ? "ist" : "sind"} noch {offeneEintraegeText(summe)} eingetragen
+            </div>
+            <div className="mt-0.5 text-fg-2">Sie bleiben nach dem Abschluss im Fristenkalender stehen. Bitte vorher erledigen oder bewusst offen lassen.</div>
+            <ul className="mt-2 grid grid-cols-1 gap-1">
+              {mitOffenen.slice(0, 5).map(({ a, o }) => (
+                <li key={a.id} className="flex min-w-0 items-baseline gap-2">
+                  <span className="mono shrink-0 text-[12px] font-semibold text-fg-2">{a.aktenzeichen}</span>
+                  <span className="min-w-0 flex-1 truncate text-fg">{a.titel}</span>
+                  <span className={cn("shrink-0 text-[12px] font-medium", o.notfristen ? "text-seal" : "text-fg-3")}>
+                    {o.notfristen ? `${o.notfristen} Notfrist${o.notfristen === 1 ? "" : "en"}` : `${o.fristen + o.termine} offen`}
+                  </span>
+                </li>
+              ))}
+              {mitOffenen.length > 5 && <li className="text-[12px] text-fg-3">und {mitOffenen.length - 5} weitere</li>}
+            </ul>
+          </div>
+        </div>
+      ) : (
+        <div className="flex gap-3 rounded-[16px] bg-green-soft p-3.5 text-[13px]">
+          <Check className="mt-0.5 size-4 shrink-0 text-green" />
+          <div className="text-fg-2">{rows.length === 1 ? "Die Akte hat keine offenen Fristen oder Termine mehr." : "Keine der Akten hat noch offene Fristen oder Termine."}</div>
+        </div>
+      )}
+      <p className="px-1 text-[12.5px] leading-relaxed text-fg-3">
+        {rows.length === 1 ? "Die Akte wird" : `Die ${rows.length} Akten werden`} archiviert, die Aufbewahrungsfrist der Handakte (§ 50 BRAO, sechs Jahre) wird vorgemerkt und der Abschluss im Verlauf jeder Akte protokolliert. Sie können Akten jederzeit wieder öffnen.
+      </p>
     </div>
   );
 }

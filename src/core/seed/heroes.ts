@@ -1,6 +1,7 @@
 // Präsentationsfälle („Hero-Akten") – in sich stimmige Geschichten für die Live-Demo.
+import { AUTOMATION_DEFS } from "../automationen";
 import { addDays, fmtDate, fmtDateLong } from "../dates";
-import type { Akte } from "../types";
+import type { Akte, Aktivitaet } from "../types";
 import { addDok, addFrist, addMsg, addRechnung, addRegelFrist, nextAz, type Ctx } from "./generate";
 import { STAEDTE } from "./pools";
 
@@ -8,6 +9,27 @@ function akte(ctx: Ctx, a: Omit<Akte, "id" | "updatedAt"> & { updatedAt?: string
   const full: Akte = { id: `hero-${ctx.id("a")}`, updatedAt: a.updatedAt ?? a.createdAt, ...a };
   ctx.data.akten.push(full);
   return full;
+}
+
+/** Zeitpunkt + Minuten (für Einträge in der Vergangenheit, z. B. „kurz nach Aktenanlage“). */
+function plusMin(zeit: string, min: number): string {
+  const d = new Date(`${zeit.slice(0, 19)}Z`);
+  d.setUTCMinutes(d.getUTCMinutes() + min);
+  return d.toISOString().slice(0, 19);
+}
+
+type VerlaufEintrag = { zeit: string; akteur: Aktivitaet["akteur"]; text: string; key?: string; userId?: string };
+
+/** Fester, zur Geschichte passender Verlauf einer Präsentationsakte (statt Zufallseinträgen). */
+function verlauf(ctx: Ctx, a: Akte, eintraege: VerlaufEintrag[]) {
+  for (const e of eintraege) {
+    if (e.zeit < a.createdAt) continue;
+    const def = e.key ? AUTOMATION_DEFS.find((x) => x.key === e.key) : undefined;
+    ctx.data.aktivitaeten.push({
+      id: ctx.id("ak"), zeit: e.zeit, akteur: e.akteur, akteId: a.id, text: e.text, userId: e.userId,
+      automationKey: e.key, minutenGespart: e.akteur === "nutzer" ? undefined : def?.minutenProLauf,
+    });
+  }
 }
 
 // ───────────────────────── Berlin: Hartmann & Partner ─────────────────────────
@@ -32,7 +54,7 @@ export function heroesBerlin(ctx: Ctx) {
     mandantId: weber.id, gegnerId: kroeger.id, gerichtId: arbg.id, gegenstandswert: 10200, bearbeiterId: julia.id, sachbearbeiterId: mia?.id,
     rsv: { versicherung: "Nordlicht Rechtsschutz AG", versicherungsnummer: "RS-4471209", schadennummer: `S${ctx.yy}-88412`, deckung: "angefragt", selbstbeteiligung: 150 },
     beschreibung: "Fristlose, hilfsweise ordentliche Kündigung nach 14 Jahren Betriebszugehörigkeit wegen Mitnahme von drei beschädigten, zur Entsorgung bestimmten Kaffeepackungen (Warenwert 8,97 €). Keine Abmahnung. Mandant (52, verheiratet, zwei Kinder) möchte den Arbeitsplatz behalten.",
-    schlagworte: ["fristlose kündigung", "bagatelle", "geringwertig", "abmahnung", "interessenabwägung", "betriebszugehörigkeit", "kündigungsschutz"],
+    schlagworte: ["fristlose kündigung", "bagatelle", "geringwertig", "abmahnung", "interessenabwägung", "betriebszugehörigkeit", "kündigungsschutz", "emmely", "pfandbon"],
     prioritaet: "hoch", createdAt: dt(-2, 10, 12), updatedAt: dt(0, 8, 2), mandantenportal: true,
   });
   addDok(ctx, {
@@ -46,7 +68,7 @@ export function heroesBerlin(ctx: Ctx) {
   });
   addDok(ctx, {
     akteId: a1.id, name: "Gesprächsnotiz Erstberatung", art: "notiz", ordner: "Mandant", quelle: "generiert", format: "docx", autorId: julia.id, createdAt: dt(-2, 11, 5),
-    inhalt: `Erstberatung mit Herrn Weber am ${fmtDate(d(-2))} (Dauer 45 Min.).\n• 52 Jahre, verheiratet, zwei Kinder (14 und 17), seit 01.04.2012 bei Kröger Logistik, keine Abmahnungen, sehr gute Beurteilungen.\n• Die drei Packungen waren eingerissen und lagen im Container „Bruch – Entsorgung“. Laut Mandant nehmen Kollegen regelmäßig Bruchware mit; Schichtleiter Pohl habe das mehrfach gesehen und geduldet.\n• Eine Anhörung des Mandanten vor der Kündigung fand nicht statt.\n• Ob und wann der Betriebsrat angehört wurde, ist unklar.\n• Rechtsschutzversicherung: Nordlicht Rechtsschutz AG, Vertrag seit 2016.\n• Ziel: Weiterbeschäftigung. Abfindung nur als zweite Option.`,
+    inhalt: `Erstberatung mit Herrn Weber am ${fmtDate(d(-2))} (Dauer 45 Min.).\n• 52 Jahre, verheiratet, zwei Kinder (14 und 17), seit 01.04.2012 bei Kröger Logistik, keine Abmahnungen, sehr gute Beurteilungen.\n• Die drei Packungen waren eingerissen und lagen im Container „Bruch – Entsorgung“. Laut Mandant nehmen Kollegen regelmäßig Bruchware mit; Schichtleiter Pohl habe das mehrfach gesehen und geduldet.\n• Eine Anhörung des Mandanten vor der Kündigung fand nicht statt.\n• Ob und wann der Betriebsrat angehört wurde, ist unklar.\n• Rechtsschutzversicherung: Nordlicht Rechtsschutz AG, Vertrag seit 2016.\n• Ziel: Weiterbeschäftigung. Abfindung nur als zweite Option.\n• Erste Einschätzung: Konstellation wie im „Emmely“-Fall (Kündigung wegen zweier Pfandbons über 1,30 €, BAG 2 AZR 541/09) – nach 14 Jahren ohne Abmahnung ist die fristlose Kündigung voraussichtlich unverhältnismäßig.`,
   });
   addDok(ctx, { akteId: a1.id, name: "Vollmacht (digital unterzeichnet)", art: "vollmacht", ordner: "Mandant", quelle: "generiert", createdAt: dt(-2, 11, 30), inhalt: "Prozessvollmacht Thomas Weber für Hartmann & Partner Rechtsanwälte, digital unterzeichnet." });
   addDok(ctx, {
@@ -188,8 +210,48 @@ export function heroesBerlin(ctx: Ctx) {
 
   // Rechnungen für Hero-Akten
   addRechnung(ctx, a3, { positionen: ["2300"], datumOffset: -6, status: "gestellt" });
-  ctx.data.buchungen.push({ id: ctx.id("b"), akteId: a1.id, datum: d(-2), art: "vorschuss", betrag: -500, text: "Vorschuss nach § 9 RVG angefordert" });
-  void a6;
+  // Vorschuss: bei der Erstberatung angefordert, am Folgetag eingegangen (− = Zahlung/Gutschrift)
+  const vorschussTag = d(-1);
+  ctx.data.buchungen.push({ id: ctx.id("b"), akteId: a1.id, datum: vorschussTag, art: "vorschuss", betrag: -500, text: "Vorschuss nach § 9 RVG – Zahlungseingang Thomas Weber" });
+
+  // Verlauf der Präsentationsakten – passend zu Dokumenten, Fristen und Posteingang
+  verlauf(ctx, a1, [
+    { zeit: plusMin(a1.createdAt, 1), akteur: "automation", key: "mandatsaufnahme", text: "Mandatsaufnahme-Paket (Vollmacht, Mandatsbestätigung, Datenschutz) erstellt – 142/26" },
+    { zeit: dt(-2, 10, 41), akteur: "ki", key: "posteingang-fristen", text: "Kündigungsschreiben gelesen: Klagefrist nach § 4 S. 1 KSchG erkannt und berechnet – 142/26" },
+    { zeit: dt(-2, 10, 42), akteur: "automation", key: "vorfristen", text: "Vorfrist zur Kündigungsschutzklage gesetzt und Verantwortliche informiert – 142/26" },
+    { zeit: dt(-2, 11, 5), akteur: "nutzer", userId: julia.id, text: "Gesprächsnotiz Erstberatung angelegt – 142/26" },
+    { zeit: dt(-2, 11, 34), akteur: "automation", key: "deckungsanfrage", text: "Deckungsanfrage an Nordlicht Rechtsschutz AG versendet – 142/26" },
+    { zeit: dt(-2, 11, 35), akteur: "automation", key: "vorfristen", text: "Wiedervorlage „Deckungszusage Nordlicht“ gesetzt – 142/26" },
+    ...(mia ? [{ zeit: dt(-1, 9, 14), akteur: "nutzer" as const, userId: mia.id, text: "Klagefrist (§ 4 KSchG) im Vier-Augen-Prinzip kontrolliert – 142/26" }] : []),
+    { zeit: dt(-1, 7, 30), akteur: "automation", key: "bankabgleich", text: "Bankabgleich: Vorschuss Thomas Weber (500,00 €) auf 142/26 gebucht" },
+  ]);
+  const klageerwiderung = data.dokumente.find((x) => x.akteId === a2.id && x.name.startsWith("Klageerwiderung"));
+  verlauf(ctx, a2, [
+    ...(klageerwiderung ? [
+      { zeit: plusMin(klageerwiderung.createdAt, 1), akteur: "automation" as const, key: "zuordnung", text: "Klageerwiderung Möller & Thiel (beA) automatisch der Akte 137/26 zugeordnet" },
+      { zeit: plusMin(klageerwiderung.createdAt, 2), akteur: "ki" as const, key: "posteingang-fristen", text: "Richterliche Frist zur Replik erkannt und eingetragen – 137/26" },
+    ] : []),
+    { zeit: dt(-6, 10, 15), akteur: "ki", key: "posteingang-fristen", text: "Ladung erkannt: Termin zur mündlichen Verhandlung eingetragen – 137/26" },
+    { zeit: dt(-6, 10, 16), akteur: "automation", key: "eeb", text: "Empfangsbekenntnis vorbereitet – 137/26" },
+    { zeit: dt(-6, 10, 40), akteur: "nutzer", userId: jonas.id, text: "Empfangsbekenntnis abgegeben – 137/26" },
+    { zeit: dt(-1, 15, 3), akteur: "automation", key: "zuordnung", text: "Vergleichsvorschlag Möller & Thiel automatisch der Akte 137/26 zugeordnet" },
+  ]);
+  verlauf(ctx, a3, [
+    { zeit: plusMin(a3.createdAt, 1), akteur: "automation", key: "mandatsaufnahme", text: "Mandatsaufnahme-Paket (Vollmacht, Mandatsbestätigung, Datenschutz) erstellt – 131/26" },
+    { zeit: dt(-4, 8, 5), akteur: "automation", key: "bankabgleich", text: "Bankabgleich: Zahlung Elbtal Versicherung (6.120,00 €) als Fremdgeld erkannt – Weiterleitung an die Mandantin vorgemerkt – 131/26" },
+    { zeit: dt(-1, 11, 23), akteur: "automation", key: "zuordnung", text: "Schreiben der Elbtal Versicherung automatisch der Akte 131/26 zugeordnet" },
+    { zeit: dt(-1, 11, 24), akteur: "automation", key: "vorfristen", text: "Wiedervorlage „Nachforderung Reparaturkosten“ gesetzt – 131/26" },
+  ]);
+  verlauf(ctx, a4, [
+    { zeit: dt(-10, 9, 0), akteur: "automation", key: "mahnwesen", text: "Zahlungserinnerung versendet – 118/26" },
+  ]);
+  verlauf(ctx, a5, [
+    { zeit: dt(-45, 7, 50), akteur: "automation", key: "bankabgleich", text: "Bankabgleich: Teilzahlung Rainer Lenz (500,00 €) auf das Forderungskonto 126/26 gebucht" },
+    { zeit: dt(-15, 7, 50), akteur: "automation", key: "bankabgleich", text: "Bankabgleich: Teilzahlung Rainer Lenz (500,00 €) auf das Forderungskonto 126/26 gebucht" },
+  ]);
+  verlauf(ctx, a6, [
+    { zeit: plusMin(a6.createdAt, 2), akteur: "automation", key: "mandatsaufnahme", text: "Mandatsaufnahme-Paket (Vollmacht, Mandatsbestätigung, Datenschutz) erstellt – 149/26" },
+  ]);
 }
 
 // ───────────────────────── München: Lindner Rechtsanwälte ─────────────────────────
@@ -208,7 +270,7 @@ export function heroesMuenchen(ctx: Ctx) {
     mandantId: isartal.id, gegnerId: bhg.id, gegneranwaltId: kessler.id, gerichtId: lg.id, gerichtsAz: `24 O 9182/${ctx.yy}`, gegenstandswert: 86400,
     bearbeiterId: stefan.id, sachbearbeiterId: thomas?.id,
     beschreibung: "Restwerklohnklage über 86.400 € aus Schlussrechnung (Rohbau, 3 Mehrfamilienhäuser). Bauherren verweigern Abnahme und rügen Risse im Estrich; Sachverständiger der Mandantin hält die Risse für unwesentlich (Schwindrisse).",
-    schlagworte: ["werklohn", "abnahme", "schlussrechnung", "vob", "estrich", "risse", "bau"],
+    schlagworte: ["werklohn", "werkvertrag", "abnahme", "schlussrechnung", "vob", "estrich", "risse", "mangel", "bau"],
     prioritaet: "hoch", createdAt: dt(-96), updatedAt: dt(-1),
   });
   addDok(ctx, { akteId: a1.id, name: "Klageerwiderung Dr. Kessler & Kollegen", art: "schriftsatz", ordner: "Gericht", quelle: "bea", createdAt: dt(-3), inhalt: "Die Beklagte beantragt Klageabweisung. Die Werkleistung sei nicht abnahmereif, da der Estrich in 14 Wohnungen Risse aufweise. Hilfsweise Zurückbehaltungsrecht in Höhe des doppelten Mängelbeseitigungsaufwands (§ 641 Abs. 3 BGB)." });
@@ -254,6 +316,9 @@ export function heroesMuenchen(ctx: Ctx) {
     eingang: dt(0, 7, 55), akteId: a3.id, status: "neu", zugeordnet: true, kiStatus: "analysiert", anhaenge: [{ name: "Foto_Spuele_1.jpg", groesseKb: 2210 }, { name: "Foto_Spuele_2.jpg", groesseKb: 1980 }],
     ki: { akteId: a3.id, sicherheit: 0.98, zusammenfassung: "Mandantin dokumentiert fortschreitenden Mangel; dritter Nachbesserungsversuch faktisch gescheitert (Erklärung des Monteurs).", aktion: "Rücktrittserklärung mit Fristsetzung für Rückabwicklung vorbereiten." },
   });
+  verlauf(ctx, a3, [
+    { zeit: dt(0, 7, 56), akteur: "automation", key: "zuordnung", text: `Nachricht automatisch der Akte ${a3.aktenzeichen} zugeordnet` },
+  ]);
   void a2;
 }
 
@@ -308,5 +373,11 @@ export function heroesHamburg(ctx: Ctx) {
     eingang: dt(0, 7, 20), akteId: a3.id, status: "neu", zugeordnet: true, kiStatus: "analysiert", anhaenge: [{ name: "Verzeichnis_Foto.jpg", groesseKb: 1670 }],
     ki: { akteId: a3.id, sicherheit: 0.97, zusammenfassung: "Privates Nachlassverzeichnis mit vermutlich zu niedrigem Immobilienwert (310.000 € vs. ca. 480.000 € Vergleichswert).", aktion: "Notarielles Nachlassverzeichnis und Wertgutachten nach § 2314 Abs. 1 S. 2, 3 BGB verlangen (Entwurf liegt bereit)." },
   });
-  void a3;
+  verlauf(ctx, a1, [
+    { zeit: plusMin(a1.createdAt, 1), akteur: "automation", key: "mandatsaufnahme", text: `Mandatsaufnahme-Paket (Vollmacht, Mandatsbestätigung, Datenschutz) erstellt – ${a1.aktenzeichen}` },
+    { zeit: plusMin(a1.createdAt, 3), akteur: "ki", key: "posteingang-fristen", text: `Strafbefehl gelesen: Einspruchsfrist (§ 410 StPO) erkannt und berechnet – ${a1.aktenzeichen}` },
+  ]);
+  verlauf(ctx, a3, [
+    { zeit: dt(0, 7, 21), akteur: "automation", key: "zuordnung", text: `Nachricht automatisch der Akte ${a3.aktenzeichen} zugeordnet` },
+  ]);
 }

@@ -22,7 +22,7 @@ export function ApexIsland() {
       layout
       onClick={() => nav("/automatisierung")}
       transition={{ type: "spring", stiffness: 420, damping: 32 }}
-      className="relative hidden h-9 items-center gap-2 overflow-hidden rounded-full bg-[#090b14] pl-2 pr-3.5 text-white shadow-[0_8px_24px_-10px_rgba(0,0,0,0.6)] ring-1 ring-white/10 lg:inline-flex"
+      className="relative hidden h-9 max-w-full shrink-0 items-center gap-2 overflow-hidden rounded-full bg-[#090b14] pl-2 pr-3.5 text-white shadow-[0_8px_24px_-10px_rgba(0,0,0,0.6)] ring-1 ring-white/10 lg:inline-flex"
       title="38h-Motor: Was die Automatisierung gerade für Sie erledigt"
     >
       <motion.span layout className="relative grid size-6 place-items-center rounded-full bg-white/10">
@@ -36,7 +36,7 @@ export function ApexIsland() {
             initial={{ opacity: 0, y: 10, filter: "blur(4px)" }}
             animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
             exit={{ opacity: 0, y: -10, filter: "blur(4px)" }}
-            className="max-w-[360px] truncate text-[12.5px] font-medium"
+            className="max-w-[200px] truncate text-[12.5px] font-medium xl:max-w-[280px] 2xl:max-w-[360px]"
           >
             {aktuell.text} <span className="text-[#7ee2b8]">· +{aktuell.minuten} Min.</span>
           </motion.span>
@@ -48,7 +48,8 @@ export function ApexIsland() {
             exit={{ opacity: 0, y: -10, filter: "blur(4px)" }}
             className="whitespace-nowrap text-[12.5px] font-medium"
           >
-            38h-Motor aktiv · <span className="num text-[#7ee2b8]">{fmtNum(stunden, 1)} Std.</span> gespart diese Woche
+            <span className="hidden 2xl:inline">38h-Motor aktiv · </span>
+            <span className="num text-[#7ee2b8]">{fmtNum(stunden, 1)} Std.</span> gespart<span className="hidden xl:inline"> diese Woche</span>
           </motion.span>
         )}
       </AnimatePresence>

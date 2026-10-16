@@ -3,16 +3,17 @@ import { useMemo, useState, type ReactNode } from "react";
 import { motion } from "motion/react";
 import { AlertTriangle, ArrowRightLeft, Calculator, Copy, Info, Landmark, Plus, ReceiptEuro, Scale, Wallet } from "lucide-react";
 import type { Akte, Buchung, BuchungsArt } from "@/core/types";
-import { fmtDate, fmtEUR, fmtNum, nowLocal, round2, today, uid } from "@/core/dates";
+import { fmtDate, fmtEUR, fmtNum, round2, today, uid } from "@/core/dates";
 import { basiszinsAm, forderungskonto, type ForderungsVorgang } from "@/core/zinsen";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
-import { AnimatedNumber, Button, Card, CardHeader, Chip, Empty, Field, Input, Modal, Select, Switch, type Tone } from "@/components/ui";
+import { AnimatedNumber, Button, Card, CardHeader, Chip, Empty, Field, Input, Modal, Segmented, Select, Switch, type Tone } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { useIsMobile } from "@/lib/useMedia";
 import { kopiere } from "@/pages/kontakte/kontaktHelfer";
 import { parseEuro } from "./Mandatsaufnahme";
+import { erledigeFrist } from "@/pages/fristen/logik";
 import { beruehreAkte, useKontaktMap } from "./helfer";
 
 export const ART_INFO: Record<BuchungsArt, { label: string; tone: Tone }> = {
@@ -26,7 +27,15 @@ export const ART_INFO: Record<BuchungsArt, { label: string; tone: Tone }> = {
   kosten: { label: "Kosten", tone: "neutral" },
 };
 
-const eur = (n: number) => fmtEUR(n);
+/** Betrag mit typografischem Minus (U+2212) – überall im Aktenkonto gleich, auch für Salden. */
+const eur = (n: number) => {
+  const r = round2(n);
+  return r < 0 ? `−${fmtEUR(-r)}` : fmtEUR(r === 0 ? 0 : r);
+};
+
+/** Vorschuss: − = eingegangen (Zahlung des Mandanten), + = angefordert, noch nicht bezahlt (Forderung). */
+const istVorschussAnforderung = (b: Buchung) => b.art === "vorschuss" && b.betrag > 0;
+const artLabel = (b: Buchung) => (istVorschussAnforderung(b) ? "Vorschuss angefordert" : ART_INFO[b.art].label);
 
 export function TabAktenkonto({ akte }: { akte: Akte }) {
   const alle = useCol("buchungen");
@@ -49,7 +58,7 @@ export function TabAktenkonto({ akte }: { akte: Akte }) {
   }, [buchungen]);
 
   const summen = useMemo(() => {
-    let honorar = 0, bezahlt = 0, vorschuss = 0, fremdEin = 0, fremdAus = 0, auslagen = 0;
+    let honorar = 0, bezahlt = 0, vorschuss = 0, angefordert = 0, fremdEin = 0, fremdAus = 0, auslagen = 0;
     for (const b of buchungen) {
       const fremd = b.fremdgeld || b.art === "fremdgeld";
       if (fremd) {
@@ -59,18 +68,24 @@ export function TabAktenkonto({ akte }: { akte: Akte }) {
       }
       if (b.art === "honorar") honorar += b.betrag;
       else if (b.art === "zahlung") bezahlt += -b.betrag;
-      else if (b.art === "vorschuss") vorschuss += Math.abs(b.betrag);
-      else auslagen += b.betrag;
+      else if (b.art === "vorschuss") {
+        // nur eingegangene Vorschüsse mindern das Offene – ein angeforderter ist eine Forderung, kein Guthaben
+        if (b.betrag < 0) vorschuss += -b.betrag;
+        else angefordert += b.betrag;
+      } else auslagen += b.betrag;
     }
     const fremdOffen = round2(fremdEin - fremdAus);
-    return { honorar: round2(honorar), bezahlt: round2(bezahlt), vorschuss: round2(vorschuss), auslagen: round2(auslagen), offen: round2(honorar + auslagen - bezahlt - vorschuss), fremdEin: round2(fremdEin), fremdOffen };
+    return {
+      honorar: round2(honorar), bezahlt: round2(bezahlt), vorschuss: round2(vorschuss), angefordert: round2(angefordert), auslagen: round2(auslagen),
+      offen: round2(honorar + auslagen + angefordert - bezahlt - vorschuss), fremdEin: round2(fremdEin), fremdOffen,
+    };
   }, [buchungen]);
 
   const fremdgeldWeiterleiten = () => {
     const st = useData.getState();
     st.upsert("buchungen", { id: uid("b"), akteId: akte.id, datum: today(), art: "fremdgeld", betrag: -summen.fremdOffen, text: `Weiterleitung Fremdgeld an ${mandant?.name ?? "Mandant"}`, fremdgeld: true });
     const frist = st.data.fristen.find((f) => f.akteId === akte.id && f.status === "offen" && /fremdgeld/i.test(f.titel));
-    if (frist) st.patch("fristen", frist.id, { status: "erledigt", erledigtAm: nowLocal(), erledigtVon: user.id });
+    if (frist) erledigeFrist(frist, user.id);
     st.log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Fremdgeld ${eur(summen.fremdOffen)} an ${mandant?.name ?? "Mandant"} weitergeleitet – ${akte.aktenzeichen}` });
     beruehreAkte(akte.id);
     toast("Fremdgeld weitergeleitet", { ton: "erfolg", text: `${eur(summen.fremdOffen)} an ${mandant?.name ?? "den Mandanten"}${frist ? " · zugehörige Frist erledigt" : ""}` });
@@ -82,8 +97,20 @@ export function TabAktenkonto({ akte }: { akte: Akte }) {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Kachel label="Honorar gestellt" wert={summen.honorar} icon={<ReceiptEuro className="size-4" />} />
         <Kachel label="Bezahlt" wert={summen.bezahlt} icon={<Wallet className="size-4" />} tone="green" />
-        <Kachel label="Vorschüsse" wert={summen.vorschuss} icon={<ArrowRightLeft className="size-4" />} tone="violet" />
-        <Kachel label="Offen" wert={Math.max(0, summen.offen)} icon={<Scale className="size-4" />} tone={summen.offen > 0 ? "amber" : "green"} sub={summen.offen < 0 ? `Guthaben ${eur(-summen.offen)}` : undefined} />
+        <Kachel
+          label="Vorschüsse"
+          wert={summen.vorschuss}
+          icon={<ArrowRightLeft className="size-4" />}
+          tone="violet"
+          sub={summen.angefordert > 0 ? `eingegangen · ${eur(summen.angefordert)} angefordert` : summen.vorschuss > 0 ? "eingegangen" : undefined}
+        />
+        <Kachel
+          label="Offen"
+          wert={Math.max(0, summen.offen)}
+          icon={<Scale className="size-4" />}
+          tone={summen.offen > 0 ? "amber" : "green"}
+          sub={summen.offen < 0 ? `Guthaben ${eur(-summen.offen)}` : summen.angefordert > 0 ? `inkl. ${eur(summen.angefordert)} Vorschussanforderung` : undefined}
+        />
         <Kachel
           label="Fremdgeld (Treuhand)"
           wert={summen.fremdOffen}
@@ -128,7 +155,7 @@ export function TabAktenkonto({ akte }: { akte: Akte }) {
               <li key={b.id} className="flex items-start gap-3 px-4 py-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <Chip tone={ART_INFO[b.art].tone}>{ART_INFO[b.art].label}</Chip>
+                    <Chip tone={ART_INFO[b.art].tone}>{artLabel(b)}</Chip>
                     {fremd && b.art !== "fremdgeld" && <Chip tone="amber">Fremdgeld</Chip>}
                   </div>
                   <div className="mt-1 truncate text-[13.5px]">{b.text}</div>
@@ -159,7 +186,7 @@ export function TabAktenkonto({ akte }: { akte: Akte }) {
                     <td className="num whitespace-nowrap text-fg-2">{fmtDate(b.datum)}</td>
                     <td className="whitespace-nowrap">
                       <span className="flex items-center gap-1">
-                        <Chip tone={ART_INFO[b.art].tone}>{ART_INFO[b.art].label}</Chip>
+                        <Chip tone={ART_INFO[b.art].tone}>{artLabel(b)}</Chip>
                         {fremd && b.art !== "fremdgeld" && <Chip tone="amber">Fremdgeld</Chip>}
                       </span>
                     </td>
@@ -193,7 +220,7 @@ export function TabAktenkonto({ akte }: { akte: Akte }) {
 }
 
 function Betrag({ n }: { n: number }) {
-  return <span className={cn("num font-medium", n < 0 ? "text-green" : "text-fg")}>{n > 0 ? "+" : n < 0 ? "−" : ""}{fmtEUR(Math.abs(n))}</span>;
+  return <span className={cn("num font-medium", n < 0 ? "text-green" : "text-fg")}>{n > 0 ? "+" : ""}{eur(n)}</span>;
 }
 
 function Kachel({ label, wert, icon, tone = "ink", sub, className, hervorheben }: { label: string; wert: number; icon: ReactNode; tone?: Tone; sub?: string; className?: string; hervorheben?: boolean }) {
@@ -205,9 +232,13 @@ function Kachel({ label, wert, icon, tone = "ink", sub, className, hervorheben }
         <span className="truncate text-[12px] font-medium text-fg-3">{label}</span>
       </div>
       <div className={cn("mt-2.5 text-[21px] font-semibold tracking-[-0.03em]", hervorheben && "text-seal")}>
-        <AnimatedNumber value={wert} format={(n) => fmtEUR(n)} />
+        <AnimatedNumber value={wert} format={eur} />
       </div>
-      {sub && <div className="mt-0.5 truncate text-[11.5px] text-fg-3">{sub}</div>}
+      {sub && (
+        <div className="mt-0.5 truncate text-[11.5px] text-fg-3" title={sub}>
+          {sub}
+        </div>
+      )}
     </div>
   );
 }
@@ -229,6 +260,22 @@ function Forderungskonto({ akte, buchungen }: { akte: Akte; buchungen: Buchung[]
   }, [f, buchungen, stichtag]);
 
   const aufschlag = f.verbraucher ? 5 : 9;
+
+  // Verzugszinsen: insgesamt aufgelaufen, davon durch Teilzahlungen verrechnet (§ 367 BGB), und seit wann der offene Rest läuft
+  const zinsInfo = useMemo(() => {
+    const gesamt = round2(stand.zinsAbschnitte.reduce((s, z) => s + z.zinsen, 0));
+    const verrechnet = round2(stand.verlauf.reduce((s, v) => s + (v.aufZinsen ?? 0), 0));
+    let kosten = 0;
+    let offenSeit = f.faelligAb;
+    for (const v of stand.verlauf) {
+      if (v.art === "kosten") kosten = round2(kosten + v.betrag);
+      if (v.art !== "zahlung") continue;
+      kosten = round2(kosten - (v.aufKosten ?? 0));
+      // Zinsen nach dieser Zahlung vollständig getilgt → der offene Rest läuft ab dem Zahlungstag
+      if (round2(v.saldoGesamt - v.saldoHaupt - kosten) <= 0) offenSeit = v.datum;
+    }
+    return { gesamt, verrechnet, offenSeit };
+  }, [stand, f.faelligAb]);
 
   const aufstellung = () => {
     const z = [
@@ -264,7 +311,12 @@ function Forderungskonto({ akte, buchungen }: { akte: Akte; buchungen: Buchung[]
 
       <div className="grid grid-cols-2 gap-3 px-5 lg:grid-cols-4">
         <Wert label="Hauptforderung" wert={stand.hauptforderung} sub={`ursprünglich ${eur(f.hauptforderung)}`} />
-        <Wert label="Zinsen" wert={stand.zinsen} sub={`seit ${fmtDate(f.faelligAb)}`} />
+        <Wert
+          label="Zinsen offen"
+          wert={stand.zinsen}
+          sub={`seit ${fmtDate(zinsInfo.offenSeit)}${zinsInfo.offenSeit !== f.faelligAb ? " (nach Verrechnung)" : ""}`}
+          titel={`Offene Verzugszinsen für ${fmtDate(zinsInfo.offenSeit)} bis ${fmtDate(stichtag)}. Seit Verzugsbeginn am ${fmtDate(f.faelligAb)} insgesamt ${eur(zinsInfo.gesamt)}${zinsInfo.verrechnet > 0 ? `, davon ${eur(zinsInfo.verrechnet)} mit Teilzahlungen verrechnet (§ 367 BGB)` : ""}.`}
+        />
         <Wert label="Kosten" wert={stand.kosten} sub="verauslagt, offen" />
         <Wert label="Gesamtforderung" wert={stand.gesamt} sub={`bereits gezahlt ${eur(stand.bezahlt)}`} gross />
       </div>
@@ -280,6 +332,14 @@ function Forderungskonto({ akte, buchungen }: { akte: Akte; buchungen: Buchung[]
         )}
         <span>
           Verzug seit <span className="num font-medium text-fg">{fmtDate(f.faelligAb)}</span>
+        </span>
+        <span>
+          Zinsen seit Verzugsbeginn <span className="num font-medium text-fg">{eur(zinsInfo.gesamt)}</span>
+          {zinsInfo.verrechnet > 0 && (
+            <>
+              , davon <span className="num font-medium text-fg">{eur(zinsInfo.verrechnet)}</span> verrechnet
+            </>
+          )}
         </span>
       </div>
 
@@ -299,7 +359,7 @@ function Forderungskonto({ akte, buchungen }: { akte: Akte; buchungen: Buchung[]
                     <div className="text-[12px] text-fg-3">{fmtDate(v.datum)}</div>
                   </div>
                   <div className="text-right">
-                    <span className={cn("num text-[13.5px] font-semibold", v.betrag < 0 && "text-green")}>{v.betrag < 0 ? "−" : ""}{eur(Math.abs(v.betrag))}</span>
+                    <span className={cn("num text-[13.5px] font-semibold", v.betrag < 0 && "text-green")}>{eur(v.betrag)}</span>
                     <div className="num text-[11.5px] text-fg-4">Saldo {eur(v.saldoGesamt)}</div>
                   </div>
                 </div>
@@ -359,10 +419,7 @@ function Forderungskonto({ akte, buchungen }: { akte: Akte; buchungen: Buchung[]
                         <span className="truncate">{v.text}</span>
                       </span>
                     </td>
-                    <td className={cn("num whitespace-nowrap text-right font-medium", v.betrag < 0 && "text-green")}>
-                      {v.betrag < 0 ? "−" : ""}
-                      {eur(Math.abs(v.betrag))}
-                    </td>
+                    <td className={cn("num whitespace-nowrap text-right font-medium", v.betrag < 0 && "text-green")}>{eur(v.betrag)}</td>
                     <td className="num text-right text-fg-2">{v.aufKosten !== undefined ? eur(v.aufKosten) : <span className="text-fg-4">–</span>}</td>
                     <td className="num text-right text-fg-2">{v.aufZinsen !== undefined ? eur(v.aufZinsen) : <span className="text-fg-4">–</span>}</td>
                     <td className="num text-right text-fg-2">{v.aufHaupt !== undefined ? eur(v.aufHaupt) : <span className="text-fg-4">–</span>}</td>
@@ -434,14 +491,18 @@ function Verrechnung({ label, n }: { label: string; n?: number }) {
   );
 }
 
-function Wert({ label, wert, sub, gross }: { label: string; wert: number; sub?: string; gross?: boolean }) {
+function Wert({ label, wert, sub, gross, titel }: { label: string; wert: number; sub?: string; gross?: boolean; titel?: string }) {
   return (
     <div className={cn("min-w-0 rounded-[16px] p-3.5", gross ? "bg-ink text-on-ink shadow-[0_10px_24px_-12px_var(--ink)]" : "bg-[var(--surface)] shadow-[0_0_0_1px_var(--line)]")}>
       <div className={cn("truncate text-[12px] font-medium", gross ? "opacity-80" : "text-fg-3")}>{label}</div>
       <div className="mt-1 text-[20px] font-semibold tracking-[-0.03em]">
-        <AnimatedNumber value={wert} format={(n) => fmtEUR(n)} />
+        <AnimatedNumber value={wert} format={eur} />
       </div>
-      {sub && <div className={cn("truncate text-[11.5px]", gross ? "opacity-75" : "text-fg-3")}>{sub}</div>}
+      {sub && (
+        <div className={cn("text-[11.5px] leading-snug", gross ? "opacity-75" : "text-fg-3")} title={titel ?? sub}>
+          {sub}
+        </div>
+      )}
     </div>
   );
 }
@@ -453,17 +514,19 @@ function BuchungErfassen({ akte, open, onClose }: { akte: Akte; open: boolean; o
   const [text, setText] = useState("");
   const [betrag, setBetrag] = useState("");
   const [fremd, setFremd] = useState(false);
+  const [vorschussStand, setVorschussStand] = useState<"eingegangen" | "angefordert">("eingegangen");
   const wert = parseEuro(betrag);
   const ok = !!text.trim() && !Number.isNaN(wert) && wert > 0 && /^\d{4}-\d{2}-\d{2}$/.test(datum);
   // Vorzeichen: Forderungen an den Mandanten positiv, Zahlungseingänge/Vorschüsse negativ
-  const vorzeichen = art === "zahlung" || art === "vorschuss" ? -1 : 1;
+  // Ein angeforderter Vorschuss ist eine Forderung (+), erst der Eingang mindert das Offene (−).
+  const vorzeichen = art === "zahlung" || (art === "vorschuss" && vorschussStand === "eingegangen") ? -1 : 1;
 
   const speichern = () => {
     const b: Buchung = { id: uid("b"), akteId: akte.id, datum, art, betrag: round2(vorzeichen * wert), text: text.trim(), fremdgeld: art === "fremdgeld" || fremd || undefined };
     useData.getState().upsert("buchungen", b);
     useData.getState().log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Buchung erfasst: ${ART_INFO[art].label} ${fmtEUR(wert)} – ${akte.aktenzeichen}` });
     beruehreAkte(akte.id);
-    toast("Buchung erfasst", { ton: "erfolg", text: `${ART_INFO[art].label} · ${fmtEUR(wert)}` });
+    toast("Buchung erfasst", { ton: "erfolg", text: `${art === "vorschuss" && vorzeichen > 0 ? "Vorschuss angefordert" : ART_INFO[art].label} · ${fmtEUR(wert)}` });
     setText("");
     setBetrag("");
     setFremd(false);
@@ -504,10 +567,24 @@ function BuchungErfassen({ akte, open, onClose }: { akte: Akte; open: boolean; o
             <Input id="bu-datum" type="date" value={datum} onChange={(e) => setDatum(e.target.value)} />
           </Field>
         </div>
+        {art === "vorschuss" && (
+          <div>
+            <div className="label">Vorschuss</div>
+            <Segmented
+              full
+              value={vorschussStand}
+              onChange={setVorschussStand}
+              options={[
+                { value: "eingegangen", label: "Eingegangen" },
+                { value: "angefordert", label: "Angefordert (§ 9 RVG)" },
+              ]}
+            />
+          </div>
+        )}
         <Field label="Buchungstext" htmlFor="bu-text">
           <Input id="bu-text" value={text} onChange={(e) => setText(e.target.value)} placeholder="z. B. Aktenversendungspauschale" />
         </Field>
-        <Field label="Betrag" htmlFor="bu-betrag" hint={Number.isNaN(wert) ? <span className="text-seal">Bitte einen Betrag wie 12,00 eingeben.</span> : vorzeichen < 0 ? "Wird als Eingang (−) gebucht." : "Wird als Forderung (+) gebucht."}>
+        <Field label="Betrag" htmlFor="bu-betrag" hint={Number.isNaN(wert) ? <span className="text-seal">Bitte einen Betrag wie 12,00 eingeben.</span> : vorzeichen < 0 ? "Wird als Eingang (−) gebucht." : art === "vorschuss" ? "Wird als offene Vorschussforderung (+) gebucht – noch kein Guthaben." : "Wird als Forderung (+) gebucht."}>
           <div className="relative">
             <Input id="bu-betrag" inputMode="decimal" value={betrag} onChange={(e) => setBetrag(e.target.value)} placeholder="0,00" className="num !pr-9" />
             <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[13px] text-fg-4">€</span>

@@ -22,8 +22,8 @@ function streifenTon(f: Frist, heute: string): "seal" | "amber" | "ink" | "neutr
 // ───────────────────────── Fristen ─────────────────────────
 export function FristenKarte({ d, i, className }: { d: CockpitDaten; i: number; className?: string }) {
   const MAX = 7;
-  const sichtbar = d.faellig.slice(0, MAX);
-  const rest = d.faellig.length - sichtbar.length;
+  const sichtbar = d.bisWerktag.slice(0, MAX);
+  const rest = d.bisWerktag.length - sichtbar.length;
   const spotlight = d.notfristenWoche.filter((f) => f.datum > d.bisTag).slice(0, 2);
   const gruppen: { key: string; label: string; items: Frist[] }[] = [];
   for (const f of sichtbar) {
@@ -36,15 +36,31 @@ export function FristenKarte({ d, i, className }: { d: CockpitDaten; i: number; 
     }
     g.items.push(f);
   }
-  const bisLabel = d.wochenende ? `bis ${wochentagName(d.bisTag)}, ${fmtDateShort(d.bisTag)} (nächster Werktag)` : `heute und ${wochentagName(d.bisTag)}, ${fmtDateShort(d.bisTag)}`;
+  const bisLabel = d.wochenende ? `bis ${wochentagName(d.bisTag)}` : "bis morgen";
+  // Kopfzeile mit derselben Zählweise wie Briefing, Navigation und Fristenkalender (Vorfristen getrennt)
+  const nF = d.lage.faellig.length;
+  const nV = d.lage.vorfristen.length;
+  const heuteText = nF === 0 ? "Heute keine Frist" : `Heute ${nF} ${nF === 1 ? "Frist" : "Fristen"}`;
+  const vorText = nV > 0 ? ` + ${nV} ${nV === 1 ? "Vorfrist" : "Vorfristen"}` : "";
+  const naechsteWoche = addDays(d.heute, 7);
 
   return (
     <BentoKarte i={i} label="Heute und morgen fällige Fristen" className={className}>
       <KartenKopf
         icon={<CalendarClock />}
-        ton={d.ueberfaellig > 0 || d.faellig.some((f) => f.typ === "notfrist") ? "seal" : "ink"}
+        ton={d.ueberfaellig > 0 || d.bisWerktag.some((f) => f.typ === "notfrist") ? "seal" : "ink"}
         titel="Heute & morgen fällig"
-        unter={`${d.faellig.length} offen · ${bisLabel}`}
+        unter={
+          d.bisWerktag.length === 0 ? (
+            `Nichts offen ${bisLabel}`
+          ) : (
+            <>
+              {heuteText}
+              {vorText}
+              <span className="hidden @md:inline"> · {d.bisWerktag.length} offen {bisLabel}</span>
+            </>
+          )
+        }
         mehr={{ to: "/fristen", label: "Alle Fristen" }}
       />
 
@@ -56,7 +72,7 @@ export function FristenKarte({ d, i, className }: { d: CockpitDaten; i: number; 
         </div>
       )}
 
-      {d.faellig.length === 0 ? (
+      {d.bisWerktag.length === 0 ? (
         <div className="relative z-[1] -mx-1 flex-1">
           <div className="mx-1 flex items-center gap-3 rounded-[16px] bg-green-soft px-4 py-3">
             <CheckCircle2 className="size-6 shrink-0 text-green" />
@@ -67,7 +83,9 @@ export function FristenKarte({ d, i, className }: { d: CockpitDaten; i: number; 
           </div>
           {d.woche.filter((f) => f.datum > d.bisTag).length > 0 && (
             <>
-              <div className="eyebrow px-2 pb-1 pt-3.5 !text-[10.5px]">Als Nächstes · bis {wochentagName(addDays(d.heute, 7))}</div>
+              <div className="eyebrow px-2 pb-1 pt-3.5 !text-[10.5px]">
+                Als Nächstes · bis {wochentagName(naechsteWoche, true)}, {fmtDateShort(naechsteWoche)}
+              </div>
               <ul className="flex min-w-0 flex-col gap-0.5">
                 {d.woche
                   .filter((f) => f.datum > d.bisTag)

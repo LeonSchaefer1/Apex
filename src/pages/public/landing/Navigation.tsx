@@ -53,7 +53,17 @@ export function Navigation({ scrollRef }: { scrollRef: RefObject<HTMLDivElement 
     };
   }, [scrollRef]);
 
+  // Mobiles Menü mit Escape schließen
+  useEffect(() => {
+    if (!offen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOffen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [offen]);
+
   const ziel = sitzung ? (istConsole(sitzung) ? "/console" : "/cockpit") : "/login";
+  // Das mobile Menü schwebt über dem Inhalt (absolut positioniert) und verschiebt den Seitenfluss nicht –
+  // so stimmt die Zielposition auch dann, wenn es sich beim Scrollen schließt.
   const gehe = (id: string) => {
     setOffen(false);
     scrollZu(id);
@@ -115,14 +125,26 @@ export function Navigation({ scrollRef }: { scrollRef: RefObject<HTMLDivElement 
 
       <AnimatePresence>
         {offen && (
+          <motion.div
+            key="menue-hintergrund"
+            aria-hidden
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setOffen(false)}
+            className="fixed inset-0 -z-10 lg:hidden"
+          />
+        )}
+        {offen && (
           <motion.nav
+            key="menue"
             aria-label="Abschnitte"
             initial={{ opacity: 0, y: -8, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.98 }}
             transition={{ type: "spring", stiffness: 480, damping: 34 }}
             style={{ transformOrigin: "top right" }}
-            className="glass-strong mx-auto mt-2 max-w-[1200px] rounded-[22px] p-2 lg:hidden"
+            className="glass-strong absolute inset-x-3 top-full mx-auto mt-2 max-w-[1200px] rounded-[22px] p-2 sm:inset-x-5 lg:hidden"
           >
             <ul className="grid gap-0.5 sm:grid-cols-2">
               {ANKER.map((a, i) => (

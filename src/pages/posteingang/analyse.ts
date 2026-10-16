@@ -3,8 +3,10 @@ import { create } from "zustand";
 import { analysiereNachricht, analysiereRegelbasiert, type DokAnalyse, type FristVorschlag } from "@/ai/dokumentAnalyse";
 import type { KiQuelle } from "@/ai/status";
 import { nowLocal, uid } from "@/core/dates";
-import type { Akte, Bundesland, Dokument, DokumentArt, Frist, Nachricht, TenantData, User } from "@/core/types";
+import type { Akte, Anhang, Bundesland, Dokument, DokumentArt, Frist, Nachricht, TenantData, User } from "@/core/types";
+import { istConsole } from "@/lib/backend";
 import { useData } from "@/store/data";
+import { useSession } from "@/store/session";
 import { legeFristAn } from "@/pages/fristen/logik";
 
 export const SCHRITTE = [
@@ -14,14 +16,51 @@ export const SCHRITTE = [
   { titel: "Rechenweg erstellen", text: "Fristenrechner nach §§ 187 ff. BGB, § 222 ZPO" },
 ] as const;
 
-interface AnalyseState {
+interface AnalyseStand {
   /** Nachricht-ID → aktueller Schritt (0 … SCHRITTE.length) */
   laufend: Record<string, number>;
   ergebnisse: Record<string, DokAnalyse>;
   fehler: Record<string, string>;
 }
 
-export const useAnalyse = create<AnalyseState>(() => ({ laufend: {}, ergebnisse: {}, fehler: {} }));
+interface AnalyseState extends AnalyseStand {
+  /** Kanzlei + Daten-Epoche, für die die Einträge gelten (siehe `analyseSchluessel`). */
+  schluessel: string;
+}
+
+/**
+ * Mandantentrennung für den KI-Zwischenspeicher: Ergebnisse gelten nur für genau eine Kanzlei
+ * und einen Datenstand. Nachrichten-IDs (n-1 …) wiederholen sich in jeder Kanzlei und nach
+ * „Demo-Daten zurücksetzen“ – deshalb wird nach Kanzlei-ID UND `useData().epoch` geschlüsselt.
+ */
+export function analyseSchluessel(): string {
+  const s = useSession.getState().sitzung;
+  return `${s && !istConsole(s) ? s.tenant.id : "-"}:${useData.getState().epoch}`;
+}
+
+const LEER: AnalyseStand = { laufend: {}, ergebnisse: {}, fehler: {} };
+
+export const useAnalyse = create<AnalyseState>(() => ({ schluessel: analyseSchluessel(), ...LEER }));
+
+/** Verwirft alle Ergebnisse, Fehler und laufenden Analysen, sobald Kanzlei oder Datenstand wechseln. */
+function pruefeSchluessel() {
+  const k = analyseSchluessel();
+  if (useAnalyse.getState().schluessel !== k) useAnalyse.setState({ schluessel: k, laufend: {}, ergebnisse: {}, fehler: {} });
+}
+useData.subscribe((s, vorher) => {
+  if (s.epoch !== vorher.epoch) pruefeSchluessel();
+});
+useSession.subscribe((s, vorher) => {
+  if (s.sitzung !== vorher.sitzung) pruefeSchluessel();
+});
+
+/** KI-Stand für die Oberfläche – leer, falls er (noch) zu einer anderen Kanzlei bzw. einem älteren Datenstand gehört. */
+export function useAnalyseStand(): AnalyseStand {
+  const st = useAnalyse();
+  const epoch = useData((s) => s.epoch);
+  const tenantId = useSession((s) => (s.sitzung && !istConsole(s.sitzung) ? s.sitzung.tenant.id : "-"));
+  return st.schluessel === `${tenantId}:${epoch}` ? st : LEER;
+}
 
 function setSchritt(id: string, schritt: number | undefined) {
   const laufend = { ...useAnalyse.getState().laufend };
@@ -32,8 +71,19 @@ function setSchritt(id: string, schritt: number | undefined) {
 
 const warte = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Startet die KI-Analyse einer Nachricht (animierter Ablauf, mind. ~2 s) und speichert den Vorschlag an der Nachricht. */
-export async function starteAnalyse(n: Nachricht, land: Bundesland): Promise<DokAnalyse | undefined> {
+/**
+ * Startet die KI-Analyse einer Nachricht (animierter Ablauf, mind. ~2 s) und speichert den Vorschlag an der Nachricht.
+ * `schluessel`: optional der beim Auslösen gültige `analyseSchluessel()` (z. B. bei zeitversetztem Start) –
+ * passt er nicht mehr, wird nichts gestartet. Wechseln Kanzlei oder Datenstand während der Analyse,
+ * schreibt sie nichts mehr (weder Nachricht noch Protokoll noch Zwischenspeicher).
+ */
+export async function starteAnalyse(n: Nachricht, land: Bundesland, opts: { schluessel?: string } = {}): Promise<DokAnalyse | undefined> {
+  pruefeSchluessel();
+  const key = analyseSchluessel();
+  if (opts.schluessel !== undefined && opts.schluessel !== key) return undefined;
+  const gueltig = () => analyseSchluessel() === key && useAnalyse.getState().schluessel === key;
+  // Nur Nachrichten des aktuellen Datenstands analysieren
+  if (!useData.getState().data.nachrichten.some((x) => x.id === n.id && x.eingang === n.eingang && x.betreff === n.betreff)) return undefined;
   if (useAnalyse.getState().laufend[n.id] !== undefined) return undefined;
   const fehler = { ...useAnalyse.getState().fehler };
   delete fehler[n.id];
@@ -41,6 +91,10 @@ export async function starteAnalyse(n: Nachricht, land: Bundesland): Promise<Dok
   setSchritt(n.id, 0);
   let schritt = 0;
   const takt = setInterval(() => {
+    if (!gueltig()) {
+      clearInterval(takt);
+      return;
+    }
     schritt = Math.min(schritt + 1, SCHRITTE.length - 1);
     setSchritt(n.id, schritt);
   }, 540);
@@ -48,8 +102,10 @@ export async function starteAnalyse(n: Nachricht, land: Bundesland): Promise<Dok
     const data = useData.getState().data;
     const [{ analyse, vorschlag }] = await Promise.all([analysiereNachricht(n, data, land), warte(2150)]);
     clearInterval(takt);
+    if (!gueltig()) return undefined;
     setSchritt(n.id, SCHRITTE.length);
     await warte(380);
+    if (!gueltig()) return undefined;
     const aktuell = useData.getState().data.nachrichten.find((x) => x.id === n.id) ?? n;
     useData.getState().patch("nachrichten", n.id, {
       ki: vorschlag,
@@ -67,10 +123,10 @@ export async function starteAnalyse(n: Nachricht, land: Bundesland): Promise<Dok
     return analyse;
   } catch (e) {
     clearInterval(takt);
-    useAnalyse.setState({ fehler: { ...useAnalyse.getState().fehler, [n.id]: e instanceof Error ? e.message : String(e) } });
+    if (gueltig()) useAnalyse.setState({ fehler: { ...useAnalyse.getState().fehler, [n.id]: e instanceof Error ? e.message : String(e) } });
     return undefined;
   } finally {
-    setSchritt(n.id, undefined);
+    if (gueltig()) setSchritt(n.id, undefined);
   }
 }
 
@@ -166,8 +222,68 @@ export function istGerichtspost(n: Nachricht): boolean {
 
 // ───────────────────────── Aktionen ─────────────────────────
 
-/** Ordnet die Nachricht einer Akte zu und legt sie als Dokument in der E-Akte ab. */
-export function zuordnen(n: Nachricht, akte: Akte, user: User, ansicht: KiAnsicht | null, opts: { leise?: boolean } = {}) {
+/** Anhänge, die als eigene Dokumente in die E-Akte gehören (technische XJustiz-Strukturdaten bleiben an der Nachricht). */
+export function ablegbareAnhaenge(n: Nachricht): Anhang[] {
+  return n.anhaenge.filter((a) => !/\.xml$/i.test(a.name));
+}
+
+const anhangDokId = (n: Nachricht, i: number) => `dok-${n.id}-anhang-${i + 1}`;
+
+/** Zielordner für die Anhänge: Gerichtspost → „Gericht“, Post des Mandanten → „Mandant“, sonst „Anlagen“. */
+export function anhangOrdner(n: Nachricht, akte: Akte, data: TenantData): Dokument["ordner"] {
+  if (istGerichtspost(n)) return "Gericht";
+  const mandant = data.kontakte.find((k) => k.id === akte.mandantId);
+  const adresse = (n.vonAdresse ?? "").trim().toLowerCase();
+  if (mandant && ((adresse && mandant.email?.trim().toLowerCase() === adresse) || (n.kanal === "email" && mandant.name === n.von))) return "Mandant";
+  return "Anlagen";
+}
+
+/** Liegen alle Anhänge der Nachricht als Dokumente in dieser Akte? */
+export function anhaengeAbgelegt(n: Nachricht, akteId: string | undefined, dokumente: Dokument[]): boolean {
+  if (!akteId) return false;
+  const ids = new Set(dokumente.filter((d) => d.akteId === akteId).map((d) => d.id));
+  return ablegbareAnhaenge(n).every((_, i) => ids.has(anhangDokId(n, i)));
+}
+
+function anhangArt(name: string, n: Nachricht): DokumentArt {
+  if (/urteil/i.test(name)) return "urteil";
+  if (/beschluss|verf(ue|ü)gung/i.test(name)) return "beschluss";
+  if (/vertrag/i.test(name)) return "vertrag";
+  if (/gutachten|bericht/i.test(name)) return "gutachten";
+  return istGerichtspost(n) ? "beschluss" : "anlage";
+}
+
+/** Legt die Anhänge der Nachricht als eigene Dokumente in der E-Akte ab (idempotent). Gibt Anzahl und Ordner zurück. */
+export function anhaengeAblegen(n: Nachricht, akte: Akte, user: User, opts: { leise?: boolean } = {}): { anzahl: number; ordner: Dokument["ordner"] } {
+  const { upsert, log, data } = useData.getState();
+  const ordner = anhangOrdner(n, akte, data);
+  const vorhanden = new Set(data.dokumente.map((d) => d.id));
+  let anzahl = 0;
+  ablegbareAnhaenge(n).forEach((a, i) => {
+    const id = anhangDokId(n, i);
+    if (vorhanden.has(id)) return;
+    const endung = a.name.split(".").pop()?.toLowerCase();
+    upsert("dokumente", {
+      id,
+      akteId: akte.id,
+      name: a.name,
+      art: anhangArt(a.name, n),
+      ordner,
+      format: endung === "docx" || endung === "txt" ? endung : "pdf",
+      groesseKb: a.groesseKb,
+      inhalt: `Anhang zu ${n.kanal === "bea" ? "beA-Nachricht" : "E-Mail"} „${n.betreff}“ von ${n.von} (Eingang ${n.eingang.slice(0, 10).split("-").reverse().join(".")}).`,
+      quelle: n.kanal === "bea" ? "bea" : "email",
+      version: 1,
+      createdAt: n.eingang,
+    });
+    anzahl++;
+  });
+  if (anzahl && !opts.leise) log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `${anzahl} ${anzahl === 1 ? "Anhang" : "Anhänge"} aus „${n.betreff}“ in der E-Akte abgelegt (${ordner})` });
+  return { anzahl, ordner };
+}
+
+/** Ordnet die Nachricht einer Akte zu und legt sie samt Anhängen als Dokumente in der E-Akte ab. */
+export function zuordnen(n: Nachricht, akte: Akte, user: User, ansicht: KiAnsicht | null, opts: { leise?: boolean } = {}): { ordner: Dokument["ordner"]; anhaenge: number; anhangOrdner: Dokument["ordner"] } {
   const { patch, upsert, log } = useData.getState();
   const ohneFristen = !ansicht || ansicht.fristen.length === 0;
   patch("nachrichten", n.id, {
@@ -176,7 +292,6 @@ export function zuordnen(n: Nachricht, akte: Akte, user: User, ansicht: KiAnsich
     kiStatus: n.kiStatus === "analysiert" && ohneFristen && ansicht?.akteId === akte.id ? "uebernommen" : n.kiStatus,
   });
   const art: DokumentArt = ansicht?.dokumentArt ?? (n.kanal === "bea" ? "bea" : "email");
-  const anhangKb = n.anhaenge.reduce((s, a) => s + a.groesseKb, 0);
   const dok: Dokument = {
     id: `dok-${n.id}`,
     akteId: akte.id,
@@ -184,7 +299,7 @@ export function zuordnen(n: Nachricht, akte: Akte, user: User, ansicht: KiAnsich
     art,
     ordner: istGerichtspost(n) ? "Gericht" : "Korrespondenz",
     format: n.kanal === "email" ? "eml" : "pdf",
-    groesseKb: Math.max(4, anhangKb || Math.ceil(n.text.length / 900)),
+    groesseKb: Math.max(4, Math.ceil(n.text.length / 900)),
     inhalt: n.text,
     quelle: n.kanal === "bea" ? "bea" : "email",
     version: 1,
@@ -192,11 +307,19 @@ export function zuordnen(n: Nachricht, akte: Akte, user: User, ansicht: KiAnsich
     ki: ansicht ? { zusammenfassung: ansicht.zusammenfassung, erkannteFristen: ansicht.fristen.length } : undefined,
   };
   upsert("dokumente", dok);
-  if (!opts.leise) log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Nachricht „${n.betreff}“ der Akte ${akte.aktenzeichen} zugeordnet und in der E-Akte abgelegt (${dok.ordner})` });
+  const anh = anhaengeAblegen(n, akte, user, { leise: true });
+  if (!opts.leise)
+    log({
+      akteur: "nutzer",
+      userId: user.id,
+      akteId: akte.id,
+      text: `Nachricht „${n.betreff}“ der Akte ${akte.aktenzeichen} zugeordnet und in der E-Akte abgelegt (${dok.ordner}${anh.anzahl ? `, ${anh.anzahl} ${anh.anzahl === 1 ? "Anhang" : "Anhänge"} in „${anh.ordner}“` : ""})`,
+    });
+  return { ordner: dok.ordner, anhaenge: anh.anzahl, anhangOrdner: anh.ordner };
 }
 
 /** Übernimmt die erkannten Fristen (mit Vorfristen) in die Akte. Die Vier-Augen-Kontrolle bleibt offen. */
-export function fristenUebernehmen(n: Nachricht, akte: Akte, user: User, ansicht: KiAnsicht, fristen: Frist[]): { anzahl: number; rueckgaengig: () => void } {
+export function fristenUebernehmen(n: Nachricht, akte: Akte, user: User, ansicht: KiAnsicht, fristen: Frist[]): { anzahl: number; rueckgaengig: () => boolean } {
   const { patch, log } = useData.getState();
   if (n.akteId !== akte.id) zuordnen(n, akte, user, ansicht, { leise: true });
   let anzahl = 0;
@@ -228,11 +351,17 @@ export function fristenUebernehmen(n: Nachricht, akte: Akte, user: User, ansicht
     akteId: akte.id,
     text: `${anzahl} ${anzahl === 1 ? "Frist" : "Fristen"} aus dem Posteingang übernommen (${ansicht.fristen.map((f) => f.titel).join(", ")}) – Vier-Augen-Kontrolle ausstehend`,
   });
-  const rueckgaengig = () => {
+  const epoch = useData.getState().epoch;
+  /** Nimmt die Übernahme zurück – nicht mehr, sobald das eEB abgegeben ist (dann laufen die Fristen) oder der Datenstand gewechselt hat. */
+  const rueckgaengig = (): boolean => {
     const st = useData.getState();
+    if (st.epoch !== epoch) return false;
+    const aktuell = st.data.nachrichten.find((x) => x.id === n.id);
+    if (!aktuell || aktuell.eebAbgegeben) return false;
     neu.forEach((id) => st.remove("fristen", id));
     st.patch("nachrichten", n.id, { kiStatus: "analysiert" });
     st.log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Fristübernahme aus dem Posteingang rückgängig gemacht (${n.betreff})` });
+    return true;
   };
   return { anzahl, rueckgaengig };
 }

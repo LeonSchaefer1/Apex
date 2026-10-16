@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { AlertTriangle, ArrowRightLeft, Calculator, CalendarPlus, Check, Info, ShieldAlert } from "lucide-react";
@@ -29,13 +29,20 @@ function dauerText(r: FristRegel) {
   return `${r.dauer} ${einheitLabel(r, r.dauer)}`;
 }
 
-export function Fristenrechner({ open, onClose, startAkteId, startRegel }: { open: boolean; onClose: () => void; startAkteId?: string; startRegel?: string }) {
+const istIsoDatum = (d?: string): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(`${d}T12:00:00Z`));
+
+/**
+ * Fristenrechner (Modal). Deep-Link-Vertrag der Fristen-Seite:
+ * /fristen?rechner=1&regel=<regelKey>&ereignis=<YYYY-MM-DD>&akte=<akteId> – alle Parameter außer `rechner` optional;
+ * der Rechner öffnet dann vorbefüllt und zeigt das Ergebnis sofort.
+ */
+export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEreignis }: { open: boolean; onClose: () => void; startAkteId?: string; startRegel?: string; startEreignis?: string }) {
   const { tenant, user } = useKanzlei();
   const akten = useCol("akten");
   const nav = useNavigate();
   const [suche, setSuche] = useState("");
   const [key, setKey] = useState(startRegel && FRIST_REGELN.some((r) => r.key === startRegel) ? startRegel : "berufung");
-  const [ereignis, setEreignis] = useState(today());
+  const [ereignis, setEreignis] = useState(() => (istIsoDatum(startEreignis) ? startEreignis : today()));
   const [dauer, setDauer] = useState("");
   const [land, setLand] = useState<Bundesland>(tenant.bundesland);
   const [akteId, setAkteId] = useState(startAkteId ?? "");
@@ -45,8 +52,32 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel }: { ope
     if (!open) return;
     setEingetragen(null);
     if (startAkteId) setAkteId(startAkteId);
-    if (startRegel && FRIST_REGELN.some((r) => r.key === startRegel)) setKey(startRegel);
-  }, [open, startAkteId, startRegel]);
+    if (startRegel && FRIST_REGELN.some((r) => r.key === startRegel)) {
+      setKey(startRegel);
+      setDauer("");
+      setSuche("");
+    }
+    if (istIsoDatum(startEreignis)) setEreignis(startEreignis);
+  }, [open, startAkteId, startRegel, startEreignis]);
+
+  // Vorgewählte Fristart in der Liste sichtbar machen (nur innerhalb der Liste scrollen)
+  const listeRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const t = setTimeout(() => {
+      const box = listeRef.current;
+      const el = box?.querySelector<HTMLElement>('[aria-selected="true"]');
+      if (!box || !el) return;
+      const r = el.getBoundingClientRect();
+      const b = box.getBoundingClientRect();
+      if (r.top >= b.top + 30 && r.bottom <= b.bottom) return;
+      // Gebietsüberschrift mit anzeigen; bei langen Gebieten direkt unter der (klebenden) Überschrift einordnen
+      const g = el.parentElement?.getBoundingClientRect();
+      const ziel = g && r.bottom - g.top + 6 <= b.height ? g.top - b.top - 6 : r.top - b.top - 34;
+      box.scrollTop += ziel;
+    }, 220);
+    return () => clearTimeout(t);
+  }, [open, startRegel]);
 
   const regel = FRIST_REGELN.find((r) => r.key === key) ?? FRIST_REGELN[0];
   const dauerNum = dauer.trim() ? Math.max(1, Math.min(999, parseInt(dauer, 10) || regel.dauer)) : undefined;
@@ -136,7 +167,7 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel }: { ope
               Fristart
             </label>
             <SearchField id="rechner-suche" value={suche} onChange={setSuche} placeholder="z. B. Berufung, Kündigung, 517, Mahnbescheid …" />
-            <div className="mt-2 max-h-[220px] overflow-y-auto rounded-[16px] sm:max-h-[300px] bg-[var(--ink-softer)] p-1.5 ring-1 ring-inset ring-[var(--line)]" role="listbox" aria-label="Fristarten">
+            <div ref={listeRef} className="mt-2 max-h-[220px] overflow-y-auto rounded-[16px] sm:max-h-[300px] bg-[var(--ink-softer)] p-1.5 ring-1 ring-inset ring-[var(--line)]" role="listbox" aria-label="Fristarten">
               {GEBIETE.map((g) => {
                 const regeln = gefiltert.filter((r) => r.gebiet === g);
                 if (!regeln.length) return null;

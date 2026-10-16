@@ -4,6 +4,7 @@ import { ostersonntag, feiertage, istWerktag } from "./feiertage";
 import { berechneFrist, berechneNachRegel } from "./fristen";
 import { wertgebuehr, berechneRvg } from "./rvg";
 import { forderungskonto, verzugszinsen } from "./zinsen";
+import type { Sachgebiet } from "./types";
 
 test("Ostersonntag", () => {
   assert.equal(ostersonntag(2024), "2024-03-31");
@@ -100,4 +101,122 @@ test("Fristenlage: einheitliche Zählweise", async () => {
   assert.equal(l.vorfristen.length, 1);
   assert.deepEqual(l.woche.map((f) => f.id), ["5"]);
   assert.equal(fristenLage(fr, "2026-10-16", "u1").faellig.length, 1);
+});
+
+test("Rechenweg: § 187 Abs. 1 BGB, Dauer-Grundlage und § 222 Abs. 2 ZPO nur bei Verschiebung", () => {
+  // Zustellung Fr 16.10.2026 → Mo 16.11.2026 (Werktag, keine Verschiebung)
+  const werktag = berechneNachRegel("berufung", "2026-10-16", "BE");
+  assert.equal(werktag.ende, "2026-11-16");
+  assert.ok(werktag.rechenweg.some((s) => s.includes("§ 187 Abs. 1 BGB")));
+  assert.ok(werktag.rechenweg.some((s) => s.includes("Dauer 1 Monat (§ 517 ZPO)") && s.includes("§ 188 Abs. 2 BGB")));
+  assert.ok(!werktag.rechenweg.some((s) => s.includes("§ 222 Abs. 2 ZPO")));
+  assert.ok(werktag.rechenweg.some((s) => s.includes("keine Verschiebung")));
+  // Zustellung Sa 31.01.2026 → 28.02. (Sa) → Mo 02.03.2026: Verschiebung nach § 222 Abs. 2 ZPO
+  const wochenende = berechneNachRegel("berufung", "2026-01-31", "BE");
+  assert.equal(wochenende.ende, "2026-03-02");
+  assert.ok(wochenende.rechenweg.some((s) => s.includes("§ 222 Abs. 2 ZPO")));
+  assert.ok(wochenende.rechenweg.some((s) => s.includes("Samstag")));
+});
+
+test("Fristen im Zeitraum: gleiche Zählweise wie fristenLage", async () => {
+  const { fristenImZeitraum } = await import("./fristenLage");
+  const basis = { akteId: "a", titel: "t", status: "offen" as const, verantwortlichId: "u1", quelle: "manuell" as const, createdAt: "2026-10-01T09:00" };
+  const fr = [
+    { ...basis, id: "1", typ: "notfrist" as const, datum: "2026-10-17" },
+    { ...basis, id: "2", typ: "vorfrist" as const, datum: "2026-10-17" },
+    { ...basis, id: "3", typ: "termin" as const, datum: "2026-10-18" },
+    { ...basis, id: "4", typ: "wiedervorlage" as const, datum: "2026-10-18" },
+    { ...basis, id: "5", typ: "frist" as const, datum: "2026-10-30" },
+  ];
+  const z = fristenImZeitraum(fr, "2026-10-17", "2026-10-23");
+  assert.deepEqual(z.fristen.map((f) => f.id), ["1", "4"]);
+  assert.equal(z.notfristen.length, 1);
+  assert.equal(z.vorfristen.length, 1);
+  assert.equal(z.termine.length, 1);
+});
+
+test("Demodaten: Zeitkorrektur „nicht in der Zukunft“ ist monoton und verbraucht keinen Zufall", async () => {
+  const { zeitBisJetzt } = await import("./seed/generate");
+  const jetzt = 8 * 3600 + 45 * 60; // 08:45
+  const zeiten = [7 * 3600, 7 * 3600 + 41 * 60, 8 * 3600 + 12 * 60, 9 * 3600 + 3 * 60, 17 * 3600, 23 * 3600 + 59 * 60];
+  const neu = zeiten.map((z) => zeitBisJetzt(z, jetzt));
+  for (let i = 1; i < neu.length; i++) assert.ok(neu[i] >= neu[i - 1], "Reihenfolge bleibt erhalten");
+  assert.ok(neu.every((z) => z <= jetzt - 60), "nichts in der Zukunft");
+  assert.equal(neu[0], zeiten[0]); // frühe Zeitpunkte bleiben unverändert
+  assert.equal(zeitBisJetzt(17 * 3600, undefined), 17 * 3600); // nicht für heute erzeugt → keine Korrektur
+});
+
+test("Demodaten: Inhalt hängt nur von Datum und Kanzlei ab", async () => {
+  const { generateTenantData } = await import("./seed/generate");
+  const { DEMO_TENANTS, publicUser } = await import("./seed/tenants");
+  const t = DEMO_TENANTS[0];
+  const gen = () => JSON.stringify(generateTenantData({ tenant: t.tenant, users: t.users.map(publicUser), profil: t.profil }, "2026-10-16"));
+  assert.equal(gen(), gen());
+});
+
+test("Demodaten: Verlauf der Präsentationsakten ist stimmig", async () => {
+  const { generateTenantData } = await import("./seed/generate");
+  const { DEMO_TENANTS, publicUser } = await import("./seed/tenants");
+  for (const t of DEMO_TENANTS) {
+    const d = generateTenantData({ tenant: t.tenant, users: t.users.map(publicUser), profil: t.profil }, "2026-10-16");
+    for (const x of d.aktivitaeten.filter((a) => a.akteId)) {
+      const akte = d.akten.find((a) => a.id === x.akteId)!;
+      assert.ok(x.zeit >= akte.createdAt, `${x.text} liegt vor der Aktenanlage (${akte.aktenzeichen})`);
+      if (x.automationKey === "archivierung") assert.equal(akte.status, "abgeschlossen", x.text);
+      if (x.automationKey === "kostenfestsetzung") assert.ok(["Urteil", "Vollstreckung"].includes(akte.phase), x.text);
+      if (akte.id.startsWith("hero-")) assert.ok(!/archiviert|Kostenfestsetzung/.test(x.text), x.text);
+    }
+  }
+  const t = DEMO_TENANTS[0];
+  const d = generateTenantData({ tenant: t.tenant, users: t.users.map(publicUser), profil: t.profil }, "2026-10-16");
+  const weber = d.akten.find((a) => a.aktenzeichen === "142/26")!;
+  const verlauf = d.aktivitaeten.filter((a) => a.akteId === weber.id).map((a) => a.text);
+  assert.ok(verlauf.some((v) => v.includes("Mandatsaufnahme-Paket")));
+  assert.ok(!verlauf.some((v) => v.includes("zugeordnet")), "Die Weber-Mail ist noch nicht zugeordnet");
+  // Vorschuss: als Zahlung gebucht und auch so beschriftet (nicht „angefordert“)
+  const vorschuss = d.buchungen.find((b) => b.akteId === weber.id && b.art === "vorschuss")!;
+  assert.ok(vorschuss.betrag < 0 && /Zahlungseingang/.test(vorschuss.text));
+});
+
+test("Demodaten: Gerichte und Orte passend zur Stadt der Kanzlei", async () => {
+  const { stadtDatenFuer, STAEDTE } = await import("./seed/pools");
+  assert.equal(stadtDatenFuer("Berlin", "BE", "berlin"), STAEDTE.berlin);
+  assert.equal(stadtDatenFuer("München", "BY", "muenchen"), STAEDTE.muenchen);
+  const koeln = stadtDatenFuer("Köln", "NW", "berlin");
+  assert.equal(koeln.ort, "Köln");
+  assert.equal(koeln.gerichte.arbg, "Arbeitsgericht Köln");
+  assert.equal(koeln.gerichte.olg, "Oberlandesgericht Köln");
+  assert.match(koeln.gerichte.mahn, /Euskirchen/);
+  assert.equal(stadtDatenFuer("Nürnberg", "BY", "muenchen").gerichte.lg, "Landgericht Nürnberg-Fürth");
+  // Frankfurt (Oder) ist nicht Frankfurt am Main
+  const ffo = stadtDatenFuer("Frankfurt (Oder)", "BB", "berlin");
+  assert.equal(ffo.gerichte.ag[0], "Amtsgericht Frankfurt (Oder)");
+  assert.match(ffo.gerichte.mahn, /Wedding/);
+  // unbekannte Stadt: Gerichte der Stadt, OLG und Mahngericht des Bundeslands
+  const x = stadtDatenFuer("Gütersloh", "NW", "berlin");
+  assert.equal(x.gerichte.ag[0], "Amtsgericht Gütersloh");
+  assert.match(x.gerichte.mahn, /Hagen/);
+  // keine Stadt angegeben: Landeshauptstadt
+  assert.equal(stadtDatenFuer("", "SN", "berlin").ort, "Dresden");
+
+  const { generateTenantData } = await import("./seed/generate");
+  const { baueKunde, profilFuer } = await import("./seed/kunde");
+  const { tenant, admin } = baueKunde({ kanzlei: "Becker & Schulz Rechtsanwälte", stadt: "Köln", bundesland: "NW", adminName: "Anna Becker", adminEmail: "anna@becker.example", arbeitsplaetze: 3, schwerpunkte: ["Arbeitsrecht", "Mietrecht", "Strafrecht"] as Sachgebiet[] }, "test");
+  const d = generateTenantData({ tenant, users: [admin], profil: profilFuer(tenant.schwerpunkte as Sachgebiet[], "NW") }, "2026-10-16");
+  const namen = d.kontakte.map((k) => `${k.name} ${k.ort ?? ""}`).join(" | ");
+  assert.ok(!/Berlin|Neukölln|Tempelhof|Charlottenburg|Wedding/.test(namen), namen);
+  assert.ok(d.kontakte.some((k) => k.name === "Arbeitsgericht Köln" || k.name === "Amtsgericht Köln"));
+});
+
+test("Suche „pfandbon kündigung“ findet Akte, Dokument und Urteil", async () => {
+  const { search } = await import("./search");
+  const { ENTSCHEIDUNGEN } = await import("./rechtsprechung");
+  const { generateTenantData } = await import("./seed/generate");
+  const { DEMO_TENANTS, publicUser } = await import("./seed/tenants");
+  const t = DEMO_TENANTS[0];
+  const d = generateTenantData({ tenant: t.tenant, users: t.users.map(publicUser), profil: t.profil }, "2026-10-16");
+  const q = "pfandbon kündigung";
+  assert.deepEqual(search(d.akten, q, [{ get: (a) => a.beschreibung, weight: 1 }, { get: (a) => a.schlagworte.join(" "), weight: 1 }]).map((h) => h.item.aktenzeichen), ["142/26"]);
+  assert.ok(search(d.dokumente, q, [{ get: (x) => x.name, weight: 3 }, { get: (x) => x.inhalt, weight: 1 }]).some((h) => h.item.name === "Gesprächsnotiz Erstberatung"));
+  assert.equal(search(ENTSCHEIDUNGEN, q, [{ get: (e) => e.titel, weight: 3 }, { get: (e) => e.schlagworte.join(" "), weight: 2 }, { get: (e) => e.leitsatz, weight: 1 }])[0].item.az, "2 AZR 541/09");
 });

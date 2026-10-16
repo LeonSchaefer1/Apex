@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import { Navigate, Outlet, useLocation } from "react-router";
+import { useEffect, useRef, useState } from "react";
+import { Navigate, useLocation, useOutlet } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { useSession } from "@/store/session";
 import { useData } from "@/store/data";
@@ -51,7 +51,7 @@ export function AppShell() {
                 exit={{ opacity: 0, y: -6, filter: "blur(3px)" }}
                 transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
               >
-                <Outlet />
+                <FrozenOutlet />
               </motion.div>
             </AnimatePresence>
           </main>
@@ -63,4 +63,14 @@ export function AppShell() {
       <AssistantDock />
     </div>
   );
+}
+
+/**
+ * Hält die Route fest, mit der der Seitenübergang begonnen hat. Ohne das würde die neue Seite schon im
+ * ausblendenden Element gerendert und danach ein zweites Mal montiert (Deep-Link-Zustand ginge verloren).
+ */
+function FrozenOutlet() {
+  const outlet = useOutlet();
+  const [frozen] = useState(outlet);
+  return frozen;
 }

@@ -88,7 +88,7 @@ export function FristAnlegen({ akte, open, onClose }: { akte: Akte; open: boolea
       };
       st.upsert("fristen", f);
       st.upsert("fristen", {
-        id: uid("f"), akteId: akte.id, titel: `Vorfrist: ${f.titel}`, typ: "vorfrist", datum: ergebnis.vorfrist, status: "offen",
+        id: uid("f"), akteId: akte.id, titel: `Vorfrist: ${f.titel}`, typ: "vorfrist", datum: ergebnis.vorfrist, bezugId: f.id, status: "offen",
         verantwortlichId: sb, quelle: "automatisch", createdAt: jetzt,
       });
       st.log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Frist eingetragen: ${f.titel} bis ${fmtDate(f.datum)} – ${akte.aktenzeichen}` });

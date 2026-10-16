@@ -51,7 +51,7 @@ export function createServerBackend(): Backend {
     },
     logout: () => api("/auth/logout", { method: "POST" }),
     loadData: () => api<TenantData>("/data"),
-    putDoc: (col: CollectionKey, doc) => api(`/data/${col}/${encodeURIComponent(doc.id)}`, { method: "PUT", body: JSON.stringify(doc) }),
+    putDoc: (col: CollectionKey, doc, opts) => api(`/data/${col}/${encodeURIComponent(doc.id)}${opts?.system ? "?system=1" : ""}`, { method: "PUT", body: JSON.stringify(doc) }),
     deleteDoc: (col: CollectionKey, id) => api(`/data/${col}/${encodeURIComponent(id)}`, { method: "DELETE" }),
     resetData: () => api<TenantData>("/data/reset", { method: "POST" }),
     team: {

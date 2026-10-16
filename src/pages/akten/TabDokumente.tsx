@@ -75,6 +75,8 @@ export function TabDokumente({ akte }: { akte: Akte }) {
   const [dateiDrag, setDateiDrag] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const klickTimer = useRef<number | undefined>(undefined);
+  // Erster Klick auf einen Dokumentnamen: öffnet die Vorschau verzögert – ein Doppelklick benennt stattdessen um
+  const ersterKlick = useRef<{ id: string; zeit: number; vorher: string | null; geoeffnet: boolean } | null>(null);
 
   const doks = useMemo(() => alle.filter((d) => d.akteId === akte.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [alle, akte.id]);
   const zaehler = useMemo(() => {
@@ -116,6 +118,43 @@ export function TabDokumente({ akte }: { akte: Akte }) {
     );
 
   const offenesDok = dokId ? doks.find((d) => d.id === dokId) : undefined;
+
+  const nameKlick = (id: string) => {
+    window.clearTimeout(klickTimer.current);
+    ersterKlick.current = { id, zeit: Date.now(), vorher: dokId, geoeffnet: false };
+    klickTimer.current = window.setTimeout(() => {
+      if (ersterKlick.current?.id === id) ersterKlick.current.geoeffnet = true;
+      oeffne(id);
+    }, 230);
+  };
+
+  const starteUmbenennen = (id: string) => {
+    window.clearTimeout(klickTimer.current);
+    const k = ersterKlick.current;
+    ersterKlick.current = null;
+    // Langsamer Doppelklick: Die Vorschau, die der erste Klick schon geöffnet hat, wieder schließen
+    if (k && k.id === id && k.geoeffnet && Date.now() - k.zeit < 1200) oeffne(k.vorher);
+    setUmbenennen(id);
+  };
+  const umbenennenRef = useRef(starteUmbenennen);
+  umbenennenRef.current = starteUmbenennen;
+
+  // Landet der zweite Klick eines langsamen Doppelklicks schon auf der eben geöffneten Vorschau (Abdunklung),
+  // gilt er trotzdem als Doppelklick auf den Namen: Vorschau zu, Umbenennen an.
+  useEffect(() => {
+    const abfangen = (e: MouseEvent) => {
+      const k = ersterKlick.current;
+      if (!k || !k.geoeffnet || e.detail < 2 || Date.now() - k.zeit > 1200) return;
+      e.stopPropagation();
+      e.preventDefault();
+      umbenennenRef.current(k.id);
+    };
+    document.addEventListener("click", abfangen, true);
+    return () => {
+      document.removeEventListener("click", abfangen, true);
+      window.clearTimeout(klickTimer.current);
+    };
+  }, []);
 
   const verschiebe = (ids: string[], ziel: Ordner) => {
     const st = useData.getState();
@@ -444,13 +483,12 @@ export function TabDokumente({ akte }: { akte: Akte }) {
                             title="Doppelklick zum Umbenennen"
                             onClick={(e) => {
                               e.stopPropagation();
-                              window.clearTimeout(klickTimer.current);
-                              klickTimer.current = window.setTimeout(() => oeffne(d.id), 230);
+                              if (e.detail >= 2) starteUmbenennen(d.id);
+                              else nameKlick(d.id);
                             }}
                             onDoubleClick={(e) => {
                               e.stopPropagation();
-                              window.clearTimeout(klickTimer.current);
-                              setUmbenennen(d.id);
+                              starteUmbenennen(d.id);
                             }}
                           >
                             <Highlight text={d.name} q={q} />

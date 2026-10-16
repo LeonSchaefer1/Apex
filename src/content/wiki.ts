@@ -44,6 +44,16 @@ export const WIKI: WikiArtikel[] = [
     tipps: ["Neue Akten lösen automatisch das Mandatsaufnahme-Paket aus: Vollmacht, Mandatsbestätigung, Datenschutzhinweise."],
   },
   {
+    key: "neue-akte", titel: "Neue Akte anlegen (Mandatsaufnahme)", kategorie: "Akten & Fristen", dauer: "1 Min.", pfad: "/akten?neu=1",
+    kurz: "Unter „Akten“ → „Neue Akte“ führt die Mandatsaufnahme in vier Schritten zur fertigen Akte – samt Vollmacht und Mandatsbestätigung.",
+    schritte: [
+      { titel: "Mandant erfassen", text: "Bestehenden Kontakt wählen oder neu anlegen. AnwaltApex prüft dabei automatisch auf Interessenkonflikte (§ 43a Abs. 4 BRAO).", visual: "team" },
+      { titel: "Sache beschreiben", text: "Sachgebiet, Gegner, Gegenstandswert und Bearbeiter angeben – das Aktenzeichen wird automatisch vergeben.", visual: "akte" },
+      { titel: "Rechtsschutz & Zusammenfassung", text: "Rechtsschutzversicherung eintragen und prüfen. Vollmacht, Mandatsbestätigung und Datenschutzhinweise erstellt AnwaltApex automatisch – mit Rechtsschutz auch die Deckungsanfrage samt Wiedervorlage.", visual: "motor" },
+    ],
+    tipps: ["Aus einer Mandatsanfrage im Posteingang startet „Mandatsaufnahme starten“ den Assistenten bereits vorausgefüllt."],
+  },
+  {
     key: "posteingang", titel: "Posteingang mit KI-Fristenerkennung", kategorie: "Posteingang", dauer: "2 Min.", pfad: "/posteingang",
     kurz: "beA und E-Mail in einem Postfach. Die KI ordnet jede Nachricht der richtigen Akte zu und erkennt Fristen.",
     schritte: [
@@ -123,7 +133,7 @@ export const WIKI: WikiArtikel[] = [
     kurz: "Animiertes Wiki, Systemstatus und ein fester, direkter Ansprechpartner für Ihre Kanzlei.",
     schritte: [
       { titel: "Apex Assistent", text: "Unten rechts: Fragen Sie per Text oder Sprache. Der Assistent erklärt, zeigt den Weg und erledigt Aufgaben direkt.", visual: "assistent" },
-      { titel: "Ihr Ansprechpartner", text: "Keine Hotline-Warteschleife: Sie erreichen Ihre persönliche Ansprechpartnerin direkt.", visual: "team" },
+      { titel: "Ihr Ansprechpartner", text: "Keine Hotline-Warteschleife: Ihr fester Ansprechpartner ist mit Namen, Durchwahl und E-Mail direkt erreichbar – auf Wunsch mit Rückruf.", visual: "team" },
       { titel: "Systemstatus", text: "Offen und ehrlich: Sie sehen jederzeit, ob beA, E-Mail, Bank und KI laufen – und was gerade getan wird.", visual: "status" },
     ],
   },

@@ -32,9 +32,24 @@ export const QUELLE_LABEL: Record<Frist["quelle"], string> = {
   migration: "Migration",
 };
 
-/** Muss diese Frist im Vier-Augen-Prinzip kontrolliert werden? */
+/**
+ * Vier-Augen-Kontrolle – maßgebliche Regel für Fristenkalender, Akten-Reiter und Posteingang:
+ * Jede offene Notfrist oder Frist ist bis zur Bestätigung durch eine zweite Person unkontrolliert –
+ * unabhängig davon, ob sie mit einer Regel des Fristenrechners (`regelKey`) oder als richterliche
+ * bzw. KI-Frist ohne Regel angelegt wurde. Vorfristen, Wiedervorlagen und Termine brauchen keine Kontrolle.
+ */
 export function brauchtKontrolle(f: Frist): boolean {
   return f.status === "offen" && (f.typ === "notfrist" || f.typ === "frist") && !f.kontrolliertVon;
+}
+
+/** Von der KI erkannte Frist, die noch nicht kontrolliert ist – Anzeige „Ungeprüft“, zählt in „Unkontrolliert“. */
+export function istUngeprueft(f: Frist): boolean {
+  return f.quelle === "ki" && brauchtKontrolle(f);
+}
+
+/** Darf diese Person die Kontrolle bestätigen? Nie die verantwortliche Person selbst (keine Selbstkontrolle). */
+export function darfKontrollieren(f: Frist, userId: ID): boolean {
+  return brauchtKontrolle(f) && f.verantwortlichId !== userId;
 }
 
 /** Ampelfarbe für den Dringlichkeitsstreifen. */
@@ -122,6 +137,7 @@ export function legeFristAn(p: NeueFrist): { frist: Frist; vorfrist?: Frist } {
       titel: `Vorfrist: ${p.titel}`,
       typ: "vorfrist",
       datum: p.vorfrist,
+      bezugId: frist.id,
       grundlage: p.grundlage,
       regelKey: p.regelKey,
       status: "offen",
@@ -135,10 +151,10 @@ export function legeFristAn(p: NeueFrist): { frist: Frist; vorfrist?: Frist } {
   return { frist, vorfrist };
 }
 
-/** Zugehörige Vorfrist-Einträge einer Frist. */
+/** Zugehörige Vorfrist-Einträge einer Frist – über `bezugId`, bei älteren Einträgen ohne Bezug über den Titel. */
 export function vorfristenZu(f: Frist, alle: Frist[]): Frist[] {
   if (f.typ === "vorfrist") return [];
-  return alle.filter((x) => x.typ === "vorfrist" && x.akteId === f.akteId && x.titel === `Vorfrist: ${f.titel}`);
+  return alle.filter((x) => x.typ === "vorfrist" && x.akteId === f.akteId && (x.bezugId ? x.bezugId === f.id : x.titel === `Vorfrist: ${f.titel}`));
 }
 
 /** Erledigt eine Frist (inkl. offener Vorfrist) und protokolliert es. */
@@ -150,19 +166,24 @@ export function erledigeFrist(f: Frist, userId: ID): void {
   log({ akteur: "nutzer", userId, akteId: f.akteId, text: `${TYP_META[f.typ].label} „${f.titel}“ als erledigt markiert` });
 }
 
-/** Macht „Erledigt“ rückgängig. */
-export function oeffneFristWieder(f: Frist): void {
+/**
+ * Macht „Erledigt“ rückgängig – inklusive Vorfrist: Eine noch bevorstehende Vorfrist wird immer mit geöffnet
+ * (die Erinnerung darf nicht verloren gehen), eine vergangene nur, wenn sie zusammen mit der Frist erledigt wurde.
+ */
+export function oeffneFristWieder(f: Frist, heute: ISODate = today()): void {
   const { patch, data } = useData.getState();
   const zeitpunkt = data.fristen.find((x) => x.id === f.id)?.erledigtAm;
   patch("fristen", f.id, { status: "offen", erledigtAm: undefined, erledigtVon: undefined });
   for (const v of vorfristenZu(f, data.fristen)) {
-    if (v.status === "erledigt" && zeitpunkt && v.erledigtAm === zeitpunkt) patch("fristen", v.id, { status: "offen", erledigtAm: undefined, erledigtVon: undefined });
+    if (v.status !== "erledigt") continue;
+    if (v.datum >= heute || (zeitpunkt && v.erledigtAm === zeitpunkt)) patch("fristen", v.id, { status: "offen", erledigtAm: undefined, erledigtVon: undefined });
   }
 }
 
-/** Vier-Augen-Kontrolle bestätigen (nur durch eine andere Person als die verantwortliche). */
+/** Vier-Augen-Kontrolle bestätigen (nur durch eine andere Person als die verantwortliche, siehe `darfKontrollieren`). */
 export function bestaetigeKontrolle(f: Frist, userId: ID): boolean {
-  if (f.verantwortlichId === userId) return false;
+  const aktuell = useData.getState().data.fristen.find((x) => x.id === f.id) ?? f;
+  if (!darfKontrollieren(aktuell, userId)) return false;
   const { patch, log } = useData.getState();
   patch("fristen", f.id, { kontrolliertVon: userId });
   log({ akteur: "nutzer", userId, akteId: f.akteId, text: `Vier-Augen-Kontrolle bestätigt: ${f.titel} (${f.datum.split("-").reverse().join(".")})` });

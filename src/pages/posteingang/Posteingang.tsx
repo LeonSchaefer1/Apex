@@ -12,7 +12,7 @@ import { Button, Card, PageHeader, SearchField, Segmented } from "@/components/u
 import { NachrichtenListe } from "./NachrichtenListe";
 import { Lesebereich } from "./Lesebereich";
 import { Verbindungsstatus } from "./Verbindungsstatus";
-import { kiAnsicht, starteAnalyse, useAnalyse } from "./analyse";
+import { analyseSchluessel, kiAnsicht, starteAnalyse, useAnalyse, useAnalyseStand } from "./analyse";
 
 type Filter = "alle" | "neu" | "bea" | "email" | "ohne";
 
@@ -56,7 +56,9 @@ export default function Posteingang() {
   const nachrichten = useCol("nachrichten");
   const aktenListe = useCol("akten");
   const data = useData((s) => s.data);
-  const { laufend, ergebnisse, fehler } = useAnalyse();
+  const epoch = useData((s) => s.epoch);
+  const { laufend, ergebnisse, fehler } = useAnalyseStand();
+  const stapelTimer = useRef<number[]>([]);
   const [params, setParams] = useSearchParams();
   const selId = params.get("id");
   const [filter, setFilter] = useState<Filter>("alle");
@@ -100,13 +102,17 @@ export default function Posteingang() {
     if (sel?.status === "neu") useData.getState().patch("nachrichten", sel.id, { status: "gelesen" });
   }, [sel?.id, sel?.status]);
 
-  // Analyse automatisch starten, sobald eine unbearbeitete Nachricht geöffnet wird
+  // Analyse automatisch starten, sobald eine unbearbeitete Nachricht geöffnet wird – auch nach einem Datenwechsel (Reset, Kanzleiwechsel)
   useEffect(() => {
     if (!sel) return;
     const st = useAnalyse.getState();
-    if ((sel.kiStatus === "ausstehend" || !sel.ki) && st.laufend[sel.id] === undefined && !st.ergebnisse[sel.id] && !st.fehler[sel.id]) void starteAnalyse(sel, tenant.bundesland);
+    const aktuell = st.schluessel === analyseSchluessel();
+    if ((sel.kiStatus === "ausstehend" || !sel.ki) && (!aktuell || (st.laufend[sel.id] === undefined && !st.ergebnisse[sel.id] && !st.fehler[sel.id]))) void starteAnalyse(sel, tenant.bundesland);
     scrollRef.current?.scrollTo({ top: 0 });
-  }, [sel?.id]);
+  }, [sel?.id, epoch, tenant.id]);
+
+  // Zeitversetzte Stapel-Analysen beim Verlassen verwerfen
+  useEffect(() => () => stapelTimer.current.forEach((t) => clearTimeout(t)), []);
 
   // Vorausgewählte Nachricht (?id=) in der Liste sichtbar machen
   useEffect(() => {
@@ -129,7 +135,8 @@ export default function Posteingang() {
   const naechsteNeue = eingang.find((n) => n.status === "neu");
 
   const alleAnalysieren = () => {
-    ausstehend.forEach((n, i) => setTimeout(() => void starteAnalyse(n, tenant.bundesland), i * 260));
+    const schluessel = analyseSchluessel();
+    stapelTimer.current = ausstehend.map((n, i) => window.setTimeout(() => void starteAnalyse(n, tenant.bundesland, { schluessel }), i * 260));
   };
 
   const liste = (

@@ -88,7 +88,11 @@ export function TabBeteiligte({ akte }: { akte: Akte }) {
                 </div>
               </div>
               <div className="mt-4 grid grid-cols-1 gap-1">
-                <DatenZeile icon={<BadgeCheck className="size-3.5" />} label="Versicherungsnummer" wert={akte.rsv.versicherungsnummer} mono />
+                {akte.rsv.versicherungsnummer ? (
+                  <DatenZeile icon={<BadgeCheck className="size-3.5" />} label="Versicherungsnummer" wert={akte.rsv.versicherungsnummer} mono />
+                ) : (
+                  <NummerNachtragen akte={akte} />
+                )}
                 {akte.rsv.schadennummer && <DatenZeile icon={<Hash className="size-3.5" />} label="Schadennummer" wert={akte.rsv.schadennummer} mono />}
                 {akte.rsv.selbstbeteiligung !== undefined && <DatenZeile icon={<ShieldCheck className="size-3.5" />} label="Selbstbeteiligung" wert={fmtEUR(akte.rsv.selbstbeteiligung)} kopierbar={false} />}
                 {versicherung?.email && <DatenZeile icon={<AtSign className="size-3.5" />} label="E-Mail" wert={versicherung.email} />}
@@ -186,6 +190,43 @@ function KontaktLink({ id }: { id: string }) {
     <Link to={`/kontakte?id=${id}`} className="mt-4 inline-flex items-center gap-1 self-start text-[12.5px] font-medium text-ink hover:underline">
       Kontakt öffnen <ArrowUpRight className="size-3.5" />
     </Link>
+  );
+}
+
+/** Versicherungsnummer nachtragen – bei der Mandatsaufnahme ist sie oft noch nicht bekannt. */
+function NummerNachtragen({ akte }: { akte: Akte }) {
+  const { user } = useKanzlei();
+  const [nr, setNr] = useState("");
+  const speichern = () => {
+    const n = nr.trim();
+    if (!n || !akte.rsv) return;
+    useData.getState().patch("akten", akte.id, { rsv: { ...akte.rsv, versicherungsnummer: n }, updatedAt: nowLocal() });
+    useData.getState().log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Versicherungsnummer nachgetragen (${akte.rsv.versicherung}) – ${akte.aktenzeichen}` });
+    toast("Versicherungsnummer gespeichert", { ton: "erfolg", text: n });
+  };
+  return (
+    <div className="flex items-center gap-2.5 rounded-[12px] px-2 py-1.5">
+      <span className="text-fg-4">
+        <BadgeCheck className="size-3.5" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <label htmlFor={`rsv-nr-${akte.id}`} className="block text-[10.5px] font-medium text-fg-4">
+          Versicherungsnummer · wird nachgereicht
+        </label>
+        <form
+          className="mt-1 flex min-w-0 gap-1.5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            speichern();
+          }}
+        >
+          <Input id={`rsv-nr-${akte.id}`} value={nr} onChange={(e) => setNr(e.target.value)} placeholder="z. B. RS-4471209" autoComplete="off" className="mono !h-8 min-w-0 flex-1 !rounded-[9px] !px-2.5 text-[12.5px]" />
+          <Button type="submit" size="sm" variant="secondary" disabled={!nr.trim()}>
+            Speichern
+          </Button>
+        </form>
+      </div>
+    </div>
   );
 }
 

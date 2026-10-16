@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { motion } from "motion/react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { addDays, fromISO, monatName, wochentagName } from "@/core/dates";
@@ -23,7 +23,19 @@ function zeitraum(start: string) {
   return `${a.getUTCDate()}. ${monatName(a.getUTCMonth(), true)} – ${b.getUTCDate()}. ${monatName(b.getUTCMonth(), true)} ${b.getUTCFullYear()}`;
 }
 
-export function WochenAnsicht({ fristen, akten, start, setStart, land, heute, onOpen }: { fristen: Frist[]; akten: Map<string, Akte>; start: string; setStart: (s: string) => void; land: Bundesland; heute: string; onOpen: (f: Frist) => void }) {
+export function WochenAnsicht({
+  fristen, akten, start, setStart, land, heute, markiert, onOpen,
+}: {
+  fristen: Frist[];
+  akten: Map<string, Akte>;
+  start: string;
+  setStart: (s: string) => void;
+  land: Bundesland;
+  heute: string;
+  /** Per Deep-Link angesprungener Tag – wird hervorgehoben und in den sichtbaren Bereich gescrollt */
+  markiert?: string;
+  onOpen: (f: Frist) => void;
+}) {
   const tage = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(start, i)), [start]);
   const proTag = useMemo(() => {
     const m = new Map<string, Frist[]>();
@@ -33,6 +45,21 @@ export function WochenAnsicht({ fristen, akten, start, setStart, land, heute, on
   }, [fristen, tage]);
   const summe = tage.reduce((s, t) => s + (proTag.get(t)?.length ?? 0), 0);
   const aktuelleWoche = wochenStart(heute) === start;
+  const markiertHier = !!markiert && tage.includes(markiert);
+  /** Hervorhebungsring: der angesprungene Tag, sonst heute */
+  const ring = (t: string) => (markiertHier ? t === markiert : t === heute);
+
+  useEffect(() => {
+    if (!markiert) return;
+    const timer = setTimeout(() => {
+      const el = Array.from(document.querySelectorAll<HTMLElement>(`[data-tag="${markiert}"]`)).find((x) => x.offsetParent !== null);
+      if (!el) return;
+      // Nur scrollen, wenn der Tag nicht schon sichtbar ist (oben Kopfleiste, unten Tab-Leiste berücksichtigen)
+      const r = el.getBoundingClientRect();
+      if (r.top < 88 || r.top > window.innerHeight - 160) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 320);
+    return () => clearTimeout(timer);
+  }, [markiert]);
 
   return (
     <div>
@@ -68,7 +95,7 @@ export function WochenAnsicht({ fristen, akten, start, setStart, land, heute, on
           const istHeute = t === heute;
           const items = proTag.get(t) ?? [];
           return (
-            <div key={t} className={cn("sheet flex min-h-[320px] min-w-0 flex-col rounded-[18px]", istHeute && "ring-2 ring-[var(--ink)]")}>
+            <div key={t} data-tag={t} aria-current={t === markiert ? "date" : undefined} className={cn("sheet flex min-h-[320px] min-w-0 scroll-mt-24 flex-col rounded-[18px]", ring(t) && "ring-2 ring-[var(--ink)]", t === markiert && "bg-ink-softer")}>
               <div className="flex items-center gap-2 border-b border-[var(--line)] px-2.5 py-2">
                 <span className={cn("text-[11.5px] font-semibold uppercase tracking-[0.06em]", frei ? "text-fg-4" : "text-fg-3")}>{wochentagName(t, true)}</span>
                 <span className={cn("num ml-auto grid size-7 place-items-center rounded-full text-[13.5px] font-semibold", istHeute ? "bg-ink text-on-ink" : frei ? "text-fg-3" : "text-fg")}>{Number(t.slice(8, 10))}</span>
@@ -96,7 +123,7 @@ export function WochenAnsicht({ fristen, akten, start, setStart, land, heute, on
           const items = proTag.get(t) ?? [];
           const istHeute = t === heute;
           return (
-            <Card key={t} padded={false} className={cn("flex gap-3 p-3", istHeute && "ring-2 ring-[var(--ink)]", frei && !items.length && "opacity-80")}>
+            <Card key={t} padded={false} data-tag={t} aria-current={t === markiert ? "date" : undefined} className={cn("flex scroll-mt-24 gap-3 p-3", ring(t) && "ring-2 ring-[var(--ink)]", frei && !items.length && t !== markiert && "opacity-80")}>
               <div className="w-11 shrink-0 text-center">
                 <div className={cn("text-[11px] font-semibold uppercase", frei ? "text-fg-4" : "text-fg-3")}>{wochentagName(t, true)}</div>
                 <div className={cn("num mx-auto mt-0.5 grid size-9 place-items-center rounded-full text-[16px] font-semibold", istHeute ? "bg-ink text-on-ink" : frei ? "text-fg-3" : "")}>{Number(t.slice(8, 10))}</div>

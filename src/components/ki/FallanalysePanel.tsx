@@ -2,26 +2,56 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import {
-  Sparkles, Scale, CheckCircle2, XCircle, AlertTriangle, ListChecks, FileText, Library, RotateCcw, Copy, Save, Square, BookOpen, Loader2, ChevronRight,
+  Sparkles, Scale, CheckCircle2, XCircle, AlertTriangle, ListChecks, FileText, Library, RotateCcw, Copy, Save, Square, BookOpen, Loader2, ChevronRight, FolderOpen,
 } from "lucide-react";
 import { useData } from "@/store/data";
-import { useKanzlei } from "@/store/session";
+import { useKanzlei, useSession } from "@/store/session";
+import { istConsole } from "@/lib/backend";
 import { toast } from "@/store/ui";
 import { useAiStatus } from "@/ai/status";
 import { analysiereFall, ANALYSE_PHASEN, type Fallanalyse } from "@/ai/fallanalyse";
-import { nowLocal, relTime, uid } from "@/core/dates";
+import { nowLocal, relTime } from "@/core/dates";
 import { Button, Card, Chip } from "@/components/ui";
 import { cn } from "@/lib/cn";
 
+/**
+ * Zwischenspeicher der letzten Analyse je Akte – Mandantentrennung: geschlüsselt nach Kanzlei-ID,
+ * Daten-Epoche (`useData().epoch`, erhöht sich bei Laden/Zurücksetzen/Abmelden) und Akten-ID.
+ * Akten-IDs wiederholen sich in jeder Kanzlei (hero-a-1 …); ein Eintrag einer anderen Kanzlei
+ * oder eines älteren Datenstands wird daher nie angezeigt.
+ */
 const cache = new Map<string, Fallanalyse>();
+let cacheStand = "";
+
+function cacheSchluessel(tenantId: string, epoch: number, akteId: string) {
+  const stand = `${tenantId}:${epoch}`;
+  if (stand !== cacheStand) {
+    cache.clear();
+    cacheStand = stand;
+  }
+  return `${stand}:${akteId}`;
+}
+
+/** Kanzlei-ID der aktuellen Sitzung (außerhalb des Renderns, für laufende Analysen). */
+function aktuelleKanzleiId(): string {
+  const s = useSession.getState().sitzung;
+  return s && !istConsole(s) ? s.tenant.id : "-";
+}
+
+/** Stabile Dokument-ID des gespeicherten Entwurfs – ein Entwurf je Analyse, kein Duplikat bei erneutem Klick. */
+function entwurfDokId(akteId: string, r: Fallanalyse) {
+  return `dok-fa-${akteId}-${r.erstelltAm.replace(/\D/g, "")}`;
+}
 
 /** KI-Fallanalyse einer Akte: animierte Analyse-Pipeline, Erfolgsaussicht, Präzedenzfälle, nächste Schritte, Entwurf. */
 export function FallanalysePanel({ akteId, kompakt }: { akteId: string; kompakt?: boolean }) {
   const data = useData((s) => s.data);
-  const { user } = useKanzlei();
+  const epoch = useData((s) => s.epoch);
+  const { user, tenant } = useKanzlei();
   const ai = useAiStatus();
   const akte = data.akten.find((a) => a.id === akteId);
-  const [ergebnis, setErgebnis] = useState<Fallanalyse | null>(() => cache.get(akteId) ?? null);
+  const schluessel = cacheSchluessel(tenant.id, epoch, akteId);
+  const [ergebnis, setErgebnis] = useState<Fallanalyse | null>(() => cache.get(schluessel) ?? null);
   const [phase, setPhase] = useState(-1);
   const [laeuft, setLaeuft] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
@@ -30,18 +60,25 @@ export function FallanalysePanel({ akteId, kompakt }: { akteId: string; kompakt?
   const nav = useNavigate();
 
   useEffect(() => {
-    setErgebnis(cache.get(akteId) ?? null);
+    setErgebnis(cache.get(schluessel) ?? null);
     setPhase(-1);
     setFehler(null);
+    setLaeuft(false);
     return () => ctl.current?.abort();
-  }, [akteId]);
+  }, [schluessel]);
 
   if (!akte) return null;
+
+  const entwurfId = ergebnis ? entwurfDokId(akteId, ergebnis) : null;
+  const entwurfGespeichert = !!entwurfId && data.dokumente.some((d) => d.id === entwurfId);
 
   const start = async () => {
     ctl.current?.abort();
     const c = new AbortController();
     ctl.current = c;
+    const startSchluessel = schluessel;
+    /** Kanzlei oder Datenstand gewechselt? Dann darf die Analyse nichts mehr schreiben. */
+    const veraltet = () => c.signal.aborted || cacheSchluessel(aktuelleKanzleiId(), useData.getState().epoch, akteId) !== startSchluessel;
     setLaeuft(true);
     setFehler(null);
     setErgebnis(null);
@@ -49,28 +86,40 @@ export function FallanalysePanel({ akteId, kompakt }: { akteId: string; kompakt?
     setPhase(0);
     try {
       const r = await analysiereFall(akteId, useData.getState().data, {
-        onPhase: setPhase,
+        onPhase: (p) => {
+          if (!veraltet()) setPhase(p);
+        },
         signal: c.signal,
-        onText: (t) => setStream(t),
+        onText: (t) => {
+          if (!veraltet()) setStream(t);
+        },
       });
-      if (c.signal.aborted) return;
-      cache.set(akteId, r);
+      if (veraltet()) return;
+      cache.set(startSchluessel, r);
       setErgebnis(r);
       setPhase(ANALYSE_PHASEN.length);
       const st = useData.getState();
       st.patch("akten", akteId, { kiAnalyse: { erstelltAm: r.erstelltAm, prozent: r.erfolgsaussicht.prozent, quelle: r.quelle } });
       st.log({ akteur: "ki", akteId, text: `KI-Fallanalyse erstellt – Erfolgsaussicht ${r.erfolgsaussicht.prozent} % (${akte.aktenzeichen})`, minutenGespart: 45 });
     } catch (e) {
-      if (!c.signal.aborted) setFehler(e instanceof Error ? e.message : String(e));
+      if (!veraltet()) setFehler(e instanceof Error ? e.message : String(e));
     } finally {
-      setLaeuft(false);
+      if (ctl.current === c) setLaeuft(false);
     }
   };
 
+  const oeffneEntwurf = () => {
+    if (entwurfId) nav(`/akten/${akteId}?tab=dokumente&dok=${encodeURIComponent(entwurfId)}`);
+  };
+
   const speichereEntwurf = () => {
-    if (!ergebnis) return;
+    if (!ergebnis || !entwurfId) return;
+    if (useData.getState().data.dokumente.some((d) => d.id === entwurfId)) {
+      oeffneEntwurf();
+      return;
+    }
     useData.getState().upsert("dokumente", {
-      id: uid("d"),
+      id: entwurfId,
       akteId,
       name: ergebnis.entwurf.titel,
       art: "schriftsatz",
@@ -85,7 +134,9 @@ export function FallanalysePanel({ akteId, kompakt }: { akteId: string; kompakt?
       createdAt: nowLocal(),
       ki: { zusammenfassung: "Von der KI-Fallanalyse erstellter Entwurf – bitte prüfen." },
     });
-    toast("Entwurf in der E-Akte gespeichert", { ton: "erfolg", text: "Ordner „Schriftsätze“", aktion: { label: "Öffnen", onClick: () => nav(`/akten/${akteId}?tab=dokumente`) } });
+    useData.getState().log({ akteur: "nutzer", userId: user.id, akteId, text: `KI-Entwurf „${ergebnis.entwurf.titel}“ in der E-Akte gespeichert (Schriftsätze)` });
+    const id = entwurfId;
+    toast("Entwurf in der E-Akte gespeichert", { ton: "erfolg", text: "Ordner „Schriftsätze“", aktion: { label: "Öffnen", onClick: () => nav(`/akten/${akteId}?tab=dokumente&dok=${encodeURIComponent(id)}`) } });
   };
 
   const kopieren = async () => {
@@ -170,7 +221,7 @@ export function FallanalysePanel({ akteId, kompakt }: { akteId: string; kompakt?
   const stagger = (i: number) => ({ initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 }, transition: { delay: 0.05 + i * 0.06, type: "spring" as const, stiffness: 300, damping: 30 } });
 
   return (
-    <div className="grid gap-4">
+    <div className="grid min-w-0 gap-4 [&>*]:min-w-0">
       {/* Kopf: Erfolgsaussicht */}
       <motion.div {...stagger(0)}>
         <Card className="ai-ring overflow-hidden">
@@ -197,7 +248,7 @@ export function FallanalysePanel({ akteId, kompakt }: { akteId: string; kompakt?
         </Card>
       </motion.div>
 
-      <div className={cn("grid gap-4", !kompakt && "xl:grid-cols-2")}>
+      <div className={cn("grid gap-4 [&>*]:min-w-0", !kompakt && "xl:grid-cols-2")}>
         <motion.div {...stagger(1)}>
           <Card className="h-full">
             <SectionTitle icon={<Scale className="size-4" />} title="Rechtsfragen" />
@@ -217,7 +268,7 @@ export function FallanalysePanel({ akteId, kompakt }: { akteId: string; kompakt?
             <SectionTitle icon={<Library className="size-4" />} title="Präzedenzfälle aus der Fall-Datenbank" />
             <div className="grid gap-2.5">
               {r.praezedenzfaelle.map((p) => (
-                <button key={p.id} type="button" onClick={() => nav(`/fall-datenbank?id=${p.id}`)} className="group rounded-[14px] p-3 text-left ring-1 ring-[var(--line)] transition-all hover:bg-ink-softer hover:ring-[var(--ink-soft)]">
+                <button key={p.id} type="button" onClick={() => nav(`/fall-datenbank?id=${p.id}`)} className="group min-w-0 rounded-[14px] p-3 text-left ring-1 ring-[var(--line)] transition-all hover:bg-ink-softer hover:ring-[var(--ink-soft)]">
                   <div className="flex items-center gap-2">
                     <span className="mono text-[12px] font-semibold text-ink">
                       {p.gericht} {p.az}
@@ -296,9 +347,20 @@ export function FallanalysePanel({ akteId, kompakt }: { akteId: string; kompakt?
             <Button size="sm" icon={<Copy className="size-3.5" />} onClick={kopieren}>
               Kopieren
             </Button>
-            <Button size="sm" variant="primary" icon={<Save className="size-3.5" />} onClick={speichereEntwurf}>
-              In E-Akte speichern
-            </Button>
+            {entwurfGespeichert ? (
+              <>
+                <Chip tone="green" icon={<CheckCircle2 className="size-3" />}>
+                  In E-Akte gespeichert
+                </Chip>
+                <Button size="sm" variant="secondary" icon={<FolderOpen className="size-3.5" />} onClick={oeffneEntwurf}>
+                  Im Ordner „Schriftsätze“ öffnen
+                </Button>
+              </>
+            ) : (
+              <Button size="sm" variant="primary" icon={<Save className="size-3.5" />} onClick={speichereEntwurf}>
+                In E-Akte speichern
+              </Button>
+            )}
           </div>
           <div className="paper max-h-[520px] overflow-y-auto whitespace-pre-wrap px-6 py-7 sm:px-10">{r.entwurf.text}</div>
           <p className="mt-3 flex items-center gap-1.5 text-[11.5px] text-fg-4">

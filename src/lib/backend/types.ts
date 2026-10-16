@@ -52,6 +52,11 @@ export interface NeuerNutzer {
 
 export type Sitzung = SessionInfo | ConsoleSession;
 
+export interface SchreibOptionen {
+  /** Hintergrund- bzw. Systemschreibvorgang: zählt nicht als Änderung durch die Kanzlei (Demodaten werden weiter täglich neu erzeugt). */
+  system?: boolean;
+}
+
 export function istConsole(s: Sitzung | null | undefined): s is ConsoleSession {
   return !!s && "console" in s;
 }
@@ -78,7 +83,8 @@ export interface Backend {
   me(): Promise<Sitzung | null>;
   logout(): Promise<void>;
   loadData(): Promise<TenantData>;
-  putDoc(col: CollectionKey, doc: { id: string }): Promise<void>;
+  /** `system`: Hintergrundlauf (z. B. simulierter 38h-Motor) – wird gespeichert, markiert die Daten aber nicht als „von der Kanzlei geändert". */
+  putDoc(col: CollectionKey, doc: { id: string }, opts?: SchreibOptionen): Promise<void>;
   deleteDoc(col: CollectionKey, id: string): Promise<void>;
   resetData(): Promise<TenantData>;
   team: {

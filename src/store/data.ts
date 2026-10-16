@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { getBackend } from "@/lib/backend";
+import { getBackend, type SchreibOptionen } from "@/lib/backend";
 import { nowLocal, uid } from "@/core/dates";
 import type { Aktivitaet, CollectionKey, TenantData } from "@/core/types";
 
@@ -14,10 +14,11 @@ interface DataState {
   load: () => Promise<void>;
   reset: () => Promise<void>;
   clear: () => void;
-  upsert: <K extends CollectionKey>(col: K, doc: Doc<K>) => void;
-  patch: <K extends CollectionKey>(col: K, id: string, patch: Partial<Doc<K>>) => void;
+  /** `opts.system`: Hintergrundlauf (z. B. simulierter 38h-Motor) – zählt nicht als Änderung durch die Kanzlei. */
+  upsert: <K extends CollectionKey>(col: K, doc: Doc<K>, opts?: SchreibOptionen) => void;
+  patch: <K extends CollectionKey>(col: K, id: string, patch: Partial<Doc<K>>, opts?: SchreibOptionen) => void;
   remove: <K extends CollectionKey>(col: K, id: string) => void;
-  log: (a: Omit<Aktivitaet, "id" | "zeit"> & { zeit?: string }) => void;
+  log: (a: Omit<Aktivitaet, "id" | "zeit"> & { zeit?: string }, opts?: SchreibOptionen) => void;
 }
 
 const empty: TenantData = {
@@ -25,9 +26,9 @@ const empty: TenantData = {
   buchungen: [], transaktionen: [], zeiten: [], automationen: [], aktivitaeten: [], notizen: [], meta: [],
 };
 
-function persist(col: CollectionKey, doc: { id: string }) {
+function persist(col: CollectionKey, doc: { id: string }, opts?: SchreibOptionen) {
   try {
-    getBackend().putDoc(col, structuredClone(doc)).catch((e) => console.warn("Speichern fehlgeschlagen", e));
+    getBackend().putDoc(col, structuredClone(doc), opts).catch((e) => console.warn("Speichern fehlgeschlagen", e));
   } catch (e) {
     console.warn("Speichern nicht möglich", e);
   }
@@ -52,20 +53,20 @@ export const useData = create<DataState>((set, get) => ({
     set({ data: structuredClone(data), status: "bereit", epoch: get().epoch + 1 });
   },
   clear: () => set({ data: empty, status: "leer", epoch: get().epoch + 1 }),
-  upsert: (col, doc) => {
+  upsert: (col, doc, opts) => {
     const arr = get().data[col] as Doc<typeof col>[];
     const i = arr.findIndex((x) => x.id === doc.id);
     const next = i >= 0 ? arr.map((x, j) => (j === i ? doc : x)) : [doc, ...arr];
     set({ data: { ...get().data, [col]: next } });
-    persist(col, doc);
+    persist(col, doc, opts);
   },
-  patch: (col, id, patch) => {
+  patch: (col, id, patch, opts) => {
     const arr = get().data[col] as Doc<typeof col>[];
     const cur = arr.find((x) => x.id === id);
     if (!cur) return;
     const doc = { ...cur, ...patch } as Doc<typeof col>;
     set({ data: { ...get().data, [col]: arr.map((x) => (x.id === id ? doc : x)) } });
-    persist(col, doc);
+    persist(col, doc, opts);
   },
   remove: (col, id) => {
     const arr = get().data[col] as { id: string }[];
@@ -76,9 +77,9 @@ export const useData = create<DataState>((set, get) => ({
       console.warn("Löschen nicht möglich", e);
     }
   },
-  log: (a) => {
+  log: (a, opts) => {
     const doc: Aktivitaet = { id: uid("ak"), zeit: a.zeit ?? nowLocal(), ...a };
-    get().upsert("aktivitaeten", doc);
+    get().upsert("aktivitaeten", doc, opts);
   },
 }));
 

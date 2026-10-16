@@ -148,33 +148,35 @@ export function berechneFrist(params: {
   land: Bundesland;
   vorfristTage?: number;
   ereignisLabel?: string;
+  /** Rechtsgrundlage der Fristdauer (z. B. „§ 517 ZPO“) – erscheint im Rechenweg. */
+  grundlage?: string;
 }): FristErgebnis {
   const { ereignis, dauer, einheit, land } = params;
   const rechenweg: string[] = [];
   const warnungen: string[] = [];
   const label = params.ereignisLabel ?? "Fristauslösendes Ereignis";
+  const dauerText = `Dauer ${einheitText(dauer, einheit)}${params.grundlage ? ` (${params.grundlage})` : ""}`;
   rechenweg.push(`${label}: ${fmtDateWd(ereignis)}`);
 
   let roh: ISODate;
   if (einheit === "tage") {
     roh = addDays(ereignis, dauer);
-    rechenweg.push(`Fristbeginn am Folgetag (§ 187 Abs. 1 BGB), Dauer ${einheitText(dauer, einheit)} → rechnerisches Ende ${fmtDateWd(roh)}`);
+    rechenweg.push(`Fristbeginn am Folgetag – der Ereignistag zählt nicht mit (§ 187 Abs. 1 BGB)`);
+    rechenweg.push(`${dauerText} → rechnerisches Ende ${fmtDateWd(roh)}`);
   } else if (einheit === "wochen") {
     roh = addDays(ereignis, dauer * 7);
-    rechenweg.push(
-      `Dauer ${einheitText(dauer, einheit)}: Ende am gleichnamigen Wochentag (${wochentagName(ereignis)}) – § 188 Abs. 2 BGB → ${fmtDateWd(roh)}`,
-    );
+    rechenweg.push(`Fristbeginn am Folgetag – der Ereignistag zählt nicht mit (§ 187 Abs. 1 BGB)`);
+    rechenweg.push(`${dauerText}: Ende am gleichnamigen Wochentag (${wochentagName(ereignis)}) – § 188 Abs. 2 BGB → ${fmtDateWd(roh)}`);
   } else if (einheit === "monate") {
     const r = addMonthsBGB(ereignis, dauer);
     roh = r.date;
-    rechenweg.push(
-      `Dauer ${einheitText(dauer, einheit)}: Ende am Tag mit derselben Zahl – § 188 Abs. 2 BGB → ${fmtDateWd(roh)}`,
-    );
+    rechenweg.push(`Fristbeginn am Folgetag – der Ereignistag zählt nicht mit (§ 187 Abs. 1 BGB)`);
+    rechenweg.push(`${dauerText}: Ende am Tag mit derselben Zahl – § 188 Abs. 2 BGB → ${fmtDateWd(roh)}`);
     if (r.gekappt) rechenweg.push(`Diesen Tag gibt es im Zielmonat nicht → Monatsletzter (§ 188 Abs. 3 BGB)`);
   } else {
     const year = Number(ereignis.slice(0, 4));
     roh = `${year + dauer}-12-31`;
-    rechenweg.push(`Beginn mit Schluss des Jahres ${year} (§ 199 Abs. 1 BGB), Dauer ${dauer} Jahre → ${fmtDateWd(roh)}`);
+    rechenweg.push(`Beginn mit Schluss des Jahres ${year} (§ 199 Abs. 1 BGB), Dauer ${dauer} Jahre${params.grundlage ? ` (${params.grundlage})` : ""} → ${fmtDateWd(roh)}`);
   }
 
   let ende = roh;
@@ -188,8 +190,8 @@ export function berechneFrist(params: {
     ende = addDays(ende, 1);
     verschoben = true;
   }
-  if (verschoben) rechenweg.push(`Fristende nach § 222 Abs. 2 ZPO / § 193 BGB: ${fmtDateWd(ende)}`);
-  else rechenweg.push(`Fristende fällt auf einen Werktag: ${fmtDateWd(ende)}, 24:00 Uhr`);
+  if (verschoben) rechenweg.push(`Fristende nach § 222 Abs. 2 ZPO / § 193 BGB: ${fmtDateWd(ende)}, 24:00 Uhr`);
+  else rechenweg.push(`Fristende fällt auf einen Werktag – keine Verschiebung: ${fmtDateWd(ende)}, 24:00 Uhr`);
 
   const tf = feiertagAm(ende, land);
   if (tf?.teilweise) {
@@ -214,6 +216,8 @@ export function berechneNachRegel(key: string, ereignis: ISODate, land: Bundesla
     land,
     vorfristTage: r.vorfristTage,
     ereignisLabel: r.ereignis,
+    // Bei frei bestimmten Fristen ist die „Grundlage“ nur die Berechnungsvorschrift – nicht als Dauer-Grundlage nennen.
+    grundlage: r.key === "frei_tage" ? undefined : r.grundlage,
   });
   return { ...res, regel: r };
 }

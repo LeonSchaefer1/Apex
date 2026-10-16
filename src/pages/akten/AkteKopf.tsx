@@ -2,32 +2,54 @@
 import { useEffect, useRef } from "react";
 import { Link } from "react-router";
 import { motion } from "motion/react";
-import { Archive, CalendarPlus, Check, CircleDot, Copy, FolderOpen, Globe, Lock, Mail, MoreHorizontal, PauseCircle, PlayCircle, Sparkles } from "lucide-react";
-import type { Akte, AktenPhase } from "@/core/types";
+import { Archive, CalendarPlus, Check, CircleDot, CircleHelp, Copy, FolderOpen, Globe, Lock, Mail, MoreHorizontal, PauseCircle, PlayCircle, Sparkles } from "lucide-react";
+import type { Akte, AktenPhase, Frist } from "@/core/types";
+import { zaehltAlsFrist } from "@/core/fristenLage";
 import { fmtDate, fmtEUR, nowLocal, today } from "@/core/dates";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
-import { toast } from "@/store/ui";
+import { toast, useUI } from "@/store/ui";
 import { Avatar, Button, Card, Chip, IconButton, Menu, confirmDialog } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { KontaktAvatar, kopiere } from "@/pages/kontakte/kontaktHelfer";
 import { DECKUNG_INFO, PHASEN, PRIO_INFO, SACHGEBIET_ICON, STATUS_INFO, SachgebietChip, useKontaktMap, useTeam } from "./helfer";
 
-export async function akteAbschliessen(akte: Akte, userId: string) {
-  const offeneFristen = useData.getState().data.fristen.filter((f) => f.akteId === akte.id && f.status === "offen" && f.typ !== "vorfrist").length;
-  const ok = await confirmDialog({
-    titel: `Akte ${akte.aktenzeichen} abschließen?`,
-    text: offeneFristen
-      ? `Achtung: Es sind noch ${offeneFristen} offene ${offeneFristen === 1 ? "Frist" : "Fristen"} eingetragen. Die Akte wird archiviert und die Aufbewahrungsfrist der Handakte (§ 50 BRAO, sechs Jahre) vorgemerkt.`
-      : "Die Akte wird archiviert und die Aufbewahrungsfrist der Handakte (§ 50 BRAO, sechs Jahre) vorgemerkt. Sie können sie jederzeit wieder öffnen.",
-    bestaetigen: "Akte abschließen",
-  });
-  if (!ok) return false;
+/** Offene Einträge einer Akte – gezählt nach `zaehltAlsFrist` (Notfristen, Fristen, Wiedervorlagen), Termine getrennt. */
+export function offeneEintraege(akteId: string, fristen: Frist[]): { fristen: number; notfristen: number; termine: number } {
+  const offen = fristen.filter((f) => f.akteId === akteId && f.status === "offen");
+  const echte = offen.filter(zaehltAlsFrist);
+  return { fristen: echte.length, notfristen: echte.filter((f) => f.typ === "notfrist").length, termine: offen.filter((f) => f.typ === "termin").length };
+}
+
+/** „noch 2 offene Fristen (davon 1 Notfrist) und 1 Termin“ – leer, wenn nichts offen ist. */
+export function offeneEintraegeText(o: { fristen: number; notfristen: number; termine: number }): string {
+  const teile: string[] = [];
+  if (o.fristen) teile.push(`${o.fristen} offene ${o.fristen === 1 ? "Frist" : "Fristen"}${o.notfristen ? ` (davon ${o.notfristen} ${o.notfristen === 1 ? "Notfrist" : "Notfristen"})` : ""}`);
+  if (o.termine) teile.push(`${o.termine} ${o.termine === 1 ? "offener Termin" : "offene Termine"}`);
+  return teile.join(" und ");
+}
+
+/** Schließt eine Akte ohne Rückfrage ab: Status, Phase, Datum und Protokoll (Archivierung, Aufbewahrung nach § 50 BRAO). */
+export function schliesseAkteAb(akte: Akte, userId: string): number {
   const st = useData.getState();
   const jahr = Number(today().slice(0, 4)) + 6;
   st.patch("akten", akte.id, { status: "abgeschlossen", phase: "Abgeschlossen", abgeschlossenAm: today(), updatedAt: nowLocal() });
   st.log({ akteur: "nutzer", userId, akteId: akte.id, text: `Akte abgeschlossen – ${akte.aktenzeichen} ${akte.titel}` });
   st.log({ akteur: "automation", automationKey: "archivierung", akteId: akte.id, minutenGespart: 6, text: `Akte archiviert, Aufbewahrungsfrist bis 31.12.${jahr} vorgemerkt – ${akte.aktenzeichen}` });
+  return jahr;
+}
+
+export async function akteAbschliessen(akte: Akte, userId: string) {
+  const offen = offeneEintraegeText(offeneEintraege(akte.id, useData.getState().data.fristen));
+  const ok = await confirmDialog({
+    titel: `Akte ${akte.aktenzeichen} abschließen?`,
+    text: offen
+      ? `Achtung: Es sind noch ${offen} eingetragen – sie bleiben im Fristenkalender stehen. Die Akte wird archiviert und die Aufbewahrungsfrist der Handakte (§ 50 BRAO, sechs Jahre) vorgemerkt.`
+      : "Die Akte wird archiviert und die Aufbewahrungsfrist der Handakte (§ 50 BRAO, sechs Jahre) vorgemerkt. Sie können sie jederzeit wieder öffnen.",
+    bestaetigen: "Akte abschließen",
+  });
+  if (!ok) return false;
+  const jahr = schliesseAkteAb(akte, userId);
   toast("Akte abgeschlossen", { ton: "erfolg", text: `Aufbewahrung bis 31.12.${jahr} vorgemerkt (§ 50 BRAO)` });
   return true;
 }
@@ -111,7 +133,13 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
             />
           </div>
           <div className="min-w-0 basis-full">
-            <h1 className="title-xl break-words">{akte.titel}</h1>
+            <div className="flex items-start gap-2">
+              <h1 className="title-xl min-w-0 break-words">{akte.titel}</h1>
+              {/* Schnellhilfe wie im PageHeader der Bereichsseiten */}
+              <IconButton label="Was ist das? Schnellhilfe öffnen" size="sm" onClick={() => useUI.getState().zeigeHilfe("akten")} className="mt-0.5 shrink-0 text-fg-3">
+                <CircleHelp className="size-[18px]" />
+              </IconButton>
+            </div>
             <div className="mt-3 flex flex-wrap gap-1.5">
               <SachgebietChip sg={akte.sachgebiet} />
               {!(akte.status === "abgeschlossen" && akte.phase === "Abgeschlossen") && (
@@ -131,7 +159,7 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
                 </Chip>
               )}
               {akte.rsv && (
-                <Chip tone={DECKUNG_INFO[akte.rsv.deckung].tone} title={`${akte.rsv.versicherung} · ${akte.rsv.versicherungsnummer}`}>
+                <Chip tone={DECKUNG_INFO[akte.rsv.deckung].tone} title={`${akte.rsv.versicherung} · ${akte.rsv.versicherungsnummer || "Versicherungsnummer wird nachgereicht"}`}>
                   RSV · {DECKUNG_INFO[akte.rsv.deckung].label}
                 </Chip>
               )}

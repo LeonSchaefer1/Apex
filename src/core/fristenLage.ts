@@ -47,3 +47,29 @@ export function fristenLage(fristen: Frist[], heute: ISODate, nurFuer?: ID): Fri
     notfristenWoche: echte.filter((f) => f.typ === "notfrist" && f.datum >= heute && f.datum <= in7),
   };
 }
+
+export interface FristenZeitraum {
+  /** echte Fristen (Notfristen, Fristen, Wiedervorlagen) im Zeitraum, nach Dringlichkeit sortiert */
+  fristen: Frist[];
+  /** davon Notfristen */
+  notfristen: Frist[];
+  /** Vorfristen im Zeitraum – nur Erinnerungen, nicht mitgezählt */
+  vorfristen: Frist[];
+  /** Termine im Zeitraum – eigene Kategorie, nicht mitgezählt */
+  termine: Frist[];
+}
+
+/**
+ * Offene Einträge in einem Datumsbereich [von, bis] (jeweils einschließlich) – mit derselben Zählweise wie fristenLage().
+ * `von` darf leer sein („alles bis einschließlich bis“, z. B. für heute fällig inkl. überfällig).
+ */
+export function fristenImZeitraum(fristen: Frist[], von: ISODate | "", bis: ISODate, nurFuer?: ID): FristenZeitraum {
+  const offen = fristen.filter((f) => f.status === "offen" && (!nurFuer || f.verantwortlichId === nurFuer) && f.datum <= bis && (!von || f.datum >= von)).sort(nachDringlichkeit);
+  const echte = offen.filter(zaehltAlsFrist);
+  return {
+    fristen: echte,
+    notfristen: echte.filter((f) => f.typ === "notfrist"),
+    vorfristen: offen.filter((f) => f.typ === "vorfrist"),
+    termine: offen.filter((f) => f.typ === "termin"),
+  };
+}

@@ -93,7 +93,17 @@ export function Sidebar() {
             </div>
           </div>
         )}
-        <button type="button" onClick={toggleSidebar} className={cn("icon-btn w-full !rounded-[12px]", !kompakt && "!justify-start gap-2 px-3 text-[12.5px]")} aria-label={kompakt ? "Seitenleiste ausklappen" : "Seitenleiste einklappen"}>
+        <button
+          type="button"
+          onClick={toggleSidebar}
+          className={cn(
+            kompakt
+              ? "icon-btn w-full !rounded-[12px]"
+              : "flex h-9 w-full items-center gap-2 rounded-[12px] px-3 text-[12.5px] font-medium text-fg-2 transition-colors hover:bg-ink-softer hover:text-fg",
+          )}
+          aria-label={kompakt ? "Seitenleiste ausklappen" : "Seitenleiste einklappen"}
+          title={kompakt ? "Seitenleiste ausklappen" : undefined}
+        >
           {kompakt ? <PanelLeftOpen className="size-[18px]" /> : <PanelLeftClose className="size-[18px]" />}
           {!kompakt && "Einklappen"}
         </button>

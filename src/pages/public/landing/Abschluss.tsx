@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { AlertOctagon, ArrowRight, Clock, Hourglass, Link2Off, Lock, Mail, Plus, Receipt, Search, ShieldAlert, TrendingUp } from "lucide-react";
-import { Button } from "@/components/ui";
+import { AlertOctagon, ArrowRight, Clock, FileText, Hourglass, Link2Off, Lock, Mail, Plus, Receipt, Search, ShieldAlert, TrendingUp } from "lucide-react";
+import { Button, Chip, Modal } from "@/components/ui";
 import { AppIcon, Wordmark } from "@/components/Logo";
 import { cn } from "@/lib/cn";
 import { Abschnitt, Kopf, Reveal, scrollZu } from "./basis";
@@ -143,8 +143,37 @@ export function Schluss() {
   );
 }
 
+type Rechtliches = "impressum" | "datenschutz" | "agb";
+
+/** Rechtliche Seiten sind im Prototyp bewusst nicht hinterlegt – der Dialog sagt das offen, statt Angaben zu erfinden. */
+const RECHTLICHES: Record<Rechtliches, { label: string; titel: string; text: string }> = {
+  impressum: {
+    label: "Impressum",
+    titel: "Impressum",
+    text: "Die Anbieterkennzeichnung (§ 5 DDG) ist in diesem Prototyp noch nicht hinterlegt. Sie wird ergänzt, bevor die Seite öffentlich erreichbar ist.",
+  },
+  datenschutz: {
+    label: "Datenschutz",
+    titel: "Datenschutzerklärung",
+    text: "Die Datenschutzerklärung (Informationen nach Art. 13 DSGVO) ist in diesem Prototyp noch nicht hinterlegt. Diese Seite lädt keine externen Schriften und setzt kein Tracking ein.",
+  },
+  agb: {
+    label: "AGB & Lizenzbedingungen",
+    titel: "AGB & Lizenzbedingungen",
+    text: "Die Allgemeinen Geschäfts- und Lizenzbedingungen sind in diesem Prototyp noch nicht hinterlegt. Verbindliche Bedingungen enthält erst ein konkretes Angebot.",
+  },
+};
+
 export function Fusszeile() {
   const jahr = new Date().getFullYear();
+  const [rechtliches, setRechtliches] = useState<Rechtliches | null>(null);
+  // Inhalt beim Ausblenden stehen lassen, damit der Dialog nicht leer animiert
+  const [zuletzt, setZuletzt] = useState<Rechtliches>("impressum");
+  const oeffne = (k: Rechtliches) => {
+    setZuletzt(k);
+    setRechtliches(k);
+  };
+  const info = RECHTLICHES[rechtliches ?? zuletzt];
   return (
     <footer className="border-t border-[var(--line)] px-4 pb-[max(28px,env(safe-area-inset-bottom))] pt-10 sm:px-6">
       <div className="mx-auto grid max-w-[1200px] gap-8 md:grid-cols-[minmax(0,1.4fr)_repeat(2,minmax(0,1fr))]">
@@ -172,10 +201,14 @@ export function Fusszeile() {
         </nav>
         <div>
           <div className="eyebrow mb-3">Rechtliches</div>
-          <ul className="grid gap-2 text-[13.5px] text-fg-3">
-            <li>Impressum</li>
-            <li>Datenschutz</li>
-            <li>AGB & Lizenzbedingungen</li>
+          <ul className="grid gap-2 text-[13.5px]">
+            {(Object.keys(RECHTLICHES) as Rechtliches[]).map((k) => (
+              <li key={k}>
+                <button type="button" onClick={() => oeffne(k)} className="text-fg-2 transition-colors hover:text-ink" aria-haspopup="dialog">
+                  {RECHTLICHES[k].label}
+                </button>
+              </li>
+            ))}
           </ul>
           <p className="mt-4 flex items-center gap-1.5 text-[12px] text-fg-4">
             <Clock className="size-3.5" /> Angebot innerhalb von 24 Stunden
@@ -186,6 +219,25 @@ export function Fusszeile() {
         <span>© {jahr} AnwaltApex. Alle Rechte vorbehalten.</span>
         <span>Vergleiche beziehen sich auf klassische Kanzleisoftware im Allgemeinen.</span>
       </div>
+      <Modal
+        open={rechtliches !== null}
+        onClose={() => setRechtliches(null)}
+        size="sm"
+        icon={<FileText className="size-5" />}
+        title={info.titel}
+        subtitle="Platzhalter im Prototyp"
+        footer={
+          <Button variant="primary" data-autofocus onClick={() => setRechtliches(null)}>
+            Verstanden
+          </Button>
+        }
+      >
+        <Chip tone="amber" dot>
+          Im Prototyp nicht hinterlegt
+        </Chip>
+        <p className="mt-3 text-[14px] leading-relaxed text-fg-2">{info.text}</p>
+        <p className="mt-3 text-[12.5px] leading-relaxed text-fg-3">Diese Produktseite ist eine Vorschau von AnwaltApex für Präsentationen. Firmen- und Kontaktangaben werden hier bewusst nicht vorweggenommen.</p>
+      </Modal>
     </footer>
   );
 }

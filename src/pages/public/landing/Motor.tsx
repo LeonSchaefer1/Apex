@@ -1,14 +1,16 @@
 import { useId, useState } from "react";
 import { motion } from "motion/react";
-import { CalendarClock, FileText, Inbox, Landmark, MessagesSquare, Timer } from "lucide-react";
+import { CalendarClock, FileText, Inbox, Landmark, MessagesSquare, Timer, UsersRound } from "lucide-react";
 import { AnimatedNumber } from "@/components/ui";
-import { AUTOMATION_DEFS } from "@/core/automationen";
+import { AUTOMATION_DEFS, WERT_PRO_STUNDE, WOCHEN_PRO_JAHR } from "@/core/automationen";
 import { fmtEUR, fmtNum } from "@/core/dates";
 import { cn } from "@/lib/cn";
 import { Abschnitt, Kopf, Reveal } from "./basis";
 
-const STUNDEN = 38;
-const WOCHEN = 48;
+/** Richtwert der Werbeaussage: Ø 38 Std. automatisierte Routine pro Kanzlei und Woche ≈ 36.000 € pro Jahr. */
+const RICHTWERT_STUNDEN = 38;
+/** Vollzeitstelle für die Umrechnung „≙ Stellen". */
+const STUNDEN_JE_STELLE = 40;
 
 const KATEGORIE_ICON = {
   Posteingang: <Inbox className="size-4" />,
@@ -61,10 +63,13 @@ export function MotorAbschnitt() {
 }
 
 function Rechner() {
-  const [anwaelte, setAnwaelte] = useState(3);
-  const [satz, setSatz] = useState(20);
-  const jahr = STUNDEN * WOCHEN * satz;
-  const proKopf = STUNDEN / anwaelte;
+  // Standardwerte ergeben genau die Werbeaussage: 38 Std. × 48 Wochen × ≈ 19,74 € ≈ 36.000 € pro Jahr.
+  const [stunden, setStunden] = useState(RICHTWERT_STUNDEN);
+  const [satz, setSatz] = useState(WERT_PRO_STUNDE);
+  const stundenJahr = stunden * WOCHEN_PRO_JAHR;
+  const jahr = stundenJahr * satz;
+  const stellen = stunden / STUNDEN_JE_STELLE;
+  const satzText = fmtEUR(satz, { cents: !Number.isInteger(satz) });
   return (
     <Reveal delay={0.06} className="sheet relative flex flex-col overflow-hidden rounded-[28px] p-6 sm:p-7">
       <div aria-hidden className="pointer-events-none absolute -right-20 -top-24 size-72 rounded-full opacity-60 blur-3xl" style={{ background: "radial-gradient(circle, var(--green-soft), transparent 70%)" }} />
@@ -74,7 +79,17 @@ function Rechner() {
       </div>
 
       <div className="relative mt-6 grid gap-6">
-        <Regler id="roi-anwaelte" label="Anwältinnen und Anwälte" wert={anwaelte} min={1} max={25} schritt={1} onChange={setAnwaelte} anzeige={`${anwaelte}`} />
+        <Regler
+          id="roi-stunden"
+          label="Automatisierte Routine pro Woche"
+          wert={stunden}
+          min={5}
+          max={120}
+          schritt={1}
+          onChange={setStunden}
+          anzeige={`${fmtNum(stunden)} Std.`}
+          hinweis="Richtwert Ø 38 Std. je Kanzlei – an Ihre Kanzleigröße anpassen."
+        />
         <Regler
           id="roi-satz"
           label="Interner Stundensatz (Kosten je Arbeitsstunde)"
@@ -83,40 +98,40 @@ function Rechner() {
           max={80}
           schritt={1}
           onChange={setSatz}
-          anzeige={fmtEUR(satz, { cents: false })}
-          hinweis="Routinearbeit erledigen meist Fachangestellte – Richtwert 20 €."
+          anzeige={satzText}
+          hinweis="Routinearbeit erledigen meist Fachangestellte – Richtwert rund 20 €."
         />
       </div>
 
       <div className="relative mt-7 rounded-[22px] bg-[var(--ink-softer)] p-5 shadow-[inset_0_0_0_1px_var(--line)]">
         <div className="text-[13px] font-medium text-fg-3">Wert der gesparten Zeit pro Jahr</div>
         <div className="mt-1 text-[clamp(38px,5vw,56px)] font-bold leading-none tracking-[-0.045em] text-green">
-          ≈ <AnimatedNumber value={jahr} format={(n) => fmtEUR(Math.round(n / 10) * 10, { cents: false })} />
+          ≈ <AnimatedNumber value={jahr} format={(n) => fmtEUR(Math.round(n / 100) * 100, { cents: false })} />
         </div>
         <div className="num mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-fg-2">
-          <span className="rounded-full bg-[var(--surface)] px-2.5 py-1 shadow-[inset_0_0_0_1px_var(--line)]">{STUNDEN} Std./Woche</span>
+          <span className="rounded-full bg-[var(--surface)] px-2.5 py-1 shadow-[inset_0_0_0_1px_var(--line)]">{fmtNum(stunden)} Std./Woche</span>
           <span className="text-fg-4">×</span>
-          <span className="rounded-full bg-[var(--surface)] px-2.5 py-1 shadow-[inset_0_0_0_1px_var(--line)]">{WOCHEN} Arbeitswochen</span>
+          <span className="rounded-full bg-[var(--surface)] px-2.5 py-1 shadow-[inset_0_0_0_1px_var(--line)]">{WOCHEN_PRO_JAHR} Arbeitswochen</span>
           <span className="text-fg-4">×</span>
-          <span className="rounded-full bg-[var(--surface)] px-2.5 py-1 shadow-[inset_0_0_0_1px_var(--line)]">{fmtEUR(satz, { cents: false })}</span>
+          <span className="rounded-full bg-[var(--surface)] px-2.5 py-1 shadow-[inset_0_0_0_1px_var(--line)]">{satzText}</span>
         </div>
         <div className="mt-5 grid grid-cols-2 gap-3">
           <div className="rounded-[16px] bg-[var(--surface)] p-3.5 shadow-[inset_0_0_0_1px_var(--line)]">
             <Timer className="size-4 text-ink" />
             <div className="num mt-2 whitespace-nowrap text-[clamp(18px,4.8vw,22px)] font-semibold leading-none tracking-[-0.03em]">
-              <AnimatedNumber value={STUNDEN * WOCHEN} /> Std.
+              <AnimatedNumber value={stundenJahr} /> Std.
             </div>
             <div className="mt-1 text-[12px] text-fg-3">pro Jahr zurückgewonnen</div>
           </div>
           <div className="rounded-[16px] bg-[var(--surface)] p-3.5 shadow-[inset_0_0_0_1px_var(--line)]">
-            <MessagesSquare className="size-4 text-ink" />
-            <div className="num mt-2 whitespace-nowrap text-[clamp(18px,4.8vw,22px)] font-semibold leading-none tracking-[-0.03em]">{fmtNum(proKopf, proKopf < 10 ? 1 : 0)} Std.</div>
-            <div className="mt-1 text-[12px] text-fg-3">Entlastung je Berufsträger und Woche</div>
+            <UsersRound className="size-4 text-ink" />
+            <div className="num mt-2 whitespace-nowrap text-[clamp(18px,4.8vw,22px)] font-semibold leading-none tracking-[-0.03em]">≈ {fmtNum(stellen, stellen < 10 ? 2 : 1)}</div>
+            <div className="mt-1 text-[12px] text-fg-3">Vollzeitstellen ({STUNDEN_JE_STELLE} Std.) frei für Mandate</div>
           </div>
         </div>
       </div>
       <p className="relative mt-4 text-[11.5px] leading-relaxed text-fg-4">
-        Beispielrechnung auf Basis des Richtwerts von Ø 38 Stunden automatisierter Routinearbeit pro Kanzlei und Woche. Die tatsächliche Ersparnis hängt von Fallzahlen, Sachgebieten und Abläufen ab – der 38h-Motor misst sie in Ihrer Kanzlei laufend.
+        Beispielrechnung: Stunden pro Woche × {WOCHEN_PRO_JAHR} Arbeitswochen × interner Stundensatz. Voreingestellt ist der Richtwert von Ø 38 Stunden automatisierter Routinearbeit pro Kanzlei und Woche – das entspricht rund 36.000 € im Jahr. Die tatsächliche Ersparnis hängt von Fallzahlen, Sachgebieten und Abläufen ab – der 38h-Motor misst sie in Ihrer Kanzlei laufend.
       </p>
     </Reveal>
   );
@@ -132,7 +147,7 @@ function Regler({ id, label, wert, min, max, schritt, onChange, anzeige, hinweis
         <label htmlFor={id} className="text-[13.5px] font-medium text-fg-2">
           {label}
         </label>
-        <motion.span key={anzeige} initial={{ scale: 0.9, opacity: 0.5 }} animate={{ scale: 1, opacity: 1 }} className="num text-[18px] font-semibold tracking-[-0.02em]">
+        <motion.span key={anzeige} initial={{ scale: 0.9, opacity: 0.5 }} animate={{ scale: 1, opacity: 1 }} className="num shrink-0 whitespace-nowrap text-[18px] font-semibold tracking-[-0.02em]">
           {anzeige}
         </motion.span>
       </div>

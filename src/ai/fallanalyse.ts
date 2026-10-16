@@ -1,7 +1,10 @@
 // KI-Fallanalyse: Sachverhalt → Rechtsfragen → Präzedenzfälle → Erfolgsaussicht → nächste Schritte → Entwurf.
-import { fmtDate, fmtEUR, today } from "@/core/dates";
+import { addDays, fmtDate, fmtEUR, today } from "@/core/dates";
+import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
 import type { Akte, TenantData } from "@/core/types";
-import { akteAlsText, findePraezedenzfaelle, kontaktName, relevanzProzent, type Treffer } from "./kontext";
+import { istConsole } from "@/lib/backend";
+import { useSession } from "@/store/session";
+import { akteAlsText, bewertePraezedenz, findePraezedenzfaelle, kontaktName, relevanzProzent, type Treffer } from "./kontext";
 import { DemoModus, llmJson, aktuelleQuelle } from "./llm";
 import type { KiQuelle } from "./status";
 
@@ -32,6 +35,40 @@ function stufe(p: number): "hoch" | "mittel" | "gering" {
   return p >= 65 ? "hoch" : p >= 40 ? "mittel" : "gering";
 }
 
+/** Verfasser eines Entwurfs (Unterschrift). */
+export interface Verfasser {
+  name: string;
+  titel?: string;
+}
+
+/** Bearbeiter der Akte aus der Sitzung – sonst die angemeldete Person. */
+function verfasserAusSitzung(akte: Akte): Verfasser | undefined {
+  const s = useSession.getState().sitzung;
+  if (!s || istConsole(s)) return undefined;
+  const u = s.team.find((x) => x.id === akte.bearbeiterId) ?? s.user;
+  return u ? { name: u.name, titel: u.titel } : undefined;
+}
+
+function unterschrift(v: Verfasser | undefined): string {
+  if (!v) return "[Name]\nRechtsanwältin / Rechtsanwalt";
+  const titel = (v.titel ?? "").split(/\s*·\s*/).filter(Boolean);
+  return [v.name, ...(titel.length ? titel : ["Rechtsanwältin / Rechtsanwalt"])].join("\n");
+}
+
+/** Datum des Kündigungsschreibens und Zugangsdatum aus der E-Akte (Kündigungsdatum ≠ Zugang!). */
+export function kuendigungsDaten(akte: Akte, data: TenantData): { kuendigung?: string; zugang?: string } {
+  const doks = data.dokumente.filter((d) => d.akteId === akte.id && (/kündigung/i.test(d.name) || /hiermit kündigen wir/i.test(d.inhalt)));
+  let kuendigung: string | undefined;
+  let zugang: string | undefined;
+  for (const d of doks) {
+    kuendigung ??= d.name.match(/vom (\d{2}\.\d{2}\.\d{4})/)?.[1] ?? d.inhalt.match(/^[A-ZÄÖÜ][\wÄÖÜäöüß .()-]*, (?:den )?(\d{2}\.\d{2}\.\d{4})\s*$/m)?.[1];
+    zugang ??= d.inhalt.match(/zugegangen[^0-9\n]{0,40}(\d{2}\.\d{2}\.\d{4})/i)?.[1];
+  }
+  const frist = data.fristen.find((f) => f.akteId === akte.id && f.regelKey === "kschg_klage" && f.ereignisDatum);
+  if (!zugang && frist?.ereignisDatum) zugang = fmtDate(frist.ereignisDatum);
+  return { kuendigung, zugang };
+}
+
 function praezedenzListe(treffer: Treffer[], warum: Record<string, string> = {}) {
   const max = treffer[0]?.score ?? 1;
   return treffer.map((t) => ({
@@ -44,15 +81,40 @@ function praezedenzListe(treffer: Treffer[], warum: Record<string, string> = {})
   }));
 }
 
+/** Kuratierte Präzedenzfälle in fester Reihenfolge – mit ihrer tatsächlich berechneten Relevanz. */
+function kuratierteListe(akte: Akte, data: TenantData, treffer: Treffer[], warum: Record<string, string>) {
+  const liste = Object.keys(warum)
+    .map((id) => treffer.find((t) => t.entscheidung.id === id) ?? (() => {
+      const e = ENTSCHEIDUNGEN.find((x) => x.id === id);
+      return e ? bewertePraezedenz(akte, data, e) : undefined;
+    })())
+    .filter((t): t is Treffer => !!t);
+  const max = Math.max(1, ...liste.map((t) => t.score));
+  return liste.map((t, i) => ({
+    id: t.entscheidung.id,
+    gericht: t.entscheidung.gericht,
+    az: t.entscheidung.az,
+    titel: t.entscheidung.titel,
+    // Reihenfolge der Kuratierung bleibt erhalten, auch wenn ein späterer Fall rechnerisch knapp höher läge
+    relevanz: Math.min(relevanzProzent(t.score, max), i === 0 ? 99 : 98 - i * 2),
+    warum: warum[t.entscheidung.id],
+  }));
+}
+
 // ───────────── Offline-Analysen (Demo-Modus) ─────────────
 
-function demoAnalyse(akte: Akte, data: TenantData, treffer: Treffer[]): Omit<Fallanalyse, "quelle" | "dauerMs" | "erstelltAm"> {
+function demoAnalyse(akte: Akte, data: TenantData, treffer: Treffer[], verfasser?: Verfasser): Omit<Fallanalyse, "quelle" | "dauerMs" | "erstelltAm"> {
   const mandant = kontaktName(data, akte.mandantId) ?? "Mandant";
   const gegner = kontaktName(data, akte.gegnerId) ?? "Gegenseite";
   const frist = data.fristen.find((f) => f.akteId === akte.id && f.status === "offen" && (f.typ === "notfrist" || f.typ === "frist"));
   const fristText = frist ? `${frist.titel} bis ${fmtDate(frist.datum)}` : undefined;
+  // Die ausformulierten Analysen gehören zu den Präsentationsakten – andere Akten mit ähnlichem Thema erhalten die allgemeine Analyse.
+  const praesentation = akte.id.startsWith("hero-");
 
-  if (akte.sachgebiet === "Arbeitsrecht" && /fristlos|bagatell|kaffee|geringwertig/i.test(akte.beschreibung)) {
+  if (praesentation && akte.sachgebiet === "Arbeitsrecht" && /fristlos|bagatell|kaffee|geringwertig/i.test(akte.beschreibung)) {
+    const kd = kuendigungsDaten(akte, data);
+    const kuendigungVom = kd.kuendigung ? ` vom ${kd.kuendigung}` : " vom [Datum des Kündigungsschreibens]";
+    const zugegangen = kd.zugang ? `, dem Kläger zugegangen am ${kd.zugang},` : "";
     return {
       zusammenfassung: `${mandant} (52) ist seit 14 Jahren ohne Abmahnung bei der ${gegner} beschäftigt und wurde fristlos, hilfsweise ordentlich gekündigt, weil er drei beschädigte, zur Entsorgung bestimmte Kaffeepackungen (8,97 €) mitgenommen haben soll. Eine Anhörung vor der Kündigung fand nicht statt; nach Angaben des Mandanten wurde die Mitnahme von Bruchware durch den Schichtleiter geduldet.`,
       rechtsfragen: [
@@ -79,7 +141,7 @@ function demoAnalyse(akte: Akte, data: TenantData, treffer: Treffer[]): Omit<Fal
         "Falls es eine klare, bekannte Anweisung „Bruchware ist Eigentum des Betriebs“ gab, schwächt das die Duldungsargumentation.",
         "Mögliche Videoaufzeichnung könnte den Vorgang belegen (vgl. BAG 2 AZR 133/18) – Verwertbarkeit prüfen.",
       ],
-      praezedenzfaelle: praezedenzListe(treffer, {
+      praezedenzfaelle: kuratierteListe(akte, data, treffer, {
         "bag-2azr541-09": "Fast identische Konstellation: geringwertige Sache, langjährige ungestörte Beschäftigung – Kündigung unwirksam, Abmahnung hätte genügt.",
         "bag-2azr133-18": "Relevant, falls die Arbeitgeberin Videoaufnahmen aus dem Lager vorlegt: Verwertbarkeit offener Videoüberwachung.",
         "bag-2azr681-16": "Falls Beweise aus verdeckter Überwachung stammen: Beweisverwertungsverbot.",
@@ -97,12 +159,12 @@ function demoAnalyse(akte: Akte, data: TenantData, treffer: Treffer[]): Omit<Fal
       ],
       entwurf: {
         titel: "Kündigungsschutzklage (Entwurf)",
-        text: `An das\nArbeitsgericht Berlin\n\nKlage\n\ndes Herrn Thomas Weber, Seestraße 41, 13353 Berlin\n– Kläger –\nProzessbevollmächtigte: Hartmann & Partner Rechtsanwälte\n\ngegen\n\ndie Kröger Logistik GmbH, Am Juliusturm 12, 13599 Berlin\n– Beklagte –\n\nwegen: Kündigungsschutz\nStreitwert: 10.200,00 €\n\nNamens und in Vollmacht des Klägers erheben wir Klage und werden beantragen:\n\n1. Es wird festgestellt, dass das Arbeitsverhältnis der Parteien durch die außerordentliche Kündigung der Beklagten vom ${fmtDate(frist?.ereignisDatum ?? today())} nicht aufgelöst worden ist.\n2. Es wird festgestellt, dass das Arbeitsverhältnis auch nicht durch die hilfsweise erklärte ordentliche Kündigung aufgelöst wird.\n3. Die Beklagte wird verurteilt, den Kläger bis zum rechtskräftigen Abschluss des Verfahrens zu unveränderten Arbeitsbedingungen als Lagerist weiterzubeschäftigen.\n\nBegründung:\n\nI. Der 52-jährige Kläger ist seit dem 01.04.2012 bei der Beklagten als Lagerist beschäftigt, zuletzt zu einem Bruttomonatsentgelt von 3.400,00 €. Er ist verheiratet und zwei Kindern zum Unterhalt verpflichtet. Das Arbeitsverhältnis verlief in 14 Jahren beanstandungsfrei; eine Abmahnung wurde nie ausgesprochen.\n\nII. Die Beklagte stützt die Kündigung darauf, der Kläger habe drei beschädigte, zur Entsorgung bestimmte Kaffeepackungen im Wert von 8,97 € mitgenommen. Die Mitnahme von Bruchware wurde im Betrieb seit Jahren praktiziert und vom Schichtleiter geduldet.\nBeweis: Zeugnis des Herrn Pohl, zu laden über die Beklagte.\n\nIII. Ein wichtiger Grund im Sinne des § 626 Abs. 1 BGB liegt nicht vor. Nach der Rechtsprechung des Bundesarbeitsgerichts ist bei der Interessenabwägung die durch langjährige, ungestörte Zusammenarbeit entstandene Vertrauensposition zu berücksichtigen (BAG, Urt. v. 10.06.2010 – 2 AZR 541/09). Angesichts des minimalen Werts, der Duldung durch Vorgesetzte und der 14-jährigen Betriebszugehörigkeit wäre eine Abmahnung als milderes Mittel ausreichend gewesen.\n\nIV. Die ordnungsgemäße Anhörung des Betriebsrats nach § 102 BetrVG wird mit Nichtwissen bestritten.\n\nRechtsanwältin`,
+        text: `An das\nArbeitsgericht Berlin\n\nKlage\n\ndes Herrn Thomas Weber, Seestraße 41, 13353 Berlin\n– Kläger –\nProzessbevollmächtigte: Hartmann & Partner Rechtsanwälte\n\ngegen\n\ndie Kröger Logistik GmbH, Am Juliusturm 12, 13599 Berlin\n– Beklagte –\n\nwegen: Kündigungsschutz\nStreitwert: 10.200,00 €\n\nNamens und in Vollmacht des Klägers erheben wir Klage und werden beantragen:\n\n1. Es wird festgestellt, dass das Arbeitsverhältnis der Parteien durch die außerordentliche Kündigung der Beklagten${kuendigungVom}${zugegangen} nicht aufgelöst worden ist.\n2. Es wird festgestellt, dass das Arbeitsverhältnis auch nicht durch die hilfsweise erklärte ordentliche Kündigung${kuendigungVom} aufgelöst wird.\n3. Die Beklagte wird verurteilt, den Kläger bis zum rechtskräftigen Abschluss des Verfahrens zu unveränderten Arbeitsbedingungen als Lagerist weiterzubeschäftigen.\n\nBegründung:\n\nI. Der 52-jährige Kläger ist seit dem 01.04.2012 bei der Beklagten als Lagerist beschäftigt, zuletzt zu einem Bruttomonatsentgelt von 3.400,00 €. Er ist verheiratet und zwei Kindern zum Unterhalt verpflichtet. Das Arbeitsverhältnis verlief in 14 Jahren beanstandungsfrei; eine Abmahnung wurde nie ausgesprochen.\n\nII. Die Beklagte stützt die Kündigung darauf, der Kläger habe drei beschädigte, zur Entsorgung bestimmte Kaffeepackungen im Wert von 8,97 € mitgenommen. Die Mitnahme von Bruchware wurde im Betrieb seit Jahren praktiziert und vom Schichtleiter geduldet.\nBeweis: Zeugnis des Herrn Pohl, zu laden über die Beklagte.\n\nIII. Ein wichtiger Grund im Sinne des § 626 Abs. 1 BGB liegt nicht vor. Nach der Rechtsprechung des Bundesarbeitsgerichts ist bei der Interessenabwägung die durch langjährige, ungestörte Zusammenarbeit entstandene Vertrauensposition zu berücksichtigen (BAG, Urt. v. 10.06.2010 – 2 AZR 541/09). Angesichts des minimalen Werts, der Duldung durch Vorgesetzte und der 14-jährigen Betriebszugehörigkeit wäre eine Abmahnung als milderes Mittel ausreichend gewesen.\n\nIV. Die ordnungsgemäße Anhörung des Betriebsrats nach § 102 BetrVG wird mit Nichtwissen bestritten.\n\n${unterschrift(verfasser)}`,
       },
     };
   }
 
-  if (akte.sachgebiet === "Mietrecht" && /kaution|unrenoviert/i.test(akte.beschreibung)) {
+  if (praesentation && akte.sachgebiet === "Mietrecht" && /kaution|unrenoviert/i.test(akte.beschreibung)) {
     return {
       zusammenfassung: `${mandant} verlangt die Mietkaution von ${fmtEUR(akte.gegenstandswert)} zurück. Die Vermieterin rechnet mit Malerkosten auf. Laut Übergabeprotokoll wurde die Wohnung 2019 unrenoviert übergeben, ein Ausgleich wurde nicht vereinbart. Die Gegenseite bietet einen Vergleich über 1.400 € an.`,
       rechtsfragen: ["Ist die formularmäßige Schönheitsreparaturklausel wirksam, obwohl die Wohnung unrenoviert übergeben wurde?", "Besteht der hilfsweise geltend gemachte Schadensersatz wegen der Einbauküche (640 €)?", "Ist das Vergleichsangebot über 1.400 € wirtschaftlich sinnvoll?"],
@@ -120,7 +182,7 @@ function demoAnalyse(akte: Akte, data: TenantData, treffer: Treffer[]): Omit<Fal
     };
   }
 
-  if (akte.sachgebiet === "Verkehrsrecht" && /werkstatt|kürzt|dashcam/i.test(akte.beschreibung)) {
+  if (praesentation && akte.sachgebiet === "Verkehrsrecht" && /werkstatt|kürzt|dashcam/i.test(akte.beschreibung)) {
     return {
       zusammenfassung: `${mandant} wurde unverschuldet in einen Unfall verwickelt (Rotlichtverstoß des Gegners, Dashcam-Aufnahme). Die ${gegner} hat 6.120 € gezahlt, kürzt aber die Reparaturkosten um 1.284,50 € unter Verweis auf eine freie Werkstatt.`,
       rechtsfragen: ["Ist der Verweis auf eine freie Fachwerkstatt bei einem zwei Jahre alten, scheckheftgepflegten Fahrzeug zumutbar?", "Ist die Dashcam-Aufnahme als Beweis verwertbar?"],
@@ -148,7 +210,11 @@ function demoAnalyse(akte: Akte, data: TenantData, treffer: Treffer[]): Omit<Fal
       top ? `Lässt sich die Rechtsprechung „${top.titel}“ (${top.gericht} ${top.az}) übertragen?` : "Welche Rechtsprechung ist einschlägig?",
       "Welche Beweismittel stehen zur Verfügung?",
     ],
-    erfolgsaussicht: { prozent: p, stufe: stufe(p), begruendung: `Vorläufige Einschätzung auf Basis des Sachverhalts und ${treffer.length} passender Entscheidungen aus der Fall-Datenbank. Mit vollständiger Beweislage präzisierbar.` },
+    erfolgsaussicht: {
+      prozent: p,
+      stufe: stufe(p),
+      begruendung: `Vorläufige Einschätzung auf Basis des Sachverhalts${treffer.length === 0 ? " – in der Fall-Datenbank fand sich keine hinreichend ähnliche Entscheidung" : treffer.length === 1 ? " und einer passenden Entscheidung aus der Fall-Datenbank" : ` und ${treffer.length} passender Entscheidungen aus der Fall-Datenbank`}. Mit vollständiger Beweislage präzisierbar.`,
+    },
     argumentePro: [top ? `Einschlägige Rechtsprechung: ${top.gericht} ${top.az} – ${top.bedeutung}` : "Sachverhalt ist gut dokumentiert.", "Vollständige Unterlagen in der E-Akte vorhanden."],
     argumenteContra: ["Einwendungen der Gegenseite noch nicht vollständig bekannt.", "Beweislast für anspruchsbegründende Tatsachen liegt beim Mandanten."],
     praezedenzfaelle: praezedenzListe(treffer),
@@ -158,7 +224,7 @@ function demoAnalyse(akte: Akte, data: TenantData, treffer: Treffer[]): Omit<Fal
       { titel: "Schriftsatz vorbereiten", detail: "Entwurf unten als Ausgangspunkt nutzen." },
     ],
     risiken: ["Kostenrisiko abhängig vom Gegenstandswert " + (akte.gegenstandswert ? fmtEUR(akte.gegenstandswert) : "–") + "."],
-    entwurf: { titel: "Schreiben an die Gegenseite (Entwurf)", text: `In Sachen ${akte.titel}\nunser Zeichen: ${akte.aktenzeichen}\n\nSehr geehrte Damen und Herren,\n\nwir zeigen an, dass wir ${mandant} vertreten. ${akte.beschreibung}\n\n${top ? `Wir verweisen auf die Entscheidung ${top.gericht}, ${top.art} vom ${fmtDate(top.datum)} – ${top.az}.\n\n` : ""}Wir fordern Sie auf, bis zum ${fmtDate(new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10))} Stellung zu nehmen.\n\nMit freundlichen Grüßen` },
+    entwurf: { titel: "Schreiben an die Gegenseite (Entwurf)", text: `In Sachen ${akte.titel}\nunser Zeichen: ${akte.aktenzeichen}\n\nSehr geehrte Damen und Herren,\n\nwir zeigen an, dass wir ${mandant} vertreten. ${akte.beschreibung}\n\n${top ? `Wir verweisen auf die Entscheidung ${top.gericht}, ${top.art} vom ${fmtDate(top.datum)} – ${top.az}.\n\n` : ""}Wir fordern Sie auf, bis zum ${fmtDate(addDays(today(), 14))} Stellung zu nehmen.\n\nMit freundlichen Grüßen\n\n${unterschrift(verfasser)}` },
   };
 }
 
@@ -181,11 +247,12 @@ interface LlmFall {
 export async function analysiereFall(
   akteId: string,
   data: TenantData,
-  opts: { onPhase?: (i: number) => void; signal?: AbortSignal; onText?: (t: string) => void } = {},
+  opts: { onPhase?: (i: number) => void; signal?: AbortSignal; onText?: (t: string) => void; verfasser?: Verfasser } = {},
 ): Promise<Fallanalyse> {
   const t0 = performance.now();
   const akte = data.akten.find((a) => a.id === akteId);
   if (!akte) throw new Error("Akte nicht gefunden.");
+  const verfasser = opts.verfasser ?? verfasserAusSitzung(akte);
   const phase = (i: number) => opts.onPhase?.(i);
   const warte = (ms: number) => new Promise((r) => setTimeout(r, ms));
   phase(0);
@@ -200,16 +267,19 @@ export async function analysiereFall(
 
   if (aktuelleQuelle() !== "demo") {
     try {
-      const kandidaten = treffer
-        .concat(findePraezedenzfaelle({ ...akte, schlagworte: [...akte.schlagworte, akte.sachgebiet.toLowerCase()] }, data, 8).filter((t) => !treffer.some((x) => x.entscheidung.id === t.entscheidung.id)))
-        .slice(0, 8);
+      // Kandidaten für die Live-KI: die relevanten Treffer plus weitere Entscheidungen desselben Rechtsgebiets –
+      // die KI wählt daraus begründet aus (nur diese dürfen zitiert werden).
+      const weitere = ENTSCHEIDUNGEN.filter((e) => e.rechtsgebiet === akte.sachgebiet && !treffer.some((x) => x.entscheidung.id === e.id))
+        .map((e) => bewertePraezedenz(akte, data, e))
+        .sort((a, b) => b.score - a.score);
+      const kandidaten = [...treffer, ...weitere].slice(0, 8);
       const res = await llmJson<LlmFall>({
         system:
-          "Du bist eine erfahrene deutsche Rechtsanwältin und erstellst für Kolleginnen und Kollegen eine präzise, ehrliche Fallanalyse. Zitiere ausschließlich Entscheidungen aus der mitgelieferten Liste (über ihre id) – erfinde keine Aktenzeichen, Gerichte oder Fundstellen. Nenne Normen korrekt. Berechne keine Fristen. Schreibe auf Deutsch, sachlich, ohne Floskeln.",
+          "Du bist eine erfahrene deutsche Rechtsanwältin und erstellst für Kolleginnen und Kollegen eine präzise, ehrliche Fallanalyse. Zitiere ausschließlich Entscheidungen aus der mitgelieferten Liste (über ihre id) – erfinde keine Aktenzeichen, Gerichte oder Fundstellen. Nenne Normen korrekt. Berechne keine Fristen. Übernimm Daten (z. B. das Datum eines Kündigungsschreibens) exakt aus den Dokumenten; das Zugangsdatum ist nicht das Datum der Kündigung. Schreibe auf Deutsch, sachlich, ohne Floskeln.",
         messages: [
           {
             role: "user",
-            content: `Heute ist der ${fmtDate(today())}.\n\nAKTE:\n${kontext}\n\nKANDIDATEN AUS DER FALL-DATENBANK (nur diese dürfen zitiert werden):\n${kandidaten.map((t) => `- id=${t.entscheidung.id} | ${t.entscheidung.gericht} ${t.entscheidung.art} v. ${fmtDate(t.entscheidung.datum)} – ${t.entscheidung.az} | ${t.entscheidung.titel} | Leitsatz: ${t.entscheidung.leitsatz}`).join("\n")}\n\nErstelle die Fallanalyse als JSON:\n{"zusammenfassung": string (3-4 Sätze), "rechtsfragen": string[3-5], "erfolgsaussichtProzent": number 0-100, "erfolgsaussichtBegruendung": string, "argumentePro": string[3-5], "argumenteContra": string[2-4], "praezedenzfaelle": [{"id": string (aus der Liste), "warum": string}] (2-4, nach Relevanz), "naechsteSchritte": [{"titel": string, "detail": string}] (3-5), "risiken": string[1-3], "entwurfTitel": string, "entwurfText": string (passender Schriftsatz- oder Schreiben-Entwurf, max. 2.500 Zeichen, mit Platzhaltern in [eckigen Klammern] wo Angaben fehlen)}`,
+            content: `Heute ist der ${fmtDate(today())}.${verfasser ? ` Der Entwurf wird unterschrieben von: ${verfasser.name}${verfasser.titel ? ` (${verfasser.titel})` : ""}.` : ""}\n\nAKTE:\n${kontext}\n\nKANDIDATEN AUS DER FALL-DATENBANK (nur diese dürfen zitiert werden):\n${kandidaten.map((t) => `- id=${t.entscheidung.id} | ${t.entscheidung.gericht} ${t.entscheidung.art} v. ${fmtDate(t.entscheidung.datum)} – ${t.entscheidung.az} | ${t.entscheidung.titel} | Leitsatz: ${t.entscheidung.leitsatz}`).join("\n")}\n\nErstelle die Fallanalyse als JSON:\n{"zusammenfassung": string (3-4 Sätze), "rechtsfragen": string[3-5], "erfolgsaussichtProzent": number 0-100, "erfolgsaussichtBegruendung": string, "argumentePro": string[3-5], "argumenteContra": string[2-4], "praezedenzfaelle": [{"id": string (aus der Liste), "warum": string}] (2-4, nach Relevanz), "naechsteSchritte": [{"titel": string, "detail": string}] (3-5), "risiken": string[1-3], "entwurfTitel": string, "entwurfText": string (passender Schriftsatz- oder Schreiben-Entwurf, max. 2.500 Zeichen, mit Platzhaltern in [eckigen Klammern] wo Angaben fehlen)}`,
           },
         ],
         signal: opts.signal,
@@ -217,7 +287,7 @@ export async function analysiereFall(
         onText: opts.onText,
       });
       phase(4);
-      const max = treffer[0]?.score ?? 1;
+      const max = Math.max(1, ...kandidaten.map((k) => k.score));
       const praez = (res.praezedenzfaelle ?? [])
         .map((p, i) => {
           const t = kandidaten.find((k) => k.entscheidung.id === p.id);
@@ -248,5 +318,5 @@ export async function analysiereFall(
   await warte(700);
   phase(4);
   await warte(450);
-  return { ...demoAnalyse(akte, data, treffer), quelle: "demo", dauerMs: performance.now() - t0, erstelltAm: new Date().toISOString() };
+  return { ...demoAnalyse(akte, data, treffer, verfasser), quelle: "demo", dauerMs: performance.now() - t0, erstelltAm: new Date().toISOString() };
 }

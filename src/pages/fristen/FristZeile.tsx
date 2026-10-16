@@ -7,7 +7,7 @@ import type { Akte, Frist, FristTyp, User } from "@/core/types";
 import { toast } from "@/store/ui";
 import { Avatar, Chip } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { QUELLE_LABEL, TYP_META, bestaetigeKontrolle, brauchtKontrolle, erledigeFrist, oeffneFristWieder, streifenFarbe } from "./logik";
+import { QUELLE_LABEL, TYP_META, bestaetigeKontrolle, brauchtKontrolle, darfKontrollieren, erledigeFrist, istUngeprueft, oeffneFristWieder, streifenFarbe } from "./logik";
 
 const spring = { type: "spring", stiffness: 460, damping: 36 } as const;
 
@@ -94,7 +94,7 @@ export function useFristAktionen(f: Frist, user: User) {
 
 export function KontrolleAktion({ f, user, kontrollieren, verantwortlich }: { f: Frist; user: User; kontrollieren: () => void; verantwortlich?: User }) {
   if (!brauchtKontrolle(f)) return null;
-  if (f.verantwortlichId === user.id)
+  if (!darfKontrollieren(f, user.id))
     return (
       <span
         className="chip chip-amber"
@@ -121,7 +121,7 @@ export function KontrollStatus({ f, team }: { f: Frist; team: User[] }) {
       </Chip>
     );
   }
-  if (brauchtKontrolle(f) && f.quelle === "ki")
+  if (istUngeprueft(f))
     return (
       <Chip tone="amber" dot title="KI-erkannte Frist – noch nicht durch eine zweite Person bestätigt">
         Ungeprüft

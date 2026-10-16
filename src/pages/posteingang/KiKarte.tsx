@@ -8,12 +8,14 @@ import {
 import { fmtDate, fmtDateWd, fmtTime, relDays, wochentagName } from "@/core/dates";
 import type { FristVorschlag } from "@/ai/dokumentAnalyse";
 import type { Nachricht } from "@/core/types";
-import { useCol } from "@/store/data";
+import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
-import { toast } from "@/store/ui";
+import { toast, useToasts } from "@/store/ui";
 import { AiChip, Button, Chip, ProgressRing, Select, confirmDialog } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { SCHRITTE, alsErledigt, eebAbgeben, fristenUebernehmen, istGerichtspost, istNotiert, terminEintragen, zuordnen, type KiAnsicht } from "./analyse";
+import {
+  SCHRITTE, ablegbareAnhaenge, alsErledigt, anhaengeAblegen, anhaengeAbgelegt, eebAbgeben, fristenUebernehmen, istGerichtspost, istNotiert, terminEintragen, zuordnen, type KiAnsicht,
+} from "./analyse";
 import { TYP_META } from "@/pages/fristen/logik";
 
 const spring = { type: "spring", stiffness: 460, damping: 36 } as const;
@@ -190,6 +192,7 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
   const { user } = useKanzlei();
   const akten = useCol("akten");
   const fristen = useCol("fristen");
+  const dokumente = useCol("dokumente");
   const nav = useNavigate();
   const vorschlagId = n.akteId ?? ansicht?.akteId ?? "";
   const [wahl, setWahl] = useState(vorschlagId);
@@ -210,7 +213,13 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
   const eebFrei = !!ansicht && (ansicht.fristen.length === 0 || alleNotiert);
   const terminDa = !!ansicht?.termin && !!ziel && fristen.some((f) => f.akteId === ziel.id && f.typ === "termin" && f.datum === ansicht.termin!.datum);
   const mandatsanfrage = !!ansicht && !ansicht.akteId && !n.akteId && /mandat/i.test(ansicht.typ);
-  const unkontrolliert = ziel ? fristen.filter((f) => f.akteId === ziel.id && f.quelle === "ki" && f.status === "offen" && !f.kontrolliertVon && f.typ !== "vorfrist" && ansicht?.fristen.some((p) => p.ende === f.datum)).length : 0;
+  /** Aus dieser Anfrage wurde eine neue Akte angelegt (Mandatsaufnahme), statt sie einer bestehenden zuzuordnen. */
+  const akteAngelegt = !!ansicht && !ansicht.akteId && /mandat/i.test(ansicht.typ) && zugeordnet && !!ziel && ziel.createdAt >= n.eingang;
+  const offeneKontrollen = ziel ? fristen.filter((f) => f.akteId === ziel.id && f.quelle === "ki" && f.status === "offen" && !f.kontrolliertVon && f.typ !== "vorfrist" && ansicht?.fristen.some((p) => p.ende === f.datum)) : [];
+  const unkontrolliert = offeneKontrollen.length;
+  const nurEigene = unkontrolliert > 0 && offeneKontrollen.every((f) => f.verantwortlichId === user.id);
+  const anhaenge = ablegbareAnhaenge(n);
+  const anhaengeDa = zugeordnet && anhaengeAbgelegt(n, ziel?.id, dokumente);
 
   const quelleText = ansicht?.frisch
     ? `${ansicht.quelle === "demo" ? "Offline-KI (regelbasiert)" : "Claude · live"}${ansicht.dauerMs ? ` · ${(ansicht.dauerMs / 1000).toFixed(1).replace(".", ",")} s` : ""}`
@@ -222,15 +231,33 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
     toast(anzahl === 1 ? "Frist eingetragen" : `${anzahl} Fristen eingetragen`, {
       text: `In Akte ${ziel.aktenzeichen} mit Vorfristen notiert. Zweitkontrolle (Vier-Augen-Prinzip) steht aus.`,
       ton: "erfolg",
-      aktion: { label: "Rückgängig", onClick: rueckgaengig },
+      aktion: {
+        label: "Rückgängig",
+        onClick: () => {
+          if (!rueckgaengig())
+            toast("Rückgängig nicht mehr möglich", {
+              ton: "warnung",
+              text: "Das Empfangsbekenntnis ist bereits abgegeben – die Fristen laufen und bleiben im Kalender. Einzelne Fristen bearbeiten Sie im Fristenkalender.",
+            });
+        },
+      },
     });
   };
 
   const zuordnenKlick = () => {
     if (!ziel) return;
-    zuordnen(n, ziel, user, ansicht);
+    const r = zuordnen(n, ziel, user, ansicht);
     setAndere(false);
-    toast("Akte zugeordnet", { text: `In ${ziel.aktenzeichen} · Ordner „${istGerichtspost(n) ? "Gericht" : "Korrespondenz"}“ abgelegt.`, ton: "erfolg" });
+    toast("Akte zugeordnet", {
+      text: `In ${ziel.aktenzeichen} · Ordner „${r.ordner}“ abgelegt${r.anhaenge ? `, ${r.anhaenge} ${r.anhaenge === 1 ? "Anhang" : "Anhänge"} in „${r.anhangOrdner}“` : ""}.`,
+      ton: "erfolg",
+    });
+  };
+
+  const anhaengeKlick = () => {
+    if (!ziel) return;
+    const r = anhaengeAblegen(n, ziel, user);
+    toast(r.anzahl === 1 ? "Anhang abgelegt" : `${r.anzahl} Anhänge abgelegt`, { text: `In ${ziel.aktenzeichen} · Ordner „${r.ordner}“`, ton: "erfolg", aktion: { label: "E-Akte öffnen", onClick: () => nav(`/akten/${ziel.id}?tab=dokumente`) } });
   };
 
   const eebKlick = async () => {
@@ -240,7 +267,19 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
       bestaetigen: "eEB abgeben",
     });
     if (!ok) return;
+    // Während des Dialogs kann sich der Stand geändert haben (z. B. „Rückgängig“ im Toast) – Fristen erneut prüfen.
+    const st = useData.getState().data;
+    const aktuell = st.nachrichten.find((x) => x.id === n.id);
+    const nochNotiert = !!ansicht && ansicht.fristen.every((p) => istNotiert(p, ziel?.id, st.fristen));
+    if (!aktuell || aktuell.eebAbgegeben) return;
+    if (!nochNotiert) {
+      toast("Erst Frist notieren, dann eEB", { ton: "warnung", text: "Die erkannten Fristen stehen nicht (mehr) im Kalender. Bitte zuerst übernehmen." });
+      return;
+    }
     eebAbgeben(n, user);
+    // Offene „Rückgängig“-Angebote der Fristübernahme schließen – nach dem eEB laufen die Fristen.
+    const t = useToasts.getState();
+    t.toasts.filter((x) => x.aktion?.label === "Rückgängig" && /Fristen? eingetragen/.test(x.titel)).forEach((x) => t.dismiss(x.id));
     toast("eEB abgegeben", { text: "Empfang gegenüber dem Gericht bestätigt – Fristen sind gesichert.", ton: "erfolg" });
   };
 
@@ -295,7 +334,7 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
                 </Abschnitt>
 
                 {/* Akte */}
-                <Abschnitt titel={zugeordnet ? "Akte" : "Erkannte Akte"} icon={<FolderOpen />} delay={0.05}>
+                <Abschnitt titel={akteAngelegt ? "Neu angelegte Akte" : zugeordnet ? "Akte" : "Erkannte Akte"} icon={<FolderOpen />} delay={0.05}>
                   {mandatsanfrage && !andere ? (
                     <div className="rounded-[18px] bg-surface/80 p-4 ring-1 ring-inset ring-[var(--line)]">
                       <div className="flex items-start gap-3">
@@ -308,6 +347,8 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
                         </div>
                       </div>
                       <div className="mt-3.5 flex flex-wrap gap-2">
+                        {/* Kein replace: Der Assistent ersetzt seinen eigenen Verlaufseintrag beim Anlegen (AktenListe → onErstellt mit replace),
+                            Browser-Zurück führt so von der neuen Akte zurück in den Posteingang statt erneut in den Assistenten. */}
                         <Button variant="primary" size="sm" icon={<UserPlus className="size-4" />} onClick={() => nav(`/akten?neu=1&nachricht=${encodeURIComponent(n.id)}`)}>
                           Mandat anlegen
                         </Button>
@@ -326,7 +367,7 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
                             </ProgressRing>
                           ) : (
                             <span className={cn("grid size-11 shrink-0 place-items-center rounded-full", zugeordnet ? "bg-green-soft text-green" : "bg-ink-soft text-ink")}>
-                              {zugeordnet ? <Check className="size-5" strokeWidth={2.5} /> : <FolderOpen className="size-5" />}
+                              {akteAngelegt ? <UserPlus className="size-5" /> : zugeordnet ? <Check className="size-5" strokeWidth={2.5} /> : <FolderOpen className="size-5" />}
                             </span>
                           )}
                           <div className="min-w-0 flex-1">
@@ -334,8 +375,17 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
                               <span className="mono shrink-0 text-[13px] font-semibold text-ink">{ziel.aktenzeichen}</span>
                               <span className="truncate text-[13.5px] font-medium group-hover:underline">{ziel.titel}</span>
                             </Link>
+                            {akteAngelegt && (
+                              <div className="mt-1">
+                                <Chip tone="green" icon={<CheckCircle2 className="size-3" />}>
+                                  Akte angelegt
+                                </Chip>
+                              </div>
+                            )}
                             <div className="mt-0.5 truncate text-[12px] text-fg-3">
-                              {zugeordnet
+                              {akteAngelegt
+                                ? "Aus dieser Anfrage angelegt · Anfrage in der E-Akte abgelegt (Korrespondenz)"
+                                : zugeordnet
                                 ? `Zugeordnet · in der E-Akte abgelegt (${istGerichtspost(n) ? "Gericht" : "Korrespondenz"})`
                                 : ansicht.akteId === ziel.id
                                   ? `${Math.round(ansicht.sicherheit * 100)} % sicher · erkannt über ${ansicht.akteGrund ?? "Inhalt"}`
@@ -400,11 +450,11 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
                           <Chip tone="green" icon={<CheckCircle2 className="size-3" />}>
                             Fristen notiert
                           </Chip>
-                          {unkontrolliert > 0 ? (
+                          {unkontrolliert > 0 && ziel ? (
                             <span>
-                              Zweitkontrolle ausstehend ·{" "}
-                              <Link to="/fristen" className="font-medium text-ink hover:underline">
-                                im Fristenkalender bestätigen
+                              {nurEigene ? "Zweitkontrolle durch eine Kollegin oder einen Kollegen ausstehend" : "Zweitkontrolle ausstehend"} ·{" "}
+                              <Link to={`/fristen?filter=kontrolle&akte=${encodeURIComponent(ziel.id)}`} className="font-medium text-ink hover:underline">
+                                {nurEigene ? "im Fristenkalender ansehen" : "im Fristenkalender bestätigen"}
                               </Link>
                             </span>
                           ) : (
@@ -512,16 +562,26 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
                   <Abschnitt titel="Empfohlene nächste Schritte" icon={<ListChecks />} delay={0.18}>
                     <ul className="space-y-2">
                       {ansicht.aktionen.map((a, i) => {
-                        const erledigt =
-                          (/empfangsbekenntnis/i.test(a) && !!n.eebAbgegeben) ||
-                          (/frist eintragen/i.test(a) && alleNotiert) ||
-                          (/termin in den kalender/i.test(a) && terminDa) ||
-                          (/akte anlegen|mandatsaufnahme/i.test(a) && !!n.akteId) ||
-                          (/e-akte/i.test(a) && zugeordnet);
+                        const anhangSchritt = /anh(a|ä)ng/i.test(a);
+                        const erledigt = anhangSchritt
+                          ? anhaengeDa
+                          : (/empfangsbekenntnis/i.test(a) && !!n.eebAbgegeben) ||
+                            (/frist eintragen/i.test(a) && alleNotiert) ||
+                            (/termin in den kalender/i.test(a) && terminDa) ||
+                            (/akte anlegen|mandatsaufnahme/i.test(a) && !!n.akteId) ||
+                            (/e-akte/i.test(a) && zugeordnet);
                         return (
                           <motion.li key={a} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ ...spring, delay: 0.2 + i * 0.05 }} className="flex gap-2.5 text-[13px] leading-relaxed">
                             {erledigt ? <CheckCircle2 className="mt-[3px] size-3.5 shrink-0 text-green" /> : <ArrowRight className="mt-[3px] size-3.5 shrink-0 text-violet" />}
-                            <span className={erledigt ? "text-fg-3 line-through decoration-[var(--line-strong)]" : "text-fg-2"}>{a}</span>
+                            <span className="min-w-0 flex-1">
+                              <span className={erledigt ? "text-fg-3 line-through decoration-[var(--line-strong)]" : "text-fg-2"}>{a}</span>
+                              {anhangSchritt && !erledigt && zugeordnet && anhaenge.length > 0 && (
+                                <button type="button" onClick={anhaengeKlick} className="ml-1.5 inline-flex items-center gap-1 rounded-full px-1.5 text-[12.5px] font-medium text-ink hover:underline">
+                                  <FolderInput className="size-3.5" />
+                                  {anhaenge.length === 1 ? "Jetzt ablegen" : `${anhaenge.length} Anhänge jetzt ablegen`}
+                                </button>
+                              )}
+                            </span>
                           </motion.li>
                         );
                       })}
