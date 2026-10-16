@@ -4,6 +4,7 @@ import { AiChip } from "@/components/ui";
 import { AppIcon } from "@/components/Logo";
 import { cn } from "@/lib/cn";
 import { Abschnitt, Kopf, Reveal } from "./basis";
+import { DEMO_KI_NAME } from "@/ai/status";
 
 /** „Umzug mit einem Klick" – Band mit fließenden Datenpaketen. */
 export function UmzugBand() {
@@ -133,7 +134,7 @@ export function Vertrauen() {
       <Reveal className="mt-4 flex items-center gap-3 rounded-[20px] bg-green-soft px-5 py-4 text-[14px] text-fg-2">
         <ShieldCheck className="size-5 shrink-0 text-green" />
         <span>
-          <span className="font-semibold text-fg">Sie behalten die Hoheit:</span> In den Einstellungen legen Sie fest, ob die Live-KI (Claude) oder die Demo-KI (offline) arbeitet – und sehen jederzeit, wohin Daten fließen.
+          <span className="font-semibold text-fg">Sie behalten die Hoheit:</span> In den Einstellungen legen Sie fest, ob die Live-KI (Claude) oder die {DEMO_KI_NAME} arbeitet – und sehen jederzeit, wohin Daten fließen.
         </span>
       </Reveal>
     </Abschnitt>

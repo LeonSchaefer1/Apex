@@ -312,7 +312,7 @@ function PasswortDialog({ daten, onClose }: { daten: { user: User; tenant: Tenan
       onClose={onClose}
       size="sm"
       icon={<KeyRound className="size-5" />}
-      title="Neues Passwort erzeugt"
+      title="Neues Startpasswort erzeugt"
       subtitle={daten ? `${daten.user.name} · ${daten.tenant.kurzname}` : undefined}
       footer={
         <Button variant="primary" onClick={onClose}>
@@ -332,14 +332,14 @@ function PasswortDialog({ daten, onClose }: { daten: { user: User; tenant: Tenan
             <div>
               Anmeldung mit <span className="mono text-fg">{daten.user.email}</span>
             </div>
-            <div className="text-fg-3">Das bisherige Passwort ist ab sofort ungültig. Dieses Passwort wird nicht noch einmal angezeigt.</div>
+            <div className="text-fg-3">Das bisherige Passwort ist ab sofort ungültig. Bei der nächsten Anmeldung legt {daten.user.name} ein eigenes Passwort fest. Dieses Startpasswort wird nicht noch einmal angezeigt.</div>
           </div>
           <Button
             variant="ghost"
             size="sm"
             className="justify-self-start"
             icon={<Copy className="size-3.5" />}
-            onClick={() => void kopieren(`Ihre neuen Zugangsdaten für AnwaltApex\n\n${anmeldeZeile()}\nE-Mail: ${daten.user.email}\nPasswort: ${daten.passwort}`, "Zugangsdaten")}
+            onClick={() => void kopieren(`Ihre neuen Zugangsdaten für AnwaltApex\n\n${anmeldeZeile()}\nE-Mail: ${daten.user.email}\nPasswort: ${daten.passwort}\nBei der nächsten Anmeldung legen Sie ein eigenes Passwort fest.`, "Zugangsdaten")}
           >
             Zugangsdaten als Text kopieren
           </Button>

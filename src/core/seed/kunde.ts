@@ -9,12 +9,6 @@ export function initialen(name: string): string {
 
 const FARBEN = ["#2440D8", "#0E7C66", "#BE185D", "#7C3AED", "#B45309", "#0369A1", "#15803D", "#C2410C"];
 
-export function zufallsPasswort(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-  const block = () => Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
-  return `Apex-${block()}-${block()}`;
-}
-
 export function stadtProfil(bundesland: Bundesland): StadtKey {
   if (bundesland === "BY" || bundesland === "BW") return "muenchen";
   if (["HH", "SH", "HB", "NI", "MV"].includes(bundesland)) return "hamburg";

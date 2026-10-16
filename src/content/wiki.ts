@@ -1,4 +1,5 @@
 // Animiertes Wiki & Schnellhilfe – zugleich Wissensbasis des Apex Assistenten (Support).
+import { DEMO_KI_NAME } from "@/ai/status";
 
 export type WikiVisual =
   | "cockpit" | "akte" | "posteingang" | "frist" | "rechner" | "ki" | "suche" | "motor"
@@ -85,7 +86,7 @@ export const WIKI: WikiArtikel[] = [
       { titel: "Präzedenzfälle finden", text: "Passende Entscheidungen aus der Fall-Datenbank werden gesucht und nach Relevanz bewertet.", visual: "suche" },
       { titel: "Ergebnis prüfen", text: "Sie erhalten Erfolgsaussicht, Argumente dafür und dagegen, Risiken und die nächsten Schritte – plus einen Schriftsatz-Entwurf.", visual: "ki" },
     ],
-    tipps: ["Die KI berechnet keine Fristen selbst – das übernimmt immer der geprüfte Fristenrechner.", "Im Demo-Modus antwortet die Demo-KI (offline) nach festen Regeln. Mit Claude-Anbindung sind die Antworten frei formuliert."],
+    tipps: ["Die KI berechnet keine Fristen selbst – das übernimmt immer der geprüfte Fristenrechner.", `Im Demo-Modus antwortet die ${DEMO_KI_NAME} nach festen Regeln. Mit Claude-Anbindung sind die Antworten frei formuliert.`],
   },
   {
     key: "falldb", titel: "Fall-Datenbank", kategorie: "KI & Recherche", dauer: "1 Min.", pfad: "/fall-datenbank",

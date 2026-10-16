@@ -4,6 +4,7 @@ import { overlapScore, tokenize, type SearchField } from "@/core/search";
 import { fmtDate } from "@/core/dates";
 import type { Akte, Entscheidung } from "@/core/types";
 import { llmJson, DemoModus, KeineAntwort, verstaendlicheMeldung } from "@/ai/llm";
+import { DEMO_KI_NAME } from "@/ai/status";
 
 export type Ebene = Entscheidung["ebene"];
 
@@ -229,7 +230,7 @@ export async function kiRecherche(sachverhalt: string, opts: { live: boolean; si
       if (treffer.length >= 4) break;
     }
     if (!treffer.length) {
-      return { treffer: offline(), quelle: "offline", hinweis: "Die Live-KI hat keine Entscheidung aus der Datenbank ausgewählt – angezeigt wird die Recherche der Demo-KI (offline).", dauerMs: performance.now() - t0 };
+      return { treffer: offline(), quelle: "offline", hinweis: `Die Live-KI hat keine Entscheidung aus der Datenbank ausgewählt – angezeigt wird die Recherche der ${DEMO_KI_NAME}.`, dauerMs: performance.now() - t0 };
     }
     return { treffer, quelle: "live", verworfen, dauerMs: performance.now() - t0 };
   } catch (e) {
@@ -237,10 +238,10 @@ export async function kiRecherche(sachverhalt: string, opts: { live: boolean; si
     // KeineAntwort ist eine Unterart von DemoModus – dann trotzdem sagen, warum die Demo-KI antwortet
     const hinweis =
       e instanceof KeineAntwort
-        ? "Die Live-KI hat nicht rechtzeitig geantwortet – angezeigt wird die Recherche der Demo-KI (offline)."
+        ? `Die Live-KI hat nicht rechtzeitig geantwortet – angezeigt wird die Recherche der ${DEMO_KI_NAME}.`
         : e instanceof DemoModus
           ? undefined
-          : `Die Live-KI war nicht erreichbar – angezeigt wird die Recherche der Demo-KI (offline). ${verstaendlicheMeldung(e)}`;
+          : `Die Live-KI war nicht erreichbar – angezeigt wird die Recherche der ${DEMO_KI_NAME}. ${verstaendlicheMeldung(e)}`;
     return { treffer: offline(), quelle: "offline", hinweis, dauerMs: performance.now() - t0 };
   }
 }

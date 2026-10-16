@@ -155,7 +155,7 @@ export function NeuerZugang({ open, onClose, onAngelegt }: { open: boolean; onCl
               <Field label="Name des Hauptnutzers der Kanzlei" htmlFor="nk-admin" hint={zeige("adminName") && <span className="text-seal">{zeige("adminName")}</span>}>
                 <Input id="nk-admin" value={form.adminName} onChange={(e) => set("adminName", e.target.value)} placeholder="z. B. Dr. Anna Becker" autoComplete="name" aria-invalid={!!zeige("adminName")} />
               </Field>
-              <Field label="E-Mail der Admin-Person" htmlFor="nk-email" hint={zeige("adminEmail") ? <span className="text-seal">{zeige("adminEmail")}</span> : "Damit meldet sich die Kanzlei an."}>
+              <Field label="E-Mail des Hauptnutzers" htmlFor="nk-email" hint={zeige("adminEmail") ? <span className="text-seal">{zeige("adminEmail")}</span> : "Damit meldet sich die Kanzlei an."}>
                 <Input id="nk-email" type="email" inputMode="email" value={form.adminEmail} onChange={(e) => set("adminEmail", e.target.value)} placeholder="anna.becker@kanzlei.de" autoComplete="email" aria-invalid={!!zeige("adminEmail")} />
               </Field>
               <Field label="Arbeitsplätze" htmlFor="nk-plaetze" hint={zeige("arbeitsplaetze") && <span className="text-seal">{zeige("arbeitsplaetze")}</span>}>
@@ -229,7 +229,7 @@ function Erfolg({ e, beispieldaten }: { e: NeuerKundeErgebnis; beispieldaten: bo
           <Check className="size-5" strokeWidth={3} />
         </motion.span>
         <span className="text-fg-2">
-          <span className="font-semibold text-fg">{e.admin.name}</span> kann sich ab sofort anmelden. {e.tenant.testBis ? `Test bis ${fmtDate(e.tenant.testBis)}.` : ""}{" "}
+          <span className="font-semibold text-fg">{e.admin.name}</span> kann sich ab sofort anmelden und legt dabei ein eigenes Passwort fest. {e.tenant.testBis ? `Test bis ${fmtDate(e.tenant.testBis)}.` : ""}{" "}
           {beispieldaten ? <Chip tone="green">mit Beispieldaten</Chip> : <Chip tone="outline">leere Kanzlei</Chip>}
         </span>
       </div>

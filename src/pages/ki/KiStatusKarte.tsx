@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Link } from "react-router";
 import { motion } from "motion/react";
 import { BookCheck, Calculator, Clock, Cpu, ShieldCheck, Sparkles, UserCheck, Zap } from "lucide-react";
-import { useAiStatus, type KiQuelle } from "@/ai/status";
+import { DEMO_KI_NAME, useAiStatus, type KiQuelle } from "@/ai/status";
 import { useData } from "@/store/data";
 import { addDays, fmtNum, today } from "@/core/dates";
 import { AnimatedNumber, Chip, Switch } from "@/components/ui";
@@ -80,7 +80,7 @@ export function KiStatusKarte() {
                   </span>
                 ) : (
                   <Chip tone="amber" dot>
-                    Demo-KI (offline)
+                    {DEMO_KI_NAME}
                   </Chip>
                 )}
                 {live && (
@@ -138,8 +138,8 @@ export function KiStatusKarte() {
           </div>
           {liveMoeglich && (
             <label className="flex items-center justify-between gap-3 rounded-[14px] bg-[var(--ink-softer)] px-3 py-2 text-[12.5px] text-fg-2">
-              <span>Demo-KI (offline) verwenden</span>
-              <Switch checked={bevorzugeDemo} onChange={setBevorzugeDemo} label="Demo-KI (offline) verwenden" />
+              <span>{DEMO_KI_NAME} verwenden</span>
+              <Switch checked={bevorzugeDemo} onChange={setBevorzugeDemo} label={`${DEMO_KI_NAME} verwenden`} />
             </label>
           )}
         </div>

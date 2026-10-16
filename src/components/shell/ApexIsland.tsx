@@ -5,7 +5,8 @@ import { Zap } from "lucide-react";
 import { useMotorStore } from "@/lib/motor";
 import { useData } from "@/store/data";
 import { useToasts } from "@/store/ui";
-import { addDays, fmtNum, today } from "@/core/dates";
+import { fmtNum, today } from "@/core/dates";
+import { motorZahlen } from "@/core/kennzahlen";
 
 /** „Apex Island": schwarze Kapsel, die zeigt, was der 38h-Motor gerade erledigt. */
 export function ApexIsland() {
@@ -15,10 +16,8 @@ export function ApexIsland() {
   // Benachrichtigungen erscheinen als Dynamic-Island-Kapsel oben – solange eine sichtbar ist, tritt die Island zurück,
   // statt halb verdeckt hinter ihr hervorzuschauen.
   const toastSichtbar = useToasts((s) => s.toasts.length > 0);
-  const stunden = useMemo(() => {
-    const grenze = addDays(today(), -6);
-    return akt.filter((a) => a.zeit.slice(0, 10) >= grenze).reduce((s, a) => s + (a.minutenGespart ?? 0), 0) / 60;
-  }, [akt]);
+  // Gesparte Zeit der letzten 7 Tage – dieselbe Berechnung wie Cockpit und Apex Assistent
+  const stunden = useMemo(() => motorZahlen(akt, today()).stunden, [akt]);
 
   return (
     <motion.button

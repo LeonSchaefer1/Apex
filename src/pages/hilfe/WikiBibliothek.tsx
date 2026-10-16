@@ -38,6 +38,7 @@ export function WikiBibliothek() {
     if (!q.trim()) return basis;
     return search(basis, q, [
       { get: (w) => w.titel, weight: 3 },
+      { get: (w) => (w.stichworte ?? []).join(" "), weight: 3 },
       { get: (w) => w.kurz, weight: 2 },
       { get: (w) => w.schritte.map((s) => `${s.titel} ${s.text}`).join(" "), weight: 1 },
       { get: (w) => (w.tipps ?? []).join(" "), weight: 1 },

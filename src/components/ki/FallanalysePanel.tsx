@@ -8,7 +8,7 @@ import { useData } from "@/store/data";
 import { useKanzlei, useSession } from "@/store/session";
 import { istConsole } from "@/lib/backend";
 import { toast } from "@/store/ui";
-import { useAiStatus } from "@/ai/status";
+import { DEMO_KI_NAME, useAiStatus } from "@/ai/status";
 import { analysiereFall, ANALYSE_PHASEN, type Fallanalyse } from "@/ai/fallanalyse";
 import { nowLocal, relTime } from "@/core/dates";
 import { Button, Card, Chip } from "@/components/ui";
@@ -197,7 +197,7 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
             <Button variant="ai" size="lg" icon={<Sparkles className="size-4" />} onClick={start}>
               Fallanalyse starten
             </Button>
-            <span className="text-[11.5px] text-fg-4">{ai.quelle === "demo" ? "Demo-KI (offline)" : `Live mit Claude${ai.modell ? ` · ${ai.modell}` : ""}`}</span>
+            <span className="text-[11.5px] text-fg-4">{ai.quelle === "demo" ? DEMO_KI_NAME : `Live mit Claude${ai.modell ? ` · ${ai.modell}` : ""}`}</span>
           </div>
         </div>
       </Card>

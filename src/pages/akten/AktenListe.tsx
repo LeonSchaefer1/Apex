@@ -3,9 +3,10 @@ import { useNavigate, useSearchParams } from "react-router";
 import { motion } from "motion/react";
 import { AlarmClock, AlertTriangle, Archive, CalendarClock, Check, FolderOpen, FolderPlus, Flag, Plus, Send, Sparkle, UserRound, UserRoundCog, ListChecks, X } from "lucide-react";
 import type { Akte, Frist } from "@/core/types";
-import { addDays, fmtDate, fmtDateShort, fmtEUR, nowLocal, relTime, today } from "@/core/dates";
+import { fmtDate, fmtDateShort, fmtEUR, nowLocal, relTime, today } from "@/core/dates";
 import { search } from "@/core/search";
 import { aktenMitFrist } from "@/core/fristenLage";
+import { aktenZahlen, wochenbeginn } from "@/core/kennzahlen";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
@@ -91,7 +92,7 @@ export default function AktenListe() {
   );
 
   const heute = today();
-  const montag = addDays(heute, -((new Date(heute + "T00:00:00Z").getUTCDay() + 6) % 7));
+  const montag = wochenbeginn(heute);
 
   // Akten mit Frist ≤ 7 Tage (inkl. überfälliger) – dieselbe Hilfsfunktion wie die Cockpit-Karte „Akten mit Handlungsbedarf“.
   // „Kritisch“ = Notfrist oder gesetzlich nicht verlängerbare Frist (z. B. § 4 KSchG, StPO, OWiG).
@@ -143,20 +144,11 @@ export default function AktenListe() {
 
   const liste = useMemo(() => (filter.status === "alle" ? ohneStatus : ohneStatus.filter((a) => a.status === filter.status)), [ohneStatus, filter.status]);
 
-  // Kennzahlen
+  // Kennzahlen – dieselbe Berechnung wie Cockpit und Apex Assistent (src/core/kennzahlen.ts)
   const kpi = useMemo(() => {
-    const offen = akten.filter((a) => a.status === "offen");
-    const neu = akten.filter((a) => a.createdAt.slice(0, 10) >= montag);
-    const mitFrist = offen.filter((a) => fristInfo.frist7.has(a.id));
-    return {
-      offen: offen.length,
-      hoch: offen.filter((a) => a.prioritaet === "hoch").length,
-      neu: neu.length,
-      montag,
-      frist: mitFrist.length,
-      notfrist: offen.filter((a) => fristInfo.notfrist7.has(a.id)).length,
-    };
-  }, [akten, montag, fristInfo]);
+    const z = aktenZahlen(akten, fristen, heute);
+    return { offen: z.offen, hoch: z.hoch, neu: z.neuSeitMontag, montag, frist: z.mitFrist, notfrist: z.mitKritischerFrist };
+  }, [akten, fristen, heute, montag]);
 
   const columns = useMemo<ColumnDef<Akte, unknown>[]>(
     () => [

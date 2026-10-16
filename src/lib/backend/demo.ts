@@ -7,6 +7,7 @@ import { baueKunde, baueNutzer, profilFuer } from "@/core/seed/kunde";
 import type { CollectionKey, TenantData, Tenant } from "@/core/types";
 import { PasswortWechselNoetig, darfVerwalten, pruefeNeuesPasswort, type Backend, type ConsoleKunde, type KanzleiProfil, type NeuerKunde, type Sitzung } from "./types";
 import { sicheresPasswort, zufallsKennung, zufallsZahl } from "./zufall";
+import { festeAnsprechperson } from "@/lib/rollen";
 
 const LS_SESSION = "aa:session";
 const LS_REGISTRY = "aa:registry";
@@ -211,7 +212,7 @@ function istPraesentationskanzlei(tenantId: string) {
 /** Gleiche Zugangsprüfung wie im Server-Betrieb: pausierte Kanzleien und abgelaufene Testzugänge werden abgewiesen. */
 function zugangsSperre(t: Tenant): string | null {
   const ap = t.ansprechpartner;
-  const kontakt = `Ihr fester Ansprechpartner: ${ap.name} (${ap.telefon}).`;
+  const kontakt = `${festeAnsprechperson(ap)}: ${ap.name} (${ap.telefon}).`;
   if (t.status === "pausiert") return `Der Zugang dieser Kanzlei ist pausiert. ${kontakt}`;
   if (t.status === "test" && t.testBis && t.testBis < today() && !istPraesentationskanzlei(t.id)) {
     return `Der Testzeitraum ist am ${fmtDate(t.testBis)} abgelaufen. ${kontakt} ${ap.name} verlängert den Zugang gern.`;
@@ -450,6 +451,8 @@ export function createDemoBackend(): Backend {
         const extra = lsGet<DemoTenant[]>(LS_REGISTRY) ?? [];
         extra.push(neu);
         lsSet(LS_REGISTRY, extra);
+        // Startpasswort: Bei der ersten Anmeldung legt die Kanzlei ein eigenes Passwort fest (wie im Server-Betrieb).
+        setzePasswortWechsel(admin.id, true);
         return { tenant, admin, passwort };
       },
       async remove(tenantId) {
@@ -473,6 +476,7 @@ export function createDemoBackend(): Backend {
         const map = lsGet<Record<string, string>>(LS_PW) ?? {};
         map[userId] = pw;
         lsSet(LS_PW, map);
+        setzePasswortWechsel(userId, true);
         return pw;
       },
       async standardPasswort(userId) {

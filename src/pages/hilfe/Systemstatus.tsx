@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { CheckCircle2, DatabaseBackup, Landmark, Library, Mail, RefreshCw, Scale, Sparkles } from "lucide-react";
-import { useAiStatus } from "@/ai/status";
+import { DEMO_KI_NAME, useAiStatus } from "@/ai/status";
 import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
 import { addDays, fmtDate, fmtNum, today } from "@/core/dates";
 import { Card, Chip } from "@/components/ui";
@@ -47,7 +47,7 @@ export function Systemstatus() {
         vorfall: { tageZurueck: 37, text: "Verzögerte Zustellung beim E-Mail-Anbieter (23 Min.) – Verbindung automatisch wiederhergestellt, keine Nachricht verloren." },
       },
       { key: "bank", name: "Bankabruf (FinTS/CAMT)", detail: "Kontoumsätze stündlich als CAMT.053", icon: <Landmark className="size-[18px]" />, latenz: [290, 420] },
-      { key: "ki", name: ai.quelle === "demo" ? "Demo-KI (offline)" : "KI (Claude)", detail: kiDetail, icon: <Sparkles className="size-[18px]" />, latenz: ai.quelle === "demo" ? null : [620, 940], latenzText: ai.quelle === "demo" ? "lokal" : undefined, ki: true },
+      { key: "ki", name: ai.quelle === "demo" ? DEMO_KI_NAME : "KI (Claude)", detail: kiDetail, icon: <Sparkles className="size-[18px]" />, latenz: ai.quelle === "demo" ? null : [620, 940], latenzText: ai.quelle === "demo" ? "lokal" : undefined, ki: true },
       { key: "falldb", name: "Fall-Datenbank", detail: `${fmtNum(ENTSCHEIDUNGEN.length)} Entscheidungen im Demo-Auszug · Suche lokal`, icon: <Library className="size-[18px]" />, latenz: [6, 18] },
       { key: "backup", name: "Backups", detail: "Letzte Sicherung heute 03:00 Uhr · verschlüsselt · 3-2-1-Prinzip", icon: <DatabaseBackup className="size-[18px]" />, latenz: null, latenzText: "03:00" },
     ],

@@ -19,6 +19,7 @@ import { fmtDate, today } from "../src/core/dates";
 import { BUNDESLAENDER, CODE_SITZUNG_GEWECHSELT, PASSWORT_MAX, ROLLEN, SACHGEBIETE_ALLE, VERWALTUNGS_ROLLEN, istEmail, pruefeNeuesPasswort, type KanzleiSitzung } from "../src/lib/backend/types";
 import { pruefeDokument } from "../src/lib/backend/schema";
 import { sicheresPasswort, zufallsZahl } from "../src/lib/backend/zufall";
+import { festeAnsprechperson } from "../src/lib/rollen";
 
 // ───────────── Konfiguration ─────────────
 function zahlAusUmgebung(name: string, standard: number, min: number, max: number): number {
@@ -174,9 +175,10 @@ if (SEED_DEMO) {
   for (const r of rows) {
     const t = JSON.parse(r.json) as Tenant;
     const ap = t.ansprechpartner;
-    if (!ap || ap.rolle === standard.rolle) continue;
+    if (!ap || (ap.rolle === standard.rolle && ap.bezeichnung === standard.bezeichnung)) continue;
     if (ap.email !== standard.email && ap.name !== standard.name) continue; // individuell vergebener Ansprechpartner bleibt
-    t.ansprechpartner = { ...ap, rolle: standard.rolle };
+    // Bezeichnung („Ansprechpartnerin“) auch dann setzen, wenn sie in älteren Datensätzen fehlt – alle Texte formulieren daraus.
+    t.ansprechpartner = { ...ap, rolle: standard.rolle, bezeichnung: standard.bezeichnung };
     db.prepare("UPDATE tenants SET json = ? WHERE id = ?").run(JSON.stringify(t), r.id);
     n++;
   }
@@ -279,7 +281,7 @@ function zugangsSperre(tenantId: string): string | null {
   const t = tenantById(tenantId);
   if (!t) return "Kanzlei nicht gefunden.";
   const ap = t.tenant.ansprechpartner;
-  const kontakt = `Ihr fester Ansprechpartner: ${ap.name} (${ap.telefon}).`;
+  const kontakt = `${festeAnsprechperson(ap)}: ${ap.name} (${ap.telefon}).`;
   if (t.tenant.status === "pausiert") return `Der Zugang dieser Kanzlei ist pausiert. ${kontakt}`;
   if (t.tenant.testBis && t.tenant.testBis < today() && t.tenant.status === "test" && !t.demo) return `Der Testzeitraum ist am ${fmtDate(t.tenant.testBis)} abgelaufen. ${kontakt} ${ap.name} verlängert den Zugang gern.`;
   return null;
@@ -775,7 +777,8 @@ app.post("/api/console/kunden", async (c) => {
   const { tenant, admin } = baueKunde({ kanzlei, stadt, bundesland, adminName, adminEmail, arbeitsplaetze: plaetze, schwerpunkte, testBis }, suffix);
   const passwort = sicheresPasswort();
   speichereTenant(tenant, profilFuer(schwerpunkte, bundesland), false, b.beispieldaten !== true);
-  speichereUser(admin, passwort);
+  // Startpasswort: Bei der ersten Anmeldung legt die Kanzlei ein eigenes Passwort fest (wie bei Team-Einladungen).
+  speichereUser(admin, passwort, true);
   audit("console.kunde.neu", `${tenant.name} / ${admin.email}`, tenant.id);
   return c.json({ tenant, admin, passwort });
 });
@@ -836,7 +839,7 @@ app.post("/api/console/nutzer/:id/passwort", (c) => {
   if (!consoleOk(c)) return fehler(c, 403, "Nur für das AnwaltApex-Team");
   const id = c.req.param("id");
   const pw = sicheresPasswort();
-  const r = db.prepare("UPDATE users SET pw_hash = ? WHERE id = ?").run(hashPw(pw), id);
+  const r = db.prepare("UPDATE users SET pw_hash = ?, pw_wechsel = 1 WHERE id = ?").run(hashPw(pw), id);
   if (!r.changes) return fehler(c, 404, "Nutzer nicht gefunden");
   db.prepare("DELETE FROM sessions WHERE user_id = ?").run(id);
   const u = db.prepare("SELECT tenant_id, email FROM users WHERE id = ?").get(id) as { tenant_id: string; email: string } | undefined;

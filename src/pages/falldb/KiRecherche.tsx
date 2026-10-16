@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { AlertTriangle, BrainCircuit, ChevronRight, Database, FolderInput, RotateCcw, Scale, Sparkles, Square } from "lucide-react";
 import { useData } from "@/store/data";
-import { useAiStatus } from "@/ai/status";
+import { DEMO_KI_NAME, useAiStatus } from "@/ai/status";
 import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
 import { fmtNum } from "@/core/dates";
 import { AiChip, Button, Chip, Select, Textarea } from "@/components/ui";
@@ -130,7 +130,7 @@ export function KiRecherche({ startText, onOpen }: { startText?: string; onOpen:
           </Button>
         )}
         <span className="flex items-center gap-2 text-[12px] text-fg-3">
-          {live ? <AiChip>Claude live</AiChip> : <Chip>Demo-KI (offline)</Chip>}
+          {live ? <AiChip>Claude live</AiChip> : <Chip>{DEMO_KI_NAME}</Chip>}
           <span className="hidden sm:inline">{live ? "Claude wählt ausschließlich aus der Fall-Datenbank aus." : "Regelbasierte Recherche, vollständig lokal."}</span>
         </span>
         <span className="ml-auto hidden text-[11.5px] text-fg-4 md:inline">
@@ -157,7 +157,7 @@ export function KiRecherche({ startText, onOpen }: { startText?: string; onOpen:
           <motion.section ref={ergebnisRef} key="ergebnis" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="grid scroll-mt-24 gap-3">
             <div className="flex flex-wrap items-center gap-2">
               <div className="title-md">{ergebnis.treffer.length ? `${ergebnis.treffer.length} passende Entscheidungen` : "Keine passende Entscheidung gefunden"}</div>
-              {ergebnis.quelle === "live" ? <AiChip>Claude</AiChip> : <Chip>Demo-KI (offline)</Chip>}
+              {ergebnis.quelle === "live" ? <AiChip>Claude</AiChip> : <Chip>{DEMO_KI_NAME}</Chip>}
               <span className="num text-[12px] text-fg-3">
                 {ergebnis.dauerMs < 1000 ? `${Math.max(1, Math.round(ergebnis.dauerMs))} ms` : `${fmtNum(ergebnis.dauerMs / 1000, 1)} s`} · {ENTSCHEIDUNGEN.length} Entscheidungen bewertet
               </span>

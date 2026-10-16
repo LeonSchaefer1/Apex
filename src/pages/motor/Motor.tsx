@@ -3,7 +3,7 @@ import { useLocation } from "react-router";
 import { motion } from "motion/react";
 import { Calculator, Euro, Repeat, Target } from "lucide-react";
 import { useCol } from "@/store/data";
-import { getInfo } from "@/lib/backend";
+import { hatBeispieldaten } from "@/lib/backend";
 import { useKanzlei } from "@/store/session";
 import { addDays, fmtDateShort, fmtEUR, fmtNum, today } from "@/core/dates";
 import type { Automation } from "@/core/types";
@@ -22,7 +22,8 @@ type Filter = "alle" | Automation["kategorie"];
 export default function Motor() {
   const automationen = useCol("automationen");
   const aktivitaeten = useCol("aktivitaeten");
-  const { user, tenant } = useKanzlei();
+  const sitzung = useKanzlei();
+  const { user, tenant } = sitzung;
   const now = useNow(20000);
   const [filter, setFilter] = useState<Filter>("alle");
   const [offenId, setOffenId] = useState<string | null>(null);
@@ -36,7 +37,8 @@ export default function Motor() {
   }, [loc.hash, loc.key]);
 
   const satz = user.stundensatz ?? 250;
-  const demo = getInfo()?.modus !== "server";
+  // Beispieldaten-Kanzlei: Die Läufe stammen aus dem simulierten Betrieb (Demo-Daten) – in echten Kanzleidaten nicht.
+  const demo = hatBeispieldaten(sitzung);
   const heute = today();
   const grenze = addDays(heute, -6);
 

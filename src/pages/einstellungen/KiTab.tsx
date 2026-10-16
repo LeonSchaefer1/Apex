@@ -1,7 +1,7 @@
 import { Fragment } from "react";
 import { motion } from "motion/react";
 import { BadgeCheck, Calculator, Cpu, Eye, Laptop, Quote, Server, Sparkles, UserCheck } from "lucide-react";
-import { useAiStatus } from "@/ai/status";
+import { DEMO_KI_NAME, useAiStatus } from "@/ai/status";
 import { useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
@@ -11,8 +11,8 @@ import { FLOW_CSS } from "@/pages/motor/shared";
 import { Abschnitt, Zeile } from "./teile";
 
 const QUELLE_TEXT = { server: "Claude (Anthropic-API) über Ihren Kanzlei-Server", artefakt: "Claude (Anthropic) über die Vorschau-Laufzeit", demo: "Arbeitet nach festen Regeln vollständig in Ihrem Browser" } as const;
-/** Einheitlicher Name der Offline-KI in der ganzen App: „Demo-KI (offline)“. */
-const QUELLE_NAME = { server: "KI live · Claude", artefakt: "KI live · Claude", demo: "Demo-KI (offline)" } as const;
+/** Einheitlicher Name der Offline-KI in der ganzen App: DEMO_KI_NAME aus src/ai/status.ts. */
+const QUELLE_NAME = { server: "KI live · Claude", artefakt: "KI live · Claude", demo: DEMO_KI_NAME } as const;
 
 const GRUNDSAETZE = [
   { icon: <Calculator className="size-4" />, t: "Die KI erkennt, der Fristenrechner berechnet", s: "Fristen berechnet ausschließlich der geprüfte Rechenkern nach §§ 187 ff. BGB und der jeweiligen Verfahrensordnung (z. B. § 222 ZPO, § 43 StPO) – mit Rechenweg." },
@@ -56,7 +56,7 @@ export function KiTab() {
             <Zeile
               titel="Präsentationsmodus: Demo-KI verwenden"
               htmlFor="ki-demo"
-              text={nurDemo ? "Derzeit ist keine Claude-Anbindung verfügbar – es läuft automatisch die Demo-KI." : "Für Vorführungen ohne Netz: Die Demo-KI (offline) antwortet sofort und sendet keine Daten."}
+              text={nurDemo ? "Derzeit ist keine Claude-Anbindung verfügbar – es läuft automatisch die Demo-KI." : `Für Vorführungen ohne Netz: Die ${DEMO_KI_NAME} antwortet sofort und sendet keine Daten.`}
               className="pt-4"
             >
               <Switch
@@ -66,7 +66,7 @@ export function KiTab() {
                 onChange={(v) => {
                   ai.setBevorzugeDemo(v);
                   useData.getState().log({ akteur: "nutzer", userId: user.id, text: v ? "Präsentationsmodus (Demo-KI) eingeschaltet" : "Live-KI (Claude) eingeschaltet" });
-                  toast(v ? "Demo-KI aktiv" : "Live-KI aktiv", { text: v ? "Antworten kommen von der Demo-KI (offline)." : `Antworten kommen von Claude ${ai.verfuegbar[0] === "artefakt" ? "über die Vorschau-Laufzeit" : "über Ihren Kanzlei-Server"}.`, ton: "ki" });
+                  toast(v ? "Demo-KI aktiv" : "Live-KI aktiv", { text: v ? `Antworten kommen von der ${DEMO_KI_NAME}.` : `Antworten kommen von Claude ${ai.verfuegbar[0] === "artefakt" ? "über die Vorschau-Laufzeit" : "über Ihren Kanzlei-Server"}.`, ton: "ki" });
                 }}
                 label="Präsentationsmodus: Demo-KI verwenden"
               />
@@ -85,7 +85,7 @@ export function KiTab() {
               ? "Live-Betrieb: Ihr Arbeitsplatz spricht nur mit dem Kanzlei-Server. Er prüft die Berechtigung, sendet die für die Aufgabe nötigen Inhalte (z. B. Sachverhalt und Dokumente einer Akte) an die Anthropic-API, protokolliert die Anfrage ohne Inhalte und begrenzt die Nutzung je Kanzlei."
               : ai.quelle === "artefakt"
                 ? "Vorschau-Betrieb: Anfragen gehen über die Vorschau-Laufzeit an Claude (Anthropic) – ohne Kanzlei-Server. Arbeiten Sie hier nur mit Beispieldaten."
-                : "Demo-Betrieb: Die Demo-KI (offline) arbeitet vollständig in Ihrem Browser – es werden keine Inhalte an einen KI-Anbieter übertragen."}
+                : `Demo-Betrieb: Die ${DEMO_KI_NAME} arbeitet vollständig in Ihrem Browser – es werden keine Inhalte an einen KI-Anbieter übertragen.`}
           </p>
           <div className="mt-3 rounded-[14px] bg-[var(--ink-softer)] px-3.5 py-3 text-[12.5px] leading-relaxed text-fg-2">
             <span className="font-semibold text-fg">Vor dem Live-Betrieb:</span> Anthropic verarbeitet Mandatsinhalte als Dienstleister. Erforderlich sind ein Vertrag nach § 43e BRAO (Verschwiegenheit, Zugriff nur soweit nötig) und eine Auftragsverarbeitung nach

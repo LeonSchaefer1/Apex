@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { fmtDate, fmtDateWd, fmtTime, relDays, wochentagName } from "@/core/dates";
 import type { FristVorschlag } from "@/ai/dokumentAnalyse";
+import { DEMO_KI_NAME } from "@/ai/status";
 import type { Nachricht } from "@/core/types";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
@@ -219,6 +220,8 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
   const eebFrei = !!ansicht && (ansicht.fristen.length === 0 || alleNotiert);
   const terminDa = !!ansicht?.termin && !!ziel && fristen.some((f) => f.akteId === ziel.id && f.typ === "termin" && f.datum === ansicht.termin!.datum);
   const mandatsanfrage = !!ansicht && !ansicht.akteId && !n.akteId && /mandat/i.test(ansicht.typ);
+  /** Allgemeine Post ohne Mandatsbezug (z. B. Kammer-Newsletter): keine Aktenauswahl verlangen – Zuordnen bleibt optional. */
+  const ohneAkte = !!ansicht && !ansicht.akteId && !n.akteId && !mandatsanfrage && (ansicht.typ === "Newsletter" || /keiner akte zuzuordnen/i.test(ansicht.zusammenfassung));
   /** Aus dieser Anfrage wurde eine neue Akte angelegt (Mandatsaufnahme), statt sie einer bestehenden zuzuordnen. */
   const akteAngelegt = !!ansicht && !ansicht.akteId && /mandat/i.test(ansicht.typ) && zugeordnet && !!ziel && ziel.createdAt >= n.eingang;
   const offeneKontrollen = ziel ? fristen.filter((f) => f.akteId === ziel.id && f.quelle === "ki" && f.status === "offen" && !f.kontrolliertVon && f.typ !== "vorfrist" && ansicht?.fristen.some((p) => p.ende === f.datum)) : [];
@@ -227,8 +230,19 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
   const anhaenge = ablegbareAnhaenge(n);
   const anhaengeDa = zugeordnet && anhaengeAbgelegt(n, ziel?.id, dokumente);
 
+  /** Zeile unter der Akte – abgeschnitten angezeigt, vollständig im Tooltip (z. B. der ganze Erkennungsgrund). */
+  const zielHinweis = !ansicht || !ziel
+    ? undefined
+    : akteAngelegt
+      ? "Aus dieser Anfrage angelegt · Anfrage in der E-Akte abgelegt (Korrespondenz)"
+      : zugeordnet
+        ? `Zugeordnet · in der E-Akte abgelegt (${istGerichtspost(n) ? "Gericht" : "Korrespondenz"})`
+        : ansicht.akteId === ziel.id
+          ? `${Math.round(ansicht.sicherheit * 100)} % sicher · erkannt über ${ansicht.akteGrund ?? "Inhalt"}`
+          : "Von Ihnen gewählt";
+
   const quelleText = ansicht?.frisch
-    ? `${ansicht.quelle === "demo" ? "Demo-KI (offline)" : "Claude · live"}${ansicht.dauerMs ? ` · ${(ansicht.dauerMs / 1000).toFixed(1).replace(".", ",")} s` : ""}`
+    ? `${ansicht.quelle === "demo" ? DEMO_KI_NAME : "Claude · live"}${ansicht.dauerMs ? ` · ${(ansicht.dauerMs / 1000).toFixed(1).replace(".", ",")} s` : ""}`
     : "Gespeicherter KI-Vorschlag";
 
   const uebernehmen = () => {
@@ -340,8 +354,25 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
                 </Abschnitt>
 
                 {/* Akte */}
-                <Abschnitt titel={akteAngelegt ? "Neu angelegte Akte" : zugeordnet ? "Akte" : "Erkannte Akte"} icon={<FolderOpen />} delay={0.05}>
-                  {mandatsanfrage && !andere ? (
+                <Abschnitt titel={akteAngelegt ? "Neu angelegte Akte" : zugeordnet || (ohneAkte && !andere) ? "Akte" : "Erkannte Akte"} icon={<FolderOpen />} delay={0.05}>
+                  {ohneAkte && !andere && !ziel ? (
+                    <div className="rounded-[18px] bg-surface/80 p-4 ring-1 ring-inset ring-[var(--line)]">
+                      <div className="flex items-center gap-3">
+                        <span className="grid size-11 shrink-0 place-items-center rounded-full bg-green-soft text-green">
+                          <CheckCircle2 className="size-5" />
+                        </span>
+                        <div className="min-w-0">
+                          <div className="text-[13.5px] font-semibold">Keiner Akte zuzuordnen</div>
+                          <div className="text-[12px] text-fg-3">Allgemeine Information ohne Mandatsbezug – eine Ablage in der E-Akte ist nicht nötig.</div>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <Button size="sm" variant="ghost" icon={<FolderInput className="size-4" />} onClick={() => setAndere(true)}>
+                          Doch einer Akte zuordnen
+                        </Button>
+                      </div>
+                    </div>
+                  ) : mandatsanfrage && !andere ? (
                     <div className="rounded-[18px] bg-surface/80 p-4 ring-1 ring-inset ring-[var(--line)]">
                       <div className="flex items-start gap-3">
                         <span className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">
@@ -388,14 +419,8 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
                                 </Chip>
                               </div>
                             )}
-                            <div className="mt-0.5 truncate text-[12px] text-fg-3">
-                              {akteAngelegt
-                                ? "Aus dieser Anfrage angelegt · Anfrage in der E-Akte abgelegt (Korrespondenz)"
-                                : zugeordnet
-                                ? `Zugeordnet · in der E-Akte abgelegt (${istGerichtspost(n) ? "Gericht" : "Korrespondenz"})`
-                                : ansicht.akteId === ziel.id
-                                  ? `${Math.round(ansicht.sicherheit * 100)} % sicher · erkannt über ${ansicht.akteGrund ?? "Inhalt"}`
-                                  : "Von Ihnen gewählt"}
+                            <div className="mt-0.5 truncate text-[12px] text-fg-3" title={zielHinweis}>
+                              {zielHinweis}
                             </div>
                           </div>
                         </div>

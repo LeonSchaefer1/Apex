@@ -88,6 +88,7 @@ export function einladungsText(p: { tenant: Tenant; admin: User; passwort: strin
     anmeldeZeile(),
     `E-Mail: ${admin.email}`,
     `Passwort: ${passwort}`,
+    "Bei der ersten Anmeldung legen Sie ein eigenes Passwort fest.",
     "",
     tenant.testBis ? `Ihr Testzugang ist bis zum ${fmtDate(tenant.testBis)} freigeschaltet.` : "Ihr Testzugang ist ab sofort freigeschaltet.",
     "Die Daten Ihrer Kanzlei sind strikt von allen anderen Kanzleien getrennt – nur Ihr Team hat Zugriff.",

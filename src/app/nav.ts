@@ -25,7 +25,7 @@ export const NAV: NavItem[] = [
   { to: "/abrechnung", label: "Abrechnung", icon: ReceiptEuro, gruppe: "Kanzlei", hilfe: "abrechnung", beschreibung: "RVG-Rechner, Sammelabrechnung, Forderungskonto und automatischer Bankabgleich." },
   { to: "/kontakte", label: "Kontakte", icon: Users, gruppe: "Kanzlei", hilfe: "kontakte", beschreibung: "Mandanten, Gegner, Gerichte und Versicherungen – mit allen verknüpften Akten." },
   { to: "/umzug", label: "Umzug", icon: ArrowRightLeft, gruppe: "Kanzlei", hilfe: "umzug", beschreibung: "Umzug mit einem Klick: Akten, Kontakte und Fristen aus Ihrer bisherigen Software übernehmen." },
-  { to: "/hilfe", label: "Hilfe & Support", kurz: "Hilfe", icon: LifeBuoy, gruppe: "Service", hilfe: "hilfe", beschreibung: "Animiertes Wiki, Schnellhilfe, Systemstatus und Ihr fester Ansprechpartner." },
+  { to: "/hilfe", label: "Hilfe & Support", kurz: "Hilfe", icon: LifeBuoy, gruppe: "Service", hilfe: "hilfe", beschreibung: "Animiertes Wiki, Schnellhilfe, Systemstatus und Ihre feste Ansprechperson." },
   { to: "/einstellungen", label: "Einstellungen", icon: Settings, gruppe: "Service", hilfe: "einstellungen", beschreibung: "Kanzlei, Team & Zugänge, Lizenz, KI und Darstellung." },
 ];
 

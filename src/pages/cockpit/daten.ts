@@ -2,16 +2,19 @@
 import { useMemo } from "react";
 import { useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
-import { addDays, diffDays, fmtDateShort, fmtEUR, fmtNum, today, wochentagName } from "@/core/dates";
+import { addDays, diffDays, fmtDateShort, fmtEUR, today, wochentagName } from "@/core/dates";
 import { istWerktag } from "@/core/feiertage";
 import { aktenMitFrist, fristenLage, istKritisch, nachDringlichkeit, zaehltAlsFrist, type FristenLage } from "@/core/fristenLage";
+import {
+  briefingText, finanzZahlen, fristArtLabel, motorZahlen, naechsteTermine, posteingangZahlen, tagesbriefing,
+  type BriefingSatz, type BriefingTeil, type FinanzZahlen,
+} from "@/core/kennzahlen";
 import type { Akte, Aktivitaet, Bundesland, Frist, FristTyp, Nachricht, User } from "@/core/types";
 
 /** Ziel des 38h-Motors (Stunden je Woche und Kanzlei). */
 export const ZIEL_STUNDEN = 38;
 /** Bewertung einer gesparten Stunde: 38 Std./Woche × 48 Arbeitswochen ≙ ca. 36.000 €/Jahr (Markenversprechen). */
 export { WERT_PRO_STUNDE, WOCHEN_PRO_JAHR as ARBEITSWOCHEN } from "@/core/automationen";
-import { WERT_PRO_STUNDE, WOCHEN_PRO_JAHR as ARBEITSWOCHEN } from "@/core/automationen";
 
 export type Ansicht = "kanzlei" | "meine";
 
@@ -43,11 +46,8 @@ export const TYP_LABEL: Record<FristTyp, string> = { notfrist: "Notfrist", frist
 /** Sortierung wie in der Fristenzählung (src/core/fristenLage.ts): Datum, dann kritische Fristen zuerst. */
 export const sortiereFristen = nachDringlichkeit;
 
-/** Bezeichnung im Satz: „Notfrist“, „nicht verlängerbare Frist“, „Frist“, „Wiedervorlage“ … */
-export function artLabel(f: Frist): string {
-  if (f.typ === "frist" && istKritisch(f)) return "nicht verlängerbare Frist";
-  return TYP_LABEL[f.typ];
-}
+/** Bezeichnung im Satz: „Notfrist“, „nicht verlängerbare Frist“, „Frist“, „Wiedervorlage“ … (wie im Tagesbriefing) */
+export const artLabel = fristArtLabel;
 
 /** „heute", „morgen", „Mo, 19. Okt." */
 export function tagLabel(iso: string, heute: string): string {
@@ -59,13 +59,8 @@ export function tagLabel(iso: string, heute: string): string {
 }
 
 /** Ein Teil eines Briefing-Satzes: Anzeige-Text, optional abweichend gesprochen, optional betont/verlinkt. */
-export interface Teil {
-  t: string;
-  s?: string;
-  ton?: "fg" | "seal" | "amber" | "ink" | "violet";
-  href?: string;
-}
-export type Satz = Teil[];
+export type Teil = BriefingTeil;
+export type Satz = BriefingSatz;
 
 export interface CockpitDaten {
   heute: string;
@@ -98,41 +93,23 @@ export interface CockpitDaten {
   /** davon Akten ohne Frist im Fenster, aber mit hoher Priorität */
   aktenNurPrio: number;
   motor: { stunden: number; tage: number[]; tagLabels: string[]; zuletzt: Aktivitaet[]; euroWoche: number; euroJahr: number };
-  finanzen: { offen: number; offenAnzahl: number; ueberfaellig: number; ueberfaelligAnzahl: number; fremdgeld: number; fremdgeldAkten: number; bankOffen: number; aelteste: { id: string; nummer: string; akteId: string; tage: number; betrag: number }[] };
+  /** offene Forderungen, Fremdgeld, Bankabgleich – dieselbe Berechnung wie Apex Assistent und Abrechnung (src/core/kennzahlen.ts) */
+  finanzen: FinanzZahlen;
   kiAkte?: Akte;
   kiAkteFrist?: Frist;
   briefing: Satz[];
 }
 
-function satzText(s: Satz, gesprochen: boolean) {
-  return s.map((p) => (gesprochen ? p.s ?? p.t : p.t)).join("");
-}
-
-/** Schließt einen Satz mit Punkt ab – ohne doppelten Punkt nach Abkürzungen („22. Okt."). */
-function punkt(s: Satz) {
-  const letzter = s[s.length - 1];
-  if (letzter && /\.$/.test(letzter.t)) return;
-  s.push({ t: "." });
-}
-
 /** Gesprochene Fassung: Aktenzeichen und Paragrafen so, wie man sie vorliest. */
 export function sprechText(s: Satz): string {
-  return satzText(s, true)
+  return briefingText(s, true)
     .replace(/(\d+)\/(\d{2})\b/g, "$1 Strich $2")
     .replace(/§§/g, "Paragrafen")
     .replace(/§/g, "Paragraf")
     .replace(/–/g, ",");
 }
 export function anzeigeText(s: Satz): string {
-  return satzText(s, false);
-}
-
-function plural(n: number, eins: string, viele: string) {
-  return `${n === 1 ? "eine" : fmtNum(n)} ${n === 1 ? eins : viele}`;
-}
-
-function langDatum(iso: string) {
-  return `${wochentagName(iso)}, ${fmtDateShort(iso).replace(/\.$/, "")}`;
+  return briefingText(s);
 }
 
 export function useCockpitDaten(ansicht: Ansicht): CockpitDaten {
@@ -172,17 +149,13 @@ export function useCockpitDaten(ansicht: Ansicht): CockpitDaten {
       kritischWoche[0] ??
       [...lage.woche].sort(nachPrio)[0];
 
-    // Posteingang (eingehend, neu)
-    const posteingang = nachrichten.filter((n) => n.richtung === "ein" && n.status === "neu").sort((a, b) => b.eingang.localeCompare(a.eingang));
-    const wartetAufKi = posteingang.filter((n) => n.kiStatus === "ausstehend" || !n.kiStatus).length;
-    const kiFertig = posteingang.filter((n) => n.kiStatus === "analysiert" || n.kiStatus === "uebernommen").length;
-    const eeb = posteingang.filter((n) => n.eebErforderlich && !n.eebAbgegeben).length;
+    // Posteingang (eingehend, neu) – wie Briefing, Navigation und Apex Assistent
+    const post = posteingangZahlen(nachrichten);
+    const posteingang = post.neu;
+    const { wartetAufKi, kiFertig, eeb } = post;
 
-    // Termine
-    const termine = offen
-      .filter((f) => f.typ === "termin" && f.datum >= heute)
-      .sort((a, b) => a.datum.localeCompare(b.datum) || (a.uhrzeit ?? "").localeCompare(b.uhrzeit ?? ""))
-      .slice(0, 5);
+    // Termine (offen, ab heute; in „Meine Sicht“ nur eigene)
+    const termine = naechsteTermine(fristen, heute, meine ? user.id : undefined);
 
     // Wochenblick: die nächsten 5 Werktage ab heute
     const wochenTage: CockpitDaten["wochenTage"] = [];
@@ -234,49 +207,19 @@ export function useCockpitDaten(ansicht: Ansicht): CockpitDaten {
       .map(({ akte, naechste, gruende }) => ({ akte, naechste, gruende }));
     const aktenMitFristAnzahl = handlungsbedarf.filter((x) => x.naechste).length;
 
-    // 38h-Motor: letzte 7 Tage (wie in der Apex Island)
-    const grenze = addDays(heute, -6);
-    const tageKeys = Array.from({ length: 7 }, (_, i) => addDays(grenze, i));
-    const proTag = new Map(tageKeys.map((k) => [k, 0]));
-    let minuten = 0;
-    for (const a of aktivitaeten) {
-      const tag = a.zeit.slice(0, 10);
-      if (tag >= grenze && a.minutenGespart) {
-        minuten += a.minutenGespart;
-        proTag.set(tag, (proTag.get(tag) ?? 0) + a.minutenGespart);
-      }
-    }
-    const stunden = minuten / 60;
-    const zuletzt = aktivitaeten.filter((a) => a.akteur === "automation" || a.akteur === "ki").slice(0, 3);
+    // 38h-Motor: letzte 7 Tage – dieselbe Berechnung wie Apex Island und Apex Assistent
+    const mz = motorZahlen(aktivitaeten, heute);
     const motor = {
-      stunden,
-      tage: tageKeys.map((k) => (proTag.get(k) ?? 0) / 60),
-      tagLabels: tageKeys.map((k) => wochentagName(k, true)),
-      zuletzt,
-      euroWoche: stunden * WERT_PRO_STUNDE,
-      euroJahr: stunden * WERT_PRO_STUNDE * ARBEITSWOCHEN,
+      stunden: mz.stunden,
+      tage: mz.proTag.map((t) => t.minuten / 60),
+      tagLabels: mz.proTag.map((t) => wochentagName(t.datum, true)),
+      zuletzt: aktivitaeten.filter((a) => a.akteur === "automation" || a.akteur === "ki").slice(0, 3),
+      euroWoche: mz.euro,
+      euroJahr: mz.euroJahr,
     };
 
-    // Finanzen
-    const offeneRe = rechnungen.filter((r) => r.status === "gestellt" || r.status === "teilbezahlt");
-    const rest = (r: (typeof offeneRe)[number]) => Math.max(0, r.brutto - r.bezahlt);
-    const ueberRe = offeneRe.filter((r) => r.faellig < heute);
-    const fremdJeAkte = new Map<string, number>();
-    for (const b of buchungen) if (b.art === "fremdgeld") fremdJeAkte.set(b.akteId, (fremdJeAkte.get(b.akteId) ?? 0) + b.betrag);
-    const fremdOffen = [...fremdJeAkte.values()].filter((v) => v > 0.005);
-    const finanzen = {
-      offen: offeneRe.reduce((s, r) => s + rest(r), 0),
-      offenAnzahl: offeneRe.length,
-      ueberfaellig: ueberRe.reduce((s, r) => s + rest(r), 0),
-      ueberfaelligAnzahl: ueberRe.length,
-      fremdgeld: fremdOffen.reduce((s, v) => s + v, 0),
-      fremdgeldAkten: fremdOffen.length,
-      bankOffen: transaktionen.filter((t) => t.status === "offen").length,
-      aelteste: [...ueberRe]
-        .sort((a, b) => a.faellig.localeCompare(b.faellig))
-        .slice(0, 2)
-        .map((r) => ({ id: r.id, nummer: r.nummer, akteId: r.akteId, tage: diffDays(r.faellig, heute), betrag: rest(r) })),
-    };
+    // Finanzen – wie Apex Assistent
+    const finanzen = finanzZahlen(rechnungen, buchungen, transaktionen, heute);
 
     // KI-Empfehlung: Präsentationsakte 142/.. – sonst wichtigste Akte mit hoher Priorität ohne Analyse
     const kiAkte =
@@ -288,98 +231,10 @@ export function useCockpitDaten(ansicht: Ansicht): CockpitDaten {
       ? fristen.filter((f) => f.akteId === kiAkte.id && f.status === "offen" && zaehltAlsFrist(f)).sort((a, b) => Number(istKritisch(b)) - Number(istKritisch(a)) || nachDringlichkeit(a, b))[0]
       : undefined;
 
-    // ── KI-Tagesbriefing: drei Sätze aus den Daten ──
-    const briefing: Satz[] = [];
-    {
-      // „fällig" = heute fällig + überfällig; gezählt werden nur Fristen (Notfristen und Fristen) – wie Badge, Fristen-Kennzahl
-      // und Assistent. Wiedervorlagen und Vorfristen werden getrennt genannt: „Heute sind 2 Fristen fällig, dazu 1 Wiedervorlage und 1 Vorfrist.“
-      const s: Satz = [];
-      const nF = lage.faellig.length;
-      const nU = lage.ueberfaellig.length;
-      const nWv = lage.wiedervorlagen.length;
-      const nV = lage.vorfristen.length;
-      const nW = lage.woche.length;
-      const nWvW = lage.wiedervorlagenWoche.length;
-      const dazu: Teil[] = [];
-      if (nWv > 0) dazu.push({ t: plural(nWv, "Wiedervorlage", "Wiedervorlagen"), ton: "fg" });
-      if (nV > 0) dazu.push({ t: plural(nV, "Vorfrist", "Vorfristen"), ton: "fg" });
-      const dazuTeile = dazu.flatMap((p, k) => (k === 0 ? [p] : [{ t: " und " }, p]));
-      if (nF + nWv + nV + nW + nWvW === 0) {
-        s.push({ t: meine ? "Für Sie sind in den nächsten sieben Tagen keine Fristen notiert." : "In den nächsten sieben Tagen sind keine Fristen notiert." });
-      } else {
-        if (nF > 0) {
-          s.push({ t: meine ? `Für Sie ${nF === 1 ? "ist" : "sind"} heute ` : `Heute ${nF === 1 ? "ist" : "sind"} ` });
-          s.push({ t: plural(nF, "Frist", "Fristen"), ton: "fg" });
-          s.push({ t: " fällig" });
-          if (nU > 0) s.push({ t: nU === nF ? (nF === 1 ? " (bereits überfällig)" : " (alle bereits überfällig)") : ` (davon ${fmtNum(nU)} überfällig)`, ton: "seal" });
-          if (dazuTeile.length) s.push({ t: ", dazu " }, ...dazuTeile);
-        } else {
-          s.push({ t: meine ? "Für Sie ist heute keine Frist fällig" : "Heute ist keine Frist fällig" });
-          if (dazuTeile.length) s.push({ t: ", nur " }, ...dazuTeile);
-        }
-        if (nW > 0 || nWvW > 0) {
-          s.push({ t: ". In den nächsten sieben Tagen " });
-          if (nW > 0) {
-            s.push({ t: nW === 1 ? (nF > 0 ? "folgt " : "steht ") : nF > 0 ? "folgen " : "stehen " });
-            s.push({ t: nF > 0 ? (nW === 1 ? "eine weitere Frist" : `${fmtNum(nW)} weitere Fristen`) : plural(nW, "Frist", "Fristen"), ton: "fg" });
-            if (nWvW > 0) s.push({ t: " und " }, { t: plural(nWvW, "Wiedervorlage", "Wiedervorlagen"), ton: "fg" });
-            if (nF === 0) s.push({ t: " an" });
-          } else {
-            s.push({ t: "stehen keine weiteren Fristen an, nur " }, { t: plural(nWvW, "Wiedervorlage", "Wiedervorlagen"), ton: "fg" });
-          }
-        }
-        if (kritischste) {
-          const a = akten.get(kritischste.akteId);
-          const ueber = kritischste.datum < heute;
-          const kritisch = istKritisch(kritischste);
-          s.push({ t: ueber ? " – sofort zu erledigen ist " : kritischste.datum === heute ? " – zuerst zu erledigen ist " : " – am dringendsten ist " });
-          s.push({ t: `die ${artLabel(kritischste)} „${kritischste.titel}“`, ton: kritisch || ueber ? "seal" : "amber" });
-          if (a) s.push({ t: " in " }, { t: a.aktenzeichen, ton: "ink", href: `/akten/${a.id}?tab=fristen` });
-          if (ueber) s.push({ t: ` (fällig seit ${tagLabel(kritischste.datum, heute)})` });
-          else if (kritischste.datum === heute) s.push({ t: " (heute fällig)" });
-          else s.push({ t: ` bis ${tagLabel(kritischste.datum, heute)}`, s: ` bis ${langDatum(kritischste.datum)}` });
-        }
-        punkt(s);
-      }
-      briefing.push(s);
-    }
-    {
-      const s: Satz = [];
-      if (posteingang.length === 0) {
-        s.push({ t: "Der Posteingang ist aufgeräumt – keine neuen Nachrichten." });
-      } else {
-        s.push({ t: "Im Posteingang " }, { t: posteingang.length === 1 ? "wartet " : "warten " });
-        s.push({ t: plural(posteingang.length, "neue Nachricht", "neue Nachrichten"), ton: "fg" });
-        if (kiFertig > 0 && wartetAufKi > 0) {
-          s.push({ t: ` – bei ${fmtNum(kiFertig)} ist die KI-Analyse fertig, ` });
-          s.push({ t: `${fmtNum(wartetAufKi)} ${wartetAufKi === 1 ? "wartet" : "warten"} noch auf die KI-Analyse`, ton: "violet" });
-        } else if (wartetAufKi > 0) {
-          s.push({ t: " – " }, { t: wartetAufKi === 1 ? "sie wartet noch auf die KI-Analyse" : "alle warten noch auf die KI-Analyse", ton: "violet" });
-        } else {
-          s.push({ t: " – " }, { t: "die KI hat bereits alle ausgewertet", ton: "violet" });
-        }
-        if (eeb > 0) s.push({ t: `, darunter ${eeb === 1 ? "eine Zustellung" : `${fmtNum(eeb)} Zustellungen`} gegen eEB`, s: `, darunter ${eeb === 1 ? "eine Zustellung" : `${eeb} Zustellungen`} gegen elektronisches Empfangsbekenntnis` });
-        punkt(s);
-      }
-      briefing.push(s);
-    }
-    {
-      const s: Satz = [];
-      const t = termine[0];
-      if (!t) {
-        s.push({ t: meine ? "Für Sie stehen derzeit keine Termine im Kalender." : "Derzeit stehen keine Gerichts- oder Ortstermine im Kalender." });
-      } else {
-        const a = akten.get(t.akteId);
-        s.push({ t: "Ihr nächster Termin: " });
-        s.push({ t: t.titel, ton: "fg" });
-        if (a) s.push({ t: " in " }, { t: a.aktenzeichen, ton: "ink", href: `/akten/${a.id}` });
-        s.push({ t: ` ${diffDays(heute, t.datum) <= 1 ? tagLabel(t.datum, heute) : `am ${tagLabel(t.datum, heute)}`}`, s: ` am ${langDatum(t.datum)}` });
-        if (t.uhrzeit) s.push({ t: ` um ${t.uhrzeit} Uhr` });
-        if (t.ort) s.push({ t: ` – ${t.ort}` });
-        punkt(s);
-      }
-      briefing.push(s);
-    }
+    // ── KI-Tagesbriefing: drei Sätze aus den Daten – wortgleich mit dem Apex Assistenten („Was steht heute an?“) ──
+    // „fällig“ = heute fällig + überfällig; gezählt werden nur Fristen (Notfristen und Fristen) – wie Badge, Fristen-Kennzahl
+    // und Assistent. Wiedervorlagen und Vorfristen werden getrennt genannt.
+    const briefing: Satz[] = tagesbriefing({ heute, fristen, akten: aktenArr, nachrichten, nurFuer: meine ? user.id : undefined });
 
     return {
       heute, bisTag, wochenende: bisTag !== addDays(heute, 1), user, team: teamMap, akten,
