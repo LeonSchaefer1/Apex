@@ -1,15 +1,18 @@
 // Apex Assistent: Support & Arbeits-Agent. Live mit Claude (Werkzeuge = Funktionen dieser App) oder offline per Absichtserkennung.
 import { berechneNachRegel, FRIST_REGELN, fristDringlichkeit } from "@/core/fristen";
-import { fristenImZeitraum, fristenLage } from "@/core/fristenLage";
+import { FENSTER_TAGE, fristenImZeitraum, fristenLage, istKritisch, zaehltAlsFrist } from "@/core/fristenLage";
+import { aktenZahlen, briefingText, finanzZahlen, motorZahlen, posteingangZahlen, tagesbriefing, wochenbeginn, wochenende } from "@/core/kennzahlen";
+import { WERT_PRO_STUNDE } from "@/core/automationen";
 import { berechneRvg, VV_KATALOG } from "@/core/rvg";
 import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
 import { search, normalize, tokenize } from "@/core/search";
-import { addDays, fmtDate, fmtDateWd, fmtEUR, nowLocal, relDays, today, uid } from "@/core/dates";
-import { WIKI } from "@/content/wiki";
+import { addDays, fmtDate, fmtDateWd, fmtEUR, fmtNum, nowLocal, relDays, today, uid } from "@/core/dates";
+import { WIKI, type WikiArtikel } from "@/content/wiki";
 import { NAV } from "@/app/nav";
 import { useData } from "@/store/data";
-import type { Akte, Frist, SessionInfo, FristTyp, TenantData } from "@/core/types";
-import { DemoModus, llmAgent, type AgentTool, type LlmMessage } from "./llm";
+import { ansprechBezeichnung, festeAnsprechperson } from "@/lib/rollen";
+import type { Akte, Ansprechpartner, Frist, ISODate, SessionInfo, FristTyp, TenantData } from "@/core/types";
+import { DemoModus, llmAgent, verstaendlicheMeldung, type AgentTool, type LlmMessage } from "./llm";
 import { bewertePraezedenz, findePraezedenzfaelle } from "./kontext";
 
 export interface AssistentLink {
@@ -28,15 +31,18 @@ export const WERKZEUG_LABEL: Record<string, string> = {
   akte_details: "Akte gelesen",
   fristen_liste: "Fristenkalender geprüft",
   frist_berechnen: "Frist berechnet (§ 222 ZPO)",
-  frist_anlegen: "Frist eingetragen",
+  frist_anlegen: "Im Fristenkalender eingetragen",
   rvg_berechnen: "RVG berechnet",
   rechtsprechung_suchen: "Fall-Datenbank durchsucht",
   entscheidung_erlaeutern: "Entscheidung erläutert",
   navigiere: "Bereich geöffnet",
   hilfe_artikel: "Wiki durchsucht",
-  ansprechpartner: "Ansprechpartner abgerufen",
+  ansprechpartner: "Ansprechperson abgerufen",
   rueckruf_anfordern: "Rückruf angefordert",
   posteingang_status: "Posteingang geprüft",
+  finanzen_status: "Finanzen geprüft",
+  motor_status: "38h-Motor geprüft",
+  akten_status: "Aktenbestand gezählt",
   tagesbriefing: "Tag zusammengefasst",
 };
 
@@ -65,9 +71,19 @@ function findeAkteNachAz(az: string): Akte | undefined {
   return search(d.akten, az, [{ get: (a) => a.aktenzeichen, weight: 4 }, { get: (a) => a.titel, weight: 3 }, { get: (a) => mandantName(d, a), weight: 2 }], 1)[0]?.item;
 }
 
+/** Nächste offene Frist (Notfrist oder Frist) einer Akte – Wiedervorlagen, Vorfristen und Termine zählen nicht. */
 function naechsteFrist(akteId: string) {
-  return daten().fristen.filter((f) => f.akteId === akteId && f.status === "offen" && f.typ !== "vorfrist").sort((a, b) => a.datum.localeCompare(b.datum))[0];
+  return daten().fristen.filter((f) => f.akteId === akteId && f.status === "offen" && zaehltAlsFrist(f)).sort((a, b) => a.datum.localeCompare(b.datum))[0];
 }
+
+/** Bezeichnung eines Eintrags im Satz: „Notfrist“, „nicht verlängerbar“, „Wiedervorlage“ … (leer bei gewöhnlicher Frist). */
+function artZusatz(f: Pick<Frist, "typ" | "regelKey">): string {
+  if (f.typ === "notfrist") return "Notfrist";
+  if (f.typ === "frist") return istKritisch(f) ? "nicht verlängerbar" : "";
+  return TYP_NAME[f.typ];
+}
+
+const TYP_NAME: Record<FristTyp, string> = { notfrist: "Notfrist", frist: "Frist", vorfrist: "Vorfrist", wiedervorlage: "Wiedervorlage", termin: "Termin" };
 
 /** Anzahl mit Singular/Plural: anz(1, "Frist", "Fristen") → „eine Frist“, anz(3, …) → „3 Fristen“. */
 function anz(n: number, sing: string, plur: string, eins = "eine"): string {
@@ -125,17 +141,26 @@ function nurBereich(text: string): Bereich | undefined {
 }
 
 /** Werkzeuge = echte Funktionen der App, die die KI aufrufen darf. */
-const PRIORITAET = ["hilfe_artikel", "fristen_liste", "suche_akten", "akte_details", "frist_berechnen", "frist_anlegen", "navigiere", "ansprechpartner", "rueckruf_anfordern", "entscheidung_erlaeutern", "rechtsprechung_suchen", "rvg_berechnen", "posteingang_status"];
+const PRIORITAET = ["hilfe_artikel", "fristen_liste", "suche_akten", "akte_details", "frist_berechnen", "frist_anlegen", "navigiere", "ansprechpartner", "rueckruf_anfordern", "entscheidung_erlaeutern", "rechtsprechung_suchen", "rvg_berechnen", "posteingang_status", "finanzen_status", "motor_status", "akten_status"];
 
 export function werkzeuge(ctx: Kontext): AgentTool[] {
   return alleWerkzeuge(ctx).sort((a, b) => PRIORITAET.indexOf(a.name) - PRIORITAET.indexOf(b.name));
 }
 
-type Zeitraum = "heute" | "morgen" | "woche" | "monat";
+/**
+ * Zeiträume der Fristenliste: „heute“ (fällig inkl. überfälliger), „morgen“, „woche“ = nächste 7 Tage nach heute (gleitend,
+ * wie Cockpit und Fristen-Kennzahl), „kalenderwoche“ = diese Woche bis Sonntag (inkl. überfälliger), „naechste_woche“ =
+ * Mo–So der Folgewoche, „monat“ = nächste 30 Tage, „kommend“ = alle offenen (für „als Nächstes“).
+ */
+export type Zeitraum = "heute" | "morgen" | "woche" | "kalenderwoche" | "naechste_woche" | "monat" | "kommend";
+const ZEITRAEUME: Zeitraum[] = ["heute", "morgen", "woche", "kalenderwoche", "naechste_woche", "monat", "kommend"];
 
 interface FristEintrag {
   titel: string;
   typ: FristTyp;
+  /** „Notfrist“, „nicht verlängerbar“, „Wiedervorlage“ … – leer bei einer gewöhnlichen Frist */
+  art: string;
+  kritisch: boolean;
   datum: string;
   relativ: string;
   dringlichkeit: ReturnType<typeof fristDringlichkeit>;
@@ -145,54 +170,88 @@ interface FristEintrag {
 
 export interface FristenListe {
   zeitraum: Zeitraum;
-  /** Gesamtzahl der Fristen im Zeitraum (Notfristen, Fristen, Wiedervorlagen – ohne Vorfristen und Termine) */
+  /** Zeitraum im Klartext, z. B. „in den nächsten 7 Tagen (bis Fr, 23.10.2026)“ */
+  label: string;
+  von: ISODate | "";
+  bis: ISODate;
+  /** nur kritische Fristen (Notfrist oder nicht verlängerbar) gezählt und gelistet */
+  nurKritisch: boolean;
+  /** Anzahl der Fristen (Notfristen und Fristen) im Zeitraum – Wiedervorlagen, Vorfristen und Termine zählen nicht */
   anzahl: number;
-  /** davon überfällig (nur „heute“: fällig = heute + überfällig) */
+  /** davon überfällig (bei „heute“, „kalenderwoche“ und „kommend“) */
   ueberfaellig: number;
   /** davon Notfristen */
   notfristen: number;
-  /** Vorfristen im Zeitraum – gesondert, nicht in anzahl enthalten */
+  /** davon kritisch: Notfrist oder gesetzlich nicht verlängerbar (z. B. § 4 KSchG, StPO, OWiG) */
+  kritisch: number;
+  /** Wiedervorlagen im Zeitraum – getrennt genannt, nicht in `anzahl` */
+  wiedervorlagen: number;
+  /** Vorfristen im Zeitraum – Erinnerungen, nicht in `anzahl` */
   vorfristen: number;
-  /** Termine im Zeitraum – gesondert, nicht in anzahl enthalten */
+  /** Termine im Zeitraum – nicht in `anzahl` */
   termine: number;
-  /** die dringendsten Einträge (höchstens 12) */
+  /** die dringendsten Fristen (höchstens 12) */
   eintraege: FristEintrag[];
   /** nicht aufgeführte weitere Fristen */
   weitere: number;
+  /** die nächsten Wiedervorlagen (höchstens 5) */
+  wiedervorlagenEintraege: FristEintrag[];
+  /** die nächsten Termine (höchstens 3) */
+  termineEintraege: FristEintrag[];
+  /** die nächsten Vorfristen (höchstens 3) */
+  vorfristenEintraege: FristEintrag[];
+}
+
+function zeitraumGrenzen(zeitraum: Zeitraum, heute: ISODate): { von: ISODate | ""; bis: ISODate; label: string } {
+  const bisText = (d: ISODate) => fmtDateWd(d);
+  switch (zeitraum) {
+    case "heute": return { von: "", bis: heute, label: "heute" };
+    case "morgen": return { von: addDays(heute, 1), bis: addDays(heute, 1), label: "morgen" };
+    case "kalenderwoche": return { von: "", bis: wochenende(heute), label: `diese Woche (bis ${bisText(wochenende(heute))})` };
+    case "naechste_woche": {
+      const mo = addDays(wochenbeginn(heute), 7);
+      return { von: mo, bis: addDays(mo, 6), label: `nächste Woche (${bisText(mo)} bis ${bisText(addDays(mo, 6))})` };
+    }
+    case "monat": return { von: addDays(heute, 1), bis: addDays(heute, 30), label: `in den nächsten 30 Tagen (bis ${bisText(addDays(heute, 30))})` };
+    case "kommend": return { von: "", bis: "9999-12-31", label: "als Nächstes" };
+    default: return { von: addDays(heute, 1), bis: addDays(heute, FENSTER_TAGE), label: `in den nächsten 7 Tagen (bis ${bisText(addDays(heute, FENSTER_TAGE))})` };
+  }
 }
 
 /** Fristen eines Zeitraums – mit derselben Zählweise wie Cockpit, Seitenleiste und Fristenkalender (fristenLage). */
-export function fristenListe(d: TenantData, zeitraum: Zeitraum, heute: string, nurFuer?: string): FristenListe {
+export function fristenListe(d: TenantData, zeitraum: Zeitraum, heute: string, nurFuer?: string, opts: { nurKritisch?: boolean } = {}): FristenListe {
+  const g = zeitraumGrenzen(zeitraum, heute);
   const lage = fristenLage(d.fristen, heute, nurFuer);
-  let fristen: Frist[];
-  let vorfristen: Frist[];
-  let termine: Frist[];
-  if (zeitraum === "heute") {
-    const z = fristenImZeitraum(d.fristen, heute, heute, nurFuer);
-    fristen = lage.faellig;
-    vorfristen = lage.vorfristen;
-    termine = z.termine;
-  } else {
-    const von = addDays(heute, 1);
-    const bis = zeitraum === "morgen" ? addDays(heute, 1) : zeitraum === "monat" ? addDays(heute, 30) : addDays(heute, 7);
-    const z = fristenImZeitraum(d.fristen, von, bis, nurFuer);
-    fristen = zeitraum === "woche" ? lage.woche : z.fristen;
-    vorfristen = z.vorfristen;
-    termine = z.termine;
-  }
-  const eintraege = fristen.slice(0, 12).map((f) => {
+  const z = fristenImZeitraum(d.fristen, g.von, g.bis, nurFuer);
+  // „heute“ und „nächste 7 Tage“ exakt wie fristenLage (Badge, Cockpit, Fristen-Kennzahlen)
+  let fristen = zeitraum === "heute" ? lage.faellig : zeitraum === "woche" ? lage.woche : z.fristen;
+  const wiedervorlagen = zeitraum === "heute" ? lage.wiedervorlagen : zeitraum === "woche" ? lage.wiedervorlagenWoche : z.wiedervorlagen;
+  const vorfristen = zeitraum === "heute" ? lage.vorfristen : z.vorfristen;
+  const termine = zeitraum === "heute" ? fristenImZeitraum(d.fristen, heute, heute, nurFuer).termine : zeitraum === "kalenderwoche" || zeitraum === "kommend" ? z.termine.filter((f) => f.datum >= heute) : z.termine;
+  if (opts.nurKritisch) fristen = fristen.filter(istKritisch);
+  const eintrag = (f: Frist): FristEintrag => {
     const a = d.akten.find((x) => x.id === f.akteId);
-    return { titel: f.titel, typ: f.typ, datum: fmtDateWd(f.datum), relativ: relDays(f.datum), dringlichkeit: fristDringlichkeit(f.datum, heute), akte: a ? `${a.aktenzeichen} ${a.titel}` : "", grundlage: f.grundlage ?? null };
-  });
+    return { titel: f.titel, typ: f.typ, art: artZusatz(f), kritisch: istKritisch(f), datum: fmtDateWd(f.datum), relativ: relDays(f.datum, heute), dringlichkeit: fristDringlichkeit(f.datum, heute), akte: a ? `${a.aktenzeichen} ${a.titel}` : "", grundlage: f.grundlage ?? null };
+  };
+  const eintraege = fristen.slice(0, 12).map(eintrag);
   return {
     zeitraum,
+    label: g.label,
+    von: g.von,
+    bis: g.bis,
+    nurKritisch: !!opts.nurKritisch,
     anzahl: fristen.length,
     ueberfaellig: fristen.filter((f) => f.datum < heute).length,
     notfristen: fristen.filter((f) => f.typ === "notfrist").length,
+    kritisch: fristen.filter(istKritisch).length,
+    wiedervorlagen: wiedervorlagen.length,
     vorfristen: vorfristen.length,
     termine: termine.length,
     eintraege,
     weitere: Math.max(0, fristen.length - eintraege.length),
+    wiedervorlagenEintraege: wiedervorlagen.slice(0, 5).map(eintrag),
+    termineEintraege: termine.slice(0, 3).map(eintrag),
+    vorfristenEintraege: vorfristen.slice(0, 3).map(eintrag),
   };
 }
 
@@ -329,7 +388,7 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
   return [
     {
       name: "suche_akten",
-      description: "Durchsucht die Akten der Kanzlei (Aktenzeichen, Titel, Mandant, Sachverhalt). Gibt bis zu 6 Treffer mit nächster Frist zurück.",
+      description: "Durchsucht die Akten der Kanzlei (Aktenzeichen, Titel, Mandant, Sachverhalt). Gibt bis zu 6 Treffer mit nächster Frist (Notfrist oder Frist) zurück.",
       inputSchema: { type: "object", properties: { suchbegriff: { type: "string" } }, required: ["suchbegriff"] },
       execute: (i) => {
         t("suche_akten");
@@ -347,7 +406,7 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
     },
     {
       name: "akte_details",
-      description: "Liest eine Akte über ihr Aktenzeichen (z. B. '142/26' oder '142'): Sachverhalt, Beteiligte, offene Fristen, Dokumente.",
+      description: "Liest eine Akte über ihr Aktenzeichen (z. B. '142/26' oder '142'): Sachverhalt, Beteiligte, offene Fristen (Notfristen und Fristen), getrennt davon Wiedervorlagen und Termine, Dokumente.",
       inputSchema: { type: "object", properties: { aktenzeichen: { type: "string" } }, required: ["aktenzeichen"] },
       execute: (i) => {
         const a = findeAkteNachAz(String(i.aktenzeichen ?? ""));
@@ -359,7 +418,8 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
           aktenzeichen: a.aktenzeichen, titel: a.titel, sachgebiet: a.sachgebiet, phase: a.phase, gegenstandswert: fmtEUR(a.gegenstandswert),
           mandant: mandantName(d, a), gegner: d.kontakte.find((k) => k.id === a.gegnerId)?.name,
           gericht: d.kontakte.find((k) => k.id === a.gerichtId)?.name, gerichtsAz: a.gerichtsAz, sachverhalt: a.beschreibung,
-          offeneFristen: d.fristen.filter((f) => f.akteId === a.id && f.status === "offen" && f.typ !== "vorfrist").sort((x, y) => x.datum.localeCompare(y.datum)).map((f) => `${f.titel} – ${fmtDateWd(f.datum)} (${relDays(f.datum)})`),
+          offeneFristen: d.fristen.filter((f) => f.akteId === a.id && f.status === "offen" && zaehltAlsFrist(f)).sort((x, y) => x.datum.localeCompare(y.datum)).map((f) => `${f.titel}${istKritisch(f) ? ` (${artZusatz(f)})` : ""} – ${fmtDateWd(f.datum)} (${relDays(f.datum)})`),
+          wiedervorlagenUndTermine: d.fristen.filter((f) => f.akteId === a.id && f.status === "offen" && (f.typ === "wiedervorlage" || f.typ === "termin")).sort((x, y) => x.datum.localeCompare(y.datum)).map((f) => `${TYP_NAME[f.typ]}: ${f.titel.replace(/^(Wiedervorlage|Termin):\s*/i, "")} – ${fmtDateWd(f.datum)}${f.uhrzeit ? `, ${f.uhrzeit} Uhr` : ""} (${relDays(f.datum)})`),
           dokumente: d.dokumente.filter((x) => x.akteId === a.id).slice(0, 8).map((x) => x.name),
         };
       },
@@ -367,13 +427,13 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
     {
       name: "fristen_liste",
       description:
-        "Zählt und listet offene Fristen der Kanzlei: 'heute' (heute fällig inklusive überfälliger), 'morgen', 'woche' (die sieben Tage nach heute) oder 'monat' (30 Tage nach heute). Gezählt werden Notfristen, Fristen und Wiedervorlagen – Vorfristen und Termine werden gesondert ausgewiesen. Nenne immer die Gesamtzahl aus 'anzahl'; 'eintraege' enthält nur die dringendsten (max. 12).",
-      inputSchema: { type: "object", properties: { zeitraum: { type: "string", enum: ["heute", "morgen", "woche", "monat"] }, nurMeine: { type: "boolean" } }, required: ["zeitraum"] },
+        "Zählt und listet offene Fristen der Kanzlei. Zeiträume: 'heute' (heute fällig inklusive überfälliger), 'morgen', 'woche' (die nächsten 7 Tage nach heute – gleitend), 'kalenderwoche' (diese Woche Mo–So bis Sonntag, inklusive überfälliger – für „diese Woche“), 'naechste_woche' (Mo–So der Folgewoche), 'monat' (nächste 30 Tage), 'kommend' (alle offenen, für „als Nächstes“). Gezählt werden nur Notfristen und Fristen ('anzahl'); Wiedervorlagen, Vorfristen und Termine stehen getrennt in eigenen Feldern und sind keine Fristen. 'nurKritisch' beschränkt auf Notfristen und gesetzlich nicht verlängerbare Fristen (z. B. § 4 KSchG, Einspruch nach StPO/OWiG). Nenne immer die Gesamtzahl aus 'anzahl'; 'eintraege' enthält nur die dringendsten (max. 12).",
+      inputSchema: { type: "object", properties: { zeitraum: { type: "string", enum: ZEITRAEUME }, nurMeine: { type: "boolean" }, nurKritisch: { type: "boolean" } }, required: ["zeitraum"] },
       execute: (i) => {
         t("fristen_liste");
-        const z = (["heute", "morgen", "woche", "monat"] as const).find((x) => x === i.zeitraum) ?? "woche";
-        ctx.links.push({ label: "Fristenkalender öffnen", to: "/fristen" });
-        return fristenListe(daten(), z, today(), i.nurMeine ? ctx.sitzung.user.id : undefined);
+        const z = ZEITRAEUME.find((x) => x === i.zeitraum) ?? "woche";
+        ctx.links.push({ label: "Fristenkalender öffnen", to: i.nurKritisch ? "/fristen?filter=kritisch" : "/fristen" });
+        return fristenListe(daten(), z, today(), i.nurMeine ? ctx.sitzung.user.id : undefined, { nurKritisch: !!i.nurKritisch });
       },
     },
     {
@@ -511,28 +571,29 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
     },
     {
       name: "hilfe_artikel",
-      description: "Durchsucht das AnwaltApex-Wiki (Bedienung der Software, Funktionen, Support). Für jede Frage zur Benutzung der Software verwenden.",
+      description: "Durchsucht das AnwaltApex-Wiki (Bedienung der Software, Funktionen, Support). Für jede Frage zur Benutzung der Software verwenden. Liefert nur sichere Treffer – bei leerer Liste ehrlich nachfragen statt zu raten.",
       inputSchema: { type: "object", properties: { frage: { type: "string" } }, required: ["frage"] },
       execute: (i) => {
         t("hilfe_artikel");
-        const list = wikiSuche(String(i.frage ?? ""));
+        const list = wikiSuche(String(i.frage ?? "")).map((x) => x.w);
         list.slice(0, 1).forEach((w) => w.pfad && ctx.links.push({ label: `Zu „${w.titel}“`, to: w.pfad }));
         return list.map((w) => ({ titel: w.titel, kurz: w.kurz, schritte: w.schritte.map((s) => `${s.titel}: ${s.text}`), tipps: w.tipps ?? [] }));
       },
     },
     {
       name: "ansprechpartner",
-      description: "Gibt den persönlichen Ansprechpartner der Kanzlei bei AnwaltApex zurück (Name, Telefon, E-Mail, Erreichbarkeit).",
+      description: "Gibt die feste Ansprechperson der Kanzlei bei AnwaltApex zurück (Name, Bezeichnung „Ansprechpartnerin“/„Ansprechpartner“, Telefon, E-Mail, Erreichbarkeit).",
       inputSchema: { type: "object", properties: {} },
       execute: () => {
         t("ansprechpartner");
         ctx.links.push({ label: "Hilfe & Support", to: "/hilfe" });
-        return ctx.sitzung.tenant.ansprechpartner;
+        const ap = ctx.sitzung.tenant.ansprechpartner;
+        return { ...ap, bezeichnung: ansprechBezeichnung(ap), anrede: festeAnsprechperson(ap) };
       },
     },
     {
       name: "rueckruf_anfordern",
-      description: "Fordert einen Rückruf des persönlichen Ansprechpartners an (Eskalation an einen Menschen).",
+      description: "Fordert einen Rückruf der festen Ansprechperson der Kanzlei an (Eskalation an einen Menschen).",
       inputSchema: { type: "object", properties: { thema: { type: "string" } }, required: ["thema"] },
       execute: (i) => {
         t("rueckruf_anfordern");
@@ -542,21 +603,61 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
     },
     {
       name: "posteingang_status",
-      description: "Zeigt neue Nachrichten im Posteingang (beA & E-Mail) inkl. KI-Status.",
+      description: "Zeigt neue Nachrichten im Posteingang (beA & E-Mail) inkl. KI-Status – gleiche Zählweise wie das Cockpit.",
       inputSchema: { type: "object", properties: {} },
       execute: () => {
         t("posteingang_status");
-        const d = daten();
-        // gleiche Zählweise wie das Cockpit-Briefing
-        const neu = d.nachrichten.filter((n) => n.richtung === "ein" && n.status === "neu").sort((a, b) => b.eingang.localeCompare(a.eingang));
+        const p = posteingangZahlen(daten().nachrichten);
         ctx.links.push({ label: "Posteingang öffnen", to: "/posteingang" });
         return {
-          neu: neu.length,
-          ausgewertet: neu.filter((n) => n.kiStatus === "analysiert" || n.kiStatus === "uebernommen").length,
-          wartenAufKi: neu.filter((n) => n.kiStatus === "ausstehend" || !n.kiStatus).length,
-          eeb: neu.filter((n) => n.eebErforderlich && !n.eebAbgegeben).length,
-          nachrichten: neu.slice(0, 6).map((n) => ({ kanal: n.kanal === "bea" ? "beA" : "E-Mail", von: n.von, betreff: n.betreff })),
+          neu: p.neu.length,
+          ausgewertet: p.kiFertig,
+          wartenAufKi: p.wartetAufKi,
+          eeb: p.eeb,
+          nachrichten: p.neu.slice(0, 6).map((n) => ({ kanal: n.kanal === "bea" ? "beA" : "E-Mail", von: n.von, betreff: n.betreff })),
         };
+      },
+    },
+    {
+      name: "finanzen_status",
+      description: "Finanzen der Kanzlei wie im Cockpit: offene Forderungen (Restbetrag brutto offener Rechnungen), davon überfällig, Fremdgeld zur Weiterleitung (§ 43a Abs. 7 BRAO) und nicht zugeordnete Kontoumsätze.",
+      inputSchema: { type: "object", properties: {} },
+      execute: () => {
+        t("finanzen_status");
+        const d = daten();
+        const f = finanzZahlen(d.rechnungen, d.buchungen, d.transaktionen, today());
+        const az = (id: string) => d.akten.find((a) => a.id === id)?.aktenzeichen ?? "";
+        ctx.links.push({ label: "Abrechnung öffnen", to: "/abrechnung" });
+        return {
+          offen: fmtEUR(f.offen), offenAnzahl: f.offenAnzahl, ueberfaellig: fmtEUR(f.ueberfaellig), ueberfaelligAnzahl: f.ueberfaelligAnzahl,
+          fremdgeld: fmtEUR(f.fremdgeld), fremdgeldAkten: f.fremdgeldJeAkte.map((x) => `${az(x.akteId)}: ${fmtEUR(x.betrag)}`),
+          bankOffen: f.bankOffen, amLaengstenUeberfaellig: f.aelteste.map((r) => `${r.nummer} (${az(r.akteId)}): ${fmtEUR(r.betrag)}, seit ${r.tage} ${r.tage === 1 ? "Tag" : "Tagen"} überfällig`),
+        };
+      },
+    },
+    {
+      name: "motor_status",
+      description: "Bilanz des 38h-Motors wie in Apex Island und Cockpit: automatisch gesparte Stunden der letzten 7 Tage, seit Montag und der Wert als Rechenbeispiel (interne Personalkosten).",
+      inputSchema: { type: "object", properties: {} },
+      execute: () => {
+        t("motor_status");
+        const m = motorZahlen(daten().aktivitaeten, today());
+        ctx.links.push({ label: "38h-Motor öffnen", to: "/automatisierung" });
+        return {
+          stundenLetzte7Tage: fmtNum(m.stunden, 1), stundenSeitMontag: fmtNum(m.minutenSeitMontag / 60, 1), laeufeLetzte7Tage: m.laeufe,
+          wertLetzte7Tage: fmtEUR(m.euro, { cents: false }), wertProStunde: fmtEUR(WERT_PRO_STUNDE), hinweis: "Wert = Rechenbeispiel mit internen Personalkosten, keine Umsatzgarantie",
+        };
+      },
+    },
+    {
+      name: "akten_status",
+      description: "Aktenbestand wie auf der Seite „Akten“: offene Akten (davon hohe Priorität), ruhende, abgeschlossene, neu seit Montag und Akten mit Frist ≤ 7 Tage.",
+      inputSchema: { type: "object", properties: {} },
+      execute: () => {
+        t("akten_status");
+        const d = daten();
+        ctx.links.push({ label: "Akten öffnen", to: "/akten" });
+        return aktenZahlen(d.akten, d.fristen, today());
       },
     },
   ];
@@ -564,33 +665,68 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
 
 const FRAGEWORTE = new Set(["wie", "was", "wo", "wann", "warum", "funktioniert", "funktionieren", "geht", "kann", "ich", "man", "mache", "machen", "erklaer", "erklaere", "erkläre", "bitte", "mir", "zeig", "zeige", "gibt", "es", "eine", "einen", "richtig"]);
 
-/** Lockere Wiki-Suche: zählt Treffer je Suchwort (Titel stärker gewichtet). */
-function wikiSuche(frage: string) {
-  const toks = tokenize(frage).filter((t) => !FRAGEWORTE.has(t));
+/** Wörter, die in der Wiki-Suche nichts unterscheiden (Fragewörter, Hilfsverben, Pronomen, Füllwörter). */
+const WIKI_STOP = new Set(tokenize(
+  "wie was wo wann warum wer welche welcher welches welchen wieso weshalb funktioniert funktionieren geht gehen kann koennen können konnte muss müssen soll sollen sollte darf dürfen mache machen macht tun tue " +
+  "ich man mir mich mein meine meinen meinem meiner wir uns unser unsere unseren ihr ihre ihnen bitte mal noch schon auch nur gibt gib es eine einen einem einer eines der die das den dem des " +
+  "und oder zu zum zur im in am an auf aus bei mit von vom für über richtig erklär erkläre erklaere erklaer zeig zeige viele viel habe haben hat hast sind ist bin sein hier dort jetzt gerade heute " +
+  "dort damit dazu etwas so ganz genau eigentlich überhaupt denn mal kurz software anwaltapex apex-software",
+));
+
+export interface WikiTreffer {
+  w: WikiArtikel;
+  score: number;
+}
+
+/**
+ * Wiki-Suche mit Stoppwörtern und Mindestscore: Ein Artikel gilt nur als Antwort, wenn mindestens 60 % der
+ * aussagekräftigen Suchwörter vorkommen und mindestens ein Treffer in Titel oder Stichworten liegt bzw. mehrere im Kurztext.
+ * Ohne sicheren Treffer: leere Liste – der Assistent fragt dann ehrlich nach, statt einen fachfremden Artikel zu zeigen.
+ */
+export function wikiSuche(frage: string): WikiTreffer[] {
+  const toks = [...new Set(tokenize(frage).filter((t) => !WIKI_STOP.has(t) && t.length >= 2))];
   if (!toks.length) return [];
+  const passt = (t: string, woerter: Set<string>) => {
+    if (woerter.has(t)) return true;
+    for (const w of woerter) if ((t.length >= 4 && w.startsWith(t)) || (w.length >= 5 && t.startsWith(w))) return true;
+    return false;
+  };
   return WIKI.map((w) => {
-    const titel = normalize(`${w.titel} ${w.key}`);
-    const rest = normalize(`${w.kurz} ${w.schritte.map((s) => `${s.titel} ${s.text}`).join(" ")} ${(w.tipps ?? []).join(" ")}`);
-    const score = toks.reduce((s, t) => s + (titel.includes(t) ? 4 : 0) + (rest.includes(t) ? 1 : 0), 0);
-    return { w, score };
+    const kopf = new Set(tokenize(`${w.titel} ${w.key.replace(/-/g, " ")} ${(w.stichworte ?? []).join(" ")}`));
+    const kurz = new Set(tokenize(w.kurz));
+    const rest = new Set(tokenize(`${w.schritte.map((s) => `${s.titel} ${s.text}`).join(" ")} ${(w.tipps ?? []).join(" ")}`));
+    let score = 0;
+    let getroffen = 0;
+    let imKopf = 0;
+    for (const t of toks) {
+      const p = passt(t, kopf) ? 4 : passt(t, kurz) ? 2 : passt(t, rest) ? 1 : 0;
+      if (p) getroffen++;
+      if (p === 4) imKopf++;
+      score += p;
+    }
+    const sicher = getroffen / toks.length >= 0.6 && (imKopf > 0 || score >= 4);
+    return { w, score: sicher ? score : 0 };
   })
     .filter((x) => x.score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, 2)
-    .map((x) => x.w);
+    .slice(0, 2);
 }
 
 export function systemPrompt(s: SessionInfo, voice: boolean): string {
-  return `Du bist „Apex“, der integrierte KI-Assistent der Kanzlei-Software AnwaltApex. Du sprichst mit ${s.user.name} (${s.user.titel}) von ${s.tenant.name} in ${s.tenant.stadt}. Heute ist ${fmtDateWd(today())}.
-Du hilfst bei zwei Dingen: (1) Live-Support zur Bedienung von AnwaltApex (nutze dafür hilfe_artikel) und (2) Kanzleiarbeit mit den Daten der Kanzlei (Akten, Fristen, Posteingang, RVG, Rechtsprechung) über die Werkzeuge.
+  const ap = s.tenant.ansprechpartner;
+  return `Du bist der „Apex Assistent“, der integrierte KI-Assistent der Kanzlei-Software AnwaltApex. Stellst du dich vor, sag „Ich bin der Apex Assistent“. Du sprichst mit ${s.user.name} (${s.user.titel}) von ${s.tenant.name} in ${s.tenant.stadt}. Heute ist ${fmtDateWd(today())}.
+Du hilfst bei zwei Dingen: (1) Live-Support zur Bedienung von AnwaltApex (nutze dafür hilfe_artikel) und (2) Kanzleiarbeit mit den Daten der Kanzlei (Akten, Fristen, Posteingang, Finanzen, 38h-Motor, RVG, Rechtsprechung) über die Werkzeuge.
 Regeln:
 - Antworte auf Deutsch, knapp und freundlich, in 1–4 Sätzen oder einer kurzen Liste.${voice ? " Die Antwort wird vorgelesen: keine Tabellen, keine Markdown-Formatierung, Zahlen gut sprechbar." : " Leichtes Markdown (Fett, Listen) ist erlaubt."}
-- Daten der Kanzlei immer über Werkzeuge abfragen – nie erfinden. Fristen ausschließlich mit frist_berechnen berechnen.
-- Nenne bei Fristen immer die Gesamtzahl aus fristen_liste (Feld „anzahl“); die Liste „eintraege“ kann gekürzt sein. Überfällige Fristen und Vorfristen nennst du gesondert.
+- Daten der Kanzlei immer über Werkzeuge abfragen – nie erfinden. Zahlen zu Posteingang, Finanzen, Fremdgeld, 38h-Motor und Akten nur aus posteingang_status, finanzen_status, motor_status und akten_status. Fristen ausschließlich mit frist_berechnen berechnen.
+- „Fristen“ sind nur Notfristen und Fristen. Wiedervorlagen, Vorfristen und Termine nennst du getrennt und nie als Fristen, z. B. „Heute sind 2 Fristen fällig, dazu 1 Wiedervorlage und 1 Vorfrist.“ Nenne immer die Gesamtzahl aus fristen_liste (Feld „anzahl“); die Liste „eintraege“ kann gekürzt sein. Überfällige Fristen nennst du gesondert.
+- „Diese Woche“ ist die Kalenderwoche bis Sonntag (zeitraum 'kalenderwoche'); gleitende Fenster heißen „nächste 7 Tage“ (zeitraum 'woche') bzw. „letzte 7 Tage“. Fragt jemand nach Notfristen, nicht verlängerbaren oder kritischen Fristen, nutze nurKritisch und sag ehrlich, ob echte Notfristen darunter sind (z. B. ist die Klagefrist nach § 4 KSchG keine Notfrist im Sinne der ZPO, aber nicht verlängerbar).
+- Der Wert gesparter Zeit ist ein Rechenbeispiel mit internen Personalkosten – keine Umsatz- oder Erfolgsgarantie.
 - Zitiere Rechtsprechung nur aus rechtsprechung_suchen oder entscheidung_erlaeutern. Fragt der Nutzer, wie er eine bestimmte Entscheidung nutzen kann, rufe entscheidung_erlaeutern auf und gib eine Argumentationshilfe (Kernaussage, Bausteine, passende Akte) – keine bloße Trefferliste.
 - Ändere Daten (frist_anlegen) nur, wenn der Nutzer das ausdrücklich wünscht; bestätige danach, was du eingetragen hast.
 - Kurze Antworten wie „Ja“, „Gerne“ oder „Nein“ beziehen sich auf deine letzte Rückfrage – führe dann genau das Angebotene aus.
-- Wenn du nicht weiterkommst oder der Nutzer einen Menschen möchte: biete den persönlichen Ansprechpartner an und nutze rueckruf_anfordern. Formuliere ohne Pronomen für die Ansprechperson: „Ihr fester Ansprechpartner: ${s.tenant.ansprechpartner.name}“ und wiederhole bei Bedarf den Namen.
+- Findest du keine sichere Antwort (z. B. leere Wiki-Treffer), sag das ehrlich und frag nach, was genau gemeint ist.
+- Wenn du nicht weiterkommst oder der Nutzer einen Menschen möchte: biete die feste Ansprechperson an und nutze rueckruf_anfordern. Formuliere ohne Pronomen für die Ansprechperson: „${festeAnsprechperson(ap)}: ${ap.name}“ und wiederhole bei Bedarf den Namen.
 - Wenn der Nutzer einen Bereich sehen möchte, nutze navigiere.`;
 }
 
@@ -734,26 +870,154 @@ export const VORSCHLAEGE = [
   "Ich möchte mit meinem Ansprechpartner sprechen",
 ];
 
-export function vorschlaege(data: TenantData = daten()): string[] {
+/** „Ich möchte mit meiner Ansprechpartnerin sprechen“ bzw. „… mit meinem Ansprechpartner …“ – passend zur hinterlegten Person. */
+export function ansprechBitte(ap?: Ansprechpartner): string {
+  return ap && ansprechBezeichnung(ap) === "Ansprechpartnerin" ? "Ich möchte mit meiner Ansprechpartnerin sprechen" : "Ich möchte mit meinem Ansprechpartner sprechen";
+}
+
+export function vorschlaege(data: TenantData = daten(), ap?: Ansprechpartner): string[] {
   const offen = data.akten.filter((a) => a.status === "offen");
   const akte =
     offen.find((a) => a.id.startsWith("hero-") && a.prioritaet === "hoch") ??
     [...offen].filter((a) => a.prioritaet === "hoch").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0] ??
     [...offen].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
-  if (!akte) return VORSCHLAEGE;
-  return VORSCHLAEGE.map((v) => (v === "Wie lege ich eine neue Akte an?" ? `Öffne die Akte ${akte.aktenzeichen}` : v));
+  return VORSCHLAEGE.map((v) => (v === "Wie lege ich eine neue Akte an?" && akte ? `Öffne die Akte ${akte.aktenzeichen}` : v === VORSCHLAEGE[7] ? ansprechBitte(ap) : v));
 }
 
+/** „Mo, 19.10.2026: Replik auf Klageerwiderung (nicht verlängerbar) – 137/26 Schneider ./. …“ */
 function fristZeile(f: FristEintrag): string {
-  return `${f.datum}: ${f.titel}${f.typ === "notfrist" ? " (Notfrist)" : ""}${f.akte ? ` – ${f.akte}` : ""}`;
+  const titel = f.typ === "wiedervorlage" || f.typ === "termin" ? f.titel.replace(/^(Wiedervorlage|Termin):\s*/i, "") : f.titel;
+  return `${f.datum}: ${titel}${f.art ? ` (${f.art})` : ""}${f.akte ? ` – ${f.akte}` : ""}`;
 }
 
-/** Zusatzsätze zu Vorfristen und Terminen (nicht in der Fristenzahl enthalten). */
-function zusatz(l: FristenListe, wann: string): string {
-  const s: string[] = [];
-  if (l.vorfristen) s.push(`${l.vorfristen === 1 ? "Eine Vorfrist erinnert" : `${l.vorfristen} Vorfristen erinnern`} ${wann} an kommende Fristen.`);
-  if (l.termine) s.push(`Außerdem ${l.termine === 1 ? "steht ein Termin" : `stehen ${l.termine} Termine`} ${wann === "heute" ? "heute" : wann} an.`);
-  return s.length ? `\n${s.join(" ")}` : "";
+/** „eine Wiedervorlage und eine Vorfrist“ – getrennt genannte Einträge (keine Fristen). */
+function dazuText(l: Pick<FristenListe, "wiedervorlagen" | "vorfristen">, mitVorfristen = true): string {
+  const teile = [l.wiedervorlagen ? anz(l.wiedervorlagen, "Wiedervorlage", "Wiedervorlagen") : "", mitVorfristen && l.vorfristen ? anz(l.vorfristen, "Vorfrist", "Vorfristen") : ""].filter(Boolean);
+  return teile.join(" und ");
+}
+
+const gross = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+
+/** Bedienfrage („Wie funktioniert …?“, „Wo finde ich …?“) – dann Wiki statt Zahlen. */
+const BEDIENFRAGE = /\bwie (funktioniert|funktionieren|geht|gehe|kann|lege|richte|nutze|benutze|bediene|erstelle|mache|öffne|oeffne|finde|starte|stelle|ändere|aendere|trage|übernehme|uebernehme|schalte|rechne|berechne ich|erfasse|lade|exportiere|importiere|teile|lösche|loesche)\b|\bwo\b|erklär|erklaer|anleitung|schritt für schritt/;
+
+/** Antwort auf Fristenfragen – mit derselben Zählweise wie Cockpit und Fristenkalender. */
+async function fristenAntwort(q: string, run: (name: string, input?: Record<string, unknown>) => Promise<never>): Promise<string> {
+  const nurKritisch = /notfrist|nicht verl(ä|ae)ngerbar|unverl(ä|ae)ngerbar|kritisch/.test(q);
+  const nachNotfrist = /notfrist/.test(q) && !/nicht verl|unverl|kritisch/.test(q);
+  const meine = /\b(meine|mich|mir)\b/.test(q);
+  const zeitraum: Zeitraum = /\bheute\b|heutig/.test(q)
+    ? "heute"
+    : /\bmorgen\b/.test(q) && !/übermorgen|uebermorgen/.test(q)
+      ? "morgen"
+      : /(7|sieben) tage|n(ä|ae)chsten tage|kommenden tage/.test(q)
+        ? "woche"
+        : /(n(ä|ae)chste[nr]?|kommende[nr]?|folgende[nr]?) woche/.test(q)
+          ? "naechste_woche"
+          : /\bwoche\b|wochenende|bis (zum )?sonntag/.test(q)
+            ? "kalenderwoche"
+            : /monat|30 tage|dreißig tage|dreissig tage/.test(q)
+              ? "monat"
+              : nurKritisch || /als n(ä|ae)chstes|demn(ä|ae)chst|anstehen|stehen.*\ban\b|n(ä|ae)chste[n]? frist|bald/.test(q)
+                ? "kommend"
+                : "woche";
+  const l = (await run("fristen_liste", { zeitraum, nurMeine: meine, nurKritisch })) as FristenListe;
+  const fuer = meine ? " für Sie" : "";
+  const top = l.eintraege.slice(0, 6);
+  const rest = l.anzahl - top.length;
+  const aufzaehlung = top.length ? `\n${liste(top.map(fristZeile))}${rest > 0 ? `\n… und ${rest} weitere.` : ""}` : "";
+
+  // ── nur kritische Fristen (Notfrist oder gesetzlich nicht verlängerbar) ──
+  if (nurKritisch) {
+    const ehrlich = nachNotfrist && l.anzahl > 0 && l.notfristen === 0
+      ? `Notfristen im Sinne der ZPO stehen${fuer} ${l.zeitraum === "kommend" ? "derzeit keine an" : `${l.label} keine an`}. Ebenso wenig verlängerbar – und genauso streng zu behandeln – ${l.anzahl === 1 ? "ist diese Frist" : `sind diese ${l.anzahl} Fristen`}:`
+      : "";
+    if (!l.anzahl) {
+      let text = l.zeitraum === "kommend"
+        ? `Derzeit ist${fuer} keine ${nachNotfrist ? "Notfrist und auch keine andere " : ""}nicht verlängerbare Frist offen.`
+        : `${gross(l.label)} läuft${fuer} keine ${nachNotfrist ? "Notfrist und auch keine andere " : ""}nicht verlängerbare Frist ab.`;
+      if (l.zeitraum !== "kommend") {
+        const naechste = (await run("fristen_liste", { zeitraum: "kommend", nurMeine: meine, nurKritisch: true })) as FristenListe;
+        const n = naechste.eintraege.find((e) => e.relativ !== "heute") ?? naechste.eintraege[0];
+        if (n) text += ` Die nächste: ${fristZeile(n)} (${n.relativ}).`;
+      }
+      return text;
+    }
+    const kopf = ehrlich || (l.zeitraum === "kommend"
+      ? `Als Nächstes ${l.anzahl === 1 ? "steht" : "stehen"}${fuer} ${anz(l.anzahl, "nicht verlängerbare Frist", "nicht verlängerbare Fristen")} an${l.notfristen ? `, darunter ${anz(l.notfristen, "Notfrist", "Notfristen")}` : ""}${l.ueberfaellig ? ` (davon ${l.ueberfaellig} überfällig)` : ""}:`
+      : `${gross(l.label)} ${l.anzahl === 1 ? "läuft" : "laufen"}${fuer} ${anz(l.anzahl, "nicht verlängerbare Frist", "nicht verlängerbare Fristen")} ab${l.notfristen ? `, darunter ${anz(l.notfristen, "Notfrist", "Notfristen")}` : ""}${l.ueberfaellig ? ` (davon ${l.ueberfaellig} überfällig)` : ""}:`);
+    const grundlagen = top.map((e) => (e.grundlage ? `${fristZeile(e)} · ${e.grundlage}` : fristZeile(e)));
+    return `${kopf}\n${liste(grundlagen)}${rest > 0 ? `\n… und ${rest} weitere.` : ""}\nBei Versäumnis hilft nur Wiedereinsetzung bzw. nachträgliche Zulassung – diese Fristen bitte vorrangig erledigen.`;
+  }
+
+  // ── heute ──
+  if (zeitraum === "heute") {
+    const dazu = dazuText(l);
+    let text = !l.anzahl
+      ? `Heute ist${fuer} keine Frist fällig${dazu ? `, nur ${dazu}` : ""}.`
+      : `Heute ${l.anzahl === 1 ? "ist" : "sind"}${fuer} ${anz(l.anzahl, "Frist", "Fristen")} fällig${l.ueberfaellig ? (l.ueberfaellig === l.anzahl ? (l.anzahl === 1 ? " (bereits überfällig)" : " (alle bereits überfällig)") : ` (davon ${l.ueberfaellig} überfällig)`) : ""}${dazu ? `, dazu ${dazu}` : ""}.`;
+    if (top.length) text += aufzaehlung;
+    const ohneArt = (e: FristEintrag) => fristZeile({ ...e, art: "" });
+    if (l.wiedervorlagenEintraege.length) text += `\n${l.wiedervorlagen === 1 ? "Wiedervorlage" : "Wiedervorlagen"}:\n${liste(l.wiedervorlagenEintraege.slice(0, 3).map(ohneArt))}${l.wiedervorlagen > 3 ? `\n… und ${l.wiedervorlagen - 3} weitere.` : ""}`;
+    if (l.vorfristenEintraege.length) text += `\n${l.vorfristen === 1 ? "Vorfrist" : "Vorfristen"} (Erinnerung):\n${liste(l.vorfristenEintraege.slice(0, 2).map((e) => ohneArt({ ...e, titel: e.titel.replace(/^Vorfrist:\s*/i, "") })))}`;
+    if (l.termine) text += `\nAußerdem ${l.termine === 1 ? "steht heute ein Termin" : `stehen heute ${l.termine} Termine`} an: ${l.termineEintraege.map((t) => t.titel).join(", ")}.`;
+    return text;
+  }
+
+  // ── Zeiträume ──
+  const dazu = dazuText(l, false);
+  let text = !l.anzahl
+    ? `${gross(l.label)} ${l.zeitraum === "kalenderwoche" ? "ist" : "läuft"}${fuer} keine Frist ${l.zeitraum === "kalenderwoche" ? "mehr offen" : "ab"}${dazu ? `, nur ${dazu}` : ""}.`
+    : `${gross(l.label)} ${l.zeitraum === "kalenderwoche" ? (l.anzahl === 1 ? "ist" : "sind") : l.anzahl === 1 ? "läuft" : "laufen"}${fuer} ${l.zeitraum === "kalenderwoche" ? "noch " : ""}${anz(l.anzahl, "Frist", "Fristen")} ${l.zeitraum === "kalenderwoche" ? "offen" : "ab"}${l.ueberfaellig ? ` (davon ${l.ueberfaellig} überfällig)` : ""}${l.kritisch ? `, darunter ${anz(l.kritisch, "nicht verlängerbare", "nicht verlängerbare", "eine")}` : ""}${dazu ? `, dazu ${dazu}` : ""}${top.length < l.anzahl ? ". Die dringendsten:" : ":"}${aufzaehlung}`;
+  if (l.termine) text += `\nAußerdem ${l.termine === 1 ? "steht ein Termin" : `stehen ${l.termine} Termine`} an${l.termineEintraege[0] ? ` – zuerst ${l.termineEintraege[0].titel} am ${l.termineEintraege[0].datum}` : ""}.`;
+  if (zeitraum === "woche") {
+    const h = (await run("fristen_liste", { zeitraum: "heute", nurMeine: meine })) as FristenListe;
+    if (h.anzahl) text += `\nDazu ${h.anzahl === 1 ? "kommt eine heute fällige Frist" : `kommen ${h.anzahl} heute fällige Fristen`}${h.ueberfaellig ? ` (davon ${h.ueberfaellig} überfällig)` : ""}.`;
+  }
+  // Endet die Kalenderwoche in den nächsten zwei Tagen, zusätzlich der Ausblick auf die nächsten 7 Tage
+  if (zeitraum === "kalenderwoche" && l.bis <= addDays(today(), 2)) {
+    const w = (await run("fristen_liste", { zeitraum: "woche", nurMeine: meine })) as FristenListe;
+    if (w.anzahl || w.wiedervorlagen) {
+      text += `\nAusblick ${w.label}: ${w.anzahl ? anz(w.anzahl, "Frist", "Fristen") : "keine Frist"}${w.kritisch ? ` (darunter ${anz(w.kritisch, "nicht verlängerbare", "nicht verlängerbare")})` : ""}${w.wiedervorlagen ? ` und ${anz(w.wiedervorlagen, "Wiedervorlage", "Wiedervorlagen")}` : ""}${w.eintraege[0] ? ` – als Nächstes ${fristZeile(w.eintraege[0])}` : ""}.`;
+    }
+  }
+  return text;
+}
+
+/** Leitet die Frage auf Zahlen der Kanzlei (Posteingang, Finanzen, Fremdgeld, 38h-Motor, Akten) – oder `undefined`. */
+async function kennzahlAntwort(q: string, run: (name: string, input?: Record<string, unknown>) => Promise<never>): Promise<string | undefined> {
+  // ── Apex Island ──
+  if (/apex[- ]?island|\bisland\b|schwarze kapsel/.test(q)) {
+    const m = (await run("motor_status")) as { stundenLetzte7Tage: string };
+    return `Die Apex Island ist die schwarze Kapsel oben in der Kopfleiste. Sie zeigt live, was der 38h-Motor gerade automatisch erledigt (z. B. „Vorfrist gesetzt“), und sonst die in den letzten 7 Tagen gesparte Zeit – aktuell ${m.stundenLetzte7Tage} Std. Ein Klick öffnet den 38h-Motor mit allen Automationen.`;
+  }
+  // ── 38h-Motor: gesparte Zeit ──
+  const erklaeren = /^(was|wie) (ist|sind|macht|bedeutet|funktioniert)\b(?! mit)/.test(q);
+  if (/gespart|erspart|ersparnis|eingespart|zeitgewinn/.test(q) || (/38\s?h|motor|automati(on|sierung)/.test(q) && /wie viel|wieviel|wie viele|stunden|bilanz|was hat|erledigt/.test(q) && !erklaeren)) {
+    const m = (await run("motor_status")) as { stundenLetzte7Tage: string; stundenSeitMontag: string; laeufeLetzte7Tage: number; wertLetzte7Tage: string; wertProStunde: string };
+    const kw = /diese[rn]? woche|seit montag/.test(q);
+    const basis = `In den letzten 7 Tagen hat der 38h-Motor ${m.stundenLetzte7Tage} Std. Arbeit automatisch erledigt (${fmtNum(m.laeufeLetzte7Tage)} Läufe) – so zeigt es auch die Apex Island.`;
+    const wert = ` Bewertet mit internen Personalkosten von ${m.wertProStunde} je Stunde (Rechenbeispiel) entspricht das rund ${m.wertLetzte7Tage}.`;
+    return kw ? `Diese Woche (seit Montag) sind es ${m.stundenSeitMontag} Std. ${basis}${wert}` : `${basis}${wert}`;
+  }
+  // ── Finanzen & Fremdgeld ──
+  if (/fremdgeld|anderkonto/.test(q)) {
+    const f = (await run("finanzen_status")) as { fremdgeld: string; fremdgeldAkten: string[] };
+    if (!f.fremdgeldAkten.length) return "Derzeit liegt kein Fremdgeld zur Weiterleitung vor (§ 43a Abs. 7 BRAO).";
+    return `Zur Weiterleitung liegen ${f.fremdgeld} Fremdgeld vor (§ 43a Abs. 7 BRAO: unverzüglich weiterleiten) – ${f.fremdgeldAkten.length === 1 ? `Akte ${f.fremdgeldAkten[0]}` : `in ${f.fremdgeldAkten.length} Akten: ${f.fremdgeldAkten.join(", ")}`}.`;
+  }
+  if (/forderung(?!skonto)|offene[nr]? (rechnung|posten|betr(ä|ae)ge)|au(ß|ss)enst(ä|ae)nde|unbezahlt|(ü|ue)berf(ä|ae)llige[nr]? rechnung|rechnungen offen|finanzen|zahlungseing|kontoums(ä|ae)tze|bankums(ä|ae)tze|wie viel geld|liquidit/.test(q)) {
+    const f = (await run("finanzen_status")) as { offen: string; offenAnzahl: number; ueberfaellig: string; ueberfaelligAnzahl: number; fremdgeld: string; fremdgeldAkten: string[]; bankOffen: number; amLaengstenUeberfaellig: string[] };
+    if (!f.offenAnzahl) return `Keine offenen Forderungen – alle gestellten Rechnungen sind bezahlt.${f.fremdgeldAkten.length ? ` Fremdgeld zur Weiterleitung: ${f.fremdgeld}.` : ""}`;
+    return `Offene Forderungen: ${f.offen} aus ${anz(f.offenAnzahl, "Rechnung", "Rechnungen")}, davon ${f.ueberfaelligAnzahl ? `${f.ueberfaellig} überfällig (${anz(f.ueberfaelligAnzahl, "Rechnung", "Rechnungen")})` : "nichts überfällig"}.${f.amLaengstenUeberfaellig[0] ? ` Am längsten überfällig: ${f.amLaengstenUeberfaellig[0]}.` : ""}${f.fremdgeldAkten.length ? ` Dazu ${f.fremdgeld} Fremdgeld zur Weiterleitung.` : ""}${f.bankOffen ? ` ${f.bankOffen === 1 ? "Ein Kontoumsatz wartet" : `${f.bankOffen} Kontoumsätze warten`} auf den Bankabgleich.` : ""}`;
+  }
+  // ── Aktenbestand ──
+  if (/wie ?viele (offene |laufende |aktive |neue )?(akten|mandate|f(ä|ae)lle|verfahren)|anzahl (der )?(akten|mandate)|aktenbestand|(akten|mandate) (haben|hat|habe) (wir|ich)|wie gro(ß|ss) ist (unser|der) bestand/.test(q)) {
+    const a = (await run("akten_status")) as { offen: number; hoch: number; ruhend: number; abgeschlossen: number; neuSeitMontag: number; mitFrist: number; mitKritischerFrist: number };
+    const weitere = [a.ruhend ? `${a.ruhend} ruhende` : "", a.abgeschlossen ? `${a.abgeschlossen} abgeschlossene` : ""].filter(Boolean).join(" und ");
+    return `Sie haben ${anz(a.offen, "offene Akte", "offene Akten")} (davon ${a.hoch} mit hoher Priorität)${weitere ? `, dazu ${weitere}` : ""}. Neu seit Montag: ${a.neuSeitMontag}. Akten mit Frist ≤ 7 Tage: ${a.mitFrist}${a.mitKritischerFrist ? `, davon ${a.mitKritischerFrist} mit nicht verlängerbarer Frist` : ""}.`;
+  }
+  return undefined;
 }
 
 async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = []): Promise<string> {
@@ -761,6 +1025,7 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
   const run = async (name: string, input: Record<string, unknown> = {}) => tools[name].execute(input) as Promise<never> | never;
   await new Promise((r) => setTimeout(r, 450 + Math.random() * 400));
   const ap = ctx.sitzung.tenant.ansprechpartner;
+  const apText = `${festeAnsprechperson(ap)}: ${ap.name}`;
 
   // ── Gesprächskontext ──
   const vorher = verlauf.length >= 2 && verlauf[verlauf.length - 2].role === "assistant" ? verlauf[verlauf.length - 2].content : undefined;
@@ -789,13 +1054,14 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
   // ── Smalltalk ──
   const ohneGruss = frage.replace(new RegExp(GRUSS.source, "i"), "").trim();
   if (GRUSS.test(kurz) && !kurzform(ohneGruss)) {
-    return `Hallo! Ich bin Apex, Ihr Assistent in AnwaltApex. Ich kann Fristen prüfen, Akten öffnen, Fristen berechnen, RVG-Gebühren ausrechnen, Urteile finden oder die Bedienung erklären. Womit fange ich an?`;
+    return `Hallo! Ich bin der Apex Assistent. Ich prüfe Fristen, öffne Akten, berechne Fristen und RVG-Gebühren, nenne Zahlen aus Posteingang, Finanzen und 38h-Motor, finde Urteile oder erkläre die Bedienung. Womit fange ich an?`;
   }
   if (DANK.test(kurz)) return "Gern geschehen! Wenn noch etwas ist – einfach fragen.";
   if (ABSCHIED.test(kurz)) return "Bis bald! Ich bin jederzeit unten rechts für Sie da.";
   if (ohneGruss !== frage && ohneGruss) return demoAntwort(ohneGruss, ctx, []);
 
   const q = frage.toLowerCase();
+  const bedienFrage = BEDIENFRAGE.test(q);
 
   // ── Nur ein Bereichsname („Einstellungen“, „Bankabgleich“) → Bereich öffnen; danach Mensch / Ansprechpartner ──
   const bereichAllein = nurBereich(frage);
@@ -809,37 +1075,33 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
       await run("rueckruf_anfordern", { thema: frage });
       return `Erledigt: Ich habe einen Rückruf bei ${a.name} angefordert – in der Regel meldet sich ${a.name} innerhalb von 30 Minuten (${a.verfuegbar}). Direkt erreichbar unter ${a.telefon}.`;
     }
-    return `Ihr fester Ansprechpartner: ${a.name} – direkt erreichbar unter ${a.telefon} oder ${a.email} (${a.verfuegbar}), ohne Warteschleife. Soll ich einen Rückruf anfordern?`;
+    return `${apText} – direkt erreichbar unter ${a.telefon} oder ${a.email} (${a.verfuegbar}), ohne Warteschleife. Soll ich einen Rückruf anfordern?`;
   }
 
-  // ── Tagesbriefing ──
+  // ── Tagesbriefing (dieselben Sätze wie im Cockpit) ──
   if (/was steht (heute )?an|mein tag|briefing|überblick|ueberblick|zusammenfassung des tages|was ist heute/.test(q)) {
     if (!ctx.werkzeuge.includes("tagesbriefing")) ctx.werkzeuge.push("tagesbriefing");
-    const heute = (await run("fristen_liste", { zeitraum: "heute" })) as FristenListe;
-    const woche = (await run("fristen_liste", { zeitraum: "woche" })) as FristenListe;
-    const post = (await run("posteingang_status")) as { neu: number; ausgewertet: number; wartenAufKi: number; eeb: number };
-    const s: string[] = [];
-    const zuerst = heute.eintraege[0];
-    if (heute.anzahl) {
-      s.push(`Heute ${heute.anzahl === 1 ? "ist eine Frist" : `sind ${heute.anzahl} Fristen`} fällig${heute.ueberfaellig ? ` (davon ${heute.ueberfaellig} überfällig)` : ""}${zuerst ? ` – zuerst „${zuerst.titel}“${zuerst.akte ? ` (${zuerst.akte})` : ""}` : ""}.`);
-    } else s.push("Heute ist keine Frist fällig.");
-    s.push(woche.anzahl ? `In den nächsten sieben Tagen folgen ${woche.anzahl} weitere${woche.notfristen ? `, darunter ${anz(woche.notfristen, "Notfrist", "Notfristen")}` : ""}.` : "In den nächsten sieben Tagen sind keine weiteren Fristen notiert.");
-    if (heute.vorfristen) s.push(`${heute.vorfristen === 1 ? "Eine Vorfrist erinnert" : `${heute.vorfristen} Vorfristen erinnern`} heute an kommende Fristen.`);
-    if (post.neu === 0) s.push("Der Posteingang ist aufgeräumt.");
-    else {
-      const ki = post.ausgewertet && post.wartenAufKi
-        ? ` – ${post.ausgewertet} hat die KI bereits ausgewertet, ${post.wartenAufKi} ${post.wartenAufKi === 1 ? "wartet" : "warten"} noch auf die KI-Analyse`
-        : post.wartenAufKi ? ` – ${post.wartenAufKi === 1 ? "sie wartet" : "alle warten"} noch auf die KI-Analyse` : " – die KI hat bereits alle ausgewertet";
-      s.push(`Im Posteingang ${post.neu === 1 ? "wartet eine neue Nachricht" : `warten ${post.neu} neue Nachrichten`}${ki}${post.eeb ? `, darunter ${anz(post.eeb, "Zustellung", "Zustellungen")} gegen eEB` : ""}.`);
-    }
-    return s.join(" ");
+    await run("fristen_liste", { zeitraum: "heute" });
+    await run("posteingang_status");
+    const d = daten();
+    return tagesbriefing({ heute: today(), fristen: d.fristen, akten: d.akten, nachrichten: d.nachrichten }).map((s) => briefingText(s)).join(" ");
+  }
+
+  // ── Zahlen der Kanzlei: Finanzen, Fremdgeld, 38h-Motor, Akten, Apex Island ──
+  // („Öffne die Abrechnung“ bleibt Navigation)
+  if (!bedienFrage && !(/^(bitte\s+)?(öffne|oeffne|geh|gehe|wechsle|navigiere|bring mich|springe)\b/.test(q) && findeBereich(frage))) {
+    const k = await kennzahlAntwort(q, run);
+    if (k) return k;
   }
 
   // ── Posteingang ──
-  if (/posteingang|neue (post|nachrichten|mails?)|\bbea\b/.test(q) && !/\bwie\b|\bwo\b/.test(q)) {
-    const p = (await run("posteingang_status")) as { neu: number; nachrichten: { kanal: string; von: string; betreff: string }[] };
-    if (!p.neu) return "Im Posteingang gibt es keine neuen Nachrichten.";
-    return `Sie haben ${anz(p.neu, "neue Nachricht", "neue Nachrichten")}:\n${liste(p.nachrichten.slice(0, 4).map((n) => `${n.kanal} von ${n.von}: ${n.betreff}`))}${p.neu > 4 ? `\n… und ${p.neu - 4} weitere.` : ""}`;
+  if (/posteingang|neue (post|nachrichten|mails?|e-mails?)|nachrichten|\bpost\b|\bbea\b/.test(q) && !bedienFrage && !/(lege|leg |trag|erstelle|setz).*(frist|wiedervorlage|termin)/.test(q)) {
+    const p = (await run("posteingang_status")) as { neu: number; ausgewertet: number; wartenAufKi: number; eeb: number; nachrichten: { kanal: string; von: string; betreff: string }[] };
+    if (!p.neu) return "Der Posteingang ist aufgeräumt – keine neuen Nachrichten.";
+    const ki = p.ausgewertet && p.wartenAufKi
+      ? ` – bei ${p.ausgewertet} ist die KI-Analyse fertig, ${p.wartenAufKi} ${p.wartenAufKi === 1 ? "wartet" : "warten"} noch auf die KI-Analyse`
+      : p.wartenAufKi ? ` – ${p.wartenAufKi === 1 ? "sie wartet" : "alle warten"} noch auf die KI-Analyse` : " – die KI hat bereits alle ausgewertet";
+    return `Sie haben ${anz(p.neu, "neue Nachricht", "neue Nachrichten")}${ki}${p.eeb ? `, darunter ${anz(p.eeb, "Zustellung", "Zustellungen")} gegen eEB` : ""}:\n${liste(p.nachrichten.slice(0, 4).map((n) => `${n.kanal} von ${n.von}: ${n.betreff}`))}${p.neu > 4 ? `\n… und ${p.neu - 4} weitere.` : ""}`;
   }
 
   // ── „Wo finde ich …?“ ──
@@ -851,7 +1113,7 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
 
   // ── Navigation mit Verb („Öffne den Bankabgleich“) ──
   const navVerb = /^(bitte\s+)?(öffne|oeffne|geh|gehe|wechsle|navigiere|bring mich|springe|zeig|zeige)\b/.test(q);
-  const fristenFrage = /heute|morgen|woche|monat|meine|nächste|naechste|anstehend|fällig|faellig/.test(q);
+  const fristenFrage = /heute|morgen|woche|monat|meine|nächste|naechste|anstehend|fällig|faellig|notfrist|kritisch|verlängerbar/.test(q);
   if (navVerb && bereich && !(bereich.to === "/fristen" && (fristenFrage || /^(bitte\s+)?zeig/.test(q)))) {
     const r = (await run("navigiere", { ziel: bereich.label })) as { geoeffnet: string };
     return `Ich habe „${r.geoeffnet}“ für Sie geöffnet.`;
@@ -871,7 +1133,7 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
 
   // ── Frist berechnen ──
   const regel = regelAus(q);
-  if (regel && /(berechne|wann|bis wann|frist|endet|ablauf)/.test(q) && !/(lege|leg |trag|erstelle)/.test(q)) {
+  if (regel && /(berechne|wann|bis wann|frist|endet|ablauf)/.test(q) && !/(lege|leg |trag|erstelle)/.test(q) && !/welche|wie viele|als n(ä|ae)chstes|anstehen|stehen.*\ban\b/.test(q)) {
     const datum = datumAus(q) ?? today();
     const akte = azAus(q) ? findeAkteNachAz(azAus(q)!) : undefined;
     const r = (await run("frist_berechnen", { regel, ereignisDatum: datum, aktenzeichen: akte?.aktenzeichen })) as { frist: string; grundlage: string; fristende: string; vorfrist: string; verschoben: boolean; hinweise: string[] };
@@ -879,7 +1141,7 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
   }
 
   // ── Frist / Wiedervorlage anlegen ──
-  if (/(lege|leg |trag|erstelle|setz).*(frist|wiedervorlage|termin|erinnerung)|(frist|wiedervorlage|termin).*(an|ein)legen/.test(q)) {
+  if (/(lege|leg |trag|erstelle|setz).*(frist|wiedervorlage|termin|erinnerung)|(frist|wiedervorlage|termin).*(an|ein)legen/.test(q) && !/^wie\b/.test(q)) {
     const akte = akteAusText(q);
     const datum = datumAus(q);
     if (!akte) {
@@ -895,27 +1157,8 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
   }
 
   // ── Fristen auflisten ──
-  if (/frist|termin|wiedervorlage/.test(q) && !/^(wie|wo)\b/.test(q)) {
-    const zeitraum: Zeitraum = /heute/.test(q) ? "heute" : /morgen/.test(q) ? "morgen" : /monat/.test(q) ? "monat" : "woche";
-    const l = (await run("fristen_liste", { zeitraum, nurMeine: /\bmeine\b/.test(q) })) as FristenListe;
-    const fuer = /\bmeine\b/.test(q) ? " für Sie" : "";
-    const top = l.eintraege.slice(0, 6);
-    const rest = l.anzahl - top.length;
-    const aufzaehlung = top.length ? `\n${liste(top.map(fristZeile))}${rest > 0 ? `\n… und ${rest} weitere.` : ""}` : "";
-    if (zeitraum === "heute") {
-      if (!l.anzahl) return `Heute ist${fuer} keine Frist fällig.${zusatz(l, "heute")}`;
-      return `Heute ${l.anzahl === 1 ? "ist" : "sind"}${fuer} ${anz(l.anzahl, "Frist", "Fristen")} fällig${l.ueberfaellig ? ` (davon ${l.ueberfaellig} überfällig)` : ""}:${aufzaehlung}${zusatz(l, "heute")}`;
-    }
-    const label = zeitraum === "morgen" ? "morgen" : zeitraum === "monat" ? "in den nächsten 30 Tagen" : "in den nächsten sieben Tagen";
-    let text: string;
-    if (!l.anzahl) text = `${label.charAt(0).toUpperCase() + label.slice(1)} laufen${fuer} keine Fristen ab.`;
-    else text = `${label.charAt(0).toUpperCase() + label.slice(1)} ${l.anzahl === 1 ? "läuft" : "laufen"}${fuer} ${anz(l.anzahl, "Frist", "Fristen")} ab${l.notfristen ? `, darunter ${anz(l.notfristen, "Notfrist", "Notfristen")}` : ""}${top.length < l.anzahl ? `. Die dringendsten:` : ":"}${aufzaehlung}`;
-    text += zusatz(l, label);
-    if (zeitraum === "woche") {
-      const h = (await run("fristen_liste", { zeitraum: "heute", nurMeine: /\bmeine\b/.test(q) })) as FristenListe;
-      if (h.anzahl) text += `\nDazu ${h.anzahl === 1 ? "kommt eine heute fällige Frist" : `kommen ${h.anzahl} heute fällige Fristen`}${h.ueberfaellig ? ` (davon ${h.ueberfaellig} überfällig)` : ""}.`;
-    }
-    return text;
+  if (/frist|termin|wiedervorlage|notfrist/.test(q) && !bedienFrage && !/^was (ist|sind|bedeutet) (eine |die )?(not|vor)?frist/.test(q)) {
+    return fristenAntwort(q, run);
   }
 
   // ── RVG ──
@@ -927,7 +1170,7 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
   }
 
   // ── Rechtsprechung ──
-  if (/urteil|rechtsprechung|präzedenz|praezedenz|\bbgh\b|\bbag\b|entscheidung|gericht hat/.test(q)) {
+  if (/urteil|rechtsprechung|präzedenz|praezedenz|\bbgh\b|\bbag\b|entscheidung|gericht hat/.test(q) && !bedienFrage) {
     const begriffe = frage.replace(/(such|finde|zeig|gibt es|mir|bitte|urteile?|rechtsprechung|präzedenzfälle?|entscheidungen?|zu|zum|zur|dem|der|die|das)\b/gi, " ");
     const r = (await run("rechtsprechung_suchen", { suchbegriffe: begriffe })) as { zitat: string; titel: string; bedeutung: string }[];
     if (!r.length) return "Dazu habe ich im Demo-Bestand der Fall-Datenbank keine passende Entscheidung gefunden. Probieren Sie es mit anderen Stichworten, z. B. „Bagatellkündigung“ oder „Schönheitsreparaturen“.";
@@ -960,13 +1203,15 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
   if (nachAkteGefragt && (az || akteAusText(q))) {
     const a = az ? findeAkteNachAz(az) : akteAusText(q);
     if (!a) return `Eine Akte ${az} gibt es in Ihrer Kanzlei nicht. Ein Beispiel aus Ihrem Bestand: „Was ist mit Akte ${beispielAz()}?“`;
-    const d = (await run("akte_details", { aktenzeichen: a.aktenzeichen })) as { aktenzeichen: string; titel: string; phase: string; offeneFristen: string[]; sachverhalt: string };
-    return `${d.aktenzeichen} – ${d.titel} (${d.phase}). ${d.sachverhalt.split(". ")[0].replace(/\.$/, "")}.${d.offeneFristen.length ? `\nOffene Fristen:\n${liste(d.offeneFristen.slice(0, 3))}` : " Keine offenen Fristen."}`;
+    const d = (await run("akte_details", { aktenzeichen: a.aktenzeichen })) as { aktenzeichen: string; titel: string; phase: string; offeneFristen: string[]; wiedervorlagenUndTermine: string[]; sachverhalt: string };
+    const fristTeil = d.offeneFristen.length ? `\nOffene Fristen:\n${liste(d.offeneFristen.slice(0, 3))}` : " Keine offenen Fristen.";
+    const wvTeil = d.wiedervorlagenUndTermine.length ? `\nWiedervorlagen und Termine:\n${liste(d.wiedervorlagenUndTermine.slice(0, 3))}` : "";
+    return `${d.aktenzeichen} – ${d.titel} (${d.phase}). ${d.sachverhalt.split(". ")[0].replace(/\.$/, "")}.${fristTeil}${wvTeil}`;
   }
 
-  // ── Bedienung / Hilfe ──
+  // ── Bedienung / Hilfe (nur sichere Wiki-Treffer) ──
   const hilfe = (await run("hilfe_artikel", { frage })) as { titel: string; kurz: string; schritte: string[] }[];
-  if (hilfe.length && /(wie|wo|was|kann ich|erklär|erklaer|hilfe|funktioniert|geht)/.test(q)) {
+  if (hilfe.length && (bedienFrage || /^(was|wie|kann ich|gibt es)\b|hilfe|funktion/.test(q))) {
     const h = hilfe[0];
     return `**${h.titel}:** ${h.kurz}\n${liste(h.schritte.slice(0, 3))}`;
   }
@@ -975,8 +1220,8 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
     return `„${bereich.label}“ finden Sie ${bereich.ort}. ${bereich.beschreibung}`;
   }
 
-  // ── Aktensuche als Rückfall (nur aussagekräftige Wörter ab drei Zeichen) ──
-  const suchwoerter = tokenize(frage).filter((t) => t.length >= 3 && !FRAGEWORTE.has(t)).join(" ");
+  // ── Aktensuche als Rückfall (nur aussagekräftige Wörter ab drei Zeichen, nicht bei Bedienfragen) ──
+  const suchwoerter = bedienFrage ? "" : tokenize(frage).filter((t) => t.length >= 3 && !FRAGEWORTE.has(t) && !WIKI_STOP.has(t)).join(" ");
   const akten = suchwoerter ? ((await run("suche_akten", { suchbegriff: suchwoerter })) as { aktenzeichen: string; titel: string; naechsteFrist: string | null }[]) : [];
   if (akten.length) {
     const zeilen = liste(akten.slice(0, 4).map((a) => `${a.aktenzeichen} ${a.titel}${a.naechsteFrist ? ` – nächste Frist: ${a.naechsteFrist}` : ""}`));
@@ -984,7 +1229,11 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
   }
   if (hilfe.length) return `**${hilfe[0].titel}:** ${hilfe[0].kurz}`;
 
-  return `Das kann ich im Demo-Modus noch nicht beantworten. Ich helfe Ihnen gern bei Fristen („Welche Fristen laufen diese Woche ab?“), Akten („Öffne die Akte ${beispielAz()}“), RVG („RVG für 10.000 € außergerichtlich“), Rechtsprechung („Urteile zu Schönheitsreparaturen“) oder der Bedienung. Oder ich verbinde Sie mit ${ap.name}.`;
+  // ── ehrlich nachfragen statt raten ──
+  if (bedienFrage || /\?$/.test(frage.trim())) {
+    return `Dazu habe ich im Wiki keine sichere Antwort gefunden. Meinen Sie einen bestimmten Bereich – etwa Fristen, Posteingang, Abrechnung oder den 38h-Motor? Formulieren Sie die Frage gern genauer, z. B. „Wie funktioniert der Bankabgleich?“. Persönlich hilft auch ${ap.name} weiter (${festeAnsprechperson(ap)}). Soll ich einen Rückruf anfordern?`;
+  }
+  return `Das kann ich im Demo-Modus noch nicht beantworten. Ich helfe Ihnen gern bei Fristen („Welche Fristen laufen diese Woche ab?“), Akten („Öffne die Akte ${beispielAz()}“), Zahlen („Wie hoch sind die offenen Forderungen?“), RVG („RVG für 10.000 € außergerichtlich“), Rechtsprechung („Urteile zu Schönheitsreparaturen“) oder der Bedienung. Oder ich verbinde Sie mit ${ap.name}.`;
 }
 
 /** Eine Frage an den Assistenten. */
@@ -1019,7 +1268,7 @@ export async function frageAssistent(opts: {
       // Gesprächskontext: die letzten Nachrichten genügen für Rückfragen („Ja“, „142/26“)
       text = await demoAntwort(letzte, ctx, opts.verlauf.slice(-8));
     } catch (err) {
-      text = `Das hat leider nicht geklappt: ${err instanceof Error ? err.message : String(err)} Versuchen Sie es bitte noch einmal – oder ich verbinde Sie mit ${opts.sitzung.tenant.ansprechpartner.name}.`;
+      text = `Das hat leider nicht geklappt: ${verstaendlicheMeldung(err)} Versuchen Sie es bitte noch einmal – oder ich verbinde Sie mit ${opts.sitzung.tenant.ansprechpartner.name}.`;
     }
     ctx.werkzeuge.forEach((w) => opts.onTool?.(WERKZEUG_LABEL[w] ?? w));
     return { text, links: dedupe(ctx.links), werkzeuge: ctx.werkzeuge.map((w) => WERKZEUG_LABEL[w] ?? w) };

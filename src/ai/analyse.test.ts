@@ -76,16 +76,29 @@ test("Fallanalyse Weber: kuratierte Präzedenzfälle, Kündigungsdatum aus dem S
 test("Assistent: Fristenzahl ungekürzt, gleiche Zählweise wie fristenLage", async () => {
   const { fristenListe } = await import("./assistent");
   const { fristenLage } = await import("../core/fristenLage");
-  const lage = fristenLage(data.fristen, HEUTE);
-  const woche = fristenListe(data, "woche", HEUTE);
+  // Testdaten künstlich anreichern: mehr als 12 Fristen in den nächsten 7 Tagen
+  const vorlage = data.fristen.find((f) => f.typ === "frist" && !f.regelKey)!;
+  const extra = Array.from({ length: 14 }, (_, i) => ({ ...vorlage, id: `t-f${i}`, status: "offen" as const, typ: "frist" as const, datum: addDays(HEUTE, 1 + (i % 7)) }));
+  const reich = { ...data, fristen: [...data.fristen, ...extra] };
+  const lage = fristenLage(reich.fristen, HEUTE);
+  const woche = fristenListe(reich, "woche", HEUTE);
   assert.equal(woche.anzahl, lage.woche.length);
   assert.ok(woche.anzahl > 12, "Testdaten enthalten mehr als 12 Fristen in der Woche");
   assert.equal(woche.eintraege.length, 12);
   assert.equal(woche.weitere, woche.anzahl - 12);
-  const heute = fristenListe(data, "heute", HEUTE);
+  assert.equal(woche.wiedervorlagen, lage.wiedervorlagenWoche.length);
+  const heute = fristenListe(reich, "heute", HEUTE);
   assert.equal(heute.anzahl, lage.faellig.length);
   assert.equal(heute.ueberfaellig, lage.ueberfaellig.length);
   assert.equal(heute.vorfristen, lage.vorfristen.length);
+  assert.equal(heute.wiedervorlagen, lage.wiedervorlagen.length);
+  // Wiedervorlagen, Vorfristen und Termine zählen nie als Fristen
+  for (const z of ["heute", "woche", "kalenderwoche", "monat", "kommend"] as const) {
+    const l = fristenListe(reich, z, HEUTE);
+    assert.ok(l.eintraege.every((e) => e.typ === "frist" || e.typ === "notfrist"), z);
+  }
+  // „diese Woche“ = Kalenderwoche bis Sonntag (16.10.2026 ist ein Freitag)
+  assert.equal(fristenListe(reich, "kalenderwoche", HEUTE).bis, "2026-10-18");
 });
 
 test("Assistent (offline): „Ja“ auf die Rückfrage nach dem Rückruf, Ansprechpartner ohne Pronomen, Link zum Fristenrechner", async () => {
@@ -290,4 +303,84 @@ test("Assistent (offline): Argumentationshilfe zu einer Entscheidung statt fachf
   } finally {
     console.warn = warn;
   }
+});
+
+// ───────────── Apex Assistent: Zahlen wie im Cockpit, kritische Fristen, Wiki mit Mindestscore (Texte C, Runde 2) ─────────────
+
+test("Assistent (offline): Zahlenfragen mit Cockpit-Zählweise statt Wiki-Artikel", async () => {
+  const { frageAssistent, wikiSuche } = await import("./assistent");
+  const { useData } = await import("../store/data");
+  const { posteingangZahlen, finanzZahlen, aktenZahlen } = await import("../core/kennzahlen");
+  const { fmtEUR, today } = await import("../core/dates");
+  const warn = console.warn;
+  const err = console.error;
+  console.warn = () => {};
+  console.error = () => {};
+  try {
+    // Daten zum echten Datum, weil der Assistent mit today() rechnet
+    const d = generateTenantData({ tenant: t.tenant, users: t.users.map(publicUser), profil: t.profil }, today());
+    useData.setState({ data: structuredClone(d), status: "bereit" });
+    const sitzung = { user: publicUser(t.users[0]), tenant: t.tenant, team: t.users.map(publicUser) };
+    const frag = async (content: string) => (await frageAssistent({ verlauf: [{ role: "user", content }], sitzung, nav: () => {}, voice: false })).text;
+    const p = posteingangZahlen(d.nachrichten);
+    assert.match(await frag("Wie viele neue Nachrichten habe ich?"), new RegExp(`^Sie haben ${p.neu.length} neue Nachrichten`));
+    const f = finanzZahlen(d.rechnungen, d.buchungen, d.transaktionen, today());
+    assert.ok((await frag("Wie viel Fremdgeld haben wir?")).includes(fmtEUR(f.fremdgeld)));
+    const fo = await frag("Wie hoch sind die offenen Forderungen?");
+    assert.ok(fo.includes(fmtEUR(f.offen)) && fo.includes(fmtEUR(f.ueberfaellig)), fo);
+    assert.match(await frag("Wie viele Stunden haben wir diese Woche gespart?"), /letzten 7 Tagen hat der 38h-Motor [\d,]+ Std\./);
+    const a = aktenZahlen(d.akten, d.fristen, today());
+    assert.match(await frag("Wie viele Akten haben wir?"), new RegExp(`^Sie haben ${a.offen} offene Akten`));
+    assert.match(await frag("Was ist die Apex Island?"), /schwarze Kapsel/);
+    assert.match(await frag("Hallo"), /Ich bin der Apex Assistent/);
+    // Wiki: Bedienfragen treffen den passenden Artikel, Unsinn bekommt eine ehrliche Rückfrage
+    assert.equal(wikiSuche("Wie funktioniert die Apex Island?")[0]?.w.key, "motor");
+    assert.equal(wikiSuche("Wie viele neue Nachrichten habe ich?").length, 0);
+    assert.match(await frag("Wie kann ich die Quantenflux-Synchronisation einstellen?"), /keine sichere Antwort/);
+    // Ansprechpartnerin mit passender Bezeichnung
+    assert.match(await frag("Ich brauche meine Ansprechpartnerin"), /^Ihre feste Ansprechpartnerin: Lena Vogt/);
+  } finally {
+    console.warn = warn;
+    console.error = err;
+  }
+});
+
+test("Assistent (offline): nicht verlängerbare Fristen nach Dringlichkeit, Notfristen ehrlich, Wiedervorlagen getrennt", async () => {
+  const { frageAssistent } = await import("./assistent");
+  const { useData } = await import("../store/data");
+  const { istKritisch, nachDringlichkeit, fristenLage } = await import("../core/fristenLage");
+  const { today } = await import("../core/dates");
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    const heute = today();
+    const d = generateTenantData({ tenant: t.tenant, users: t.users.map(publicUser), profil: t.profil }, heute);
+    useData.setState({ data: structuredClone(d), status: "bereit" });
+    const sitzung = { user: publicUser(t.users[0]), tenant: t.tenant, team: t.users.map(publicUser) };
+    const frag = async (content: string) => (await frageAssistent({ verlauf: [{ role: "user", content }], sitzung, nav: () => {}, voice: false })).text;
+    const kritisch = d.fristen.filter((f) => f.status === "offen" && istKritisch(f)).sort(nachDringlichkeit);
+    const r = await frag("Welche nicht verlängerbaren Fristen stehen als Nächstes an?");
+    assert.match(r, new RegExp(`^Als Nächstes stehen ${kritisch.length} nicht verlängerbare Fristen an`));
+    const pos = kritisch.slice(0, 4).map((f) => r.indexOf(f.titel));
+    assert.ok(pos.every((x, i) => x > 0 && (i === 0 || x >= pos[i - 1])), r);
+    // Klagefrist (§ 4 KSchG) und Bußgeld-Einspruch sind keine Notfristen im Sinne der ZPO
+    if (!kritisch.some((f) => f.typ === "notfrist")) assert.match(await frag("Welche Notfristen stehen an?"), /Notfristen im Sinne der ZPO stehen derzeit keine an/);
+    const lage = fristenLage(d.fristen, heute);
+    const h = await frag("Welche Fristen sind heute fällig?");
+    if (lage.faellig.length > 1) assert.ok(h.startsWith(`Heute sind ${lage.faellig.length} Fristen fällig`), h);
+    if (lage.wiedervorlagen.length === 1) assert.match(h, /dazu eine Wiedervorlage/);
+  } finally {
+    console.warn = warn;
+  }
+});
+
+test("Posteingang-Analyse: Begründung grammatisch, Zusammenfassung in der dritten Person", () => {
+  const n = data.nachrichten.find((x) => x.von === "Thomas Weber")!;
+  const a = analysiereRegelbasiert({ text: n.text, betreff: n.betreff, von: n.von, vonAdresse: n.vonAdresse, eingang: n.eingang }, data, "BE");
+  assert.equal(a.akteGrund, "Absenderadresse thomas.weber@posteo.de (Mandant Thomas Weber)");
+  assert.ok(!/\b(ich|mein|meine|mir)\b/i.test(a.zusammenfassung), a.zusammenfassung);
+  assert.match(a.zusammenfassung, /^Mandant Thomas Weber übersendet Arbeitsvertrag und Lohnabrechnungen/);
+  assert.match(a.zusammenfassung, /fragt, ob er wegen der Arbeitsagentur noch etwas machen muss\./);
+  const nl = analysiereRegelbasiert({ text: "Liebe Kammermitglieder, in dieser Ausgabe: Neuerungen beim beA.", betreff: "Kammerreport", von: "Rechtsanwaltskammer – Kammerreport", eingang: HEUTE }, data, "BE");
+  assert.ok(nl.aktionen.includes("Kein Handlungsbedarf – als erledigt markieren."), nl.aktionen.join(" | "));
 });

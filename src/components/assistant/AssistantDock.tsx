@@ -5,7 +5,7 @@ import { ArrowUp, Mic, MicOff, Volume2, VolumeX, X, RotateCcw, Square, Phone, Wr
 import { useUI } from "@/store/ui";
 import { useKanzlei } from "@/store/session";
 import { DEMO_KI_NAME, useAiStatus } from "@/ai/status";
-import { frageAssistent, vorschlaege, type AssistentLink } from "@/ai/assistent";
+import { ansprechBitte, frageAssistent, vorschlaege, type AssistentLink } from "@/ai/assistent";
 import { useData } from "@/store/data";
 import type { LlmMessage } from "@/ai/llm";
 import { hoeren, sprechen, spracheingabeVerfuegbar, sprachausgabeVerfuegbar } from "@/lib/speech";
@@ -34,7 +34,8 @@ export function AssistantDock() {
   const mobile = useIsMobile();
   const akten = useData((s) => s.data.akten);
   // Vorschläge aus den tatsächlichen Daten der Kanzlei (z. B. eine vorhandene Akte statt eines festen Aktenzeichens)
-  const chips = useMemo(() => vorschlaege({ ...useData.getState().data, akten }), [akten]);
+  const ap = sitzung.tenant.ansprechpartner;
+  const chips = useMemo(() => vorschlaege({ ...useData.getState().data, akten }, ap), [akten, ap]);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [eingabe, setEingabe] = useState("");
   const [zustand, setZustand] = useState<OrbZustand>("ruhe");
@@ -297,7 +298,7 @@ export function AssistantDock() {
                     <div className="mt-auto pt-6">
                       <button
                         type="button"
-                        onClick={() => void senden("Ich möchte mit meinem Ansprechpartner sprechen")}
+                        onClick={() => void senden(ansprechBitte(ap))}
                         className="flex w-full items-center gap-3 rounded-[18px] p-3 text-left ring-1 ring-[var(--line)] transition-colors hover:bg-ink-softer"
                       >
                         <span className="grid size-9 place-items-center rounded-full bg-green-soft text-green">

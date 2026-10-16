@@ -1,9 +1,9 @@
 // Kennzahlen der Kanzlei – eine Berechnung für Cockpit, Apex Island und Apex Assistent, damit überall dieselben Zahlen
 // stehen (Posteingang, Finanzen, Fremdgeld, 38h-Motor, Akten). Fristen zählt src/core/fristenLage.ts.
-import type { Akte, Aktivitaet, Buchung, Frist, ID, ISODate, Nachricht, Rechnung, Transaktion } from "./types";
-import { addDays, diffDays, weekday } from "./dates";
+import type { Akte, Aktivitaet, Buchung, Frist, FristTyp, ID, ISODate, Nachricht, Rechnung, Transaktion } from "./types";
+import { addDays, diffDays, fmtDateShort, fmtNum, weekday, wochentagName } from "./dates";
 import { WERT_PRO_STUNDE, WOCHEN_PRO_JAHR } from "./automationen";
-import { aktenMitFrist, FENSTER_TAGE } from "./fristenLage";
+import { aktenMitFrist, FENSTER_TAGE, fristenLage, istKritisch, nachDringlichkeit } from "./fristenLage";
 
 /** Montag der Kalenderwoche (Mo–So) zum Stichtag – „diese Woche“ meint immer die Kalenderwoche. */
 export function wochenbeginn(heute: ISODate): ISODate {
@@ -162,4 +162,176 @@ export function aktenZahlen(akten: Akte[], fristen: Frist[], heute: ISODate): Ak
     mitFrist: mitFrist.length,
     mitKritischerFrist: mitFrist.filter((a) => !!je.get(a.id)?.kritisch).length,
   };
+}
+
+// ───────────── Tagesbriefing (drei Sätze: Fristen, Posteingang, nächster Termin) ─────────────
+
+/** Ein Teil eines Briefing-Satzes: Anzeige-Text, optional abweichend gesprochen, optional betont/verlinkt (wie im Cockpit). */
+export interface BriefingTeil {
+  t: string;
+  s?: string;
+  ton?: "fg" | "seal" | "amber" | "ink" | "violet";
+  href?: string;
+}
+export type BriefingSatz = BriefingTeil[];
+
+const TYP_LABEL: Record<FristTyp, string> = { notfrist: "Notfrist", frist: "Frist", vorfrist: "Vorfrist", wiedervorlage: "Wiedervorlage", termin: "Termin" };
+
+/** Bezeichnung im Satz: „Notfrist“, „nicht verlängerbare Frist“, „Frist“, „Wiedervorlage“ … */
+export function fristArtLabel(f: Frist): string {
+  if (f.typ === "frist" && istKritisch(f)) return "nicht verlängerbare Frist";
+  return TYP_LABEL[f.typ];
+}
+
+function plural(n: number, eins: string, viele: string) {
+  return `${n === 1 ? "eine" : fmtNum(n)} ${n === 1 ? eins : viele}`;
+}
+
+/** „heute“, „morgen“, „gestern“, sonst „Mo, 19. Okt.“ */
+function tagLabel(iso: ISODate, heute: ISODate): string {
+  const n = diffDays(heute, iso);
+  if (n === 0) return "heute";
+  if (n === 1) return "morgen";
+  if (n === -1) return "gestern";
+  return `${wochentagName(iso, true)}, ${fmtDateShort(iso)}`;
+}
+
+function langDatum(iso: ISODate) {
+  return `${wochentagName(iso)}, ${fmtDateShort(iso).replace(/\.$/, "")}`;
+}
+
+/** Schließt einen Satz mit Punkt ab – ohne doppelten Punkt nach Abkürzungen („22. Okt.“). */
+function punkt(s: BriefingSatz) {
+  const letzter = s[s.length - 1];
+  if (letzter && /\.$/.test(letzter.t)) return;
+  s.push({ t: "." });
+}
+
+export interface BriefingEingabe {
+  heute: ISODate;
+  fristen: Frist[];
+  akten: Akte[];
+  nachrichten: Nachricht[];
+  /** nur Fristen und Termine dieser Person („Meine Sicht“) */
+  nurFuer?: ID;
+}
+
+/**
+ * KI-Tagesbriefing aus den Daten – dieselben Sätze wie im Cockpit: „Heute sind 2 Fristen fällig, dazu eine Wiedervorlage und
+ * eine Vorfrist. In den nächsten sieben Tagen folgen 5 weitere Fristen und 12 Wiedervorlagen – zuerst zu erledigen ist …“.
+ */
+export function tagesbriefing(e: BriefingEingabe): BriefingSatz[] {
+  const { heute } = e;
+  const meine = !!e.nurFuer;
+  const akten = new Map(e.akten.map((a) => [a.id, a]));
+  const lage = fristenLage(e.fristen, heute, e.nurFuer);
+  const prio = (f: Frist) => (akten.get(f.akteId)?.prioritaet === "hoch" ? 0 : 1);
+  const nachPrio = (a: Frist, b: Frist) => nachDringlichkeit(a, b) || prio(a) - prio(b);
+  const kritischste =
+    [...lage.ueberfaellig].sort(nachPrio)[0] ?? [...lage.heute].sort(nachPrio)[0] ?? [...lage.kritischWoche].sort(nachPrio)[0] ?? [...lage.woche].sort(nachPrio)[0];
+  const briefing: BriefingSatz[] = [];
+  {
+    const s: BriefingSatz = [];
+    const nF = lage.faellig.length;
+    const nU = lage.ueberfaellig.length;
+    const nWv = lage.wiedervorlagen.length;
+    const nV = lage.vorfristen.length;
+    const nW = lage.woche.length;
+    const nWvW = lage.wiedervorlagenWoche.length;
+    const dazu: BriefingTeil[] = [];
+    if (nWv > 0) dazu.push({ t: plural(nWv, "Wiedervorlage", "Wiedervorlagen"), ton: "fg" });
+    if (nV > 0) dazu.push({ t: plural(nV, "Vorfrist", "Vorfristen"), ton: "fg" });
+    const dazuTeile = dazu.flatMap((p, k) => (k === 0 ? [p] : [{ t: " und " }, p]));
+    if (nF + nWv + nV + nW + nWvW === 0) {
+      s.push({ t: meine ? "Für Sie sind in den nächsten sieben Tagen keine Fristen notiert." : "In den nächsten sieben Tagen sind keine Fristen notiert." });
+    } else {
+      if (nF > 0) {
+        s.push({ t: meine ? `Für Sie ${nF === 1 ? "ist" : "sind"} heute ` : `Heute ${nF === 1 ? "ist" : "sind"} ` });
+        s.push({ t: plural(nF, "Frist", "Fristen"), ton: "fg" });
+        s.push({ t: " fällig" });
+        if (nU > 0) s.push({ t: nU === nF ? (nF === 1 ? " (bereits überfällig)" : " (alle bereits überfällig)") : ` (davon ${fmtNum(nU)} überfällig)`, ton: "seal" });
+        if (dazuTeile.length) s.push({ t: ", dazu " }, ...dazuTeile);
+      } else {
+        s.push({ t: meine ? "Für Sie ist heute keine Frist fällig" : "Heute ist keine Frist fällig" });
+        if (dazuTeile.length) s.push({ t: ", nur " }, ...dazuTeile);
+      }
+      if (nW > 0 || nWvW > 0) {
+        s.push({ t: ". In den nächsten sieben Tagen " });
+        if (nW > 0) {
+          s.push({ t: nW === 1 ? (nF > 0 ? "folgt " : "steht ") : nF > 0 ? "folgen " : "stehen " });
+          s.push({ t: nF > 0 ? (nW === 1 ? "eine weitere Frist" : `${fmtNum(nW)} weitere Fristen`) : plural(nW, "Frist", "Fristen"), ton: "fg" });
+          if (nWvW > 0) s.push({ t: " und " }, { t: plural(nWvW, "Wiedervorlage", "Wiedervorlagen"), ton: "fg" });
+          if (nF === 0) s.push({ t: " an" });
+        } else {
+          s.push({ t: "stehen keine weiteren Fristen an, nur " }, { t: plural(nWvW, "Wiedervorlage", "Wiedervorlagen"), ton: "fg" });
+        }
+      }
+      if (kritischste) {
+        const a = akten.get(kritischste.akteId);
+        const ueber = kritischste.datum < heute;
+        const kritisch = istKritisch(kritischste);
+        s.push({ t: ueber ? " – sofort zu erledigen ist " : kritischste.datum === heute ? " – zuerst zu erledigen ist " : " – am dringendsten ist " });
+        s.push({ t: `die ${fristArtLabel(kritischste)} „${kritischste.titel}“`, ton: kritisch || ueber ? "seal" : "amber" });
+        if (a) s.push({ t: " in " }, { t: a.aktenzeichen, ton: "ink", href: `/akten/${a.id}?tab=fristen` });
+        if (ueber) s.push({ t: ` (fällig seit ${tagLabel(kritischste.datum, heute)})` });
+        else if (kritischste.datum === heute) s.push({ t: " (heute fällig)" });
+        else s.push({ t: ` bis ${tagLabel(kritischste.datum, heute)}`, s: ` bis ${langDatum(kritischste.datum)}` });
+      }
+      punkt(s);
+    }
+    briefing.push(s);
+  }
+  {
+    const s: BriefingSatz = [];
+    const p = posteingangZahlen(e.nachrichten);
+    const n = p.neu.length;
+    if (n === 0) {
+      s.push({ t: "Der Posteingang ist aufgeräumt – keine neuen Nachrichten." });
+    } else {
+      s.push({ t: "Im Posteingang " }, { t: n === 1 ? "wartet " : "warten " });
+      s.push({ t: plural(n, "neue Nachricht", "neue Nachrichten"), ton: "fg" });
+      if (p.kiFertig > 0 && p.wartetAufKi > 0) {
+        s.push({ t: ` – bei ${fmtNum(p.kiFertig)} ist die KI-Analyse fertig, ` });
+        s.push({ t: `${fmtNum(p.wartetAufKi)} ${p.wartetAufKi === 1 ? "wartet" : "warten"} noch auf die KI-Analyse`, ton: "violet" });
+      } else if (p.wartetAufKi > 0) {
+        s.push({ t: " – " }, { t: p.wartetAufKi === 1 ? "sie wartet noch auf die KI-Analyse" : "alle warten noch auf die KI-Analyse", ton: "violet" });
+      } else {
+        s.push({ t: " – " }, { t: "die KI hat bereits alle ausgewertet", ton: "violet" });
+      }
+      if (p.eeb > 0) s.push({ t: `, darunter ${p.eeb === 1 ? "eine Zustellung" : `${fmtNum(p.eeb)} Zustellungen`} gegen eEB`, s: `, darunter ${p.eeb === 1 ? "eine Zustellung" : `${p.eeb} Zustellungen`} gegen elektronisches Empfangsbekenntnis` });
+      punkt(s);
+    }
+    briefing.push(s);
+  }
+  {
+    const s: BriefingSatz = [];
+    const t = naechsteTermine(e.fristen, heute, e.nurFuer)[0];
+    if (!t) {
+      s.push({ t: meine ? "Für Sie stehen derzeit keine Termine im Kalender." : "Derzeit stehen keine Gerichts- oder Ortstermine im Kalender." });
+    } else {
+      const a = akten.get(t.akteId);
+      s.push({ t: "Ihr nächster Termin: " });
+      s.push({ t: t.titel, ton: "fg" });
+      if (a) s.push({ t: " in " }, { t: a.aktenzeichen, ton: "ink", href: `/akten/${a.id}` });
+      s.push({ t: ` ${diffDays(heute, t.datum) <= 1 ? tagLabel(t.datum, heute) : `am ${tagLabel(t.datum, heute)}`}`, s: ` am ${langDatum(t.datum)}` });
+      if (t.uhrzeit) s.push({ t: ` um ${t.uhrzeit} Uhr` });
+      if (t.ort) s.push({ t: ` – ${t.ort}` });
+      punkt(s);
+    }
+    briefing.push(s);
+  }
+  return briefing;
+}
+
+/** Offene Termine ab heute, nach Datum und Uhrzeit (höchstens fünf). */
+export function naechsteTermine(fristen: Frist[], heute: ISODate, nurFuer?: ID): Frist[] {
+  return fristen
+    .filter((f) => f.status === "offen" && f.typ === "termin" && f.datum >= heute && (!nurFuer || f.verantwortlichId === nurFuer))
+    .sort((a, b) => a.datum.localeCompare(b.datum) || (a.uhrzeit ?? "").localeCompare(b.uhrzeit ?? ""))
+    .slice(0, 5);
+}
+
+/** Text eines Briefing-Satzes – angezeigt oder gesprochen. */
+export function briefingText(s: BriefingSatz, gesprochen = false): string {
+  return s.map((p) => (gesprochen ? p.s ?? p.t : p.t)).join("");
 }

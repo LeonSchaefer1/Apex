@@ -148,7 +148,7 @@ export const ENTSCHEIDUNGEN: Entscheidung[] = [
   },
   {
     id: "bgh-4str399-17", gericht: "BGH", ebene: "BGH", spruchkoerper: "4. Strafsenat", datum: "2018-03-01", az: "4 StR 399/17",
-    art: "Urteil", rechtsgebiet: "Strafrecht", titel: "Berliner Ku'damm-Raser",
+    art: "Urteil", rechtsgebiet: "Strafrecht", titel: "Berliner Ku’damm-Raser",
     leitsatz: "Die Verurteilung wegen Mordes setzt voraus, dass der bedingte Tötungsvorsatz bereits vor dem zum Tod führenden Geschehen vorlag; das Landgericht hatte den Vorsatz zeitlich nicht tragfähig festgestellt.",
     normen: ["§ 211 StGB", "§ 15 StGB"], schlagworte: ["raser", "mord", "vorsatz", "eventualvorsatz", "straßenrennen"],
     bedeutung: "Anforderungen an den Nachweis des Tötungsvorsatzes.",

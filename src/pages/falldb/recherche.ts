@@ -3,7 +3,7 @@ import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
 import { overlapScore, tokenize, type SearchField } from "@/core/search";
 import { fmtDate } from "@/core/dates";
 import type { Akte, Entscheidung } from "@/core/types";
-import { llmJson, DemoModus } from "@/ai/llm";
+import { llmJson, DemoModus, KeineAntwort, verstaendlicheMeldung } from "@/ai/llm";
 
 export type Ebene = Entscheidung["ebene"];
 
@@ -234,7 +234,13 @@ export async function kiRecherche(sachverhalt: string, opts: { live: boolean; si
     return { treffer, quelle: "live", verworfen, dauerMs: performance.now() - t0 };
   } catch (e) {
     if (opts.signal?.aborted) throw e;
-    const hinweis = e instanceof DemoModus ? undefined : `Die Live-KI war nicht erreichbar (${e instanceof Error ? e.message : String(e)}). Angezeigt wird die Recherche der Demo-KI (offline).`;
+    // KeineAntwort ist eine Unterart von DemoModus – dann trotzdem sagen, warum die Demo-KI antwortet
+    const hinweis =
+      e instanceof KeineAntwort
+        ? "Die Live-KI hat nicht rechtzeitig geantwortet – angezeigt wird die Recherche der Demo-KI (offline)."
+        : e instanceof DemoModus
+          ? undefined
+          : `Die Live-KI war nicht erreichbar – angezeigt wird die Recherche der Demo-KI (offline). ${verstaendlicheMeldung(e)}`;
     return { treffer: offline(), quelle: "offline", hinweis, dauerMs: performance.now() - t0 };
   }
 }

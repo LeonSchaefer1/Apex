@@ -139,7 +139,7 @@ export function createCtx(input: SeedInput, today: string): Ctx {
       }
       const k: Kontakt = {
         id: ctx.id("k"), typ: "organisation", name, firma: name,
-        email: `info@${slug(name.split(" ")[0])}.de`,
+        email: `info@${slug(name.replace(/^((Dr|Prof)\.\s+)+/, "").split(" ")[0])}.de`,
         telefon: `+49 ${s.vorwahl.slice(1)} ${rng.int(100000, 9999999)}`,
         strasse: `${rng.pick(s.strassen)} ${rng.int(1, 140)}`, plz: rng.pick(s.plz), ort: s.ort,
         rollen, createdAt: ctx.dt(-rng.int(30, 400)), ...extra,
@@ -721,21 +721,37 @@ function gerichtlicheFristen(ctx: Ctx) {
   const { data } = ctx;
   const mitFrist = new Set(data.fristen.filter((f) => f.status === "offen" && (f.typ === "frist" || f.typ === "notfrist")).map((f) => f.akteId));
   const kandidaten = data.akten.filter((a) => !a.id.startsWith("hero") && a.status === "offen" && a.gerichtId && a.gerichtsAz && (a.phase === "Gerichtlich" || a.phase === "Beweisaufnahme") && !mitFrist.has(a.id));
+  let zpo = 0;
   const art = (a: Akte): { titel: string; grundlage: string } | undefined => {
     const az = a.gerichtsAz ?? "";
+    const sw = a.schlagworte.join(" ");
     if (a.phase === "Beweisaufnahme") return { titel: "Stellungnahme zum Sachverständigengutachten", grundlage: "Richterliche Frist (§ 411 Abs. 4 ZPO)" };
     if (/ Ca /.test(az)) return { titel: "Stellungnahme zur Klageerwiderung (Auflage des Arbeitsgerichts)", grundlage: "Richterliche Frist (Auflagenbeschluss)" };
-    if (/ F /.test(az)) return { titel: "Stellungnahme zum Bericht des Jugendamts", grundlage: "Gerichtlich gesetzte Frist (FamFG)" };
+    if (/ F /.test(az)) {
+      if (/umgang|sorgerecht/.test(sw)) return { titel: "Stellungnahme zum Bericht des Jugendamts", grundlage: "Gerichtlich gesetzte Frist (FamFG)" };
+      if (/unterhalt/.test(sw)) return { titel: "Auskunft über Einkünfte und Belege vorlegen", grundlage: "Gerichtliche Auflage (§ 235 Abs. 1 FamFG)" };
+      return { titel: "Stellungnahme zum Schriftsatz der Gegenseite", grundlage: "Gerichtlich gesetzte Frist (FamFG)" };
+    }
     if (/-0-/.test(az)) return { titel: "Anspruchsbegründung einreichen", grundlage: "Aufforderung nach § 697 Abs. 1 ZPO" };
-    if (/ (O|C) /.test(az)) return { titel: "Stellungnahme zum Schriftsatz der Gegenseite", grundlage: "Richterliche Frist (§ 273 Abs. 2 Nr. 1 ZPO)" };
+    if (/ (O|C) /.test(az)) {
+      const varianten = [
+        { titel: "Stellungnahme zum Schriftsatz der Gegenseite", grundlage: "Richterliche Frist (§ 273 Abs. 2 Nr. 1 ZPO)" },
+        { titel: "Beweisantritt: Zeugen mit ladungsfähiger Anschrift benennen", grundlage: "Richterliche Frist (§ 273 Abs. 2 Nr. 1 ZPO)" },
+        { titel: "Unterlagen nach Hinweisbeschluss vorlegen", grundlage: "Richterliche Frist (§ 139 Abs. 5 ZPO)" },
+      ];
+      return varianten[zpo++ % varianten.length];
+    }
     return undefined;
   };
   // Verteilung über die nächsten zwei Wochen, Schwerpunkt auf den nächsten Werktagen
   const abstaende = [2, 3, 4, 5, 7, 9, 11, 13];
   let i = 0;
+  const je = new Map<string, number>();
   for (const a of rng.shuffle(kandidaten)) {
     const x = art(a);
-    if (!x || i >= abstaende.length) continue;
+    // höchstens zwei gleichlautende Fristen, damit die Liste nicht eintönig wirkt
+    if (!x || i >= abstaende.length || (je.get(x.titel) ?? 0) >= 2) continue;
+    je.set(x.titel, (je.get(x.titel) ?? 0) + 1);
     addFrist(ctx, {
       akteId: a.id, titel: x.titel, typ: "frist", datum: ctx.werktag(abstaende[i++] + rng.int(0, 1)), grundlage: x.grundlage,
       verantwortlichId: a.bearbeiterId, quelle: rng.chance(0.5) ? "ki" : "manuell", kontrolliertVon: rng.chance(0.7) ? ctx.refas[0]?.id : undefined,

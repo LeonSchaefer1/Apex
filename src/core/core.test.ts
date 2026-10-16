@@ -477,3 +477,66 @@ test("Formatierung: typografisches Minus, relative Zeit ab 60 Min. in Std., gesc
   assert.equal(relTime("2026-10-14T23:00:00", jetzt), "vor 2 Tagen");
   assert.equal(schuetzeLeerzeichen("§ 5 KSchG, 38 Std."), "§ 5 KSchG, 38 Std.");
 });
+
+// ───────────── Kennzahlen, Zeitpläne des 38h-Motors und Demodaten (Texte C, Runde 2) ─────────────
+
+test("Kennzahlen: Kalenderwoche, Finanzen und 38h-Motor (letzte 7 Tage) wie im Cockpit", async () => {
+  const { wochenbeginn, wochenende, finanzZahlen, motorZahlen, tagesbriefing, briefingText } = await import("./kennzahlen");
+  assert.equal(wochenbeginn("2026-10-16"), "2026-10-12");
+  assert.equal(wochenende("2026-10-16"), "2026-10-18");
+  assert.equal(wochenbeginn("2026-10-18"), "2026-10-12"); // Sonntag gehört zur laufenden Woche
+  const re = (id: string, brutto: number, bezahlt: number, faellig: string, status: "gestellt" | "teilbezahlt" | "bezahlt") =>
+    ({ id, nummer: id, akteId: "a", empfaengerId: "k", datum: "2026-09-01", faellig, positionen: [], netto: 0, ust: 0, brutto, status, bezahlt, format: "PDF" as const, createdAt: "2026-09-01T10:00:00" });
+  const f = finanzZahlen(
+    [re("r1", 1000, 0, "2026-10-01", "gestellt"), re("r2", 500, 200, "2026-10-30", "teilbezahlt"), re("r3", 800, 800, "2026-09-15", "bezahlt")],
+    [{ id: "b1", akteId: "x", datum: "2026-10-10", art: "fremdgeld", betrag: 6120, text: "" }, { id: "b2", akteId: "y", datum: "2026-10-10", art: "fremdgeld", betrag: 100, text: "" }, { id: "b3", akteId: "y", datum: "2026-10-11", art: "fremdgeld", betrag: -100, text: "" }],
+    [],
+    "2026-10-16",
+  );
+  assert.deepEqual([f.offen, f.offenAnzahl, f.ueberfaellig, f.ueberfaelligAnzahl, f.fremdgeld, f.fremdgeldAkten], [1300, 2, 1000, 1, 6120, 1]);
+  const akt = (zeit: string, min: number) => ({ id: zeit, zeit, akteur: "automation" as const, text: "", minutenGespart: min });
+  const m = motorZahlen([akt("2026-10-16T08:00:00", 60), akt("2026-10-10T08:00:00", 30), akt("2026-10-09T08:00:00", 600), akt("2026-10-12T08:00:00", 15)], "2026-10-16");
+  assert.equal(m.minuten, 105); // 10.10. bis 16.10.
+  assert.equal(m.minutenSeitMontag, 75); // ab Mo, 12.10.
+  const fr = (id: string, typ: "frist" | "wiedervorlage" | "vorfrist", datum: string) => ({ id, akteId: "a", titel: id, typ, datum, status: "offen" as const, verantwortlichId: "u", quelle: "manuell" as const, createdAt: "2026-10-01T09:00:00" });
+  const b = tagesbriefing({ heute: "2026-10-16", fristen: [fr("F1", "frist", "2026-10-16"), fr("F2", "frist", "2026-10-16"), fr("W1", "wiedervorlage", "2026-10-16"), fr("V1", "vorfrist", "2026-10-16")], akten: [], nachrichten: [] });
+  assert.match(briefingText(b[0]), /^Heute sind 2 Fristen fällig, dazu eine Wiedervorlage und eine Vorfrist/);
+});
+
+test("38h-Motor: zeitgesteuerte Automationen laufen nur zu ihren Auslösezeiten", async () => {
+  const { zeitplan, letzteAusloesung, laufFaellig } = await import("./automationen");
+  assert.equal(zeitplan("posteingang-fristen"), undefined);
+  // Freitag, 16.10.2026: vor 14 Uhr liegt die letzte Auslösung eine Woche zurück
+  assert.equal(letzteAusloesung("mandanten-update", "2026-10-16T10:40:00"), "2026-10-09T14:00:00");
+  assert.equal(letzteAusloesung("mandanten-update", "2026-10-16T14:05:00"), "2026-10-16T14:00:00");
+  assert.equal(laufFaellig("mandanten-update", "2026-10-09T14:03:00", "2026-10-16T10:40:00"), false);
+  assert.equal(laufFaellig("mandanten-update", "2026-10-09T14:03:00", "2026-10-16T14:05:00"), true);
+  // Zeiterfassung werktags 18 Uhr – am Wochenende und an Feiertagen nicht
+  assert.equal(letzteAusloesung("zeiterfassung", "2026-10-18T20:00:00", "BE"), "2026-10-16T18:00:00");
+  assert.equal(letzteAusloesung("zeiterfassung", "2026-10-05T10:00:00", "BE"), "2026-10-02T18:00:00"); // 03.10. Tag der Deutschen Einheit, dazwischen Wochenende
+  assert.equal(laufFaellig("vorfristen", undefined, "2026-10-16T18:30:00"), false);
+});
+
+test("Demodaten: letzter Lauf = jüngste Aktivität, Zeitpläne eingehalten, E-Rechnung nur an Unternehmen, Vergütungsvereinbarung", async () => {
+  const { generateTenantData } = await import("./seed/generate");
+  const { DEMO_TENANTS, publicUser } = await import("./seed/tenants");
+  const { weekday } = await import("./dates");
+  for (const t of DEMO_TENANTS) {
+    const d = generateTenantData({ tenant: t.tenant, users: t.users.map(publicUser), profil: t.profil }, "2026-10-16");
+    for (const au of d.automationen) {
+      const juengste = d.aktivitaeten.filter((x) => x.automationKey === au.key).map((x) => x.zeit).sort().pop();
+      assert.equal(au.letzterLauf, juengste, `${t.tenant.kurzname}: ${au.key}`);
+    }
+    for (const x of d.aktivitaeten.filter((a) => a.automationKey === "zeiterfassung")) assert.ok(x.zeit.endsWith("T18:00:00") && x.zeit < "2026-10-16", x.zeit);
+    for (const x of d.aktivitaeten.filter((a) => a.automationKey === "mandanten-update")) assert.ok(weekday(x.zeit.slice(0, 10)) === 5 && x.zeit.slice(11, 13) === "14", x.zeit);
+    for (const r of d.rechnungen) {
+      const k = d.kontakte.find((x) => x.id === r.empfaengerId);
+      if (r.format !== "PDF") assert.equal(k?.typ, "organisation", `${r.nummer} ${r.format} an ${k?.name}`);
+      if (r.positionen.some((p) => /Vergütungsvereinbarung/.test(p.bezeichnung))) assert.ok(d.akten.find((a) => a.id === r.akteId)?.verguetungsvereinbarung?.datum, r.nummer);
+    }
+    assert.ok(!JSON.stringify(d).includes(".example"), "keine Platzhalter-Adressen");
+    // realistische Fristenlage: mehrere echte Fristen in den nächsten zwei Wochen, nicht nur Wiedervorlagen
+    const in14 = d.fristen.filter((f) => f.status === "offen" && (f.typ === "frist" || f.typ === "notfrist") && f.datum >= "2026-10-16" && f.datum <= "2026-10-30");
+    assert.ok(in14.length >= 5, `${t.tenant.kurzname}: ${in14.length} Fristen in 14 Tagen`);
+  }
+});

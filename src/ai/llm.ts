@@ -57,6 +57,20 @@ export class KeineAntwort extends DemoModus {
   }
 }
 
+/**
+ * Fehlermeldung für die Oberfläche: Verständliche deutsche Sätze (z. B. vom Kanzlei-Server oder aus den Werkzeugen des
+ * Assistenten) bleiben stehen; technische Rohmeldungen („Failed to fetch“, „KI-Fehler 502“, „TypeError …“) werden übersetzt.
+ */
+export function verstaendlicheMeldung(e: unknown): string {
+  const roh = (e instanceof Error ? e.message : typeof e === "string" ? e : "").trim();
+  if (/failed to fetch|networkerror|load failed|network request failed|fetch failed/i.test(roh)) return "Keine Verbindung zum Kanzlei-Server. Bitte prüfen Sie die Internetverbindung.";
+  if (/^(ki-)?fehler 5\d\d\b|status 5\d\d\b|internal server error|bad gateway|service unavailable/i.test(roh)) return "Der Kanzlei-Server antwortet gerade nicht. Bitte versuchen Sie es gleich noch einmal.";
+  if (/timeout|timed out|zeitüberschreitung/i.test(roh)) return "Die Antwort hat zu lange gedauert.";
+  const technisch = !roh || /^(ki-)?fehler \d{3}$/i.test(roh) || /\b(TypeError|ReferenceError|SyntaxError|undefined|null|NaN|JSON|Unexpected token|is not a function|cannot read)\b/i.test(roh) || !/[äöüß]|\b(der|die|das|nicht|bitte|ist|keine?)\b/i.test(roh);
+  if (technisch) return "Dabei ist ein unerwarteter Fehler aufgetreten.";
+  return /[.!?]$/.test(roh) ? roh : `${roh}.`;
+}
+
 function abgebrochenFehler() {
   return Object.assign(new Error("abgebrochen"), { code: "cancelled" });
 }

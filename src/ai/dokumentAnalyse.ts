@@ -107,7 +107,7 @@ export function findeAkte(text: string, data: TenantData, hinweise: string[] = [
     }
     if (gegner && norm.includes(normalize(gegner.name))) {
       s += 0.33;
-      gruende.push(`Gegner ${gegner.name}`);
+      if (!gruende.some((g) => g.includes(`(Gegner ${gegner.name})`))) gruende.push(`Gegner ${gegner.name}`);
     }
     const obergrenze = vomMandanten || gegenseite ? 0.98 : 0.96;
     if (s > best.sicherheit) best = { akteId: a.id, sicherheit: Math.min(obergrenze, s + 0.02), grund: gruende.join(" · ") };
@@ -174,10 +174,10 @@ function zusammenfassen(text: string, max = 2): string {
 
 /** Dokumente, die Mandantinnen und Mandanten typischerweise schicken – für „übersendet Arbeitsvertrag und Lohnabrechnungen“. */
 const UNTERLAGEN: [RegExp, string][] = [
-  [/arbeitsvertrag/, "Arbeitsvertrag"], [/lohnabrechnung|gehaltsabrechnung/, "Lohnabrechnungen"], [/kündigung(sschreiben)?\b/, "Kündigungsschreiben"],
-  [/mietvertrag/, "Mietvertrag"], [/übergabeprotokoll/, "Übergabeprotokoll"], [/fotos?\b|bilder\b/, "Fotos"], [/gutachten/, "Gutachten"],
-  [/rechnung(en)?\b/, "Rechnungen"], [/kontoauszüge?/, "Kontoauszüge"], [/bescheid/, "Bescheid"], [/vertrag\b/, "Vertrag"],
-  [/verzeichnis|liste\b/, "Verzeichnis"], [/vollmacht/, "Vollmacht"],
+  [/\barbeitsvertrag/, "Arbeitsvertrag"], [/\b(lohn|gehalts)abrechnung/, "Lohnabrechnungen"], [/\bkündigung(sschreiben)?\b/, "Kündigungsschreiben"],
+  [/\bmietvertrag/, "Mietvertrag"], [/\bübergabeprotokoll/, "Übergabeprotokoll"], [/\b(fotos?|bilder)\b/, "Fotos"], [/\bgutachten/, "Gutachten"],
+  [/\brechnung(en)?\b/, "Rechnungen"], [/\bkontoauszüge?/, "Kontoauszüge"], [/\bbescheid\b/, "Bescheid"], [/\bvertrag\b/, "Vertrag"],
+  [/\b(verzeichnis|liste)\b/, "Verzeichnis"], [/\bvollmacht\b/, "Vollmacht"],
 ];
 
 /** „Muss ich wegen der Arbeitsagentur noch etwas machen?“ → „ob er wegen der Arbeitsagentur noch etwas machen muss“ */
@@ -202,15 +202,18 @@ function indirekteFrage(frage: string, w: boolean): string | undefined {
  * und Fragen enthält die Nachricht – statt eines Ich-Zitats aus der E-Mail.
  */
 function mandantenZusammenfassung(text: string, absender: { name: string; kontakt?: Kontakt; bezeichnung?: string }): string | undefined {
-  const w = absender.kontakt?.anrede === "Frau";
+  // „sie“ für Mandantinnen und für Unternehmen (die Gesellschaft), sonst „er“
+  const w = absender.kontakt?.anrede === "Frau" || absender.kontakt?.typ === "organisation";
+  const person = absender.kontakt?.typ !== "organisation";
   const n = text.toLowerCase();
   const teile: string[] = [];
+  if (/erkundigen|neuigkeiten|sachstand|stand (der|meiner|unserer) sache/.test(n)) teile.push("erkundigt sich nach dem Stand der Sache");
   if (/anbei|im anhang|anhängend|übersende|schicke ich|sende ich/.test(n)) {
     const docs = [...new Set(UNTERLAGEN.filter(([re]) => re.test(n)).map(([, label]) => label))].filter((x, _, a) => !(x === "Vertrag" && a.some((y) => y !== "Vertrag" && /vertrag/i.test(y))));
     teile.push(`übersendet ${docs.length ? docs.slice(0, 3).join(docs.length === 2 ? " und " : ", ").replace(/, ([^,]+)$/, " und $1") : "Unterlagen"}`);
   }
   const zeuge = text.match(/\b(Kollege|Kollegin|Nachbar|Nachbarin)\s+(Herr|Frau)\s+([A-ZÄÖÜ][a-zäöüß]+)/);
-  if (zeuge && /zeug|bestätigen|bezeugen|gesehen/.test(n)) {
+  if (zeuge && person && /zeug|bestätigen|bezeugen|gesehen/.test(n)) {
     const rolle = { Kollege: "Kollegen", Kollegin: "Kollegin", Nachbar: "Nachbarn", Nachbarin: "Nachbarin" }[zeuge[1]] ?? zeuge[1];
     const poss = w ? (zeuge[1].endsWith("in") ? "ihre" : "ihren") : zeuge[1].endsWith("in") ? "seine" : "seinen";
     teile.push(`nennt ${poss} ${rolle} ${zeuge[2] === "Herr" ? "Herrn" : "Frau"} ${zeuge[3]} als möglichen Zeugen`);
@@ -220,12 +223,12 @@ function mandantenZusammenfassung(text: string, absender: { name: string; kontak
   const wer = absender.bezeichnung ? `${absender.bezeichnung} ${absender.name}` : absender.name;
   const saetze: string[] = [];
   if (teile.length) saetze.push(`${wer} ${teile.join(" und ")}.`);
-  if (fragen.length) saetze.push(`${teile.length ? (w ? "Sie" : absender.kontakt?.typ === "organisation" ? "Sie" : "Er") : wer} fragt, ${fragen.slice(0, 2).join(" und ")}.`);
+  if (fragen.length) saetze.push(`${teile.length ? (w ? "Sie" : "Er") : wer} fragt, ${fragen.slice(0, 2).join(" und ")}.`);
   return saetze.join(" ");
 }
 
 /** Zusammenfassung: Post von Mandanten in der dritten Person, sonst die aussagekräftigsten Sätze (als Zitat, wenn in Ich-Form). */
-function zusammenfassungFuer(typ: string, input: { text: string; von?: string; vonAdresse?: string }, data: TenantData, akteId: string | undefined): string {
+function zusammenfassungFuer(typ: string, input: { text: string; von?: string; vonAdresse?: string; kanal?: string }, data: TenantData, akteId: string | undefined): string {
   const akte = akteId ? data.akten.find((a) => a.id === akteId) : undefined;
   const mandant = akte ? data.kontakte.find((k) => k.id === akte.mandantId) : undefined;
   const von = adresse(input.vonAdresse ?? input.von);
@@ -237,7 +240,7 @@ function zusammenfassungFuer(typ: string, input: { text: string; von?: string; v
   }
   const auszug = zusammenfassen(input.text);
   // Ich-Form aus E-Mails nicht als eigene Aussage der KI stehen lassen, sondern als Zitat kennzeichnen
-  if (auszug && /\b(ich|mein|meine|meinen|meinem|mir|mich)\b/i.test(auszug) && input.von && !GERICHTSPOST.test(typ)) {
+  if (auszug && /\b(ich|mein|meine|meinen|meinem|mir|mich)\b/i.test(auszug) && input.von && (/^Mandat/.test(typ) || input.kanal === "email")) {
     return `${input.von.replace(/\s*<.*>$/, "").trim()} schreibt: „${auszug.replace(/[„“]/g, "")}“`;
   }
   return auszug;
@@ -429,6 +432,7 @@ export function analysiereRegelbasiert(input: { text: string; betreff?: string; 
   if (/zeuge|bestätigen/.test(n) && typ === "Mandantenkorrespondenz") aktionen.push("Zeugenhinweis in der Akte notieren und Zeugen benennen lassen.");
   if (/arbeitsagentur|arbeitsuchend/.test(n)) aktionen.push(meldepflichtHinweis(data, match.akteId, eingang, land));
   if (/anbei|anhang|unterlagen/.test(n) && typ === "Mandantenkorrespondenz") aktionen.push("Anhänge in der E-Akte (Ordner „Mandant“) ablegen.");
+  if (/erkundigen|neuigkeiten|sachstand|stand (der|meiner|unserer) sache/.test(n) && !GERICHTSPOST.test(typ)) aktionen.push("Mandantschaft über den aktuellen Stand informieren (Mandanten-Update).");
   if (/vermögensauskunft/.test(n)) aktionen.push("Vermögensverzeichnis auswerten und Pfändungsmöglichkeiten prüfen (Kontopfändung, Lohnpfändung).");
   if (/widerspruch erhoben|widerspruch gegen (den )?mahnbescheid/.test(n)) aktionen.push("Weitere Gerichtskosten einzahlen und Anspruchsbegründung vorbereiten (§ 697 ZPO).");
   if (typ === "Klageerwiderung") aktionen.push("Replik vorbereiten – Einwendungen der Gegenseite einzeln prüfen.");
