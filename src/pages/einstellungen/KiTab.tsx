@@ -10,10 +10,12 @@ import { cn } from "@/lib/cn";
 import { FLOW_CSS } from "@/pages/motor/shared";
 import { Abschnitt, Zeile } from "./teile";
 
-const QUELLE_TEXT = { server: "Claude (Anthropic-API) über Ihren Kanzlei-Server", artefakt: "Claude (Anthropic) über die Vorschau-Laufzeit", demo: "Offline-Demo-KI im Browser" } as const;
+const QUELLE_TEXT = { server: "Claude (Anthropic-API) über Ihren Kanzlei-Server", artefakt: "Claude (Anthropic) über die Vorschau-Laufzeit", demo: "Arbeitet nach festen Regeln vollständig in Ihrem Browser" } as const;
+/** Einheitlicher Name der Offline-KI in der ganzen App: „Demo-KI (offline)“. */
+const QUELLE_NAME = { server: "KI live · Claude", artefakt: "KI live · Claude", demo: "Demo-KI (offline)" } as const;
 
 const GRUNDSAETZE = [
-  { icon: <Calculator className="size-4" />, t: "Die KI erkennt, der Fristenrechner berechnet", s: "Fristen berechnet ausschließlich der geprüfte Rechenkern nach §§ 187 ff. BGB, § 222 ZPO – mit Rechenweg." },
+  { icon: <Calculator className="size-4" />, t: "Die KI erkennt, der Fristenrechner berechnet", s: "Fristen berechnet ausschließlich der geprüfte Rechenkern nach §§ 187 ff. BGB und der jeweiligen Verfahrensordnung (z. B. § 222 ZPO, § 43 StPO) – mit Rechenweg." },
   { icon: <UserCheck className="size-4" />, t: "Vorschläge statt Entscheidungen", s: "Jede Übernahme bestätigen Sie. KI-erkannte Fristen gehen immer in die Vier-Augen-Kontrolle." },
   { icon: <Quote className="size-4" />, t: "Quellen statt Behauptungen", s: "Präzedenzfälle übernimmt AnwaltApex nur aus der Fall-Datenbank – mit Gericht, Datum und Aktenzeichen zum Nachprüfen. KI-Texte bleiben Entwürfe zur anwaltlichen Prüfung." },
   { icon: <Eye className="size-4" />, t: "Klar gekennzeichnet", s: "Was die KI erstellt hat, trägt den KI-Schimmer – im Posteingang, in der Akte und in Entwürfen." },
@@ -36,7 +38,7 @@ export function KiTab() {
               <span className={cn("relative inline-flex size-2.5 rounded-full", live ? "bg-[var(--green)]" : "bg-[var(--fg-4)]")} />
             </span>
             <div className="min-w-0 flex-1">
-              <div className="text-[14px] font-semibold">{ai.label}</div>
+              <div className="text-[14px] font-semibold">{QUELLE_NAME[ai.quelle]}</div>
               <div className="text-[12.5px] text-fg-3">
                 {QUELLE_TEXT[ai.quelle]}
                 {live && ai.modell ? ` · Modell ${ai.modell}` : ""}
@@ -54,7 +56,7 @@ export function KiTab() {
             <Zeile
               titel="Präsentationsmodus: Demo-KI verwenden"
               htmlFor="ki-demo"
-              text={nurDemo ? "Derzeit ist keine Claude-Anbindung verfügbar – es läuft automatisch die Demo-KI." : "Für Vorführungen ohne Netz: Die Offline-KI antwortet sofort und sendet keine Daten."}
+              text={nurDemo ? "Derzeit ist keine Claude-Anbindung verfügbar – es läuft automatisch die Demo-KI." : "Für Vorführungen ohne Netz: Die Demo-KI (offline) antwortet sofort und sendet keine Daten."}
               className="pt-4"
             >
               <Switch
@@ -64,7 +66,7 @@ export function KiTab() {
                 onChange={(v) => {
                   ai.setBevorzugeDemo(v);
                   useData.getState().log({ akteur: "nutzer", userId: user.id, text: v ? "Präsentationsmodus (Demo-KI) eingeschaltet" : "Live-KI (Claude) eingeschaltet" });
-                  toast(v ? "Demo-KI aktiv" : "Live-KI aktiv", { text: v ? "Antworten kommen von der Offline-KI." : `Antworten kommen von Claude ${ai.verfuegbar[0] === "artefakt" ? "über die Vorschau-Laufzeit" : "über Ihren Kanzlei-Server"}.`, ton: "ki" });
+                  toast(v ? "Demo-KI aktiv" : "Live-KI aktiv", { text: v ? "Antworten kommen von der Demo-KI (offline)." : `Antworten kommen von Claude ${ai.verfuegbar[0] === "artefakt" ? "über die Vorschau-Laufzeit" : "über Ihren Kanzlei-Server"}.`, ton: "ki" });
                 }}
                 label="Präsentationsmodus: Demo-KI verwenden"
               />
@@ -83,7 +85,7 @@ export function KiTab() {
               ? "Live-Betrieb: Ihr Arbeitsplatz spricht nur mit dem Kanzlei-Server. Er prüft die Berechtigung, sendet die für die Aufgabe nötigen Inhalte (z. B. Sachverhalt und Dokumente einer Akte) an die Anthropic-API, protokolliert die Anfrage ohne Inhalte und begrenzt die Nutzung je Kanzlei."
               : ai.quelle === "artefakt"
                 ? "Vorschau-Betrieb: Anfragen gehen über die Vorschau-Laufzeit an Claude (Anthropic) – ohne Kanzlei-Server. Arbeiten Sie hier nur mit Beispieldaten."
-                : "Demo-Betrieb: Die Offline-KI rechnet vollständig in Ihrem Browser – es werden keine Inhalte an einen KI-Anbieter übertragen."}
+                : "Demo-Betrieb: Die Demo-KI (offline) arbeitet vollständig in Ihrem Browser – es werden keine Inhalte an einen KI-Anbieter übertragen."}
           </p>
           <div className="mt-3 rounded-[14px] bg-[var(--ink-softer)] px-3.5 py-3 text-[12.5px] leading-relaxed text-fg-2">
             <span className="font-semibold text-fg">Vor dem Live-Betrieb:</span> Anthropic verarbeitet Mandatsinhalte als Dienstleister. Erforderlich sind ein Vertrag nach § 43e BRAO (Verschwiegenheit, Zugriff nur soweit nötig) und eine Auftragsverarbeitung nach

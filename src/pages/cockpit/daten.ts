@@ -4,7 +4,7 @@ import { useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { addDays, diffDays, fmtDateShort, fmtEUR, fmtNum, today, wochentagName } from "@/core/dates";
 import { istWerktag } from "@/core/feiertage";
-import { fristenLage, zaehltAlsFrist, type FristenLage } from "@/core/fristenLage";
+import { aktenMitFrist, fristenLage, istKritisch, nachDringlichkeit, zaehltAlsFrist, type FristenLage } from "@/core/fristenLage";
 import type { Akte, Aktivitaet, Bundesland, Frist, FristTyp, Nachricht, User } from "@/core/types";
 
 /** Ziel des 38h-Motors (Stunden je Woche und Kanzlei). */
@@ -40,8 +40,13 @@ export function naechsterWerktag(iso: string, land: Bundesland): string {
 export const TYP_RANG: Record<FristTyp, number> = { notfrist: 0, frist: 1, vorfrist: 2, wiedervorlage: 3, termin: 4 };
 export const TYP_LABEL: Record<FristTyp, string> = { notfrist: "Notfrist", frist: "Frist", vorfrist: "Vorfrist", wiedervorlage: "Wiedervorlage", termin: "Termin" };
 
-export function sortiereFristen(a: Frist, b: Frist) {
-  return a.datum.localeCompare(b.datum) || TYP_RANG[a.typ] - TYP_RANG[b.typ] || (a.uhrzeit ?? "").localeCompare(b.uhrzeit ?? "");
+/** Sortierung wie in der Fristenzählung (src/core/fristenLage.ts): Datum, dann kritische Fristen zuerst. */
+export const sortiereFristen = nachDringlichkeit;
+
+/** Bezeichnung im Satz: „Notfrist“, „nicht verlängerbare Frist“, „Frist“, „Wiedervorlage“ … */
+export function artLabel(f: Frist): string {
+  if (f.typ === "frist" && istKritisch(f)) return "nicht verlängerbare Frist";
+  return TYP_LABEL[f.typ];
 }
 
 /** „heute", „morgen", „Mo, 19. Okt." */
@@ -69,22 +74,29 @@ export interface CockpitDaten {
   user: User;
   team: Map<string, User>;
   akten: Map<string, Akte>;
-  /** Einheitliche Fristenzählung (wie Navigation, Fristenkalender und Assistent) – ohne Vorfristen und Termine. */
+  /** Einheitliche Fristenzählung (wie Navigation, Fristenkalender und Assistent): Fristen getrennt von Wiedervorlagen, Vorfristen, Terminen. */
   lage: FristenLage;
-  /** Liste der Fristenkarte: offen, ≤ nächster Werktag, ohne Termine (inkl. Vorfristen und Wiedervorlagen). */
+  /** Liste der Fristenkarte: offen, ≤ nächster Werktag, ohne Termine (Fristen, Wiedervorlagen und Vorfristen – je mit Typ). */
   bisWerktag: Frist[];
   ueberfaellig: number;
   heuteFaellig: number;
-  notfristenWoche: Frist[]; // Notfristen der nächsten 7 Tage
-  woche: Frist[]; // offene Fristen, heute < datum ≤ heute + 7 (ohne Vorfristen)
+  /** kritische Fristen (Notfrist oder nicht verlängerbar) von heute bis in 7 Tagen */
+  kritischWoche: Frist[];
+  woche: Frist[]; // offene Fristen (Notfristen und Fristen), heute < datum ≤ heute + 7
   kritischste?: Frist;
   posteingang: Nachricht[];
   wartetAufKi: number;
   kiFertig: number;
   eeb: number;
   termine: Frist[];
-  wochenTage: { datum: string; fristen: number; termine: number; notfrist: boolean }[];
+  /** Wochenblick: Fristen und Termine je Werktag; Wiedervorlagen getrennt (nur im Tooltip) */
+  wochenTage: { datum: string; fristen: number; wiedervorlagen: number; termine: number; kritisch: boolean }[];
+  /** Offene Akten mit Frist ≤ 7 Tage (wie Akten-Kennzahl, `aktenMitFrist`), danach Akten mit hoher Priorität */
   handlungsbedarf: { akte: Akte; naechste?: Frist; gruende: { text: string; ton: "seal" | "amber" | "ink" | "violet" | "neutral" }[] }[];
+  /** davon Akten mit Frist ≤ 7 Tage – dieselbe Zahl wie die Akten-Kennzahl „Akten mit Frist ≤ 7 Tage“ */
+  aktenMitFrist: number;
+  /** davon Akten ohne Frist im Fenster, aber mit hoher Priorität */
+  aktenNurPrio: number;
   motor: { stunden: number; tage: number[]; tagLabels: string[]; zuletzt: Aktivitaet[]; euroWoche: number; euroJahr: number };
   finanzen: { offen: number; offenAnzahl: number; ueberfaellig: number; ueberfaelligAnzahl: number; fremdgeld: number; fremdgeldAkten: number; bankOffen: number; aelteste: { id: string; nummer: string; akteId: string; tage: number; betrag: number }[] };
   kiAkte?: Akte;
@@ -137,7 +149,6 @@ export function useCockpitDaten(ansicht: Ansicht): CockpitDaten {
     const heute = today();
     const land = tenant.bundesland;
     const bisTag = naechsterWerktag(heute, land);
-    const in7 = addDays(heute, 7);
     const akten = new Map(aktenArr.map((a) => [a.id, a]));
     const teamMap = new Map(team.map((u) => [u.id, u]));
     const meine = ansicht === "meine";
@@ -150,14 +161,16 @@ export function useCockpitDaten(ansicht: Ansicht): CockpitDaten {
     const ueberfaellig = lage.ueberfaellig.length;
     const heuteFaellig = lage.heute.length;
     const woche = lage.woche;
-    // bei gleichem Datum: Akten mit hoher Priorität zuerst
+    // bei gleichem Datum: kritische Fristen, dann Akten mit hoher Priorität zuerst
     const prio = (f: Frist) => (akten.get(f.akteId)?.prioritaet === "hoch" ? 0 : 1);
-    const nachPrio = (a: Frist, b: Frist) => a.datum.localeCompare(b.datum) || TYP_RANG[a.typ] - TYP_RANG[b.typ] || prio(a) - prio(b);
-    const notfristenWoche = [...lage.notfristenWoche].sort(nachPrio);
+    const nachPrio = (a: Frist, b: Frist) => nachDringlichkeit(a, b) || prio(a) - prio(b);
+    const kritischWoche = [...lage.kritischWoche].sort(nachPrio);
+    // Am dringendsten: Überfälliges, dann heute Fälliges (kritische zuerst), dann kritische Fristen der nächsten 7 Tage, dann die nächste Frist.
     const kritischste =
       [...lage.ueberfaellig].sort(nachPrio)[0] ??
-      notfristenWoche[0] ??
-      [...lage.heute, ...lage.woche].filter((f) => f.typ === "frist").sort(nachPrio)[0];
+      [...lage.heute].sort(nachPrio)[0] ??
+      kritischWoche[0] ??
+      [...lage.woche].sort(nachPrio)[0];
 
     // Posteingang (eingehend, neu)
     const posteingang = nachrichten.filter((n) => n.richtung === "ein" && n.status === "neu").sort((a, b) => b.eingang.localeCompare(a.eingang));
@@ -179,39 +192,47 @@ export function useCockpitDaten(ansicht: Ansicht): CockpitDaten {
       wochenTage.push({
         datum: d,
         fristen: tagF.filter(zaehltAlsFrist).length,
+        wiedervorlagen: tagF.filter((f) => f.typ === "wiedervorlage").length,
         termine: tagF.filter((f) => f.typ === "termin").length,
-        notfrist: tagF.some((f) => f.typ === "notfrist"),
+        kritisch: tagF.some(istKritisch),
       });
       d = naechsterWerktag(d, land);
     }
 
-    // Akten mit Handlungsbedarf
-    const naechsteJeAkte = new Map<string, Frist>();
-    for (const f of [...ohneTermine].sort(sortiereFristen)) if (!naechsteJeAkte.has(f.akteId)) naechsteJeAkte.set(f.akteId, f);
+    // Akten mit Handlungsbedarf: offene Akten mit Frist ≤ 7 Tage (inkl. überfälliger) – dieselbe Hilfsfunktion und Zahl
+    // wie die Akten-Kennzahl „Akten mit Frist ≤ 7 Tage“ –, danach Akten mit hoher Priorität. Wiedervorlagen zählen nicht.
+    const jeAkte = aktenMitFrist(fristen, heute);
     const handlungsbedarf = aktenArr
       .filter((a) => a.status === "offen" && (!meine || a.bearbeiterId === user.id || a.sachbearbeiterId === user.id))
       .map((a) => {
-        const n = naechsteJeAkte.get(a.id);
-        const bald = n && n.datum <= in7 ? n : undefined;
+        const info = jeAkte.get(a.id);
+        const bald = info?.naechste;
         const gruende: CockpitDaten["handlungsbedarf"][number]["gruende"] = [];
         if (bald) {
           const tage = diffDays(heute, bald.datum);
-          const wann = tage < 0 ? `seit ${-tage} T. überfällig` : tage === 0 ? "heute" : tage === 1 ? "morgen" : `in ${tage} Tagen`;
-          gruende.push({ text: `${TYP_LABEL[bald.typ]} ${wann}`, ton: bald.typ === "notfrist" || tage <= 1 ? "seal" : "amber" });
+          const wann = tage < 0 ? `seit ${-tage} ${-tage === 1 ? "Tag" : "Tagen"} überfällig` : tage === 0 ? "heute" : tage === 1 ? "morgen" : `in ${tage} Tagen`;
+          gruende.push({ text: `${TYP_LABEL[bald.typ]} ${wann}`, ton: istKritisch(bald) || tage <= 1 ? "seal" : "amber" });
+          if (info.kritisch && info.kritisch !== bald) {
+            const kt = diffDays(heute, info.kritisch.datum);
+            gruende.push({ text: `${info.kritisch.typ === "notfrist" ? "Notfrist" : "Nicht verlängerbar"} ${kt === 0 ? "heute" : kt === 1 ? "morgen" : `in ${kt} Tagen`}`, ton: "seal" });
+          }
         }
         if (a.prioritaet === "hoch") gruende.push({ text: "Hohe Priorität", ton: "ink" });
-        return { akte: a, naechste: bald, gruende };
+        return { akte: a, naechste: bald, kritisch: !!info?.kritisch, gruende };
       })
       .filter((x) => x.gruende.length > 0)
       .sort((x, y) => {
-        const nx = x.naechste?.typ === "notfrist" ? 0 : 1;
-        const ny = y.naechste?.typ === "notfrist" ? 0 : 1;
-        if (nx !== ny) return nx - ny;
+        // zuerst Akten mit Frist (kritische vorn, dann nach Datum), danach Akten nur mit hoher Priorität
+        const fx = x.naechste ? (x.kritisch ? 0 : 1) : 2;
+        const fy = y.naechste ? (y.kritisch ? 0 : 1) : 2;
+        if (fx !== fy) return fx - fy;
         const dx = x.naechste?.datum ?? "9999";
         const dy = y.naechste?.datum ?? "9999";
         if (dx !== dy) return dx.localeCompare(dy);
         return (x.akte.prioritaet === "hoch" ? 0 : 1) - (y.akte.prioritaet === "hoch" ? 0 : 1);
-      });
+      })
+      .map(({ akte, naechste, gruende }) => ({ akte, naechste, gruende }));
+    const aktenMitFristAnzahl = handlungsbedarf.filter((x) => x.naechste).length;
 
     // 38h-Motor: letzte 7 Tage (wie in der Apex Island)
     const grenze = addDays(heute, -6);
@@ -262,21 +283,28 @@ export function useCockpitDaten(ansicht: Ansicht): CockpitDaten {
       aktenArr.find((a) => a.status === "offen" && a.aktenzeichen.startsWith("142/")) ??
       aktenArr.find((a) => a.status === "offen" && a.prioritaet === "hoch" && !a.kiAnalyse) ??
       aktenArr.find((a) => a.status === "offen" && a.prioritaet === "hoch");
+    // wichtigste offene Frist der Akte: kritische zuerst, dann die nächste (Wiedervorlagen und Vorfristen zählen nicht)
     const kiAkteFrist = kiAkte
-      ? fristen.filter((f) => f.akteId === kiAkte.id && f.status === "offen" && f.typ !== "termin" && f.typ !== "vorfrist").sort((a, b) => TYP_RANG[a.typ] - TYP_RANG[b.typ] || a.datum.localeCompare(b.datum))[0]
+      ? fristen.filter((f) => f.akteId === kiAkte.id && f.status === "offen" && zaehltAlsFrist(f)).sort((a, b) => Number(istKritisch(b)) - Number(istKritisch(a)) || nachDringlichkeit(a, b))[0]
       : undefined;
 
     // ── KI-Tagesbriefing: drei Sätze aus den Daten ──
     const briefing: Satz[] = [];
     {
-      // „fällig" = heute fällig + überfällig, ohne Vorfristen und Termine (wie Badge, Fristen-KPI und Assistent);
-      // Vorfristen werden getrennt genannt.
+      // „fällig" = heute fällig + überfällig; gezählt werden nur Fristen (Notfristen und Fristen) – wie Badge, Fristen-Kennzahl
+      // und Assistent. Wiedervorlagen und Vorfristen werden getrennt genannt: „Heute sind 2 Fristen fällig, dazu 1 Wiedervorlage und 1 Vorfrist.“
       const s: Satz = [];
       const nF = lage.faellig.length;
       const nU = lage.ueberfaellig.length;
+      const nWv = lage.wiedervorlagen.length;
       const nV = lage.vorfristen.length;
       const nW = lage.woche.length;
-      if (nF + nV + nW === 0) {
+      const nWvW = lage.wiedervorlagenWoche.length;
+      const dazu: Teil[] = [];
+      if (nWv > 0) dazu.push({ t: plural(nWv, "Wiedervorlage", "Wiedervorlagen"), ton: "fg" });
+      if (nV > 0) dazu.push({ t: plural(nV, "Vorfrist", "Vorfristen"), ton: "fg" });
+      const dazuTeile = dazu.flatMap((p, k) => (k === 0 ? [p] : [{ t: " und " }, p]));
+      if (nF + nWv + nV + nW + nWvW === 0) {
         s.push({ t: meine ? "Für Sie sind in den nächsten sieben Tagen keine Fristen notiert." : "In den nächsten sieben Tagen sind keine Fristen notiert." });
       } else {
         if (nF > 0) {
@@ -284,27 +312,28 @@ export function useCockpitDaten(ansicht: Ansicht): CockpitDaten {
           s.push({ t: plural(nF, "Frist", "Fristen"), ton: "fg" });
           s.push({ t: " fällig" });
           if (nU > 0) s.push({ t: nU === nF ? (nF === 1 ? " (bereits überfällig)" : " (alle bereits überfällig)") : ` (davon ${fmtNum(nU)} überfällig)`, ton: "seal" });
-          if (nV > 0) s.push({ t: ", dazu " }, { t: plural(nV, "Vorfrist", "Vorfristen"), ton: "fg" });
+          if (dazuTeile.length) s.push({ t: ", dazu " }, ...dazuTeile);
         } else {
           s.push({ t: meine ? "Für Sie ist heute keine Frist fällig" : "Heute ist keine Frist fällig" });
-          if (nV > 0) s.push({ t: ", nur " }, { t: plural(nV, "Vorfrist", "Vorfristen"), ton: "fg" });
+          if (dazuTeile.length) s.push({ t: ", nur " }, ...dazuTeile);
         }
-        if (nW > 0) {
+        if (nW > 0 || nWvW > 0) {
           s.push({ t: ". In den nächsten sieben Tagen " });
-          if (nF > 0) {
-            s.push({ t: nW === 1 ? "folgt " : "folgen " });
-            s.push({ t: nW === 1 ? "eine weitere" : `${fmtNum(nW)} weitere`, ton: "fg" });
+          if (nW > 0) {
+            s.push({ t: nW === 1 ? (nF > 0 ? "folgt " : "steht ") : nF > 0 ? "folgen " : "stehen " });
+            s.push({ t: nF > 0 ? (nW === 1 ? "eine weitere Frist" : `${fmtNum(nW)} weitere Fristen`) : plural(nW, "Frist", "Fristen"), ton: "fg" });
+            if (nWvW > 0) s.push({ t: " und " }, { t: plural(nWvW, "Wiedervorlage", "Wiedervorlagen"), ton: "fg" });
+            if (nF === 0) s.push({ t: " an" });
           } else {
-            s.push({ t: nW === 1 ? "steht " : "stehen " });
-            s.push({ t: plural(nW, "Frist", "Fristen"), ton: "fg" });
-            s.push({ t: " an" });
+            s.push({ t: "stehen keine weiteren Fristen an, nur " }, { t: plural(nWvW, "Wiedervorlage", "Wiedervorlagen"), ton: "fg" });
           }
         }
         if (kritischste) {
           const a = akten.get(kritischste.akteId);
           const ueber = kritischste.datum < heute;
-          s.push({ t: ueber ? " – sofort zu erledigen ist " : " – am dringendsten ist " });
-          s.push({ t: `die ${TYP_LABEL[kritischste.typ]} „${kritischste.titel}“`, ton: kritischste.typ === "notfrist" || ueber ? "seal" : "amber" });
+          const kritisch = istKritisch(kritischste);
+          s.push({ t: ueber ? " – sofort zu erledigen ist " : kritischste.datum === heute ? " – zuerst zu erledigen ist " : " – am dringendsten ist " });
+          s.push({ t: `die ${artLabel(kritischste)} „${kritischste.titel}“`, ton: kritisch || ueber ? "seal" : "amber" });
           if (a) s.push({ t: " in " }, { t: a.aktenzeichen, ton: "ink", href: `/akten/${a.id}?tab=fristen` });
           if (ueber) s.push({ t: ` (fällig seit ${tagLabel(kritischste.datum, heute)})` });
           else if (kritischste.datum === heute) s.push({ t: " (heute fällig)" });
@@ -322,7 +351,7 @@ export function useCockpitDaten(ansicht: Ansicht): CockpitDaten {
         s.push({ t: "Im Posteingang " }, { t: posteingang.length === 1 ? "wartet " : "warten " });
         s.push({ t: plural(posteingang.length, "neue Nachricht", "neue Nachrichten"), ton: "fg" });
         if (kiFertig > 0 && wartetAufKi > 0) {
-          s.push({ t: ` – ${fmtNum(kiFertig)} hat die KI bereits ausgewertet, ` });
+          s.push({ t: ` – bei ${fmtNum(kiFertig)} ist die KI-Analyse fertig, ` });
           s.push({ t: `${fmtNum(wartetAufKi)} ${wartetAufKi === 1 ? "wartet" : "warten"} noch auf die KI-Analyse`, ton: "violet" });
         } else if (wartetAufKi > 0) {
           s.push({ t: " – " }, { t: wartetAufKi === 1 ? "sie wartet noch auf die KI-Analyse" : "alle warten noch auf die KI-Analyse", ton: "violet" });
@@ -354,8 +383,9 @@ export function useCockpitDaten(ansicht: Ansicht): CockpitDaten {
 
     return {
       heute, bisTag, wochenende: bisTag !== addDays(heute, 1), user, team: teamMap, akten,
-      lage, bisWerktag, ueberfaellig, heuteFaellig, notfristenWoche, woche, kritischste,
-      posteingang, wartetAufKi, kiFertig, eeb, termine, wochenTage, handlungsbedarf, motor, finanzen,
+      lage, bisWerktag, ueberfaellig, heuteFaellig, kritischWoche, woche, kritischste,
+      posteingang, wartetAufKi, kiFertig, eeb, termine, wochenTage, handlungsbedarf,
+      aktenMitFrist: aktenMitFristAnzahl, aktenNurPrio: handlungsbedarf.length - aktenMitFristAnzahl, motor, finanzen,
       kiAkte, kiAkteFrist, briefing,
     };
   }, [fristen, aktenArr, nachrichten, aktivitaeten, rechnungen, buchungen, transaktionen, ansicht, user, team, tenant.bundesland]);

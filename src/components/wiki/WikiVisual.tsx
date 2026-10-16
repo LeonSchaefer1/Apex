@@ -199,8 +199,8 @@ function MotorScene() {
           <motion.circle cx="50" cy="50" r="42" stroke="var(--green)" strokeWidth="8" fill="none" strokeLinecap="round" strokeDasharray="264" animate={{ strokeDashoffset: [264, 26] }} transition={{ duration: 2.2, ease: [0.16, 1, 0.3, 1], ...loop }} />
         </svg>
         <div className="text-center">
-          <div className="num text-[22px] font-bold">38 h</div>
-          <div className="text-[10px] text-fg-3">pro Woche</div>
+          <div className="num text-[20px] font-bold">38 Std.</div>
+          <div className="text-[10px] text-fg-3">Ziel pro Woche</div>
         </div>
       </div>
       <div className="flex flex-col gap-2">

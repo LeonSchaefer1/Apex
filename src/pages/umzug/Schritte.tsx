@@ -8,6 +8,7 @@ import { fmtDate, fmtEUR, fmtNum } from "@/core/dates";
 import type { Ansprechpartner, FristTyp, Kontakt } from "@/core/types";
 import { AnimatedNumber, Avatar, Button, Chip, DataTable, Segmented, Select, type ColumnDef } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { festeAnsprechperson } from "@/lib/rollen";
 import { TRENNZEICHEN_NAME, type CsvErgebnis, type DateiInfo } from "./csv";
 import { SYSTEME, ZIELFELDER, normName, type DublettenAktion, type MigZeile, type QuellSystem, type ZielFeld } from "./zuordnung";
 import type { Entitaet, Ergebnis, Fortschritt } from "./uebernahme";
@@ -52,7 +53,7 @@ export function SchrittQuelle({ system, onWahl }: { system: QuellSystem | null; 
           );
         })}
       </div>
-      <p className="mt-4 text-[12.5px] text-fg-3">Ihr Programm ist nicht dabei? Fast jede Kanzleisoftware kann Akten als CSV exportieren – oder Ihr Ansprechpartner übernimmt den Export gemeinsam mit Ihnen.</p>
+      <p className="mt-4 text-[12.5px] text-fg-3">Ihr Programm ist nicht dabei? Fast jede Kanzleisoftware kann Akten als CSV exportieren – oder wir übernehmen den Export gemeinsam mit Ihnen.</p>
     </div>
   );
 }
@@ -505,7 +506,7 @@ export function SchrittUebernahme({
             <Button variant="primary" size="lg" icon={<ArrowRight className="size-4" />} onClick={onStart} data-autofocus>
               Jetzt mit einem Klick übernehmen
             </Button>
-            <p className="max-w-[48ch] text-[12px] text-fg-3">Fristen werden mit Vorfrist (eine Woche vorher) angelegt und als „Migration“ markiert – eine zweite Person prüft und bestätigt sie im Vier-Augen-Prinzip.</p>
+            <p className="max-w-[48ch] text-[12px] text-fg-3">Fristen werden mit Vorfrist (eine Woche vorher) angelegt und als aus dem Umzug übernommen gekennzeichnet – eine zweite Person prüft und bestätigt sie in der Vier-Augen-Kontrolle.</p>
           </div>
         </div>
       )}
@@ -643,9 +644,9 @@ export function SchrittFertig({
       <div className="flex flex-wrap items-center gap-3.5 rounded-[20px] bg-[var(--ink-softer)] p-4">
         <Avatar initialen={ansprechpartner.initialen} size={44} />
         <div className="min-w-0 flex-1">
-          <div className="text-[13.5px] font-semibold">Ihr Ansprechpartner prüft mit Ihnen die ersten Akten</div>
+          <div className="text-[13.5px] font-semibold">{ansprechpartner.name} prüft mit Ihnen die ersten Akten</div>
           <div className="text-[12.5px] text-fg-3">
-            {ansprechpartner.name} · <span className="select-all">{ansprechpartner.telefon}</span> · {ansprechpartner.verfuegbar}
+            {festeAnsprechperson(ansprechpartner)} · <span className="select-all">{ansprechpartner.telefon}</span> · {ansprechpartner.verfuegbar}
           </div>
         </div>
         <Button size="sm" onClick={onTermin}>

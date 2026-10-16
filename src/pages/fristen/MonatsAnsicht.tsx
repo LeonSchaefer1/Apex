@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { CalendarCheck2, ChevronLeft, ChevronRight, ShieldAlert } from "lucide-react";
 import { addDays, daysInMonth, fmtDateLong, fromISO, monatName, wochentagName } from "@/core/dates";
+import { istKritisch } from "@/core/fristenLage";
 import { feiertagAm } from "@/core/feiertage";
 import type { Akte, Bundesland, Frist } from "@/core/types";
 import { Button, Card, Chip, IconButton } from "@/components/ui";
@@ -94,7 +95,7 @@ export function MonatsAnsicht({
               const imM = t.startsWith(monat);
               const istHeute = t === heute;
               const sel = t === auswahl;
-              const notfrist = items.some((f) => f.typ === "notfrist" && f.status === "offen");
+              const notfrist = items.some((f) => f.status === "offen" && istKritisch(f)); // Notfrist oder nicht verlängerbar
               return (
                 <button
                   key={t}

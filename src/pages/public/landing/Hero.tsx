@@ -87,7 +87,7 @@ export function Kennzahlen() {
           ))}
         </ul>
         <p className="mt-3 px-2 text-[11.5px] leading-relaxed text-fg-4">
-          ¹ Zielwert, kein garantiertes Ergebnis – die tatsächliche Ersparnis hängt von Kanzleigröße, Fallzahlen und Abläufen; der 38h-Motor misst sie je Automation. ² 38 Std. × 48 Arbeitswochen × rund 20 € interner Kostensatz je Stunde.
+          ¹ Zielwert, kein garantiertes Ergebnis – die tatsächliche Ersparnis hängt von Kanzleigröße, Fallzahlen und Abläufen; der 38h-Motor misst sie je Automation. ² 38 Std. × 48 Arbeitswochen × ≈ 19,74 € interner Kostensatz je Stunde.
         </p>
       </Reveal>
     </section>

@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router";
 import { motion } from "motion/react";
-import { PanelLeftClose, PanelLeftOpen, Infinity as InfinityIcon } from "lucide-react";
+import { CalendarClock, PanelLeftClose, PanelLeftOpen, Infinity as InfinityIcon } from "lucide-react";
 import { NAV, navFor } from "@/app/nav";
 import { useUI } from "@/store/ui";
 import { useKanzlei } from "@/store/session";
 import { cn } from "@/lib/cn";
 import { AppIcon, Wordmark } from "@/components/Logo";
 import { useMedia } from "@/lib/useMedia";
+import { fmtDate } from "@/core/dates";
 import { useBadges } from "./useBadges";
 
 const GRUPPEN = ["Arbeiten", "Intelligenz", "Kanzlei", "Service"] as const;
@@ -124,14 +125,27 @@ export function Sidebar() {
 
       <div className={cn("px-3 pb-3", kompakt && "px-2")}>
         {!kompakt && (
-          <div className="mb-2 rounded-[16px] bg-ink-softer p-3 text-[12px] leading-snug [@media(max-height:820px)]:hidden">
-            <div className="flex items-center gap-1.5 font-semibold text-fg">
-              <InfinityIcon className="size-4 text-ink" /> Lifetime-Lizenz
-            </div>
-            <div className="mt-0.5 text-fg-3">
-              {tenant.lizenz.arbeitsplaetze} Arbeitsplätze · keine Monatsgebühren
-            </div>
-          </div>
+          <NavLink to="/einstellungen?tab=lizenz" className="mb-2 block rounded-[16px] bg-ink-softer p-3 text-[12px] leading-snug transition-colors hover:bg-ink-soft [@media(max-height:820px)]:hidden">
+            {tenant.status === "test" ? (
+              <>
+                <div className="flex items-center gap-1.5 font-semibold text-fg">
+                  <CalendarClock className="size-4 text-amber" /> {tenant.testBis ? `Testzugang bis ${fmtDate(tenant.testBis)}` : "Testzugang"}
+                </div>
+                <div className="mt-0.5 text-fg-3">
+                  {tenant.lizenz.arbeitsplaetze} Arbeitsplätze · alle Funktionen frei
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-1.5 font-semibold text-fg">
+                  <InfinityIcon className="size-4 text-ink" /> Lifetime-Lizenz
+                </div>
+                <div className="mt-0.5 text-fg-3">
+                  {tenant.lizenz.arbeitsplaetze} Arbeitsplätze · keine Monatsgebühren
+                </div>
+              </>
+            )}
+          </NavLink>
         )}
         {!tablet && (
         <button

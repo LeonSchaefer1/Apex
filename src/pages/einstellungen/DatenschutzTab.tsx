@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { Building, Cloud, DatabaseBackup, FileClock, KeyRound, Lock, MonitorCheck, RotateCcw, Scale, Server, ShieldAlert, ShieldCheck, Users } from "lucide-react";
-import { darfVerwalten, getBackend, getInfo } from "@/lib/backend";
+import { darfVerwalten, getBackend, getInfo, hatBeispieldaten } from "@/lib/backend";
 import { relTime } from "@/core/dates";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei, useSession } from "@/store/session";
@@ -25,20 +25,39 @@ const RECHT = [
   { norm: "§ 50 BRAO", t: "Handakten", s: "Aufbewahrungsfristen werden je Akte vorgemerkt, Löschung erst nach Ablauf und Freigabe." },
 ];
 
+/** Stoppuhren der Abrechnung dieser Kanzlei gehören zum alten Datenstand (Akten-IDs) – nach dem Zurücksetzen verwerfen. */
+function stoppuhrenVerwerfen(tenantId: string) {
+  try {
+    const praefix = `aa:abrechnung:timer:${tenantId}:`;
+    const weg: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k?.startsWith(praefix)) weg.push(k);
+    }
+    weg.forEach((k) => localStorage.removeItem(k));
+  } catch {
+    /* Speicher gesperrt – dann gibt es auch keine gespeicherten Stoppuhren */
+  }
+}
+
 export function DatenschutzTab() {
   const info = getInfo();
-  const { tenant, team, user } = useKanzlei();
+  const demo = info?.modus !== "server";
+  const sitzung = useKanzlei();
+  const { tenant, team, user } = sitzung;
   const darf = darfVerwalten(user.rolle);
+  // „Demo-Daten zurücksetzen“ gibt es nur für Präsentations- und Beispieldaten-Kanzleien – nie für einen echten Datenbestand.
+  const beispiel = hatBeispieldaten(sitzung);
+  const praesentation = sitzung.betrieb?.praesentation ?? demo;
   const akt = useCol("aktivitaeten");
   const [laedt, setLaedt] = useState(false);
-  const demo = info?.modus !== "server";
   const namen = useMemo(() => new Map(team.map((u) => [u.id, u])), [team]);
   const protokoll = useMemo(() => akt.filter((a) => a.akteur === "nutzer" || a.akteur === "system").slice().sort((a, b) => b.zeit.localeCompare(a.zeit)).slice(0, 6), [akt]);
 
   const zuruecksetzen = async () => {
     const ok = await confirmDialog({
       titel: "Demo-Daten zurücksetzen?",
-      text: `Alle Akten, Fristen, Nachrichten, Rechnungen und Aktivitäten dieser Kanzlei werden auf die Beispieldaten zurückgesetzt. Ihre Änderungen gehen dabei verloren.${demo ? " Entfernte Beispiel-Zugänge werden wiederhergestellt." : ""}`,
+      text: `Alle Akten, Fristen, Nachrichten, Rechnungen und Aktivitäten dieser Kanzlei werden auf die Beispieldaten zurückgesetzt. Ihre Änderungen gehen dabei verloren.${praesentation ? " Entfernte Beispiel-Zugänge werden wiederhergestellt." : ""}`,
       bestaetigen: "Zurücksetzen",
       gefahr: true,
     });
@@ -46,11 +65,10 @@ export function DatenschutzTab() {
     setLaedt(true);
     try {
       await useData.getState().reset();
-      if (demo) {
-        // entfernte Beispiel-Zugänge sind wieder da – Team der Sitzung neu laden
-        const s = await getBackend().me();
-        if (s) useSession.getState().setSitzung(s);
-      }
+      stoppuhrenVerwerfen(tenant.id);
+      // entfernte Beispiel-Zugänge sind wieder da – Team der Sitzung neu laden
+      const s = await getBackend().me().catch(() => null);
+      if (s) useSession.getState().setSitzung(s);
       toast("Demo-Daten zurückgesetzt", { text: "Die Beispielkanzlei ist wieder im Ausgangszustand.", ton: "erfolg" });
     } catch (e) {
       toast("Zurücksetzen fehlgeschlagen", { text: e instanceof Error ? e.message : "Bitte erneut versuchen.", ton: "fehler" });
@@ -72,7 +90,7 @@ export function DatenschutzTab() {
           <Hosting icon={<Building className="size-5" />} titel="On-Premise in Ihrer Kanzlei" text="Server in Ihren Räumen oder bei Ihrem IT-Dienstleister. Updates spielen Sie ein, wann Sie wollen." punkte={["Daten verlassen die Kanzlei nicht", "Installation per Docker", "Betrieb auch ohne Internet (außer beA, E-Mail, Bank)"]} aktiv={!demo} />
           <Hosting icon={<Cloud className="size-5" />} titel="Private Cloud in Deutschland" text="Betrieb in einem Rechenzentrum in Deutschland – ohne eigene Server-Wartung." punkte={["Eigene, getrennte Umgebung je Kanzlei", "Verschlüsselte Backups an zwei Standorten", "Zertifizierung nach ISO 27001 / BSI C5 angestrebt"]} />
         </div>
-        {demo && <p className="mt-3 text-[12.5px] text-fg-3">Diese Demo läuft vollständig in Ihrem Browser (IndexedDB) – es werden keine Daten an einen Server übertragen.</p>}
+        {demo && <p className="mt-3 text-[12.5px] text-fg-3">Diese Demo läuft vollständig in Ihrem Browser – es werden keine Daten an einen Server übertragen.</p>}
       </Abschnitt>
 
       <Abschnitt titel="Sicherheit" text="Ziel-Standard für den Produktivbetrieb." icon={<ShieldCheck className="size-[18px]" />}>
@@ -125,28 +143,30 @@ export function DatenschutzTab() {
         <p className="mt-2 text-[12px] text-fg-3">Auszug der letzten Einträge. KI-Anfragen werden ohne Inhalte protokolliert.</p>
       </Abschnitt>
 
-      <section className="relative rounded-[22px] border border-[color-mix(in_oklab,var(--seal)_35%,transparent)] bg-[color-mix(in_oklab,var(--seal-soft)_60%,transparent)] p-5 md:p-6">
-        <div className="flex items-start gap-3">
-          <div className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-seal-soft text-seal">
-            <ShieldAlert className="size-[18px]" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h2 className="title-md">Gefahrenbereich</h2>
-            <p className="mt-0.5 text-[12.5px] leading-relaxed text-fg-3">Aktionen, die sich nicht rückgängig machen lassen.</p>
-          </div>
-        </div>
-        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-[16px] bg-[var(--surface)] p-4 ring-1 ring-[var(--line)]">
-          <div className="min-w-0 flex-1 basis-[220px]">
-            <div className="text-[14px] font-semibold">Demo-Daten zurücksetzen</div>
-            <div className="text-[12.5px] text-fg-3">
-              {darf ? `Setzt alle Daten von ${tenant.kurzname} auf die Beispieldaten zurück – z. B. vor einer Präsentation.` : "Den Datenbestand zurücksetzen dürfen Partner und Administration Ihrer Kanzlei."}
+      {beispiel && (
+        <section className="relative rounded-[22px] border border-[color-mix(in_oklab,var(--seal)_35%,transparent)] bg-[color-mix(in_oklab,var(--seal-soft)_60%,transparent)] p-5 md:p-6">
+          <div className="flex items-start gap-3">
+            <div className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-seal-soft text-seal">
+              <ShieldAlert className="size-[18px]" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h2 className="title-md">Gefahrenbereich</h2>
+              <p className="mt-0.5 text-[12.5px] leading-relaxed text-fg-3">Aktionen, die sich nicht rückgängig machen lassen.</p>
             </div>
           </div>
-          <Button variant="danger" icon={<RotateCcw className="size-4" />} loading={laedt} disabled={!darf} onClick={() => void zuruecksetzen()}>
-            Zurücksetzen
-          </Button>
-        </div>
-      </section>
+          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-[16px] bg-[var(--surface)] p-4 ring-1 ring-[var(--line)]">
+            <div className="min-w-0 flex-1 basis-[220px]">
+              <div className="text-[14px] font-semibold">Demo-Daten zurücksetzen</div>
+              <div className="text-[12.5px] text-fg-3">
+                {darf ? `Setzt alle Daten von ${tenant.kurzname} auf die Beispieldaten zurück – z. B. vor einer Präsentation.` : "Den Datenbestand zurücksetzen dürfen Partner und Administration Ihrer Kanzlei."}
+              </div>
+            </div>
+            <Button variant="danger" icon={<RotateCcw className="size-4" />} loading={laedt} disabled={!darf} onClick={() => void zuruecksetzen()}>
+              Zurücksetzen
+            </Button>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

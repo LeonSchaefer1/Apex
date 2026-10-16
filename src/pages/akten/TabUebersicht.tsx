@@ -4,6 +4,7 @@ import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { BookMarked, CalendarClock, CalendarPlus, ChevronRight, FileText, Globe, Hourglass, Library, NotebookPen, PenLine, ReceiptEuro, Send, StickyNote } from "lucide-react";
 import type { Akte } from "@/core/types";
+import { istKritisch, zaehltAlsFrist } from "@/core/fristenLage";
 import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
 import { fmtDate, fmtDateWd, fmtEUR, nowLocal, relTime, uid } from "@/core/dates";
 import { useCol, useData } from "@/store/data";
@@ -11,7 +12,7 @@ import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
 import { Avatar, Button, Card, CardHeader, Chip, Switch, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { DOK_ART_LABEL, FRIST_TYP_LABEL, FristChip, beruehreAkte, useKontaktMap, useTeam } from "./helfer";
+import { DOK_ART_LABEL, FRIST_TYP_LABEL, FristChip, beruehreAkte, schlagwortAnzeige, useKontaktMap, useTeam } from "./helfer";
 import { DokIcon } from "./TabDokumente";
 
 export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onTab: (t: string) => void; onDok: (id: string) => void; onFrist: () => void }) {
@@ -61,7 +62,8 @@ export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onT
   };
 
   const kennzahlen = [
-    { label: "Offene Fristen", wert: String(offen.length), icon: <CalendarClock className="size-4" />, on: () => onTab("fristen") },
+    // gezählt wie überall (fristenLage): nur Notfristen und Fristen – Wiedervorlagen und Termine stehen in der Liste darunter
+    { label: "Offene Fristen", wert: String(offen.filter(zaehltAlsFrist).length), icon: <CalendarClock className="size-4" />, on: () => onTab("fristen") },
     { label: "Dokumente", wert: String(doks.length), icon: <FileText className="size-4" />, on: () => onTab("dokumente") },
     { label: "Erfasste Zeit", wert: `${(minuten / 60).toLocaleString("de-DE", { maximumFractionDigits: 1 })} Std.`, icon: <Hourglass className="size-4" />, on: undefined },
     { label: "Honorar offen", wert: fmtEUR(honorarOffen), icon: <ReceiptEuro className="size-4" />, on: () => onTab("aktenkonto") },
@@ -126,7 +128,7 @@ export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onT
               <div className="mt-4 flex flex-wrap gap-1.5">
                 {akte.schlagworte.map((s) => (
                   <Chip key={s} tone="outline">
-                    {s}
+                    {schlagwortAnzeige(s)}
                   </Chip>
                 ))}
               </div>
@@ -210,7 +212,7 @@ export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onT
           <Card>
             <CardHeader
               icon={<CalendarClock className="size-4" />}
-              title="Nächste Fristen"
+              title="Nächste Fristen & Termine"
               action={
                 <Button size="sm" variant="ghost" icon={<CalendarPlus className="size-4" />} onClick={onFrist}>
                   Anlegen
@@ -224,7 +226,7 @@ export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onT
                 {offen.slice(0, 4).map((f) => (
                   <li key={f.id}>
                     <button type="button" onClick={() => onTab("fristen")} className="flex w-full items-start gap-3 rounded-[14px] px-2 py-2 text-left transition-colors hover:bg-ink-softer">
-                      <span className={cn("mt-1 size-2 shrink-0 rounded-full", f.typ === "notfrist" ? "bg-seal" : f.typ === "termin" ? "bg-ink" : "bg-[var(--line-strong)]")} />
+                      <span className={cn("mt-1 size-2 shrink-0 rounded-full", istKritisch(f) ? "bg-seal" : f.typ === "termin" ? "bg-ink" : "bg-[var(--line-strong)]")} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[13.5px] font-medium">{f.titel}</span>
                         <span className="block truncate text-[12px] text-fg-3">

@@ -87,7 +87,7 @@ export default function FallDatenbank() {
         eyebrow="Intelligenz"
         title="Fall-Datenbank"
         hilfe="falldb"
-        subtitle="Präzedenzfälle in Sekunden: Rechtsprechung von BGH bis Amtsgericht – nach Sachverhalt, Norm oder Aktenzeichen durchsuchen und mit einem Klick an die Akte heften."
+        subtitle="Präzedenzfälle in Sekunden: Leitentscheidungen von BVerfG, EuGH und Bundesgerichten – nach Sachverhalt, Norm oder Aktenzeichen durchsuchen und mit einem Klick an die Akte heften."
       />
 
       {/* ───────── Suche ───────── */}
@@ -342,13 +342,18 @@ function FilterChip({ aktiv, onClick, children, disabled, title, anzahl }: { akt
 function Uebersicht({ onOpen, onGebiet }: { onOpen: (id: string) => void; onGebiet: (g: string) => void }) {
   const data = useData((s) => s.data);
 
+  // Zuletzt bearbeitete offene Akten – solche mit passenden Entscheidungen zuerst, damit die Karte nicht leer wirkt;
+  // Akten ohne Treffer füllen nur auf (stabile Sortierung: innerhalb der Gruppen bleibt „zuletzt bearbeitet“).
   const fuerAkten = useMemo(() => {
-    const offene = data.akten.filter((a) => a.status === "offen").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 3);
-    return offene.map((akte) => {
-      const treffer = findePraezedenzfaelle(akte, data, 2);
-      const max = treffer[0]?.score ?? 1;
-      return { akte, treffer: treffer.map((t) => ({ ...t, prozent: relevanzProzent(t.score, max) })) };
-    });
+    const neueste = data.akten.filter((a) => a.status === "offen").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 12);
+    return neueste
+      .map((akte) => {
+        const treffer = findePraezedenzfaelle(akte, data, 2);
+        const max = treffer[0]?.score ?? 1;
+        return { akte, treffer: treffer.map((t) => ({ ...t, prozent: relevanzProzent(t.score, max) })) };
+      })
+      .sort((a, b) => Number(b.treffer.length > 0) - Number(a.treffer.length > 0))
+      .slice(0, 3);
   }, [data]);
 
   const gruppen = useMemo(() => {
@@ -450,7 +455,7 @@ function AbschnittKopf({ titel, text }: { titel: string; text?: string }) {
 }
 
 const QUELLEN = [
-  { icon: <Globe className="size-4" />, name: "Open Legal Data", umfang: "≈ 424.000 Entscheidungen aller Instanzen", wie: "REST-API und Bulk-Import in den lokalen Index" },
+  { icon: <Globe className="size-4" />, name: "Open Legal Data", umfang: "≈ 424.000 Entscheidungen aller Instanzen", wie: "Schnittstelle und Massenimport in den lokalen Suchindex" },
   { icon: <Library className="size-4" />, name: "NeuRIS · rechtsprechung-im-internet.de", umfang: "Amtliche Veröffentlichungen der Bundesgerichte", wie: "Regelmäßiger Abgleich neuer Entscheidungen" },
   { icon: <Building2 className="size-4" />, name: "Lizenzierte Verlagsdatenbanken", umfang: "Kommentierte Rechtsprechung und Fachzeitschriften", wie: "Über die bestehenden Lizenzen Ihrer Kanzlei" },
 ];

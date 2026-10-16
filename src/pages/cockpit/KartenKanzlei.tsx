@@ -5,9 +5,11 @@ import { ArrowRight, ArrowRightLeft, Calculator, FolderPlus, Landmark, ReceiptEu
 import { AiChip, AnimatedNumber, Button, Chip, ProgressRing, Sparkline } from "@/components/ui";
 import { useUI } from "@/store/ui";
 import { diffDays, fmtDateShort, fmtNum, relTime, wochentagName } from "@/core/dates";
+import { istKritisch } from "@/core/fristenLage";
 import { cn } from "@/lib/cn";
+import { schlagwortAnzeige } from "@/pages/akten/helfer";
 import { BentoKarte, KartenKopf } from "./Basis";
-import { ZIEL_STUNDEN, euro, type CockpitDaten } from "./daten";
+import { ZIEL_STUNDEN, artLabel, euro, type CockpitDaten } from "./daten";
 
 /** Aktualisiert relative Zeitangaben („vor 3 Min.") regelmäßig. */
 function useJetzt(ms = 30000) {
@@ -26,7 +28,7 @@ export function MotorKarte({ d, i, className }: { d: CockpitDaten; i: number; cl
   const anteil = m.stunden / ZIEL_STUNDEN;
   const erreicht = anteil >= 1;
   return (
-    <BentoKarte i={i} label="38h-Motor: gesparte Zeit diese Woche" className={className}>
+    <BentoKarte i={i} label="38h-Motor: gesparte Zeit in den letzten 7 Tagen" className={className}>
       <KartenKopf icon={<Zap />} ton="green" titel="38h-Motor" unter="Automatisch erledigt · letzte 7 Tage" mehr={{ to: "/automatisierung", label: "Details" }} />
       <div className="relative z-[1] flex items-center gap-4">
         <ProgressRing value={anteil} size={104} stroke={9} color="var(--green)">
@@ -36,7 +38,7 @@ export function MotorKarte({ d, i, className }: { d: CockpitDaten; i: number; cl
           </div>
         </ProgressRing>
         <div className="min-w-0 flex-1">
-          <div className="text-[12px] font-medium text-fg-3">Wert dieser Woche</div>
+          <div className="text-[12px] font-medium text-fg-3">Wert der letzten 7 Tage</div>
           <div className="text-[24px] font-semibold leading-tight tracking-[-0.03em]">
             <AnimatedNumber value={m.euroWoche} format={(n) => euro(n)} />
           </div>
@@ -103,7 +105,7 @@ export function FinanzenKarte({ d, i, className }: { d: CockpitDaten; i: number;
   const f = d.finanzen;
   const anteilUeber = f.offen > 0 ? f.ueberfaellig / f.offen : 0;
   const zeilen = [
-    { icon: <ReceiptEuro className="size-4" />, ton: "ink", label: "Offene Forderungen", wert: f.offen, sub: `${f.offenAnzahl} ${f.offenAnzahl === 1 ? "Rechnung" : "Rechnungen"} gestellt` },
+    { icon: <ReceiptEuro className="size-4" />, ton: "ink", label: "Offene Forderungen", wert: f.offen, sub: `${f.offenAnzahl} ${f.offenAnzahl === 1 ? "Rechnung" : "Rechnungen"} offen` },
     { icon: <AlarmClock className="size-4" />, ton: "seal", label: "Davon überfällig", wert: f.ueberfaellig, sub: `${f.ueberfaelligAnzahl} über dem Zahlungsziel` },
     { icon: <Wallet className="size-4" />, ton: "amber", label: "Fremdgeld zur Weiterleitung", wert: f.fremdgeld, sub: f.fremdgeldAkten ? `${f.fremdgeldAkten} ${f.fremdgeldAkten === 1 ? "Akte" : "Akten"} · § 43a Abs. 7 BRAO` : "Nichts offen · § 43a Abs. 7 BRAO" },
   ] as const;
@@ -142,7 +144,7 @@ export function FinanzenKarte({ d, i, className }: { d: CockpitDaten; i: number;
       </ul>
       {f.aelteste.length > 0 && (
         <div className="relative z-[1] mt-2 border-t border-[var(--line)] pt-2.5">
-          <div className="eyebrow mb-1 px-1 !text-[10.5px]">Am längsten offen</div>
+          <div className="eyebrow mb-1 px-1 !text-[10.5px]">Am längsten überfällig</div>
           <ul className="flex flex-col">
             {f.aelteste.map((r) => {
               const a = d.akten.get(r.akteId);
@@ -151,7 +153,7 @@ export function FinanzenKarte({ d, i, className }: { d: CockpitDaten; i: number;
                   <Link to={`/akten/${r.akteId}`} className="flex items-center gap-2 rounded-[10px] px-1 py-1 text-[12.5px] transition-colors hover:bg-ink-softer">
                     <span className="mono shrink-0 text-fg-2">{r.nummer}</span>
                     <span className="min-w-0 flex-1 truncate text-fg-4">{a?.titel}</span>
-                    <span className="shrink-0 font-medium text-seal">{r.tage} T.</span>
+                    <span className="shrink-0 font-medium text-seal" title={`seit ${r.tage} ${r.tage === 1 ? "Tag" : "Tagen"} überfällig`}>{r.tage}&nbsp;{r.tage === 1 ? "Tag" : "Tage"}</span>
                     <span className="num w-[68px] shrink-0 text-right font-semibold">{euro(r.betrag)}</span>
                   </Link>
                 </li>
@@ -215,25 +217,29 @@ export function KiKarte({ d, i, className }: { d: CockpitDaten; i: number; class
             {a.sachgebiet}
           </Chip>
           {a.schlagworte.slice(0, 3).map((s) => (
-            <Chip key={s} tone="outline" className="!h-[20px] !text-[10.5px] capitalize">
-              {s}
+            <Chip key={s} tone="outline" className="!h-[20px] !text-[10.5px]">
+              {schlagwortAnzeige(s)}
             </Chip>
           ))}
         </div>
         {f && (
-          <div className="mt-3 flex items-start gap-2 rounded-[12px] bg-seal-soft px-2.5 py-2 text-[12px] text-seal">
+          <div className={cn("mt-3 flex items-start gap-2 rounded-[12px] px-2.5 py-2 text-[12px]", istKritisch(f) || tage <= 2 ? "bg-seal-soft text-seal" : "bg-amber-soft text-amber")}>
             <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
             <span className="min-w-0">
               <span className="block font-semibold">{f.titel}</span>
               <span className="block opacity-85">
-                {f.typ === "notfrist" ? "Notfrist" : "Frist"} {tage <= 0 ? "endet heute" : `endet in ${tage} ${tage === 1 ? "Tag" : "Tagen"}`} · {wochentagName(f.datum)}, {fmtDateShort(f.datum)}
+                {(() => {
+                  const l = artLabel(f);
+                  return l.charAt(0).toUpperCase() + l.slice(1);
+                })()}{" "}
+                {tage < 0 ? `seit ${-tage} ${tage === -1 ? "Tag" : "Tagen"} überfällig` : tage === 0 ? "endet heute" : `endet in ${tage} ${tage === 1 ? "Tag" : "Tagen"}`} · {wochentagName(f.datum)}, {fmtDateShort(f.datum)}
               </span>
             </span>
           </div>
         )}
         {!analyse && (
           <ul className="mt-3 grid gap-1.5 text-[12.5px] text-fg-2">
-            {["Erfolgsaussicht in Prozent – mit Begründung", "Passende Präzedenzfälle von BAG bis Amtsgericht", "Risiken, Gegenargumente und nächste Schritte"].map((t) => (
+            {["Erfolgsaussicht in Prozent – mit Begründung", "Passende Präzedenzfälle aus der Fall-Datenbank", "Risiken, Gegenargumente und nächste Schritte"].map((t) => (
               <li key={t} className="flex items-start gap-2">
                 <span className="mt-[5px] size-1.5 shrink-0 rounded-full ai-fill" />
                 <span>{t}</span>

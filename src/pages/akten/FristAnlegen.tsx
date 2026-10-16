@@ -1,12 +1,12 @@
 // „Frist anlegen“: gesetzliche Frist mit Rechenweg (Fristenrechner) oder freie Wiedervorlage / Termin.
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { AlertTriangle, CalendarClock, CalendarPlus, Calculator, Info } from "lucide-react";
+import { AlertTriangle, CalendarClock, CalendarPlus, Calculator, Info, ShieldAlert } from "lucide-react";
 import type { Akte, Bundesland, Frist, FristTyp } from "@/core/types";
-import { FRIST_REGELN, berechneNachRegel, type FristRegel } from "@/core/fristen";
+import { FRIST_REGELN, berechneNachRegel, fristArt, gerichtsortDerAkte, type FristRegel } from "@/core/fristen";
 import { bundeslandName, feiertagAm, istWerktag } from "@/core/feiertage";
-import { fmtDate, fmtDateWd, nowLocal, relDays, today, uid, wochentagName } from "@/core/dates";
-import { useData } from "@/store/data";
+import { fmtDate, fmtDateWd, nowLocal, relDays, schuetzeLeerzeichen, today, uid, wochentagName } from "@/core/dates";
+import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
 import { Button, Chip, Field, Input, Modal, Segmented, Select, Textarea } from "@/components/ui";
@@ -44,6 +44,10 @@ export function FristAnlegen({ akte, open, onClose }: { akte: Akte; open: boolea
   const [ort, setOrt] = useState("");
   const [verantwortlich, setVerantwortlich] = useState(akte.bearbeiterId);
   const [notiz, setNotiz] = useState("");
+  // Feiertage am Gerichtsort laut Akte (§ 222 Abs. 2 ZPO, § 43 Abs. 2 StPO) – sonst Kanzleisitz
+  const kontakte = useCol("kontakte");
+  const gerichtsort = useMemo(() => gerichtsortDerAkte(akte, kontakte), [akte, kontakte]);
+  const land: Bundesland = gerichtsort?.land ?? tenant.bundesland;
 
   useEffect(() => {
     if (!open) return;
@@ -63,15 +67,15 @@ export function FristAnlegen({ akte, open, onClose }: { akte: Akte; open: boolea
   const ergebnis = useMemo(() => {
     if (modus !== "regel" || !/^\d{4}-\d{2}-\d{2}$/.test(ereignis)) return null;
     try {
-      return berechneNachRegel(regelKey, ereignis, tenant.bundesland);
+      return berechneNachRegel(regelKey, ereignis, land, undefined, gerichtsort ? { feiertagsOrt: `Gerichtsort laut Akte: ${gerichtsort.gericht}` } : {});
     } catch {
       return null;
     }
-  }, [modus, regelKey, ereignis, tenant.bundesland]);
+  }, [modus, regelKey, ereignis, land, gerichtsort]);
 
   const freiDatumOk = /^\d{4}-\d{2}-\d{2}$/.test(datum);
-  const freiFeiertag = freiDatumOk ? feiertagAm(datum, tenant.bundesland) : undefined;
-  const freiKeinWerktag = freiDatumOk && !istWerktag(datum, tenant.bundesland);
+  const freiFeiertag = freiDatumOk ? feiertagAm(datum, land) : undefined;
+  const freiKeinWerktag = freiDatumOk && !istWerktag(datum, land);
 
   const kannSpeichern = modus === "regel" ? !!ergebnis : freiDatumOk && !!titel.trim();
 
@@ -153,7 +157,7 @@ export function FristAnlegen({ akte, open, onClose }: { akte: Akte; open: boolea
                   ))}
                 </Select>
               </Field>
-              <Field label={ergebnis?.regel.ereignis ?? "Fristauslösendes Ereignis"} htmlFor="fa-ereignis" hint={ereignis ? `${wochentagName(ereignis)} – dieser Tag zählt nicht mit (§ 187 Abs. 1 BGB).` : undefined}>
+              <Field label={ergebnis?.regel.ereignis ?? "Fristauslösendes Ereignis"} htmlFor="fa-ereignis" hint={ereignis ? `${wochentagName(ereignis)} – der Tag des Ereignisses zählt nicht mit (z. B. § 187 Abs. 1 BGB, § 42 StPO).` : undefined}>
                 <Input id="fa-ereignis" type="date" value={ereignis} onChange={(e) => setEreignis(e.target.value)} />
               </Field>
               <Field label="Bezeichnung (optional)" htmlFor="fa-titel">
@@ -164,7 +168,7 @@ export function FristAnlegen({ akte, open, onClose }: { akte: Akte; open: boolea
                 <Textarea id="fa-notiz" rows={2} value={notiz} onChange={(e) => setNotiz(e.target.value)} placeholder="z. B. Zustellung per beA, eEB abgegeben" />
               </Field>
             </div>
-            <Vorschau ergebnis={ergebnis} land={tenant.bundesland} />
+            <Vorschau ergebnis={ergebnis} land={ergebnis?.land ?? land} />
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3.5">
@@ -248,11 +252,15 @@ function Vorschau({ ergebnis, land }: { ergebnis: (ReturnType<typeof berechneNac
     );
   }
   const d = dringlichkeit(ergebnis.ende);
+  // Rechtsnatur aus der Fristregel: „Notfrist“ nur, wo das Gesetz sie so nennt; nicht verlängerbare Fristen ebenfalls rot
+  const art = fristArt(ergebnis.regel);
   return (
     <div className="rounded-[18px] bg-[var(--surface)] p-4 shadow-[0_0_0_1px_var(--line)]">
       <div className="flex items-center justify-between gap-2">
         <span className="eyebrow !text-[10.5px]">Fristende</span>
-        <Chip tone={ergebnis.regel.typ === "notfrist" ? "seal" : "ink"}>{FRIST_TYP_LABEL[ergebnis.regel.typ]}</Chip>
+        <Chip tone={art.kritisch ? "seal" : "ink"} icon={art.kritisch ? <ShieldAlert className="size-3" /> : undefined} title={art.kurz}>
+          {art.kritisch && ergebnis.regel.typ !== "notfrist" ? "Frist · nicht verlängerbar" : art.label}
+        </Chip>
       </div>
       <motion.div key={ergebnis.ende} initial={{ opacity: 0.2, y: 6, filter: "blur(3px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }} transition={{ type: "spring", stiffness: 520, damping: 34 }}>
           <div className="mt-1 text-[24px] font-semibold tracking-[-0.03em]">{fmtDateWd(ergebnis.ende)}</div>
@@ -279,6 +287,15 @@ function Vorschau({ ergebnis, land }: { ergebnis: (ReturnType<typeof berechneNac
           <AlertTriangle className="mt-px size-3.5 shrink-0" /> {w}
         </div>
       ))}
+      {art.kritisch && (
+        <div className="mt-3 flex gap-2 rounded-[12px] bg-seal-soft p-2.5 text-[12px] text-seal">
+          <ShieldAlert className="mt-px size-3.5 shrink-0" />
+          <span>
+            {art.art && <strong className="font-semibold">{schuetzeLeerzeichen(art.art)} </strong>}
+            {schuetzeLeerzeichen(art.versaeumnis)}
+          </span>
+        </div>
+      )}
       {ergebnis.regel.hinweis && (
         <div className="mt-3 flex gap-2 rounded-[12px] bg-ink-softer p-2.5 text-[12px] text-fg-2">
           <Info className="mt-px size-3.5 shrink-0 text-ink" /> {ergebnis.regel.hinweis}

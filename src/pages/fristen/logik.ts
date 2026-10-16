@@ -25,11 +25,20 @@ export const TYP_META: Record<FristTyp, TypMeta> = {
 
 export const TYP_REIHENFOLGE: FristTyp[] = ["notfrist", "frist", "vorfrist", "wiedervorlage", "termin"];
 
+/** Herkunft einer Frist – eine Tabelle für Fristenkalender, Akten-Reiter und Filter-Chips. */
 export const QUELLE_LABEL: Record<Frist["quelle"], string> = {
-  ki: "KI",
-  automatisch: "automatisch",
-  manuell: "manuell",
-  migration: "Migration",
+  ki: "Von KI erkannt",
+  automatisch: "Automatisch angelegt",
+  manuell: "Von Hand eingetragen",
+  migration: "Aus Umzug",
+};
+
+/** Erläuterung der Herkunft (Tooltip). */
+export const QUELLE_TITEL: Record<Frist["quelle"], string> = {
+  ki: "Von der KI im Dokument erkannt – berechnet mit dem Fristenrechner",
+  automatisch: "Automatisch angelegt (z. B. Vorfrist, Automation des 38h-Motors)",
+  manuell: "Von Hand eingetragen",
+  migration: "Aus der Altsoftware übernommen – Datum laut Altsystem, bitte mit dem Fristenrechner nachrechnen",
 };
 
 /**
@@ -42,9 +51,17 @@ export function brauchtKontrolle(f: Frist): boolean {
   return f.status === "offen" && (f.typ === "notfrist" || f.typ === "frist") && !f.kontrolliertVon;
 }
 
-/** Von der KI erkannte Frist, die noch nicht kontrolliert ist – Anzeige „Ungeprüft“, zählt in „Unkontrolliert“. */
+/**
+ * Von der KI erkannte oder aus der Altsoftware übernommene Frist, die noch nicht kontrolliert ist – eine Teilmenge
+ * von `brauchtKontrolle` (die Kachel „Vier-Augen-Kontrolle offen“ nennt sie als „davon … von der KI erkannt / aus Umzug“).
+ */
 export function istUngeprueft(f: Frist): boolean {
-  return f.quelle === "ki" && brauchtKontrolle(f);
+  return (f.quelle === "ki" || f.quelle === "migration") && brauchtKontrolle(f);
+}
+
+/** Unterliegt der Vier-Augen-Kontrolle (Notfrist oder Frist) – unabhängig davon, ob sie schon bestätigt ist. */
+export function unterliegtKontrolle(f: Frist): boolean {
+  return f.typ === "notfrist" || f.typ === "frist";
 }
 
 /** Darf diese Person die Kontrolle bestätigen? Nie die verantwortliche Person selbst (keine Selbstkontrolle). */

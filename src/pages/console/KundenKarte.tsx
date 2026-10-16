@@ -7,6 +7,7 @@ import type { ConsoleKunde } from "@/lib/backend";
 import type { Tenant, User } from "@/core/types";
 import { cn } from "@/lib/cn";
 import { DEMO_IDS, DEMO_NUTZER_IDS, testStatus } from "./helfer";
+import { rollenLabel } from "@/lib/rollen";
 
 const STATUS: Record<NonNullable<Tenant["status"]>, { label: string; ton: "amber" | "green" | "seal" | "ink" }> = {
   test: { label: "Test", ton: "ink" },
@@ -14,7 +15,6 @@ const STATUS: Record<NonNullable<Tenant["status"]>, { label: string; ton: "amber
   pausiert: { label: "Pausiert", ton: "seal" },
 };
 
-const ROLLE: Record<User["rolle"], string> = { partner: "Partner/in", anwalt: "Anwalt/Anwältin", refa: "Fachangestellte/r", admin: "Admin" };
 
 export interface KartenAktionen {
   status: (k: ConsoleKunde, s: Tenant["status"]) => void;
@@ -110,7 +110,7 @@ export function KundenKarte({ k, i, aktionen, beschaeftigt }: { k: ConsoleKunde;
                 <Avatar initialen={u.initialen} farbe={u.farbe} size={28} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[13px] font-medium">
-                    {u.name} <span className="font-normal text-fg-4">· {ROLLE[u.rolle]}</span>
+                    {u.name} <span className="font-normal text-fg-4">· {rollenLabel(u)}</span>
                   </span>
                   <span className="flex min-w-0 items-center gap-1 text-[12px] text-fg-3">
                     <Mail className="size-3 shrink-0" />

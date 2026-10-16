@@ -180,8 +180,8 @@ export default function Umzug() {
       <PageHeader
         title="Umzug"
         hilfe="umzug"
-        eyebrow="One-Klick-Migration"
-        subtitle="Wechseln Sie mit einem Klick: Akten, Kontakte und Fristen ziehen mit um – mit Vorschau, Dublettenprüfung, Plausibilitätsprüfung und Vier-Augen-Kontrolle der Fristen."
+        eyebrow="Umzug mit einem Klick"
+        subtitle="Akten, Kontakte und Fristen aus Ihrer bisherigen Software ziehen mit einem Klick um – mit Vorschau, Dublettenprüfung, Plausibilitätsprüfung und Vier-Augen-Kontrolle der Fristen."
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
@@ -230,7 +230,7 @@ export default function Umzug() {
                     ergebnis={ergebnis}
                     ansprechpartner={ap}
                     systemName={name}
-                    onFristen={() => nav("/fristen?filter=kontrolle")}
+                    onFristen={() => nav("/fristen?filter=kontrolle&quelle=migration")}
                     onAkten={() => nav("/akten")}
                     onTermin={() => {
                       useData.getState().log({ akteur: "nutzer", userId: user.id, text: `Durchsicht des Umzugs mit ${ap.name} angefragt` });
@@ -286,7 +286,7 @@ export default function Umzug() {
               ))}
             </ul>
             <div className="mt-4 border-t border-[var(--line)] pt-3">
-              <div className="eyebrow mb-2">Gemeinsam mit Ihrem Ansprechpartner</div>
+              <div className="eyebrow mb-2">Gemeinsam mit {ap.name}</div>
               <ul className="grid grid-cols-1 gap-2 text-[12.5px] text-fg-3">
                 {["Dokumente der E-Akte im Volltext", "Aktenkonten, offene Posten und Fremdgeld", "beA-Postfach und E-Mail-Konten"].map((t) => (
                   <li key={t} className="flex gap-2.5">

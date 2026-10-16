@@ -8,7 +8,10 @@ RUN npm run build
 
 FROM node:22-alpine
 WORKDIR /app
+# Zeitzone der Kanzlei: „heute“, Fristen und Tageswechsel der Beispieldaten richten sich nach deutscher Ortszeit.
+RUN apk add --no-cache tzdata
 ENV NODE_ENV=production \
+    TZ=Europe/Berlin \
     PORT=8787 \
     DATABASE_PATH=/data/anwaltapex.db \
     STATIC_DIR=/app/dist

@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import type { Akte, AktenPhase, Dokument, Frist, FristTyp, Kontakt, Sachgebiet, User } from "@/core/types";
 import { fristDringlichkeit } from "@/core/fristen";
+import { fristenJeAkte } from "@/core/fristenLage";
 import { addDays, diffDays, nowLocal, relDays, today } from "@/core/dates";
 import { istWerktag } from "@/core/feiertage";
 import type { Bundesland } from "@/core/types";
@@ -87,8 +88,24 @@ export const QUELLE_LABEL: Record<Dokument["quelle"], string> = {
   upload: "Hochgeladen",
   generiert: "Automatisch erstellt",
   scan: "Scan",
-  migration: "Migration",
+  migration: "Aus Umzug",
 };
+
+const ABKUERZUNGEN: Record<string, string> = { kschg: "KSchG", bgb: "BGB", zpo: "ZPO", stpo: "StPO", owig: "OWiG", stgb: "StGB", rvg: "RVG", rsv: "RSV", vob: "VOB", agb: "AGB", gmbh: "GmbH", bea: "beA", eeb: "eEB" };
+
+/** Kleingeschriebene Wörter in Schlagworten (Verben, Präpositionen, Artikel). */
+const KLEIN = new Set(["und", "oder", "wegen", "gegen", "mit", "ohne", "von", "vom", "zur", "zum", "der", "die", "das", "des", "dem", "den", "im", "in", "auf", "bei", "nach", "kürzt", "fehlt", "droht"]);
+
+/**
+ * Schlagwort für die Anzeige (gespeichert sind sie klein für die Suche): Wörter groß – „fristlose kündigung“ →
+ * „Fristlose Kündigung“ –, Präpositionen/Verben klein, bekannte Abkürzungen richtig („kschg“ → „KSchG“).
+ */
+export function schlagwortAnzeige(s: string): string {
+  return s
+    .split(/(\s+|-)/)
+    .map((w, i) => ABKUERZUNGEN[w.toLowerCase()] ?? (i > 0 && KLEIN.has(w.toLowerCase()) ? w : w.charAt(0).toLocaleUpperCase("de-DE") + w.slice(1)))
+    .join("");
+}
 
 /** Ampel einer Frist als Chip-Ton und Klartext. */
 export function dringlichkeit(datum: string): { tone: Tone; label: string; stufe: ReturnType<typeof fristDringlichkeit> } {
@@ -112,18 +129,13 @@ export function FristChip({ datum, className }: { datum: string; className?: str
   );
 }
 
-/** Nächste offene Frist je Akte (ohne Vorfristen). */
+/**
+ * Nächste offene Frist je Akte (Notfrist oder Frist, überfällige zuerst) – dieselbe Zählweise wie die Kennzahl
+ * „Akten mit Frist ≤ 7 Tage“ (src/core/fristenLage.ts). Wiedervorlagen, Vorfristen und Termine zählen nicht.
+ */
 export function useNaechsteFristen(): Map<string, Frist> {
   const fristen = useCol("fristen");
-  return useMemo(() => {
-    const m = new Map<string, Frist>();
-    for (const f of fristen) {
-      if (f.status !== "offen" || f.typ === "vorfrist") continue;
-      const cur = m.get(f.akteId);
-      if (!cur || f.datum < cur.datum) m.set(f.akteId, f);
-    }
-    return m;
-  }, [fristen]);
+  return useMemo(() => new Map([...fristenJeAkte(fristen)].map(([id, x]) => [id, x.naechste])), [fristen]);
 }
 
 export function useKontaktMap(): Map<string, Kontakt> {

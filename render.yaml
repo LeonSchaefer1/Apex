@@ -15,6 +15,11 @@ services:
         value: /data/anwaltapex.db
       - key: COOKIE_SECURE
         value: "true"
+      # Render setzt einen Reverse Proxy davor: Client-IP für die Anmeldebegrenzung aus X-Forwarded-For lesen
+      - key: TRUST_PROXY
+        value: "true"
+      - key: TZ
+        value: Europe/Berlin
       - key: DEMO_QUICK_LOGIN
         value: "true"
       - key: CONSOLE_ADMIN_EMAIL
@@ -25,3 +30,13 @@ services:
         sync: false
       - key: AI_MODEL
         value: claude-opus-5-5
+      # Live-KI auch für die Präsentationskanzleien (öffentliche Demo-Zugangsdaten) – „off“ schaltet sie dort ab
+      - key: AI_DEMO_TENANTS
+        value: "on"
+      # Tageskontingente der Live-KI (0 = unbegrenzt)
+      - key: AI_DAILY_REQUESTS_PER_TENANT
+        value: "300"
+      - key: AI_DAILY_TOKENS_PER_TENANT
+        value: "2000000"
+      - key: AI_DAILY_TOKENS_TOTAL
+        value: "8000000"

@@ -203,7 +203,7 @@ export function Sammelabrechnung({ open, onClose, onAnsehen }: { open: boolean; 
                         initial={{ scale: 0 }}
                         animate={{ scale: 1 }}
                         transition={{ delay: 0.25 + Math.min(i, 10) * 0.06, type: "spring", stiffness: 600, damping: 20 }}
-                        className="grid size-6 shrink-0 place-items-center rounded-full bg-green text-white"
+                        className="grid size-6 shrink-0 place-items-center rounded-full bg-green text-[var(--on-green)]"
                       >
                         <Check className="size-3.5" strokeWidth={3} />
                       </motion.span>

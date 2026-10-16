@@ -6,7 +6,7 @@ import type { WikiArtikel } from "@/content/wiki";
 import { WikiVisualScene } from "./WikiVisual";
 import { cn } from "@/lib/cn";
 
-/** Animiertes Wiki: Schritte laufen wie Stories automatisch ab – jederzeit anhalten, vor und zurück. */
+/** Animiertes Wiki: Schritte laufen nacheinander von selbst ab – jederzeit anhalten, vor und zurück. */
 export function WikiPlayer({ artikel, kompakt, onNavigate }: { artikel: WikiArtikel; kompakt?: boolean; onNavigate?: () => void }) {
   const [i, setI] = useState(0);
   const [pause, setPause] = useState(false);

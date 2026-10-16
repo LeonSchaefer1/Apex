@@ -12,6 +12,7 @@ import { berechneRvg, fassungFuerAuftrag } from "@/core/rvg";
 import type { Akte, Buchung, Dokument, Kontakt, Tenant, User } from "@/core/types";
 import { useIsMobile } from "@/lib/useMedia";
 import { cn } from "@/lib/cn";
+import { kopiereText } from "@/lib/zwischenablage";
 import { fmtEURkompakt, fmtProzent, parseBetrag } from "./lib";
 import { niceTicks } from "./UmsatzChart";
 import { Anschrift, Briefkopf, TabKopf, useLookups, useMeasure } from "./ui";
@@ -880,12 +881,10 @@ function Forderungsaufstellung({
       .join("\n");
 
   const kopieren = async () => {
-    try {
-      await navigator.clipboard.writeText(textFassung());
-      toast("In Zwischenablage kopiert", { text: "Forderungsaufstellung als Text", ton: "erfolg" });
-    } catch {
-      toast("Kopieren nicht möglich", { text: "Ihr Browser erlaubt hier keinen Zugriff auf die Zwischenablage.", ton: "warnung" });
-    }
+    const r = await kopiereText(textFassung(), document.getElementById("forderungsaufstellung-text"));
+    if (r === "kopiert") toast("In Zwischenablage kopiert", { text: "Forderungsaufstellung als Text", ton: "erfolg" });
+    else if (r === "markiert") toast("Text markiert – jetzt Strg/⌘+C", { text: "Die Zwischenablage ist hier gesperrt. Die Aufstellung ist markiert und lässt sich direkt kopieren.", ton: "info" });
+    else toast("Kopieren nicht möglich", { text: "Ihr Browser erlaubt hier keinen Zugriff auf die Zwischenablage.", ton: "warnung" });
   };
 
   const ablegen = () => {
@@ -937,7 +936,7 @@ function Forderungsaufstellung({
           </Button>
         </div>
       )}
-      <div className="paper px-5 py-6 sm:px-10 sm:py-9">
+      <div id="forderungsaufstellung-text" className="paper px-5 py-6 sm:px-10 sm:py-9">
         <Briefkopf tenant={tenant} absenderZeile={false} />
         <div className="mt-6 text-[19px] font-semibold tracking-[-0.02em]">Forderungsaufstellung</div>
         <div className="mt-0.5 text-[12px] opacity-65">zum Antrag auf Zwangsvollstreckung · Stand {fmtDateLong(stichtag)}</div>

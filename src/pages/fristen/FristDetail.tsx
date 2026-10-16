@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router";
 import { CalendarClock, Clock, FolderOpen, MapPin, ShieldAlert } from "lucide-react";
-import { fmtDateShort, fmtDateWd, relDays, wochentagName, fmtDateLong } from "@/core/dates";
+import { fmtDateShort, fmtDateWd, relDays, schuetzeLeerzeichen, wochentagName, fmtDateLong } from "@/core/dates";
 import { fristArtZu } from "@/core/fristen";
 import type { Akte, Frist, User } from "@/core/types";
 import { Avatar, Button, Drawer } from "@/components/ui";
@@ -122,8 +122,8 @@ function DetailInhalt({ f, akte, team, user, onClose }: { f: Frist; akte?: Akte;
         <p className={cn("flex gap-2 rounded-[14px] p-3 text-[12.5px] leading-relaxed", kritisch ? "bg-seal-soft text-seal" : "bg-[var(--ink-softer)] text-fg-2")}>
           <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
           <span>
-            {art.art && <strong className="font-semibold">{art.art} </strong>}
-            {art.versaeumnis}
+            {art.art && <strong className="font-semibold">{schuetzeLeerzeichen(art.art)} </strong>}
+            {schuetzeLeerzeichen(art.versaeumnis)}
           </span>
         </p>
       )}

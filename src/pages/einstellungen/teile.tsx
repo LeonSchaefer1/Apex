@@ -36,4 +36,4 @@ export function Abschnitt({ titel, text, icon, children, aktion, className }: { 
   );
 }
 
-export const ROLLEN_LABEL: Record<string, string> = { partner: "Partner/in", anwalt: "Anwalt/Anwältin", refa: "ReFa", admin: "Administration" };
+export { ROLLE_AUSWAHL as ROLLEN_LABEL } from "@/lib/rollen";

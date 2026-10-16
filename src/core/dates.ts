@@ -107,29 +107,42 @@ export function relDays(iso: ISODate, ref: ISODate = today()): string {
   return `vor ${-n} Tagen`;
 }
 
+/**
+ * Relative Zeitangabe: „gerade eben“, „vor 12 Min.“, ab 60 Min. „vor 1 Std.“, ab 24 Std. nach Kalendertagen
+ * („gestern“, „vor 3 Tagen“), danach das Datum. Zukünftige Zeitpunkte: „heute, 14:00“ bzw. Datum.
+ */
 export function relTime(isoDateTime: string, now = Date.now()): string {
-  const diff = Math.round((now - new Date(isoDateTime).getTime()) / 1000);
+  const t = new Date(isoDateTime);
+  const diff = Math.round((now - t.getTime()) / 1000);
   if (diff < -60) {
-    const d = new Date(isoDateTime);
-    return new Date(now).toDateString() === d.toDateString() ? `heute, ${fmtTime(isoDateTime)}` : fmtDate(isoDateTime.slice(0, 10));
+    return new Date(now).toDateString() === t.toDateString() ? `heute, ${fmtTime(isoDateTime)}` : fmtDate(isoDateTime.slice(0, 10));
   }
   if (diff < 45) return "gerade eben";
-  if (diff < 3600) return `vor ${Math.max(1, Math.round(diff / 60))} Min.`;
-  if (diff < 86400) return `vor ${Math.round(diff / 3600)} Std.`;
-  const days = Math.round(diff / 86400);
+  const min = Math.max(1, Math.round(diff / 60));
+  if (min < 60) return `vor ${min} Min.`;
+  const std = Math.round(diff / 3600);
+  // ab einem Tag nach Kalendertagen (Ortszeit), damit „gestern“ auch wirklich gestern ist
+  const tag = (d: Date) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  const days = Math.round((tag(new Date(now)) - tag(t)) / 86400000);
+  if (std < 24 || days < 1) return `vor ${Math.min(std, 23)} Std.`;
   if (days === 1) return "gestern";
   if (days < 7) return `vor ${days} Tagen`;
-  return fmtDate(new Date(isoDateTime).toISOString().slice(0, 10));
+  return fmtDate(toLocalISO(t).slice(0, 10));
 }
 
+/** 1.234,50 € – negative Beträge mit typografischem Minus (U+2212) statt Bindestrich: „−423,80 €“. */
 export function fmtEUR(n: number, opts: { cents?: boolean } = {}): string {
   const cents = opts.cents ?? true;
+  // −0,00 € vermeiden: Beträge, die auf 0 gerundet werden, ohne Vorzeichen
+  const wert = Math.abs(n) < (cents ? 0.005 : 0.5) ? 0 : n;
   return new Intl.NumberFormat("de-DE", {
     style: "currency",
     currency: "EUR",
     minimumFractionDigits: cents ? 2 : 0,
     maximumFractionDigits: cents ? 2 : 0,
-  }).format(n);
+  })
+    .format(wert)
+    .replace(/^-/, "\u2212");
 }
 
 export function fmtNum(n: number, digits = 0): string {
@@ -153,4 +166,15 @@ export function nowLocal(): string {
 export function uid(prefix = "id"): string {
   const r = Math.random().toString(36).slice(2, 8);
   return `${prefix}-${Date.now().toString(36)}${r}`;
+}
+
+const NBSP = " ";
+/**
+ * Geschützte Leerzeichen für Fließtexte, damit nichts unglücklich umbricht: „§ 4“, „§§ 187 ff.“, „Abs. 1“, „Nr. 3305“,
+ * „S. 2“, „Art. 28“ sowie Zahl und Einheit („38 Std.“, „20 €“, „7 Tage“, „99 %“, „45 Min.“).
+ */
+export function schuetzeLeerzeichen(text: string): string {
+  return text
+    .replace(/(§§?|Abs\.|Nr\.|Nrn\.|S\.|Art\.|Hs\.|Anm\.|Vorbem\.) (?=\d)/g, `$1${NBSP}`)
+    .replace(/(\d) (?=(?:€|%|Std\.|Min\.|Tage?n?\b|Wochen?\b|Monate?n?\b|Jahre?n?\b|ff\.|VV\b|RVG\b|ZPO\b|BGB\b|StPO\b|KSchG\b|OWiG\b|ArbGG\b|VwGO\b|BRAO\b))/g, `$1${NBSP}`);
 }

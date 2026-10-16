@@ -102,7 +102,7 @@ export async function leseDatei(file: File): Promise<{ text: string; kodierung: 
   if (/\.(xlsx|xls|xlsm|ods)$/.test(name)) {
     throw new Error("Excel-Arbeitsmappen bitte zuerst in Excel über „Speichern unter → CSV (Trennzeichen-getrennt)“ als CSV speichern und dann hier hochladen.");
   }
-  if (file.size > MAX_DATEI_MB * 1024 * 1024) throw new Error(`Die Datei ist größer als ${MAX_DATEI_MB} MB. Bitte teilen Sie den Export auf – oder Ihr Ansprechpartner übernimmt ihn für Sie.`);
+  if (file.size > MAX_DATEI_MB * 1024 * 1024) throw new Error(`Die Datei ist größer als ${MAX_DATEI_MB} MB. Bitte teilen Sie den Export auf – oder wir übernehmen ihn gemeinsam mit Ihnen.`);
   const buf = await file.arrayBuffer();
   try {
     // ignoreBOM: true behält ein BOM im Text – parseCsv erkennt und entfernt es

@@ -4,7 +4,7 @@ import { Link } from "react-router";
 import { motion } from "motion/react";
 import { Archive, CalendarPlus, Check, CircleDot, CircleHelp, Copy, FolderOpen, Globe, Lock, Mail, MoreHorizontal, PauseCircle, PlayCircle, Sparkles } from "lucide-react";
 import type { Akte, AktenPhase, Frist } from "@/core/types";
-import { zaehltAlsFrist } from "@/core/fristenLage";
+import { istKritisch, zaehltAlsFrist } from "@/core/fristenLage";
 import { fmtDate, fmtEUR, nowLocal, today } from "@/core/dates";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
@@ -14,19 +14,34 @@ import { cn } from "@/lib/cn";
 import { KontaktAvatar, kopiere } from "@/pages/kontakte/kontaktHelfer";
 import { DECKUNG_INFO, PHASEN, PRIO_INFO, SACHGEBIET_ICON, STATUS_INFO, SachgebietChip, useKontaktMap, useTeam } from "./helfer";
 
-/** Offene Einträge einer Akte – gezählt nach `zaehltAlsFrist` (Notfristen, Fristen, Wiedervorlagen), Termine getrennt. */
-export function offeneEintraege(akteId: string, fristen: Frist[]): { fristen: number; notfristen: number; termine: number } {
-  const offen = fristen.filter((f) => f.akteId === akteId && f.status === "offen");
-  const echte = offen.filter(zaehltAlsFrist);
-  return { fristen: echte.length, notfristen: echte.filter((f) => f.typ === "notfrist").length, termine: offen.filter((f) => f.typ === "termin").length };
+export interface OffeneEintraege {
+  /** Notfristen und Fristen (`zaehltAlsFrist`) */
+  fristen: number;
+  /** davon kritisch: Notfrist oder nicht verlängerbar (`istKritisch`) */
+  notfristen: number;
+  wiedervorlagen: number;
+  termine: number;
 }
 
-/** „noch 2 offene Fristen (davon 1 Notfrist) und 1 Termin“ – leer, wenn nichts offen ist. */
-export function offeneEintraegeText(o: { fristen: number; notfristen: number; termine: number }): string {
+/** Offene Einträge einer Akte – Fristen (Notfristen und Fristen), Wiedervorlagen und Termine getrennt gezählt (wie fristenLage). */
+export function offeneEintraege(akteId: string, fristen: Frist[]): OffeneEintraege {
+  const offen = fristen.filter((f) => f.akteId === akteId && f.status === "offen");
+  const echte = offen.filter(zaehltAlsFrist);
+  return {
+    fristen: echte.length,
+    notfristen: echte.filter(istKritisch).length,
+    wiedervorlagen: offen.filter((f) => f.typ === "wiedervorlage").length,
+    termine: offen.filter((f) => f.typ === "termin").length,
+  };
+}
+
+/** „2 offene Fristen (davon 1 nicht verlängerbar), 1 Wiedervorlage und 1 offener Termin“ – leer, wenn nichts offen ist. */
+export function offeneEintraegeText(o: OffeneEintraege): string {
   const teile: string[] = [];
-  if (o.fristen) teile.push(`${o.fristen} offene ${o.fristen === 1 ? "Frist" : "Fristen"}${o.notfristen ? ` (davon ${o.notfristen} ${o.notfristen === 1 ? "Notfrist" : "Notfristen"})` : ""}`);
+  if (o.fristen) teile.push(`${o.fristen} offene ${o.fristen === 1 ? "Frist" : "Fristen"}${o.notfristen ? ` (davon ${o.notfristen} nicht verlängerbar)` : ""}`);
+  if (o.wiedervorlagen) teile.push(`${o.wiedervorlagen} ${o.wiedervorlagen === 1 ? "offene Wiedervorlage" : "offene Wiedervorlagen"}`);
   if (o.termine) teile.push(`${o.termine} ${o.termine === 1 ? "offener Termin" : "offene Termine"}`);
-  return teile.join(" und ");
+  return teile.length > 1 ? `${teile.slice(0, -1).join(", ")} und ${teile[teile.length - 1]}` : teile.join("");
 }
 
 /** Schließt eine Akte ohne Rückfrage ab: Status, Phase, Datum und Protokoll (Archivierung, Aufbewahrung nach § 50 BRAO). */

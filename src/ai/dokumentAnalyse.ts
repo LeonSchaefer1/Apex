@@ -3,7 +3,8 @@ import { berechneFestesEnde, berechneFrist, berechneNachRegel, FRIST_REGELN, ger
 import { bundeslandAusGericht } from "@/core/feiertage";
 import { fmtDate, today, addDays, addMonthsBGB, wochentagName } from "@/core/dates";
 import { normalize } from "@/core/search";
-import type { Bundesland, FristTyp, ISODate, KiVorschlag, Nachricht, TenantData, DokumentArt } from "@/core/types";
+import type { Bundesland, FristTyp, ISODate, Kontakt, KiVorschlag, Nachricht, TenantData, DokumentArt } from "@/core/types";
+import { mandantBezeichnung } from "@/lib/rollen";
 import { DemoModus, llmJson, aktuelleQuelle } from "./llm";
 import type { KiQuelle } from "./status";
 
@@ -90,15 +91,16 @@ export function findeAkte(text: string, data: TenantData, hinweise: string[] = [
       // eindeutig, wenn der Mandant nur diese eine offene Akte hat – sonst entscheiden die übrigen Merkmale mit
       const eindeutig = aktenDes("mandantId", mandant.id).length === 1;
       s += eindeutig ? 0.95 : 0.55;
-      gruende.push(`Absender ${von} ist Mandant ${mandant.name}`);
+      gruende.push(`Absenderadresse ${von} (${mandantBezeichnung(mandant)} ${mandant.name})`);
     } else if (gegenseite) {
       const eindeutig = aktenDes(gegenseite, a[gegenseite]!).length === 1;
       s += eindeutig ? 0.9 : 0.35;
-      gruende.push(`Absender ${von} ist ${gegenseite === "gegnerId" ? "Gegner" : "Gegenseite"} ${data.kontakte.find((k) => k.id === a[gegenseite])?.name ?? ""}`.trim());
+      const name = data.kontakte.find((k) => k.id === a[gegenseite])?.name;
+      gruende.push(`Absenderadresse ${von}${name ? ` (${gegenseite === "gegnerId" ? "Gegner" : "Gegenseite"} ${name})` : ""}`);
     }
     if (mandant && norm.includes(normalize(mandant.name))) {
       s += vomMandanten ? 0.03 : 0.62;
-      if (!vomMandanten) gruende.push(`Mandant ${mandant.name}`);
+      if (!vomMandanten) gruende.push(`${mandantBezeichnung(mandant)} ${mandant.name}`);
     } else if (mandant?.nachname && new RegExp(`\\b${normalize(mandant.nachname)}\\b`).test(norm)) {
       s += vomMandanten ? 0.02 : 0.38;
       if (!vomMandanten) gruende.push(`Name ${mandant.nachname}`);
@@ -168,6 +170,77 @@ function zusammenfassen(text: string, max = 2): string {
   let out = top.map((o) => (o.x.length > 260 ? o.x.slice(0, 257) + "…" : o.x)).join(" ");
   ABKUERZUNGEN.forEach((a, i) => (out = out.split(`§AB${i}§`).join(a)));
   return out.charAt(0).toUpperCase() + out.slice(1);
+}
+
+/** Dokumente, die Mandantinnen und Mandanten typischerweise schicken – für „übersendet Arbeitsvertrag und Lohnabrechnungen“. */
+const UNTERLAGEN: [RegExp, string][] = [
+  [/arbeitsvertrag/, "Arbeitsvertrag"], [/lohnabrechnung|gehaltsabrechnung/, "Lohnabrechnungen"], [/kündigung(sschreiben)?\b/, "Kündigungsschreiben"],
+  [/mietvertrag/, "Mietvertrag"], [/übergabeprotokoll/, "Übergabeprotokoll"], [/fotos?\b|bilder\b/, "Fotos"], [/gutachten/, "Gutachten"],
+  [/rechnung(en)?\b/, "Rechnungen"], [/kontoauszüge?/, "Kontoauszüge"], [/bescheid/, "Bescheid"], [/vertrag\b/, "Vertrag"],
+  [/verzeichnis|liste\b/, "Verzeichnis"], [/vollmacht/, "Vollmacht"],
+];
+
+/** „Muss ich wegen der Arbeitsagentur noch etwas machen?“ → „ob er wegen der Arbeitsagentur noch etwas machen muss“ */
+function indirekteFrage(frage: string, w: boolean): string | undefined {
+  const er = w ? "sie" : "er";
+  const pron = (t: string) =>
+    t.replace(/\bmich\b/g, "sich").replace(/\bmir\b/g, "sich").replace(/\bmein(e|en|em|er|es)?\b/g, (_, e = "") => `${w ? "ihr" : "sein"}${e}`).replace(/\bich\b/g, er);
+  const modal = frage.match(/^(Muss|Soll|Sollte|Kann|Darf|Müsste|Brauche) ich (.+?)\s*\?$/);
+  if (modal) {
+    const verb = { Muss: "muss", Soll: "soll", Sollte: "sollte", Kann: "kann", Darf: "darf", Müsste: "müsste", Brauche: "braucht" }[modal[1]] ?? modal[1].toLowerCase();
+    return `ob ${er} ${pron(modal[2])} ${verb}`;
+  }
+  const gibt = frage.match(/^Gibt es (.+?)\s*\?$/);
+  if (gibt) return `ob es ${pron(gibt[1])} gibt`;
+  const wq = frage.match(/^(Wie|Wann|Was|Wo|Warum|Welche[nrsm]?) (muss|soll|kann|darf) ich (.+?)\s*\?$/);
+  if (wq) return `${wq[1].toLowerCase()} ${er} ${pron(wq[3])} ${wq[2]}`;
+  return undefined;
+}
+
+/**
+ * Zusammenfassung in der dritten Person für Post von Mandantinnen und Mandanten: Wer schreibt, was liegt bei, welche Hinweise
+ * und Fragen enthält die Nachricht – statt eines Ich-Zitats aus der E-Mail.
+ */
+function mandantenZusammenfassung(text: string, absender: { name: string; kontakt?: Kontakt; bezeichnung?: string }): string | undefined {
+  const w = absender.kontakt?.anrede === "Frau";
+  const n = text.toLowerCase();
+  const teile: string[] = [];
+  if (/anbei|im anhang|anhängend|übersende|schicke ich|sende ich/.test(n)) {
+    const docs = [...new Set(UNTERLAGEN.filter(([re]) => re.test(n)).map(([, label]) => label))].filter((x, _, a) => !(x === "Vertrag" && a.some((y) => y !== "Vertrag" && /vertrag/i.test(y))));
+    teile.push(`übersendet ${docs.length ? docs.slice(0, 3).join(docs.length === 2 ? " und " : ", ").replace(/, ([^,]+)$/, " und $1") : "Unterlagen"}`);
+  }
+  const zeuge = text.match(/\b(Kollege|Kollegin|Nachbar|Nachbarin)\s+(Herr|Frau)\s+([A-ZÄÖÜ][a-zäöüß]+)/);
+  if (zeuge && /zeug|bestätigen|bezeugen|gesehen/.test(n)) {
+    const rolle = { Kollege: "Kollegen", Kollegin: "Kollegin", Nachbar: "Nachbarn", Nachbarin: "Nachbarin" }[zeuge[1]] ?? zeuge[1];
+    const poss = w ? (zeuge[1].endsWith("in") ? "ihre" : "ihren") : zeuge[1].endsWith("in") ? "seine" : "seinen";
+    teile.push(`nennt ${poss} ${rolle} ${zeuge[2] === "Herr" ? "Herrn" : "Frau"} ${zeuge[3]} als möglichen Zeugen`);
+  }
+  const fragen = (text.match(/[^.!?\n]+\?/g) ?? []).map((f) => f.trim()).map((f) => indirekteFrage(f, w)).filter((x): x is string => !!x);
+  if (!teile.length && !fragen.length) return undefined;
+  const wer = absender.bezeichnung ? `${absender.bezeichnung} ${absender.name}` : absender.name;
+  const saetze: string[] = [];
+  if (teile.length) saetze.push(`${wer} ${teile.join(" und ")}.`);
+  if (fragen.length) saetze.push(`${teile.length ? (w ? "Sie" : absender.kontakt?.typ === "organisation" ? "Sie" : "Er") : wer} fragt, ${fragen.slice(0, 2).join(" und ")}.`);
+  return saetze.join(" ");
+}
+
+/** Zusammenfassung: Post von Mandanten in der dritten Person, sonst die aussagekräftigsten Sätze (als Zitat, wenn in Ich-Form). */
+function zusammenfassungFuer(typ: string, input: { text: string; von?: string; vonAdresse?: string }, data: TenantData, akteId: string | undefined): string {
+  const akte = akteId ? data.akten.find((a) => a.id === akteId) : undefined;
+  const mandant = akte ? data.kontakte.find((k) => k.id === akte.mandantId) : undefined;
+  const von = adresse(input.vonAdresse ?? input.von);
+  const vomMandanten = !!mandant && ((!!von && adresse(mandant.email) === von) || (!!input.von && normalize(input.von) === normalize(mandant.name)));
+  if (typ === "Mandantenkorrespondenz" || (vomMandanten && !GERICHTSPOST.test(typ))) {
+    const name = vomMandanten ? mandant!.name : (input.von ?? "").replace(/\s*<.*>$/, "").trim();
+    const s = name ? mandantenZusammenfassung(input.text, { name, kontakt: vomMandanten ? mandant : undefined, bezeichnung: vomMandanten ? mandantBezeichnung(mandant) : undefined }) : undefined;
+    if (s) return s;
+  }
+  const auszug = zusammenfassen(input.text);
+  // Ich-Form aus E-Mails nicht als eigene Aussage der KI stehen lassen, sondern als Zitat kennzeichnen
+  if (auszug && /\b(ich|mein|meine|meinen|meinem|mir|mich)\b/i.test(auszug) && input.von && !GERICHTSPOST.test(typ)) {
+    return `${input.von.replace(/\s*<.*>$/, "").trim()} schreibt: „${auszug.replace(/[„“]/g, "")}“`;
+  }
+  return auszug;
 }
 
 /** Feiertags-Bundesland für die Fristberechnung: Gerichtsort laut Schreiben bzw. Akte, sonst Kanzleisitz. */
@@ -360,7 +433,7 @@ export function analysiereRegelbasiert(input: { text: string; betreff?: string; 
   if (/widerspruch erhoben|widerspruch gegen (den )?mahnbescheid/.test(n)) aktionen.push("Weitere Gerichtskosten einzahlen und Anspruchsbegründung vorbereiten (§ 697 ZPO).");
   if (typ === "Klageerwiderung") aktionen.push("Replik vorbereiten – Einwendungen der Gegenseite einzeln prüfen.");
   if (typ.startsWith("Mandatsanfrage")) aktionen.push("Mandatsaufnahme starten: Akte anlegen, Vollmacht und Deckungsanfrage automatisch erzeugen.");
-  if (typ === "Newsletter") aktionen.push("Kein Handlungsbedarf – archivieren.");
+  if (typ === "Newsletter") aktionen.push("Kein Handlungsbedarf – als erledigt markieren.");
   if (termin) aktionen.push("Termin in den Kalender übernehmen und Mandantschaft informieren.");
   if (fristen.length && !aktionen.length) aktionen.push(fristen[0].titel.startsWith("Zahlungsfrist") ? "Frist eintragen und Zahlung bzw. Einwendungen mit der Mandantschaft klären." : "Frist eintragen und Stellungnahme in der Akte vorbereiten.");
   if (eeb) aktionen.unshift("Elektronisches Empfangsbekenntnis abgeben, sobald die Fristen notiert sind.");
@@ -369,7 +442,7 @@ export function analysiereRegelbasiert(input: { text: string; betreff?: string; 
   return {
     typ,
     dokumentArt: art,
-    zusammenfassung: zusammenfassen(input.text) || input.betreff || typ,
+    zusammenfassung: zusammenfassungFuer(typ, input, data, match.akteId) || input.betreff || typ,
     akteId: match.akteId,
     akteSicherheit: match.sicherheit,
     akteGrund: match.grund,

@@ -89,7 +89,7 @@ export function DokumentAnalyseTab({ akteParam }: { akteParam?: string }) {
     r.onload = () => {
       setText(String(r.result ?? ""));
       setBetreff(f.name.replace(/\.[^.]+$/, ""));
-      setVon("Upload");
+      setVon(""); // Absender steht im Schreiben selbst – die Analyse liest ihn aus dem Text
       setBeispielAktiv(null);
       setAutoFelder(true);
       toast("Datei geladen", { text: f.name, ton: "info" });
@@ -264,7 +264,7 @@ export function DokumentAnalyseTab({ akteParam }: { akteParam?: string }) {
           <span className="num ml-auto text-[11.5px] text-fg-4">{fmtNum(text.length)} Zeichen</span>
         </div>
         <p className="mt-3 text-[11.5px] leading-snug text-fg-4">
-          {live ? "Claude liest das Schreiben über Ihren gesicherten Zugang; Akte und Fristen werden anschließend deterministisch geprüft und berechnet." : "Die Demo-KI analysiert regelbasiert und vollständig lokal – der Text verlässt Ihren Browser nicht."}
+          {live ? "Claude liest das Schreiben über Ihren gesicherten Zugang; Akte und Fristen werden anschließend nach festen Regeln geprüft und vom Fristenrechner berechnet." : "Die Demo-KI analysiert regelbasiert und vollständig lokal – der Text verlässt Ihren Browser nicht."}
         </p>
       </Card>
 

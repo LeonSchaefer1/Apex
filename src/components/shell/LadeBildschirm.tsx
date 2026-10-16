@@ -1,15 +1,36 @@
 import { motion } from "motion/react";
+import { LogOut, RotateCcw } from "lucide-react";
 import { AppIcon } from "@/components/Logo";
+import { Button } from "@/components/ui";
 
-export function LadeBildschirm({ fehler, text = "Kanzlei wird geladen …" }: { fehler?: string; text?: string }) {
+/**
+ * Lade- und Fehleranzeige beim Start bzw. beim Laden der Kanzleidaten. Im Fehlerfall gibt es immer einen Ausweg:
+ * „Erneut versuchen“ (ohne eigene Aktion: Seite neu laden) und – falls übergeben – „Abmelden“.
+ */
+export function LadeBildschirm({ fehler, text = "Kanzlei wird geladen …", onErneut, onAbmelden }: { fehler?: string; text?: string; onErneut?: () => void; onAbmelden?: () => void }) {
   return (
-    <div className="grid h-full place-items-center">
+    <div className="grid h-full place-items-center px-4">
       <div className="flex flex-col items-center gap-5">
-        <motion.div animate={{ scale: [1, 1.06, 1] }} transition={{ duration: 1.6, repeat: Infinity }}>
+        <motion.div animate={fehler ? { scale: 1 } : { scale: [1, 1.06, 1] }} transition={fehler ? { duration: 0.3 } : { duration: 1.6, repeat: Infinity }}>
           <AppIcon size={64} />
         </motion.div>
         {fehler ? (
-          <div className="max-w-sm text-center text-[13px] text-seal">{fehler}</div>
+          <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex max-w-sm flex-col items-center gap-4 text-center" role="alert">
+            <div>
+              <div className="text-[15px] font-semibold">Das hat nicht geklappt</div>
+              <div className="mt-1 text-[13px] text-seal">{fehler}</div>
+            </div>
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button variant="primary" icon={<RotateCcw className="size-4" />} onClick={() => (onErneut ? onErneut() : window.location.reload())}>
+                Erneut versuchen
+              </Button>
+              {onAbmelden && (
+                <Button variant="ghost" icon={<LogOut className="size-4" />} onClick={onAbmelden}>
+                  Abmelden
+                </Button>
+              )}
+            </div>
+          </motion.div>
         ) : (
           <>
             <div className="text-[13px] font-medium text-fg-3">{text}</div>

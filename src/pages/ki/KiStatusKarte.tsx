@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { Link } from "react-router";
 import { motion } from "motion/react";
 import { BookCheck, Calculator, Clock, Cpu, ShieldCheck, Sparkles, UserCheck, Zap } from "lucide-react";
 import { useAiStatus, type KiQuelle } from "@/ai/status";
@@ -6,6 +7,7 @@ import { useData } from "@/store/data";
 import { addDays, fmtNum, today } from "@/core/dates";
 import { AnimatedNumber, Chip, Switch } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { brauchtKontrolle, unterliegtKontrolle } from "@/pages/fristen/logik";
 
 /** Datenfluss je KI-Quelle – nur im Offline-/Demo-Betrieb bleiben die Inhalte ohne KI-Anbieter. */
 const DATENFLUSS: Record<KiQuelle, string> = {
@@ -31,12 +33,16 @@ export function KiStatusKarte() {
   const fristen = useData((s) => s.data.fristen);
 
   const kennzahlen = useMemo(() => {
-    const ab = addDays(today(), -7);
+    // letzte 7 Tage einschließlich heute – wie Apex Island, Cockpit und 38h-Motor
+    const ab = addDays(today(), -6);
     const ki = aktivitaeten.filter((a) => a.akteur === "ki" && a.zeit.slice(0, 10) >= ab);
     const minuten = ki.reduce((s, a) => s + (a.minutenGespart ?? 0), 0);
-    const kiFristen = fristen.filter((f) => f.quelle === "ki");
+    // KI-Fristen mit Kontrollpflicht (Notfristen und Fristen): bestätigt bzw. Vier-Augen-Kontrolle offen –
+    // „offen“ ist dieselbe Zahl wie „davon … von der KI erkannt“ in der Fristen-Kachel „Vier-Augen-Kontrolle offen“.
+    const kiFristen = fristen.filter((f) => f.quelle === "ki" && unterliegtKontrolle(f));
     const kontrolliert = kiFristen.filter((f) => f.kontrolliertVon).length;
-    return { vorgaenge: ki.length, stunden: minuten / 60, kiFristen: kiFristen.length, kontrolliert };
+    const offen = kiFristen.filter(brauchtKontrolle).length;
+    return { vorgaenge: ki.length, stunden: minuten / 60, kiFristen: kontrolliert + offen, kontrolliert, offen };
   }, [aktivitaeten, fristen]);
 
   const quelleText = quelle === "server" ? "über Ihren Kanzlei-Server" : quelle === "artefakt" ? "über die gesicherte Vorschau-Laufzeit" : "";
@@ -87,7 +93,7 @@ export function KiStatusKarte() {
               <p className="mt-1 hidden max-w-[72ch] text-[13px] leading-snug text-fg-3 sm:block">
                 {live
                   ? `Claude liest und formuliert ${quelleText}. ${datenText} Fristen berechnet weiterhin der Fristenrechner, Präzedenzfälle stammen ausschließlich aus der Fall-Datenbank.`
-                  : "Die Demo-KI arbeitet regelbasiert und vollständig in Ihrem Browser – ideal zum Ausprobieren. Mit Claude-Anbindung formuliert die KI frei; geprüft und berechnet wird weiterhin deterministisch."}
+                  : "Die Demo-KI arbeitet regelbasiert und vollständig in Ihrem Browser – ideal zum Ausprobieren. Mit Claude-Anbindung formuliert die KI frei; geprüft und berechnet wird weiterhin nach festen Regeln."}
               </p>
             </div>
           </div>
@@ -110,12 +116,18 @@ export function KiStatusKarte() {
 
         <div className="grid gap-3">
           <div className="grid grid-cols-3 gap-2">
-            <Kennzahl icon={<Zap className="size-3.5" />} label="Vorgänge" sub="KI · 7 Tage" wert={<AnimatedNumber value={kennzahlen.vorgaenge} />} />
-            <Kennzahl icon={<Clock className="size-3.5" />} label="Gespart" sub="7 Tage" wert={<AnimatedNumber value={kennzahlen.stunden} format={(n) => `${fmtNum(n, 1)} h`} />} />
+            <Kennzahl icon={<Zap className="size-3.5" />} label="KI-Vorgänge" sub="letzte 7 Tage" wert={<AnimatedNumber value={kennzahlen.vorgaenge} />} />
+            <Kennzahl icon={<Clock className="size-3.5" />} label="KI gespart" sub="letzte 7 Tage" wert={<AnimatedNumber value={kennzahlen.stunden} format={(n) => `${fmtNum(n, 1)} Std.`} />} />
             <Kennzahl
               icon={<UserCheck className="size-3.5" />}
               label="Geprüft"
-              sub="KI-Fristen"
+              sub={
+                <>
+                  KI-Fristen{kennzahlen.offen ? <span className="hidden min-[480px]:inline"> · {kennzahlen.offen} offen</span> : null}
+                </>
+              }
+              to={kennzahlen.offen ? "/fristen?filter=kontrolle&quelle=ki" : undefined}
+              title={kennzahlen.offen ? `${kennzahlen.offen} von der KI erkannte ${kennzahlen.offen === 1 ? "Frist wartet" : "Fristen warten"} auf die Vier-Augen-Kontrolle – anzeigen` : "Alle von der KI erkannten Fristen sind kontrolliert"}
               wert={
                 <span className="num">
                   <AnimatedNumber value={kennzahlen.kontrolliert} />
@@ -126,8 +138,8 @@ export function KiStatusKarte() {
           </div>
           {liveMoeglich && (
             <label className="flex items-center justify-between gap-3 rounded-[14px] bg-[var(--ink-softer)] px-3 py-2 text-[12.5px] text-fg-2">
-              <span>Offline-Demo-KI verwenden</span>
-              <Switch checked={bevorzugeDemo} onChange={setBevorzugeDemo} label="Offline-Demo-KI verwenden" />
+              <span>Demo-KI (offline) verwenden</span>
+              <Switch checked={bevorzugeDemo} onChange={setBevorzugeDemo} label="Demo-KI (offline) verwenden" />
             </label>
           )}
         </div>
@@ -136,15 +148,25 @@ export function KiStatusKarte() {
   );
 }
 
-function Kennzahl({ icon, label, sub, wert }: { icon: React.ReactNode; label: string; sub: string; wert: React.ReactNode }) {
-  return (
-    <div className={cn("min-w-0 rounded-[16px] bg-[var(--surface)]/70 px-3 py-2.5 ring-1 ring-[var(--line)] lg:w-[132px]")}>
+function Kennzahl({ icon, label, sub, wert, to, title }: { icon: React.ReactNode; label: string; sub: React.ReactNode; wert: React.ReactNode; to?: string; title?: string }) {
+  const inhalt = (
+    <>
       <div className="flex items-center gap-1.5 text-[11.5px] font-medium text-fg-3">
         <span className="hidden text-violet min-[400px]:inline">{icon}</span>
         <span className="truncate">{label}</span>
       </div>
       <div className="mt-1 text-[20px] font-semibold leading-none tracking-[-0.02em]">{wert}</div>
       <div className="mt-1 truncate text-[10.5px] text-fg-4">{sub}</div>
+    </>
+  );
+  const klasse = "block min-w-0 rounded-[16px] bg-[var(--surface)]/70 px-3 py-2.5 ring-1 ring-[var(--line)] lg:w-[132px]";
+  return to ? (
+    <Link to={to} title={title} className={cn(klasse, "transition-colors hover:bg-ink-softer hover:ring-[var(--line-strong)]")}>
+      {inhalt}
+    </Link>
+  ) : (
+    <div className={klasse} title={title}>
+      {inhalt}
     </div>
   );
 }

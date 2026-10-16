@@ -3,7 +3,7 @@ import { useNavigate } from "react-router";
 import { motion, useReducedMotion } from "motion/react";
 import { ArrowUpRight, Check, Clock, History, Play, Radio, Repeat, Timer, Zap } from "lucide-react";
 import type { Aktivitaet, Automation } from "@/core/types";
-import { addDays, fmtNum, nowLocal, relTime, today } from "@/core/dates";
+import { addDays, fmtNum, nowLocal, relTime, toLocalISO, today } from "@/core/dates";
 import { useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
@@ -73,7 +73,25 @@ export function MiniFlow({ schritte, aktiv }: { schritte: string[]; aktiv: boole
   );
 }
 
-export function AutomationKarte({ a, onOpen, now }: { a: Automation; onOpen: () => void; now: number }) {
+/** Jüngste protokollierte Läufe je Automation (Schlüssel → Zeitpunkt) – Grundlage für „Letzter Lauf“ wie im Live-Feed. */
+export function letzteLaeufe(aktivitaeten: Aktivitaet[]): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const x of aktivitaeten) {
+    if (!x.automationKey) continue;
+    const cur = m.get(x.automationKey);
+    if (!cur || x.zeit > cur) m.set(x.automationKey, x.zeit);
+  }
+  return m;
+}
+
+/** „Letzter Lauf“: der jüngste Zeitpunkt aus Automation und Protokoll – nie in der Zukunft. */
+function letzterLaufVon(a: Automation, ausFeed: string | undefined, now: number): string | undefined {
+  const jetzt = toLocalISO(new Date(now));
+  return [a.letzterLauf, ausFeed].filter((z): z is string => !!z && z <= jetzt).sort().pop();
+}
+
+export function AutomationKarte({ a, onOpen, now, ausFeed }: { a: Automation; onOpen: () => void; now: number; ausFeed?: string }) {
+  const letzter = letzterLaufVon(a, ausFeed, now);
   const umschalten = useAutomationUmschalten();
   const Icon = KATEGORIE_ICON[a.kategorie];
   return (
@@ -119,7 +137,7 @@ export function AutomationKarte({ a, onOpen, now }: { a: Automation; onOpen: () 
       <div className="mt-auto grid grid-cols-3 gap-2 border-t border-[var(--line)] pt-3.5">
         <Kennzahl icon={<Timer className="size-3.5" />} label="Pro Lauf" wert={`${a.minutenProLauf} Min.`} />
         <Kennzahl icon={<Repeat className="size-3.5" />} label="Läufe gesamt" wert={fmtNum(a.laeufe)} />
-        <Kennzahl icon={<Clock className="size-3.5" />} label="Letzter Lauf" wert={a.letzterLauf ? relTime(a.letzterLauf, now) : "–"} />
+        <Kennzahl icon={<Clock className="size-3.5" />} label="Letzter Lauf" wert={letzter ? relTime(letzter, now) : "–"} />
       </div>
     </Card>
   );
@@ -152,7 +170,7 @@ export function AutomationDrawer({ a: aktuell, onClose, aktivitaeten, now }: { a
   const [laeuft, setLaeuft] = useState(false);
   const laeufe = useMemo(() => (a ? aktivitaeten.filter((x) => x.automationKey === a.key).slice(0, 14) : []), [a, aktivitaeten]);
   const grenze = addDays(today(), -6);
-  const dieseWoche = useMemo(() => (a ? aktivitaeten.filter((x) => x.automationKey === a.key && x.zeit.slice(0, 10) >= grenze) : []), [a, aktivitaeten, grenze]);
+  const letzte7 = useMemo(() => (a ? aktivitaeten.filter((x) => x.automationKey === a.key && x.zeit.slice(0, 10) >= grenze) : []), [a, aktivitaeten, grenze]);
   const Icon = a ? KATEGORIE_ICON[a.kategorie] : Zap;
   const reduziert = useReducedMotion();
 
@@ -210,7 +228,7 @@ export function AutomationDrawer({ a: aktuell, onClose, aktivitaeten, now }: { a
             <MiniStat label="Pro Lauf" wert={`${a.minutenProLauf} Min.`} />
             <MiniStat label="Läufe gesamt" wert={fmtNum(a.laeufe)} />
             <MiniStat label="Gesamt gespart" wert={`${fmtStd(a.laeufe * a.minutenProLauf)} Std.`} />
-            <MiniStat label="Diese Woche" wert={`${dieseWoche.length} Läufe`} />
+            <MiniStat label="Letzte 7 Tage" wert={`${letzte7.length} ${letzte7.length === 1 ? "Lauf" : "Läufe"}`} />
           </div>
 
           <section>

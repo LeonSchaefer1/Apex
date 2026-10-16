@@ -195,7 +195,7 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
           icon={<Wallet className="size-4" />}
           tone="amber"
           value={<AnimatedNumber value={kpi.offenWert} format={(n) => fmtEUR(n, { cents: false })} className="text-[20px] sm:text-[28px]" />}
-          sub={`${fmtStunden(kpi.offenMin)} Std. abrechenbar`}
+          sub={`${fmtDauer(kpi.offenMin)} abrechenbar, noch offen`}
         />
       </div>
 

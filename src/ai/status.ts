@@ -1,4 +1,4 @@
-// Ermittelt, welche KI zur Verfügung steht: Claude über den Kanzlei-Server, Claude in der Artefakt-Vorschau oder die Offline-Demo-KI.
+// Ermittelt, welche KI zur Verfügung steht: Claude über den Kanzlei-Server, Claude in der Artefakt-Vorschau oder die Demo-KI (offline).
 import { create } from "zustand";
 import type { BackendInfo } from "@/lib/backend";
 
@@ -21,8 +21,11 @@ interface AiStatusState {
   setBevorzugeDemo: (v: boolean) => void;
 }
 
+/** Einheitlicher Name der Offline-KI in der ganzen App. */
+export const DEMO_KI_NAME = "Demo-KI (offline)";
+
 function labelFuer(q: KiQuelle) {
-  return q === "demo" ? "KI im Demo-Modus" : "KI live · Claude";
+  return q === "demo" ? DEMO_KI_NAME : "KI live · Claude";
 }
 
 function readPref(): boolean {

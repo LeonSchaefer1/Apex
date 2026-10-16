@@ -6,6 +6,7 @@ import { useKanzlei } from "@/store/session";
 import { Button, Chip } from "@/components/ui";
 import { CopyButton } from "@/pages/hilfe/kopieren";
 import { cn } from "@/lib/cn";
+import { festeAnsprechperson } from "@/lib/rollen";
 import { Abschnitt } from "./teile";
 
 export function LizenzTab() {
@@ -21,11 +22,11 @@ export function LizenzTab() {
   const ap = tenant.ansprechpartner;
 
   const inklusive = [
-    { icon: <RefreshCw className="size-4" />, t: "Alle Updates", s: "vorab in Staging geprüft, Zeitpunkt bestimmen Sie" },
-    { icon: <Headset className="size-4" />, t: "Fester Ansprechpartner", s: `${ap.name} · ${ap.verfuegbar}` },
+    { icon: <RefreshCw className="size-4" />, t: "Alle Updates", s: "vorab in einer Testumgebung geprüft, Zeitpunkt bestimmen Sie" },
+    { icon: <Headset className="size-4" />, t: festeAnsprechperson(ap, { ohneIhr: true }), s: `${ap.name} · ${ap.verfuegbar}` },
     { icon: <BookOpen className="size-4" />, t: "Animiertes Wiki & Schnellhilfe", s: "in jeder Ansicht, plus Apex Assistent" },
-    { icon: <Truck className="size-4" />, t: "Umzug mit Begleitung", s: "One-Klick-Migration aus Ihrem Altsystem" },
-    { icon: <Server className="size-4" />, t: "Betrieb nach Wahl", s: "On-Premise oder Private Cloud in Deutschland" },
+    { icon: <Truck className="size-4" />, t: "Umzug mit einem Klick", s: `aus Ihrer bisherigen Software – begleitet von ${ap.name}` },
+    { icon: <Server className="size-4" />, t: "Betrieb nach Wahl", s: "Auf Ihrem eigenen Server oder in einem deutschen Rechenzentrum" },
   ];
 
   return (
@@ -121,7 +122,7 @@ export function LizenzTab() {
           <section className="sheet rounded-[22px] p-5">
             <div className="title-md">Lifetime-Lizenz erwerben</div>
             <p className="mt-1 text-[12.5px] leading-relaxed text-fg-3">
-              Ihr fester Ansprechpartner {ap.name} erstellt Ihnen ein Angebot nach Kanzleigröße: <span className="num whitespace-nowrap font-medium text-fg-2">{ap.telefon}</span> · <span className="break-all">{ap.email}</span>. Beim Wechsel bleiben alle Daten der Testphase vollständig erhalten.
+              {festeAnsprechperson(ap)} {ap.name} erstellt Ihnen ein Angebot nach Kanzleigröße: <span className="num whitespace-nowrap font-medium text-fg-2">{ap.telefon}</span> · <span className="break-all">{ap.email}</span>. Beim Wechsel bleiben alle Daten der Testphase vollständig erhalten.
             </p>
           </section>
         )}

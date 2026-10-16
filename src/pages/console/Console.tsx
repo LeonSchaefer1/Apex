@@ -15,7 +15,7 @@ import type { Tenant, User } from "@/core/types";
 import { DEMO_PASSWORT } from "@/core/seed/tenants";
 import { KundenKarte, type KartenAktionen } from "./KundenKarte";
 import { NeuerZugang } from "./NeuerZugang";
-import { kopieren } from "./helfer";
+import { anmeldeZeile, kopieren } from "./helfer";
 
 type Filter = "alle" | "test" | "aktiv" | "pausiert";
 
@@ -339,7 +339,7 @@ function PasswortDialog({ daten, onClose }: { daten: { user: User; tenant: Tenan
             size="sm"
             className="justify-self-start"
             icon={<Copy className="size-3.5" />}
-            onClick={() => void kopieren(`Ihre neuen Zugangsdaten für AnwaltApex\n\nAnmeldung: ${window.location.origin}/login\nE-Mail: ${daten.user.email}\nPasswort: ${daten.passwort}`, "Zugangsdaten")}
+            onClick={() => void kopieren(`Ihre neuen Zugangsdaten für AnwaltApex\n\n${anmeldeZeile()}\nE-Mail: ${daten.user.email}\nPasswort: ${daten.passwort}`, "Zugangsdaten")}
           >
             Zugangsdaten als Text kopieren
           </Button>

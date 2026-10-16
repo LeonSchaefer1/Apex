@@ -37,7 +37,7 @@ export function Systemstatus() {
   }, []);
 
   const kiDetail =
-    ai.quelle === "server" ? `Claude über Ihren Kanzlei-Server${ai.modell ? ` · ${ai.modell}` : ""}` : ai.quelle === "artefakt" ? "Claude über die Vorschau-Laufzeit" : "Demo-KI (offline) · nach festen Regeln, keine Datenübertragung";
+    ai.quelle === "server" ? `Claude über Ihren Kanzlei-Server${ai.modell ? ` · ${ai.modell}` : ""}` : ai.quelle === "artefakt" ? "Claude über die Vorschau-Laufzeit" : "Nach festen Regeln im Browser · keine Datenübertragung";
 
   const dienste: Dienst[] = useMemo(
     () => [

@@ -100,7 +100,7 @@ export function RoiRechner({ startSatz, startArbeitsplaetze, gemessen }: { start
                 </button>
               }
             />
-            <ZahlFeld id="roi-kosten" label="Interner Kostensatz" value={kosten} onChange={setKosten} suffix="€/Std." step={0.5} placeholder={fmtNum(KOSTEN_START, 2)} hint="Routine erledigen meist Fachangestellte – Richtwert rund 20 €." />
+            <ZahlFeld id="roi-kosten" label="Interner Kostensatz" value={kosten} onChange={setKosten} suffix="€/Std." step={0.5} placeholder={fmtNum(KOSTEN_START, 2)} hint={`Routine erledigen meist Fachangestellte – Richtwert ${fmtEUR(KOSTEN_START)} (36.000 € ÷ ${fmtNum(ZIEL_STUNDEN * ARBEITSWOCHEN)} Std.).`} />
             <ZahlFeld id="roi-satz" label="Ihr Stundensatz" value={satz} onChange={setSatz} suffix="€/Std." step={10} placeholder={String(startSatz)} hint="nur für das Umsatzpotenzial" />
           </div>
 

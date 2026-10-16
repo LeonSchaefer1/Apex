@@ -97,9 +97,10 @@ export default function Posteingang() {
     [params, setParams, zweispaltig],
   );
 
-  // Geöffnete Nachricht als gelesen markieren
+  // Geöffnete Nachricht als gelesen markieren – automatischer Schreibvorgang: zählt nicht als Änderung durch die Kanzlei
+  // (Beispieldaten werden weiter täglich neu erzeugt).
   useEffect(() => {
-    if (sel?.status === "neu") useData.getState().patch("nachrichten", sel.id, { status: "gelesen" });
+    if (sel?.status === "neu") useData.getState().patch("nachrichten", sel.id, { status: "gelesen" }, { system: true });
   }, [sel?.id, sel?.status]);
 
   // Analyse automatisch starten, sobald eine unbearbeitete Nachricht geöffnet wird – auch nach einem Datenwechsel (Reset, Kanzleiwechsel)

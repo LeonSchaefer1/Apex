@@ -1,5 +1,7 @@
-// Der 38h-Automatisierungs-Motor: Routineprozesse, die autonom im Hintergrund laufen.
-import type { Automation } from "./types";
+// Der 38h-Motor: Routineprozesse, die autonom im Hintergrund laufen.
+import type { Automation, Bundesland, ISODateTime } from "./types";
+import { addDays, weekday } from "./dates";
+import { istWerktag } from "./feiertage";
 
 export const AUTOMATION_DEFS: Omit<Automation, "id" | "laeufe" | "letzterLauf" | "aktiv">[] = [
   {
@@ -28,7 +30,7 @@ export const AUTOMATION_DEFS: Omit<Automation, "id" | "laeufe" | "letzterLauf" |
   },
   {
     key: "vorfristen", name: "Vorfristen & Wiedervorlagen setzen", kategorie: "Fristen",
-    beschreibung: "Legt zu jeder Frist automatisch eine Vorfrist auf den vorherigen Werktag und erinnert Verantwortliche – mit Eskalation an die Vertretung.",
+    beschreibung: "Legt zu jeder Frist automatisch eine Vorfrist an (Standard: 7 Tage vorher, je nach Fristart kürzer oder länger, auf einen Werktag gelegt) und erinnert die Verantwortlichen – mit Eskalation an die Vertretung.",
     ausloeser: "Frist eingetragen", minutenProLauf: 4,
     schritte: ["Vorfrist berechnen", "Verantwortliche benachrichtigen", "Eskalation bei Abwesenheit"],
   },
@@ -65,7 +67,7 @@ export const AUTOMATION_DEFS: Omit<Automation, "id" | "laeufe" | "letzterLauf" |
   {
     key: "zeiterfassung", name: "Zeiterfassung vorschlagen", kategorie: "Finanzen",
     beschreibung: "Schlägt aus Telefonaten, E-Mails und bearbeiteten Dokumenten Zeiteinträge vor – nichts Abrechenbares geht mehr verloren.",
-    ausloeser: "Täglich, 18:00 Uhr", minutenProLauf: 5,
+    ausloeser: "Werktags, 18:00 Uhr", minutenProLauf: 5,
     schritte: ["Tätigkeiten des Tages sammeln", "Akten zuordnen", "Vorschläge zur Bestätigung"],
   },
   {
@@ -78,6 +80,57 @@ export const AUTOMATION_DEFS: Omit<Automation, "id" | "laeufe" | "letzterLauf" |
 
 export function automationDef(key: string) {
   return AUTOMATION_DEFS.find((a) => a.key === key);
+}
+
+/**
+ * Zeitgesteuerte Automationen laufen nur zu ihren Auslösezeiten (siehe `ausloeser`) – nicht bei beliebigen Ereignissen.
+ * Gemeinsame Grundlage für die Demodaten (src/core/seed) und den simulierten Live-Betrieb (src/lib/motor.ts).
+ */
+export interface Zeitplan {
+  /** Wochentage, an denen die Automation läuft (0 = Sonntag … 6 = Samstag) */
+  wochentage: number[];
+  /** Uhrzeit „HH:MM“ (Ortszeit der Kanzlei) */
+  uhrzeit: string;
+  /** an gesetzlichen Feiertagen auslassen (nur, wenn ein Bundesland bekannt ist) */
+  nurWerktags?: boolean;
+}
+
+const ZEITPLAENE: Record<string, Zeitplan> = {
+  "mandanten-update": { wochentage: [5], uhrzeit: "14:00" },
+  "zeiterfassung": { wochentage: [1, 2, 3, 4, 5], uhrzeit: "18:00", nurWerktags: true },
+};
+
+/** Zeitplan einer Automation – `undefined` bei ereignisgesteuerten Automationen (z. B. „Neue beA-Nachricht“). */
+export function zeitplan(key: string): Zeitplan | undefined {
+  return ZEITPLAENE[key];
+}
+
+/** Planmäßige Auslösung an einem Tag (lokaler Zeitstempel „YYYY-MM-DDTHH:MM:00“) oder `undefined`, wenn sie an dem Tag nicht läuft. */
+export function ausloesungAm(key: string, datum: string, land?: Bundesland): ISODateTime | undefined {
+  const plan = ZEITPLAENE[key];
+  if (!plan || !plan.wochentage.includes(weekday(datum))) return undefined;
+  if (plan.nurWerktags && land && !istWerktag(datum, land)) return undefined;
+  return `${datum}T${plan.uhrzeit}:00`;
+}
+
+/** Letzte planmäßige Auslösung bis einschließlich `jetzt` (lokaler Zeitstempel) – höchstens 14 Tage zurück. */
+export function letzteAusloesung(key: string, jetzt: ISODateTime, land?: Bundesland): ISODateTime | undefined {
+  if (!ZEITPLAENE[key]) return undefined;
+  const tag = jetzt.slice(0, 10);
+  for (let i = 0; i <= 14; i++) {
+    const z = ausloesungAm(key, addDays(tag, -i), land);
+    if (z && z <= jetzt) return z;
+  }
+  return undefined;
+}
+
+/**
+ * Ist ein zeitgesteuerter Lauf fällig? Ja, wenn die letzte planmäßige Auslösung nach dem letzten Lauf liegt.
+ * Ereignisgesteuerte Automationen sind nie „fällig“ – sie laufen bei ihrem Ereignis.
+ */
+export function laufFaellig(key: string, letzterLauf: ISODateTime | undefined, jetzt: ISODateTime, land?: Bundesland): boolean {
+  const z = letzteAusloesung(key, jetzt, land);
+  return !!z && (!letzterLauf || letzterLauf.slice(0, 19) < z);
 }
 
 /**

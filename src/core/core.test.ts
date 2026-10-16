@@ -395,3 +395,85 @@ test("Frist mit festem Enddatum: Datum bleibt, Wochenende nur als Hinweis", asyn
   const kurz = berechneFestesEnde({ ende: "2026-10-19", ereignis: "2026-10-16", land: "BE" });
   assert.ok(kurz.vorfrist >= "2026-10-16");
 });
+
+// ───────────── RVG-Anrechnung im Mahnverfahren und Abrechnungsvorschläge (QA-Runde 3) ─────────────
+
+test("RVG-Anrechnung: Geschäftsgebühr auf 3305, Mahnverfahrensgebühr auf 3100 (Vorbem. 3 Abs. 4, Anm. zu Nr. 3305)", () => {
+  // 2300 → 3305 (ohne 3100): 1,3 / 2 = 0,65 aus 5.000 € = 230,43 €
+  const mahn = berechneRvg({ positionen: [{ nr: "2300" }, { nr: "3305" }], gegenstandswert: 5000 });
+  const a1 = mahn.zeilen.filter((z) => z.anrechnung);
+  assert.deepEqual(a1.map((z) => [z.nr, z.betrag, z.angelegenheit]), [["Vorb. 3 IV", -230.43, "mahnverfahren"]]);
+  // 3305 → 3100: volle Mahnverfahrensgebühr 1,0 = 354,50 €; die Geschäftsgebühr geht auf 3305, nicht ein zweites Mal auf 3100
+  const alle = berechneRvg({ positionen: [{ nr: "2300" }, { nr: "3305" }, { nr: "3100" }], gegenstandswert: 5000 });
+  const a2 = alle.zeilen.filter((z) => z.anrechnung);
+  assert.deepEqual(a2.map((z) => [z.nr, z.betrag, z.angelegenheit]), [["Vorb. 3 IV", -230.43, "mahnverfahren"], ["Anm. 3305", -354.5, "gerichtlich"]]);
+  const streit = berechneRvg({ positionen: [{ nr: "3305" }, { nr: "3100" }], gegenstandswert: 5000 });
+  assert.deepEqual(streit.zeilen.filter((z) => z.anrechnung).map((z) => z.nr), ["Anm. 3305"]);
+  // ohne Anrechnung bleibt alles stehen
+  assert.equal(berechneRvg({ positionen: [{ nr: "3305" }, { nr: "3100" }], gegenstandswert: 5000, anrechnung: false }).zeilen.some((z) => z.anrechnung), false);
+  // bisheriger Fall unverändert: 2300 → 3100
+  const klassisch = berechneRvg({ positionen: [{ nr: "2300" }, { nr: "3100" }], gegenstandswert: 10000 });
+  assert.deepEqual(klassisch.zeilen.filter((z) => z.anrechnung).map((z) => [z.nr, z.angelegenheit]), [["Vorb. 3 IV", "gerichtlich"]]);
+});
+
+test("Abrechnungsvorschlag: Anrechnungen aus Vorrechnungen, Mahnverfahren, Terminsgebühr, Strafsachen", async () => {
+  const { vorschlagFuerAkte, istVorschlag, terminWahrgenommen } = await import("../pages/abrechnung/lib");
+  const { DEMO_TENANTS, publicUser } = await import("./seed/tenants");
+  const users = DEMO_TENANTS[0].users.map(publicUser);
+  const usersById = new Map(users.map((u) => [u.id, u]));
+  type A = Parameters<typeof vorschlagFuerAkte>[0];
+  type R = Parameters<typeof vorschlagFuerAkte>[1][number];
+  const basis = {
+    id: "x1", aktenzeichen: "901/26", titel: "Muster ./. Beispiel wegen Forderung", mandantId: "k1", sachgebiet: "Forderungseinzug", phase: "Gerichtlich",
+    status: "offen", prioritaet: "normal", bearbeiterId: users[0].id, gegenstandswert: 5000, schlagworte: [], beschreibung: "", gerichtId: "g1",
+    createdAt: "2026-01-10T09:00:00", updatedAt: "2026-10-01T09:00:00",
+  } as unknown as A;
+  const mahngericht = { id: "g1", typ: "organisation" as const, name: "Amtsgericht Coburg – Zentrales Mahngericht", rollen: ["gericht" as const], createdAt: "" };
+  const lg = { ...mahngericht, id: "g2", name: "Landgericht Coburg" };
+  const r2300 = { id: "r1", nummer: "RE-2026-0001", akteId: "x1", empfaengerId: "", datum: "2026-02-01", faellig: "2026-02-15", positionen: [{ vv: "2300", bezeichnung: "GG", satz: 1.3, gegenstandswert: 5000, betrag: 460.85 }, { vv: "7002", bezeichnung: "P", betrag: 20 }], netto: 0, ust: 0, brutto: 0, status: "bezahlt", bezahlt: 0, format: "PDF", createdAt: "" } as unknown as R;
+  const r3305 = { ...r2300, id: "r2", nummer: "RE-2026-0002", positionen: [{ vv: "3305", bezeichnung: "VG Mahn", satz: 1, gegenstandswert: 5000, betrag: 354.5 }, { vv: "7002", bezeichnung: "P", betrag: 20 }] } as R;
+
+  // Mahnverfahren mit früher berechneter Geschäftsgebühr: 3305 mit Anrechnung, keine 3100/3104
+  const v1 = vorschlagFuerAkte(basis, [r2300], [], usersById, 250, { gericht: mahngericht, fristen: [], dokumente: [] });
+  assert.ok(istVorschlag(v1));
+  assert.ok(v1.positionen.some((p) => p.vv === "3305"));
+  assert.deepEqual(v1.positionen.filter((p) => p.betrag < 0).map((p) => [p.vv, p.betrag]), [["Vorb. 3 IV", -230.43]]);
+  assert.ok(!v1.positionen.some((p) => p.vv === "3100" || p.vv === "3104" || p.vv === "2300"));
+  // Vollstreckungsbescheid beantragt → 3308
+  const v1b = vorschlagFuerAkte({ ...basis, forderung: { hauptforderung: 5000, faelligAb: "2026-01-01", verbraucher: true, titel: "Vollstreckungsbescheid AG Coburg" } } as A, [], [], usersById, 250, { gericht: mahngericht });
+  assert.ok(istVorschlag(v1b) && v1b.positionen.some((p) => p.vv === "3308"));
+  // Streitgericht nach Mahnverfahren: 3305 angerechnet, Geschäftsgebühr nicht doppelt, 3104 erst nach Termin
+  const v2 = vorschlagFuerAkte({ ...basis, gerichtId: "g2" } as A, [r2300, r3305], [], usersById, 250, { gericht: lg, fristen: [] });
+  assert.ok(istVorschlag(v2));
+  assert.deepEqual(v2.positionen.filter((p) => p.betrag < 0).map((p) => [p.vv, p.betrag]), [["Anm. 3305", -354.5]]);
+  assert.ok(!v2.positionen.some((p) => p.vv === "3305" && p.betrag > 0), "Mahnverfahrensgebühr nicht erneut berechnet");
+  assert.ok(!v2.positionen.some((p) => p.vv === "3104"));
+  // Rechtsstreit ohne Mahnverfahren: Geschäftsgebühr auf 3100
+  const v2b = vorschlagFuerAkte({ ...basis, gerichtId: "g2" } as A, [r2300], [], usersById, 250, { gericht: lg, fristen: [] });
+  assert.ok(istVorschlag(v2b));
+  assert.deepEqual(v2b.positionen.filter((p) => p.betrag < 0).map((p) => p.vv), ["Vorb. 3 IV"]);
+  assert.ok(!v2b.positionen.some((p) => p.vv === "2300"), "Geschäftsgebühr dient nur der Anrechnung");
+  // Termin vergangen → Terminsgebühr 3104, Urteil → kein Vorschuss
+  const termin = { id: "f1", akteId: "x1", titel: "Mündliche Verhandlung", typ: "termin" as const, datum: "2026-10-01", status: "offen" as const, verantwortlichId: "", quelle: "manuell" as const, createdAt: "" };
+  const v3 = vorschlagFuerAkte({ ...basis, gerichtId: "g2", phase: "Urteil" } as A, [], [], usersById, 250, { gericht: lg, fristen: [termin], heute: "2026-10-16" });
+  assert.ok(istVorschlag(v3) && v3.positionen.some((p) => p.vv === "3104") && !v3.vorschuss);
+  assert.ok(terminWahrgenommen([], [{ id: "z", akteId: "x1", userId: "u", datum: "2026-10-01", minuten: 60, taetigkeit: "Wahrnehmung Gerichtstermin", abrechenbar: true }]));
+  assert.ok(!terminWahrgenommen([{ ...termin, datum: "2026-10-20" }], [], "2026-10-16"));
+  // Strafsache: nach Zeit nur mit Vergütungsvereinbarung (§ 3a RVG)
+  const straf = { ...basis, id: "x2", sachgebiet: "Strafrecht", gerichtId: undefined, verguetungsvereinbarung: { datum: "2026-01-01", stundensatz: 300 } } as A;
+  const v4 = vorschlagFuerAkte(straf, [], [{ id: "z1", akteId: "x2", userId: users[0].id, datum: "2026-10-01", minuten: 90, taetigkeit: "Akteneinsicht", abrechenbar: true }], usersById, 250);
+  assert.ok(istVorschlag(v4) && v4.art === "stunden" && v4.positionen[0].betrag === 450);
+  assert.ok(!istVorschlag(vorschlagFuerAkte({ ...straf, verguetungsvereinbarung: undefined } as A, [], [], usersById, 250)));
+});
+
+test("Formatierung: typografisches Minus, relative Zeit ab 60 Min. in Std., geschützte Leerzeichen", async () => {
+  const { fmtEUR, relTime, schuetzeLeerzeichen } = await import("./dates");
+  assert.equal(fmtEUR(-423.8), "−423,80 €");
+  assert.equal(fmtEUR(-0.001), "0,00 €");
+  const jetzt = new Date("2026-10-16T11:40:00").getTime();
+  assert.equal(relTime("2026-10-16T11:20:00", jetzt), "vor 20 Min.");
+  assert.equal(relTime("2026-10-16T10:40:30", jetzt), "vor 1 Std."); // nicht „vor 60 Min.“
+  assert.equal(relTime("2026-10-15T12:00:00", jetzt), "gestern");
+  assert.equal(relTime("2026-10-14T23:00:00", jetzt), "vor 2 Tagen");
+  assert.equal(schuetzeLeerzeichen("§ 5 KSchG, 38 Std."), "§ 5 KSchG, 38 Std.");
+});

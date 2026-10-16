@@ -26,7 +26,7 @@ export const DEMO_TENANTS: DemoTenant[] = [
       schwerpunkte: ["Arbeitsrecht", "Mietrecht", "Verkehrsrecht", "Erbrecht"],
       lizenz: { typ: "lifetime", seit: "2026-03-02", arbeitsplaetze: 8, lizenzNr: "AAX-LT-2026-0142" },
       ansprechpartner: {
-        name: "Lena Vogt", rolle: "Ihr fester Ansprechpartner", telefon: "+49 30 555 018 42",
+        name: "Lena Vogt", rolle: "Ihre feste Ansprechpartnerin", bezeichnung: "Ansprechpartnerin", telefon: "+49 30 555 018 42",
         email: "lena.vogt@anwaltapex.de", initialen: "LV", verfuegbar: "Mo–Fr 7:30–19:00 Uhr",
       },
       farbe: "#2440D8",
@@ -55,7 +55,7 @@ export const DEMO_TENANTS: DemoTenant[] = [
       schwerpunkte: ["Forderungseinzug", "Vertragsrecht", "Baurecht", "Verkehrsrecht"],
       lizenz: { typ: "lifetime", seit: "2026-05-18", arbeitsplaetze: 12, lizenzNr: "AAX-LT-2026-0217" },
       ansprechpartner: {
-        name: "Markus Seidel", rolle: "Ihr fester Ansprechpartner", telefon: "+49 89 555 027 13",
+        name: "Markus Seidel", rolle: "Ihr fester Ansprechpartner", bezeichnung: "Ansprechpartner", telefon: "+49 89 555 027 13",
         email: "markus.seidel@anwaltapex.de", initialen: "MS", verfuegbar: "Mo–Fr 7:30–19:00 Uhr",
       },
       farbe: "#0E7C66",
@@ -84,7 +84,7 @@ export const DEMO_TENANTS: DemoTenant[] = [
       schwerpunkte: ["Familienrecht", "Strafrecht", "Erbrecht", "Mietrecht"],
       lizenz: { typ: "lifetime", seit: "2026-07-01", arbeitsplaetze: 6, lizenzNr: "AAX-LT-2026-0288" },
       ansprechpartner: {
-        name: "Lena Vogt", rolle: "Ihr fester Ansprechpartner", telefon: "+49 30 555 018 42",
+        name: "Lena Vogt", rolle: "Ihre feste Ansprechpartnerin", bezeichnung: "Ansprechpartnerin", telefon: "+49 30 555 018 42",
         email: "lena.vogt@anwaltapex.de", initialen: "LV", verfuegbar: "Mo–Fr 7:30–19:00 Uhr",
       },
       farbe: "#BE185D",

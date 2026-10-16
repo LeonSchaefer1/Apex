@@ -190,8 +190,10 @@ export function auslagenpauschale(gebuehren: number, bereitsBerechnet = 0): numb
 
 /**
  * Berechnet eine Gebührenrechnung.
- * - Anrechnung (Vorbem. 3 Abs. 4 VV RVG): Die Geschäftsgebühr (2300) wird zur Hälfte, höchstens mit 0,75,
- *   auf die Verfahrensgebühr (3100) angerechnet, wenn beide im selben Auftrag abgerechnet werden.
+ * - Anrechnung (Vorbem. 3 Abs. 4 VV RVG): Die Geschäftsgebühr (2300) wird zur Hälfte, höchstens mit 0,75, auf die
+ *   Verfahrensgebühr des folgenden gerichtlichen Verfahrens angerechnet – im Mahnverfahren auf Nr. 3305, sonst auf Nr. 3100.
+ * - Anrechnung Anm. zu Nr. 3305 VV RVG: Die Verfahrensgebühr des Mahnverfahrens wird auf die Verfahrensgebühr des
+ *   nachfolgenden Rechtsstreits (Nr. 3100) angerechnet. Die Geschäftsgebühr wird dann nicht ein zweites Mal angerechnet.
  * - Auslagenpauschale Nr. 7002 VV RVG: 20 % der Gebühren, höchstens 20 € – je Angelegenheit. Grundlage sind die
  *   in der Angelegenheit entstandenen Gebühren; die Anrechnung mindert nur den Gesamtbetrag (§ 15a Abs. 1 RVG).
  *   `bereitsPauschale` berücksichtigt in früheren Rechnungen schon berechnete Pauschalen derselben Angelegenheit.
@@ -234,20 +236,39 @@ export function berechneRvg(input: {
     }
   }
   const gg = zeilen.find((z) => z.nr === "2300");
+  const mb = zeilen.find((z) => z.nr === "3305");
   const vg = zeilen.find((z) => z.nr === "3100");
-  if ((input.anrechnung ?? true) && gg && vg) {
-    // Angerechnet wird die (ggf. nach Nr. 1008 erhöhte) Geschäftsgebühr zur Hälfte, höchstens mit 0,75.
-    const anrSatz = Math.min(round2(gg.satz / 2), 0.75);
-    const betrag = -gebuehr(Math.min(gg.gegenstandswert, vg.gegenstandswert), anrSatz, fassung);
-    zeilen.push({
-      nr: "Vorb. 3 IV",
-      titel: `Anrechnung Geschäftsgebühr (${anrSatz.toLocaleString("de-DE")})`,
-      satz: -anrSatz,
-      gegenstandswert: vg.gegenstandswert,
-      betrag,
-      anrechnung: true,
-      angelegenheit: vg.angelegenheit,
-    });
+  if (input.anrechnung ?? true) {
+    // Vorbem. 3 Abs. 4: die (ggf. nach Nr. 1008 erhöhte) Geschäftsgebühr zur Hälfte, höchstens mit 0,75 – auf die erste
+    // Verfahrensgebühr des gerichtlichen Verfahrens: im Mahnverfahren Nr. 3305, sonst Nr. 3100.
+    const ziel = mb ?? vg;
+    if (gg && ziel) {
+      const anrSatz = Math.min(round2(gg.satz / 2), 0.75);
+      const wert = Math.min(gg.gegenstandswert, ziel.gegenstandswert);
+      zeilen.push({
+        nr: "Vorb. 3 IV",
+        titel: `Anrechnung Geschäftsgebühr (${anrSatz.toLocaleString("de-DE")})`,
+        satz: -anrSatz,
+        gegenstandswert: wert,
+        betrag: -Math.min(gebuehr(wert, anrSatz, fassung), ziel.betrag),
+        anrechnung: true,
+        angelegenheit: ziel.angelegenheit,
+      });
+    }
+    // Anm. zu Nr. 3305: Verfahrensgebühr des Mahnverfahrens auf die Verfahrensgebühr des nachfolgenden Rechtsstreits
+    if (mb && vg) {
+      const anrSatz = Math.min(mb.satz, vg.satz);
+      const wert = Math.min(mb.gegenstandswert, vg.gegenstandswert);
+      zeilen.push({
+        nr: "Anm. 3305",
+        titel: `Anrechnung Verfahrensgebühr Mahnverfahren (${anrSatz.toLocaleString("de-DE")})`,
+        satz: -anrSatz,
+        gegenstandswert: wert,
+        betrag: -Math.min(gebuehr(wert, anrSatz, fassung), vg.betrag),
+        anrechnung: true,
+        angelegenheit: vg.angelegenheit,
+      });
+    }
   }
   const angelegenheiten: RvgAngelegenheit[] = ANGELEGENHEITEN.flatMap(({ key, titel }) => {
     const eigene = zeilen.filter((z) => z.angelegenheit === key);

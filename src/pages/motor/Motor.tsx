@@ -10,7 +10,7 @@ import type { Automation } from "@/core/types";
 import { AnimatedNumber, Button, Card, PageHeader, ProgressRing, Segmented } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { WochenChart, type TagWert } from "./WochenChart";
-import { AutomationDrawer, AutomationKarte } from "./AutomationKarte";
+import { AutomationDrawer, AutomationKarte, letzteLaeufe } from "./AutomationKarte";
 import { LiveFeed } from "./LiveFeed";
 import { RoiRechner } from "./RoiRechner";
 import { ARBEITSWOCHEN, FLOW_CSS, KATEGORIEN, WERT_PRO_STUNDE, ZIEL_STUNDEN, useNow } from "./shared";
@@ -65,6 +65,8 @@ export default function Motor() {
   const aktiv = automationen.filter((a) => a.aktiv).length;
 
   const gefiltert = filter === "alle" ? automationen : automationen.filter((a) => a.kategorie === filter);
+  // „Letzter Lauf“ der Karten aus demselben Protokoll wie der Live-Feed
+  const laeufeAusFeed = useMemo(() => letzteLaeufe(aktivitaeten), [aktivitaeten]);
   const offen = automationen.find((a) => a.id === offenId) ?? null;
 
   return (
@@ -102,25 +104,25 @@ export default function Motor() {
             </div>
             <div className="min-w-0">
               <div className="eyebrow">
-                Diese Woche · {fmtDateShort(grenze)} – {fmtDateShort(heute)}
+                Letzte 7 Tage · {fmtDateShort(grenze)} – {fmtDateShort(heute)}
               </div>
               <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <span className="text-[clamp(44px,7vw,64px)] font-semibold leading-[0.95] tracking-[-0.045em]">
                   <AnimatedNumber value={stunden} format={(n) => fmtNum(n, 1)} className="[font-variant-numeric:normal]" /> <span className="text-[0.55em] tracking-[-0.03em]">Std.</span>
                 </span>
-                <span className="text-[15px] font-medium text-fg-2">gespart diese Woche</span>
+                <span className="text-[15px] font-medium text-fg-2">gespart in den letzten 7 Tagen</span>
               </div>
               <p className="mt-2 max-w-[52ch] text-[13px] leading-relaxed text-fg-3">
                 Automatisch erledigt, während Sie an Mandaten arbeiten. Unser Ziel für jede Kanzlei: Ø {ZIEL_STUNDEN} Std. pro Woche.
               </p>
             </div>
             <div className="grid grid-cols-1 gap-2.5 sm:col-span-2 sm:grid-cols-3">
-              <Kpi icon={<Euro className="size-3.5" />} label="Gesparte Kosten dieser Woche" wert={fmtEUR(Math.round(wertWoche), { cents: false })} sub={`zu Personalkosten (≈ ${fmtEUR(WERT_PRO_STUNDE, { cents: false })}/Std.)`} />
-              <Kpi icon={<Target className="size-3.5" />} label="Hochgerechnet pro Jahr" wert={`≈ ${fmtEUR(Math.round(wertJahr / 1000) * 1000, { cents: false })}`} sub={`Wochenwert × ${ARBEITSWOCHEN} Arbeitswochen`} betont />
+              <Kpi icon={<Euro className="size-3.5" />} label="Gesparte Kosten · letzte 7 Tage" wert={fmtEUR(Math.round(wertWoche), { cents: false })} sub={`zu Personalkosten (${fmtEUR(WERT_PRO_STUNDE)}/Std.)`} />
+              <Kpi icon={<Target className="size-3.5" />} label="Hochgerechnet pro Jahr" wert={`≈ ${fmtEUR(Math.round(wertJahr / 1000) * 1000, { cents: false })}`} sub={`7-Tage-Wert × ${ARBEITSWOCHEN} Arbeitswochen`} betont />
               <Kpi icon={<Repeat className="size-3.5" />} label="Automatische Läufe" wert={fmtNum(laeufeWoche)} sub="in den letzten 7 Tagen" />
             </div>
             <p className="text-[12px] leading-snug text-fg-3 sm:col-span-2">
-              Wird die frei gewordene Zeit als anwaltliche Arbeit abgerechnet (Ihr Stundensatz {fmtEUR(satz, { cents: false })}), entspricht das einem Umsatzpotenzial von <span className="num whitespace-nowrap font-semibold text-fg">≈ {fmtEUR(Math.floor(potenzialJahr / 1000) * 1000, { cents: false })} pro Jahr</span>.
+              Wird die frei gewordene Zeit als anwaltliche Arbeit abgerechnet (gemessene {fmtNum(stunden, 1)} Std. × Ihr Stundensatz {fmtEUR(satz, { cents: false })} × {ARBEITSWOCHEN} Wochen), entspricht das einem Umsatzpotenzial von <span className="num whitespace-nowrap font-semibold text-fg">≈ {fmtEUR(Math.floor(potenzialJahr / 1000) * 1000, { cents: false })} pro Jahr</span>. Der Rechner unten rechnet mit dem Zielwert von {ZIEL_STUNDEN} Std.
             </p>
           </div>
           <div className="border-t border-[var(--line)] px-5 pb-3 pt-4 md:px-6">
@@ -162,7 +164,7 @@ export default function Motor() {
               transition={{ type: "spring", stiffness: 420, damping: 34, delay: Math.min(i, 10) * 0.03 }}
               className="min-w-0"
             >
-              <AutomationKarte a={a} now={now} onOpen={() => setOffenId(a.id)} />
+              <AutomationKarte a={a} now={now} ausFeed={laeufeAusFeed.get(a.key)} onOpen={() => setOffenId(a.id)} />
             </motion.div>
           ))}
         </motion.div>
@@ -171,7 +173,7 @@ export default function Motor() {
       {/* ROI */}
       <section id="roi" className="mt-8 scroll-mt-24">
         <div className="mb-4">
-          <h2 className="title-lg">Was sich das rechnet</h2>
+          <h2 className="title-lg">So rechnet sich das</h2>
           <p className="mt-1 text-[13px] text-fg-3">Gesparte Zeit in Euro – und der Kostenvergleich zwischen Lifetime-Lizenz und Abo-Modell.</p>
         </div>
         <RoiRechner startSatz={satz} startArbeitsplaetze={tenant.lizenz.arbeitsplaetze} gemessen={stunden} />

@@ -62,7 +62,7 @@ export function Funktionen() {
             <KachelKopf
               icon={<Library />}
               titel="Die Fall-Datenbank"
-              text="Präzedenzfall-Recherche in Sekunden: passende Entscheidungen mit Gericht, Datum und Aktenzeichen zum Nachprüfen – so finden Sie die einschlägige Rechtsprechung in einem Bruchteil der Zeit. Im Produktivbetrieb angebunden an offene Rechtsprechungsquellen wie Open Legal Data und die amtlichen Veröffentlichungen der Bundesgerichte; im Prototyp ein kuratierter Auszug echter Leitentscheidungen von BVerfG, EuGH und Bundesgerichten."
+              text="Präzedenzfall-Recherche in Sekunden: passende Entscheidungen mit Gericht, Datum und Aktenzeichen zum Nachprüfen. Im Prototyp ein kuratierter Auszug echter Leitentscheidungen von BVerfG, EuGH und Bundesgerichten – im Produktivbetrieb angebunden an offene Quellen wie Open Legal Data und die amtlichen Veröffentlichungen der Bundesgerichte."
             />
             <SucheDemo />
           </div>

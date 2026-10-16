@@ -7,7 +7,7 @@ import { addDays, fmtDate, today } from "@/core/dates";
 import { getBackend, type NeuerKunde, type NeuerKundeErgebnis } from "@/lib/backend";
 import type { Bundesland, Sachgebiet } from "@/core/types";
 import { cn } from "@/lib/cn";
-import { SACHGEBIETE, einladungsText, kopieren, landFuerStadt, loginUrl } from "./helfer";
+import { LOGIN_URL_HINWEIS, SACHGEBIETE, einladungsText, kopieren, landFuerStadt, loginUrl } from "./helfer";
 
 const LEER = (): NeuerKunde => ({
   kanzlei: "",
@@ -89,7 +89,7 @@ export function NeuerZugang({ open, onClose, onAngelegt }: { open: boolean; onCl
       size="lg"
       icon={ergebnis ? <CheckCircle2 className="size-5" /> : <Plus className="size-5" />}
       title={ergebnis ? "Testzugang ist bereit" : "Neuen Testzugang anlegen"}
-      subtitle={ergebnis ? `${ergebnis.tenant.name} · Lizenz ${ergebnis.tenant.lizenz.lizenzNr}` : "Die Kanzlei erhält einen eigenen, streng getrennten Datenbestand und einen Admin-Zugang."}
+      subtitle={ergebnis ? `${ergebnis.tenant.name} · Lizenz ${ergebnis.tenant.lizenz.lizenzNr}` : "Die Kanzlei erhält einen eigenen, streng getrennten Datenbestand und einen Zugang für den Hauptnutzer der Kanzlei."}
       footer={
         ergebnis ? (
           <>
@@ -152,7 +152,7 @@ export function NeuerZugang({ open, onClose, onAngelegt }: { open: boolean; onCl
                   ))}
                 </Select>
               </Field>
-              <Field label="Name der Admin-Person" htmlFor="nk-admin" hint={zeige("adminName") && <span className="text-seal">{zeige("adminName")}</span>}>
+              <Field label="Name des Hauptnutzers der Kanzlei" htmlFor="nk-admin" hint={zeige("adminName") && <span className="text-seal">{zeige("adminName")}</span>}>
                 <Input id="nk-admin" value={form.adminName} onChange={(e) => set("adminName", e.target.value)} placeholder="z. B. Dr. Anna Becker" autoComplete="name" aria-invalid={!!zeige("adminName")} />
               </Field>
               <Field label="E-Mail der Admin-Person" htmlFor="nk-email" hint={zeige("adminEmail") ? <span className="text-seal">{zeige("adminEmail")}</span> : "Damit meldet sich die Kanzlei an."}>
@@ -216,8 +216,9 @@ export function NeuerZugang({ open, onClose, onAngelegt }: { open: boolean; onCl
 function Erfolg({ e, beispieldaten }: { e: NeuerKundeErgebnis; beispieldaten: boolean }) {
   const [zeigePw, setZeigePw] = useState(true);
   const text = einladungsText({ tenant: e.tenant, admin: e.admin, passwort: e.passwort, beispieldaten });
+  const url = loginUrl();
   const zeilen = [
-    { icon: <Link2 className="size-4" />, label: "Login-URL", wert: loginUrl(), was: "Login-URL" },
+    { icon: <Link2 className="size-4" />, label: url ? "Login-URL" : "Anmeldeadresse", wert: url ?? LOGIN_URL_HINWEIS, was: "Login-URL", hinweis: !url },
     { icon: <Mail className="size-4" />, label: "E-Mail", wert: e.admin.email, was: "E-Mail" },
     { icon: <KeyRound className="size-4" />, label: "Passwort", wert: e.passwort, was: "Passwort", geheim: true },
   ];
@@ -238,16 +239,18 @@ function Erfolg({ e, beispieldaten }: { e: NeuerKundeErgebnis; beispieldaten: bo
             <span className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-ink-soft text-ink">{z.icon}</span>
             <span className="min-w-0 flex-1">
               <span className="block text-[11.5px] font-medium text-fg-3">{z.label}</span>
-              <span className="mono block truncate text-[13.5px] font-medium">{z.geheim && !zeigePw ? "•".repeat(z.wert.length) : z.wert}</span>
+              <span className={z.hinweis ? "block text-[13px] text-fg-2" : "mono block truncate text-[13.5px] font-medium"}>{z.geheim && !zeigePw ? "•".repeat(z.wert.length) : z.wert}</span>
             </span>
             {z.geheim && (
               <button type="button" className="icon-btn !size-8" onClick={() => setZeigePw((v) => !v)} aria-label={zeigePw ? "Passwort verbergen" : "Passwort anzeigen"}>
                 {zeigePw ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
               </button>
             )}
-            <Button size="sm" variant="secondary" icon={<Copy className="size-3.5" />} onClick={() => void kopieren(z.wert, z.was)} aria-label={`${z.was} kopieren`} title={`${z.was} kopieren`}>
-              <span className="hidden sm:inline">Kopieren</span>
-            </Button>
+            {!z.hinweis && (
+              <Button size="sm" variant="secondary" icon={<Copy className="size-3.5" />} onClick={() => void kopieren(z.wert, z.was)} aria-label={`${z.was} kopieren`} title={`${z.was} kopieren`}>
+                <span className="hidden sm:inline">Kopieren</span>
+              </Button>
+            )}
           </li>
         ))}
       </ul>

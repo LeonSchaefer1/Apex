@@ -6,6 +6,7 @@ import { useIsMobile } from "@/lib/useMedia";
 import { AiChip } from "@/components/ui";
 import { toast } from "@/store/ui";
 import { cn } from "@/lib/cn";
+import { schuetzeLeerzeichen } from "@/core/dates";
 import { anzeigeText, sprechText, type Satz } from "./daten";
 
 const TON: Record<string, string> = {
@@ -148,11 +149,11 @@ export function Briefing({ saetze, erstellt }: { saetze: Satz[]; erstellt: strin
             {satz.map((teil, k) =>
               teil.href ? (
                 <Link key={k} to={teil.href} className={cn(TON[teil.ton ?? "ink"], "rounded-[6px] px-0.5 underline decoration-[var(--ink-soft)] decoration-2 underline-offset-[3px] hover:decoration-ink")}>
-                  {teil.t}
+                  {schuetzeLeerzeichen(teil.t)}
                 </Link>
               ) : (
                 <span key={k} className={teil.ton ? TON[teil.ton] : undefined}>
-                  {teil.t}
+                  {schuetzeLeerzeichen(teil.t)}
                 </span>
               ),
             )}

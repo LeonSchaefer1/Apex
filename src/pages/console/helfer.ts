@@ -48,12 +48,31 @@ export async function kopieren(text: string, was = "Text") {
   else toast("Kopieren nicht möglich", { text: "Bitte markieren Sie den Text und kopieren Sie ihn manuell (Strg/⌘ + C).", ton: "warnung" });
 }
 
-export function loginUrl() {
+/** Hinweis statt einer kaputten Adresse (Artefakt-Vorschau, Datei-Aufruf, Sandbox ohne eigenen Ursprung). */
+export const LOGIN_URL_HINWEIS = "Ihre persönliche Anmeldeadresse erhalten Sie mit der Einrichtung.";
+
+/**
+ * Anmeldeadresse für Einladungen und Zugangsdaten – `null`, wenn diese Ansicht keine echte Web-Adresse hat
+ * (z. B. Artefakt: origin „null“, Memory-Router) und auch keine öffentliche Adresse konfiguriert ist (VITE_PUBLIC_URL).
+ */
+export function loginUrl(): string | null {
+  const oeffentlich = (import.meta.env.VITE_PUBLIC_URL as string | undefined)?.trim().replace(/\/+$/, "");
+  const memory = (import.meta.env.VITE_ROUTER as string | undefined) === "memory";
+  let origin = "";
   try {
-    return `${window.location.origin}/login`;
+    origin = window.location.origin;
   } catch {
-    return "/login";
+    origin = "";
   }
+  if (!memory && /^https?:\/\/[^/]+$/i.test(origin)) return `${origin}/login`;
+  if (oeffentlich && /^https?:\/\//i.test(oeffentlich)) return `${oeffentlich}/login`;
+  return null;
+}
+
+/** Zeile „Anmeldung: …“ für Einladungs- und Zugangsdatentexte. */
+export function anmeldeZeile(): string {
+  const url = loginUrl();
+  return url ? `Anmeldung: ${url}` : LOGIN_URL_HINWEIS;
 }
 
 export function einladungsText(p: { tenant: Tenant; admin: User; passwort: string; beispieldaten: boolean }) {
@@ -66,7 +85,7 @@ export function einladungsText(p: { tenant: Tenant; admin: User; passwort: strin
     "",
     `vielen Dank für Ihr Interesse an AnwaltApex. Ihr persönlicher Testzugang für ${tenant.name} ist eingerichtet${p.beispieldaten ? " – mit Beispielakten, damit Sie Fristen, Posteingang, KI-Fallanalyse und 38h-Motor sofort erleben können" : ""}.`,
     "",
-    `Anmeldung: ${loginUrl()}`,
+    anmeldeZeile(),
     `E-Mail: ${admin.email}`,
     `Passwort: ${passwort}`,
     "",

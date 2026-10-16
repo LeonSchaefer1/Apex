@@ -12,7 +12,10 @@ export type Rolle = "partner" | "anwalt" | "refa" | "admin";
 
 export interface Ansprechpartner {
   name: string;
+  /** Angezeigte Funktion, z. B. „Ihre feste Ansprechpartnerin“ */
   rolle: string;
+  /** Grammatisch passende Bezeichnung – alle Texte formulieren daraus („Ihre feste Ansprechpartnerin: …“) */
+  bezeichnung?: "Ansprechpartner" | "Ansprechpartnerin";
   telefon: string;
   email: string;
   initialen: string;

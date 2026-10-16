@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { ArrowUp, Mic, MicOff, Volume2, VolumeX, X, RotateCcw, Square, Phone, Wrench, ArrowRight } from "lucide-react";
 import { useUI } from "@/store/ui";
 import { useKanzlei } from "@/store/session";
-import { useAiStatus } from "@/ai/status";
+import { DEMO_KI_NAME, useAiStatus } from "@/ai/status";
 import { frageAssistent, vorschlaege, type AssistentLink } from "@/ai/assistent";
 import { useData } from "@/store/data";
 import type { LlmMessage } from "@/ai/llm";
@@ -200,7 +200,7 @@ export function AssistantDock() {
   }, [assistentOffen, schliesseAssistent]);
 
   const vorname = sitzung.user.name.replace(/^(Dr\.|Prof\.)\s+/, "").split(" ")[0];
-  const statusText = zustand === "hoert" ? "Ich höre zu …" : zustand === "denkt" ? "Denkt nach …" : zustand === "spricht" ? "Spricht …" : ai.quelle === "demo" ? "Demo-KI · offline" : "Live · Claude";
+  const statusText = zustand === "hoert" ? "Ich höre zu …" : zustand === "denkt" ? "Denkt nach …" : zustand === "spricht" ? "Spricht …" : ai.quelle === "demo" ? DEMO_KI_NAME : "Live · Claude";
 
   return (
     <>

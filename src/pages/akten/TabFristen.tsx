@@ -2,8 +2,10 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { Calculator, CalendarCheck2, CalendarPlus, Check, ChevronDown, Clock, MapPin, RotateCcw, ShieldAlert, Sparkles } from "lucide-react";
+import { Calculator, CalendarCheck2, CalendarPlus, Check, ChevronDown, Clock, MapPin, RotateCcw, ShieldAlert } from "lucide-react";
 import type { Akte, Frist } from "@/core/types";
+import { fristArtZu } from "@/core/fristen";
+import { istKritisch } from "@/core/fristenLage";
 import { fmtDate, fmtDateWd, monatName, relTime, wochentagName, fromISO } from "@/core/dates";
 import { useCol } from "@/store/data";
 import { useKanzlei } from "@/store/session";
@@ -13,7 +15,7 @@ import { cn } from "@/lib/cn";
 // Erledigen, Wiederöffnen und Vier-Augen-Kontrolle laufen über dieselben Helfer wie im Fristenkalender –
 // damit gelten in Akte und Kalender dieselben Regeln (u. a. keine Selbstkontrolle der verantwortlichen Person).
 import { bestaetigeKontrolle, brauchtKontrolle, erledigeFrist, oeffneFristWieder } from "@/pages/fristen/logik";
-import { KontrolleAktion, KontrollStatus } from "@/pages/fristen/FristZeile";
+import { KontrolleAktion, KontrollStatus, QuelleChip } from "@/pages/fristen/FristZeile";
 import { FRIST_TYP_LABEL, beruehreAkte, dringlichkeit, useTeam } from "./helfer";
 
 export function TabFristen({ akte, onNeu }: { akte: Akte; onNeu: () => void }) {
@@ -46,7 +48,7 @@ export function TabFristen({ akte, onNeu }: { akte: Akte; onNeu: () => void }) {
         />
         {ohneKontrolle > 0 && ansicht === "offen" && (
           <Chip tone="amber" icon={<ShieldAlert className="size-3" />}>
-            {ohneKontrolle} {ohneKontrolle === 1 ? "Frist wartet" : "Fristen warten"} auf Vier-Augen-Kontrolle
+            Vier-Augen-Kontrolle offen: {ohneKontrolle} {ohneKontrolle === 1 ? "Frist" : "Fristen"}
           </Chip>
         )}
         <div className="flex-1" />
@@ -108,6 +110,9 @@ function FristKarte({ f, akte }: { f: Frist; akte: Akte }) {
   const istOffen = f.status === "offen";
   const dt = fromISO(f.datum);
   const tonDatum = !istOffen ? "bg-green-soft text-green" : d.tone === "seal" ? "bg-seal-soft text-seal" : d.tone === "amber" ? "bg-amber-soft text-amber" : "bg-ink-softer text-fg";
+  // Rechtsnatur aus der Fristregel: Notfrist bzw. nicht verlängerbare Frist (§ 4 KSchG, StPO, OWiG) rot – wie im Fristenkalender
+  const art = f.typ === "notfrist" || f.typ === "frist" ? fristArtZu(f) : undefined;
+  const kritisch = istKritisch(f);
 
   const erledige = () => {
     // erledigt Frist und zugehörige Vorfrist mit einem gemeinsamen Zeitstempel und protokolliert es
@@ -130,7 +135,7 @@ function FristKarte({ f, akte }: { f: Frist; akte: Akte }) {
   const kontrolliere = () => {
     if (!bestaetigeKontrolle(f, user.id)) return;
     beruehreAkte(akte.id);
-    toast("Kontrolle bestätigt", { ton: "erfolg", text: `Vier-Augen-Prinzip erfüllt: ${f.titel} (${fmtDate(f.datum)})` });
+    toast("Kontrolle bestätigt", { ton: "erfolg", text: `Vier-Augen-Kontrolle erfüllt: ${f.titel} (${fmtDate(f.datum)})` });
   };
 
   return (
@@ -143,18 +148,15 @@ function FristKarte({ f, akte }: { f: Frist; akte: Akte }) {
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <Chip tone={f.typ === "notfrist" ? "seal" : f.typ === "termin" ? "ink" : "neutral"}>{FRIST_TYP_LABEL[f.typ]}</Chip>
+            <Chip tone={kritisch ? "seal" : f.typ === "termin" ? "ink" : "neutral"} icon={kritisch ? <ShieldAlert className="size-3" /> : undefined} title={art?.kurz}>
+              {art?.label ?? FRIST_TYP_LABEL[f.typ]}
+            </Chip>
             {istOffen && (
               <Chip tone={d.tone} dot={d.stufe !== "normal"}>
                 {d.label}
               </Chip>
             )}
-            {f.quelle === "ki" && (
-              <Chip tone="violet" icon={<Sparkles className="size-3" />}>
-                Von KI erkannt
-              </Chip>
-            )}
-            {f.quelle === "automatisch" && <Chip tone="outline">Automatisch</Chip>}
+            <QuelleChip quelle={f.quelle} />
           </div>
           <div className="mt-1.5 text-[14.5px] font-semibold leading-snug">{f.titel}</div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-fg-3">

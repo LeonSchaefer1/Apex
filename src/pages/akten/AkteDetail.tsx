@@ -141,7 +141,7 @@ export default function AkteDetail() {
 const TAB_ERKLAERUNG: Record<TabKey, string> = {
   uebersicht: "Das Wichtigste auf einen Blick: Sachverhalt, anstehende Fristen, neue Dokumente und interne Notizen.",
   dokumente: "Die E-Akte: alle Schriftstücke in Ordnern – durchsuchbar im Volltext, per Drag & Drop sortierbar, per Doppelklick umbenennbar.",
-  fristen: "Alle Fristen und Termine dieser Akte – berechnet nach §§ 187 ff. BGB, § 222 ZPO mit Rechenweg und Vier-Augen-Kontrolle.",
+  fristen: "Alle Fristen, Wiedervorlagen und Termine dieser Akte – berechnet je Verfahrensordnung (z. B. § 222 ZPO, § 43 StPO) mit Rechenweg und Vier-Augen-Kontrolle.",
   beteiligte: "Wer an der Sache beteiligt ist – mit Kontaktdaten zum Kopieren und Verknüpfung ins Kontaktverzeichnis.",
   aktenkonto: "Honorar, Zahlungen, Vorschüsse und Fremdgeld dieser Akte – bei Forderungseinzug mit taggenauem Forderungskonto.",
   verlauf: "Lückenlose Chronik: was Ihr Team, die KI und der 38h-Motor in dieser Akte getan haben.",

@@ -10,6 +10,7 @@ import { search, snippet } from "@/core/search";
 import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
 import { fmtDate } from "@/core/dates";
 import { Highlight } from "@/components/Highlight";
+import type { Akte } from "@/core/types";
 
 /** Sprungziel der Suche: Schnellaktion, Bereich (Navigation) oder Unterbereich (Reiter). */
 interface Ziel {
@@ -21,13 +22,19 @@ interface Ziel {
   stichworte?: string;
 }
 
-const SCHNELLAKTIONEN: Ziel[] = [
-  { to: "/akten?neu=1", label: "Neue Akte anlegen", sub: "Mandatsaufnahme mit automatischer Vollmacht & Deckungsanfrage", icon: <Plus />, stichworte: "Mandat Mandatsaufnahme" },
-  { to: "/fristen?rechner=1", label: "Frist berechnen", sub: "Fristenrechner nach § 222 ZPO mit Feiertagen Ihres Bundeslands", icon: <Calculator />, stichworte: "Fristenrechner Rechner" },
-  { to: "/abrechnung?tab=rvg", label: "RVG-Gebühren berechnen", sub: "Gebührentabelle 2025 inkl. Anrechnung und Auslagen", icon: <Calculator />, stichworte: "RVG-Rechner Gebührenrechner" },
-  { to: "/ki", label: "KI-Fallanalyse starten", sub: "Akte wählen – Erfolgsaussicht, Präzedenzfälle, nächste Schritte", icon: <Sparkles /> },
-  { to: "/automatisierung", label: "38h-Motor öffnen", sub: "Was heute automatisch erledigt wurde", icon: <Zap /> },
-];
+/** Schnellaktionen – die KI-Fallanalyse startet direkt für die zuletzt bearbeitete offene Akte. */
+function schnellaktionen(akten: Akte[]): Ziel[] {
+  const zuletzt = akten.filter((a) => a.status === "offen").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+  return [
+    { to: "/akten?neu=1", label: "Neue Akte anlegen", sub: "Mandatsaufnahme mit automatischer Vollmacht & Deckungsanfrage", icon: <Plus />, stichworte: "Mandat Mandatsaufnahme" },
+    { to: "/fristen?rechner=1", label: "Frist berechnen", sub: "Fristenrechner nach § 222 ZPO mit Feiertagen Ihres Bundeslands", icon: <Calculator />, stichworte: "Fristenrechner Rechner" },
+    { to: "/abrechnung?tab=rvg", label: "RVG-Gebühren berechnen", sub: "Gebührentabelle 2025 inkl. Anrechnung und Auslagen", icon: <Calculator />, stichworte: "RVG-Rechner Gebührenrechner" },
+    zuletzt
+      ? { to: `/ki?akte=${encodeURIComponent(zuletzt.id)}&start=1`, label: "KI-Fallanalyse starten", sub: `Zuletzt bearbeitet: ${zuletzt.aktenzeichen} · ${zuletzt.titel}`, icon: <Sparkles />, stichworte: "Erfolgsaussicht Präzedenzfälle Analyse" }
+      : { to: "/ki", label: "Apex KI öffnen – Fallanalyse", sub: "Akte wählen – Erfolgsaussicht, Präzedenzfälle, nächste Schritte", icon: <Sparkles />, stichworte: "Erfolgsaussicht Präzedenzfälle Analyse" },
+    { to: "/automatisierung", label: "38h-Motor öffnen", sub: "Automationen, Protokoll und gesparte Zeit der letzten 7 Tage", icon: <Zap />, stichworte: "Automatisierung Automationen" },
+  ];
+}
 
 /** Reiter, die nur bei passender Suche erscheinen („Bankabgleich", „Team" …). */
 const UNTERBEREICHE: Ziel[] = [
@@ -44,7 +51,6 @@ const BEREICHE: Ziel[] = NAV.map((n) => {
   return { to: n.to, label: n.label, sub: n.beschreibung, icon: <Icon />, stichworte: n.kurz };
 });
 
-const ZIELE: Ziel[] = [...BEREICHE, ...SCHNELLAKTIONEN, ...UNTERBEREICHE];
 
 /** Globale Suche (⌘K / Strg+K): Volltext über Akten, Dokumente (OCR), Kontakte, Fristen, Posteingang und Rechtsprechung – lokal, ohne Wartezeit. */
 export function CommandPalette() {
@@ -52,6 +58,7 @@ export function CommandPalette() {
   const nav = useNavigate();
   const data = useData((s) => s.data);
   const [q, setQ] = useState("");
+  const aktionen = useMemo(() => schnellaktionen(data.akten), [data.akten]);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -120,7 +127,7 @@ export function CommandPalette() {
     ], 4);
     // Bereiche, Schnellaktionen und Reiter („Fristen", „Abrechnung", „38h-Motor", „Bankabgleich" …)
     const gesehen = new Set<string>();
-    const ziele = search(ZIELE, q, [
+    const ziele = search([...BEREICHE, ...aktionen, ...UNTERBEREICHE], q, [
       { get: (z) => z.label, weight: 5 },
       { get: (z) => z.stichworte, weight: 3 },
       { get: (z) => z.sub, weight: 1 },
@@ -136,7 +143,7 @@ export function CommandPalette() {
     const zieleZuerst = ziele.length > 0 && search([ziele[0].item], q, [{ get: (z) => `${z.label} ${z.stichworte ?? ""}`, weight: 1 }]).length > 0;
     const total = ziele.length + akten.length + dokumente.length + kontakte.length + fristen.length + nachrichten.length + urteile.length;
     return { ziele, zieleZuerst, akten, dokumente, kontakte, fristen, nachrichten, urteile, total, ms: performance.now() - t0 };
-  }, [q, data]);
+  }, [q, data, aktionen]);
 
   const go = (path: string) => {
     setPalette(false);
@@ -193,7 +200,7 @@ export function CommandPalette() {
                 {!res && (
                   <>
                     <Command.Group heading="Schnellaktionen">
-                      {SCHNELLAKTIONEN.map((z) => (
+                      {aktionen.map((z) => (
                         <Item key={z.to} icon={z.icon} onSelect={() => go(z.to)} title={z.label} sub={z.sub} />
                       ))}
                     </Command.Group>

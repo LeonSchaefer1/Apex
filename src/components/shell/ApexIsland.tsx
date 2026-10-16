@@ -31,7 +31,8 @@ export function ApexIsland() {
       tabIndex={toastSichtbar ? -1 : undefined}
       style={{ pointerEvents: toastSichtbar ? "none" : undefined }}
       className="relative hidden h-9 max-w-full shrink-0 items-center gap-2 overflow-hidden rounded-full bg-[#090b14] pl-2 pr-3.5 text-white shadow-[0_8px_24px_-10px_rgba(0,0,0,0.6)] ring-1 ring-white/10 lg:inline-flex"
-      title="38h-Motor: Was die Automatisierung gerade für Sie erledigt"
+      title={`Apex Island – 38h-Motor live: ${aktuell ? `${aktuell.text} (+${aktuell.minuten} Min.)` : `${fmtNum(stunden, 1)} Std. in den letzten 7 Tagen gespart`} · Details öffnen`}
+      aria-label={`Apex Island – 38h-Motor live: ${aktuell ? `${aktuell.text}, ${aktuell.minuten} Minuten gespart` : `${fmtNum(stunden, 1)} Stunden in den letzten 7 Tagen gespart`}. 38h-Motor öffnen`}
     >
       <motion.span layout className="relative grid size-6 place-items-center rounded-full bg-white/10">
         <Zap className="size-3.5 text-[#ffd166]" fill="#ffd166" />
@@ -57,7 +58,7 @@ export function ApexIsland() {
             className="whitespace-nowrap text-[12.5px] font-medium"
           >
             <span className="hidden 2xl:inline">38h-Motor aktiv · </span>
-            <span className="num text-[#7ee2b8]">{fmtNum(stunden, 1)} Std.</span> gespart<span className="hidden xl:inline"> diese Woche</span>
+            <span className="num text-[#7ee2b8]">{fmtNum(stunden, 1)} Std.</span> gespart<span className="hidden xl:inline"> · letzte 7 Tage</span>
           </motion.span>
         )}
       </AnimatePresence>

@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { motion } from "motion/react";
 import { ChevronDown, ChevronLeft, CheckCircle2, CornerUpLeft, FileText, Landmark, Loader2, Paperclip, Reply, ShieldCheck, Sparkles, Undo2 } from "lucide-react";
 import { fmtDateWd, fmtTime, relTime } from "@/core/dates";
+import { istKritisch } from "@/core/fristenLage";
 import { TYP_META } from "@/pages/fristen/logik";
 import type { Nachricht } from "@/core/types";
 import { useCol } from "@/store/data";
@@ -40,7 +41,8 @@ function springeZurKiKarte(nurLesebereich = false) {
 function KiLeiste({ ansicht, schritt, akteAz, eeb }: { ansicht: KiAnsicht | null; schritt?: number; akteAz?: string; eeb: boolean }) {
   const springe = () => springeZurKiKarte();
   const laeuft = schritt !== undefined;
-  const notfrist = ansicht?.fristen.find((f) => f.typ === "notfrist") ?? ansicht?.fristen[0];
+  // wichtigste Frist: kritische zuerst (Notfrist oder nicht verlängerbar, z. B. § 4 KSchG), sonst die erste
+  const notfrist = ansicht?.fristen.find(istKritisch) ?? ansicht?.fristen[0];
   return (
     <motion.button
       type="button"
@@ -62,7 +64,7 @@ function KiLeiste({ ansicht, schritt, akteAz, eeb }: { ansicht: KiAnsicht | null
             <span className="font-semibold">{ansicht.typ}</span>
             {akteAz && <span className="text-fg-3"> · Akte <span className="mono text-fg-2">{akteAz}</span> ({Math.round(ansicht.sicherheit * 100)} %)</span>}
             {notfrist ? (
-              <span className={notfrist.typ === "notfrist" ? "text-seal" : "text-fg-2"}>
+              <span className={istKritisch(notfrist) ? "text-seal" : "text-fg-2"}>
                 {" "}· {TYP_META[notfrist.typ].label} bis {fmtDateWd(notfrist.ende)}
               </span>
             ) : ansicht.termin ? (
@@ -138,7 +140,7 @@ export function Lesebereich({
               {akte.aktenzeichen}
             </Link>
           )}
-          {n.eebErforderlich && (n.eebAbgegeben ? <Chip tone="green" icon={<ShieldCheck className="size-3" />}>eEB abgegeben</Chip> : <Chip tone="amber">eEB angefordert</Chip>)}
+          {n.eebErforderlich && (n.eebAbgegeben ? <Chip tone="green" icon={<ShieldCheck className="size-3" />}>eEB abgegeben</Chip> : <Chip tone="amber">eEB offen</Chip>)}
           {n.status === "erledigt" && (
             <Chip tone="green" icon={<CheckCircle2 className="size-3" />}>
               Erledigt

@@ -9,7 +9,8 @@ import { toast } from "@/store/ui";
 import { Avatar, Button, Chip, Field, Input, Menu, Modal, Select, confirmDialog } from "@/components/ui";
 import { CopyButton } from "@/pages/hilfe/kopieren";
 import { cn } from "@/lib/cn";
-import { Abschnitt, ROLLEN_LABEL } from "./teile";
+import { Abschnitt } from "./teile";
+import { ROLLE_AUSWAHL, rollenLabel } from "@/lib/rollen";
 
 const TITEL_VORSCHLAG: Record<Rolle, string> = {
   partner: "Rechtsanwältin / Rechtsanwalt · Partner",
@@ -120,7 +121,7 @@ export function TeamTab() {
                       <div className="truncate text-[12px] text-fg-4">{u.email}</div>
                     </div>
                     <Chip tone={u.rolle === "partner" ? "ink" : "outline"} className="hidden sm:inline-flex">
-                      {ROLLEN_LABEL[u.rolle]}
+                      {rollenLabel(u)}
                     </Chip>
                     {darf && !ich && u.rolle !== "partner" ? (
                       <Menu
@@ -143,7 +144,7 @@ export function TeamTab() {
             })}
           </AnimatePresence>
         </ul>
-        {voll && <p className="mt-3 text-[12.5px] text-amber">Alle Arbeitsplätze sind belegt. Weitere Arbeitsplätze erhalten Sie über Ihren Ansprechpartner {tenant.ansprechpartner.name}.</p>}
+        {voll && <p className="mt-3 text-[12.5px] text-amber">Alle Arbeitsplätze sind belegt. Weitere Arbeitsplätze erhalten Sie über {tenant.ansprechpartner.name}.</p>}
       </Abschnitt>
 
       <Abschnitt titel="Rollen & Rechte" text="Übersicht der Standardrechte je Rolle." icon={<ShieldCheck className="size-[18px]" />}>
@@ -245,7 +246,7 @@ function EinladenModal({ open, onClose, voll }: { open: boolean; onClose: () => 
     try {
       const r = await getBackend().team.add({ name: name.trim(), email: email.trim(), rolle, titel: titel.trim() || TITEL_VORSCHLAG[rolle] });
       aktualisiereTeam((t) => [...t.filter((x) => x.id !== r.user.id), r.user]);
-      useData.getState().log({ akteur: "nutzer", userId: user.id, text: `Zugang für ${r.user.name} angelegt (${ROLLEN_LABEL[rolle]})` });
+      useData.getState().log({ akteur: "nutzer", userId: user.id, text: `Zugang für ${r.user.name} angelegt (${ROLLE_AUSWAHL[rolle]})` });
       setErgebnis(r);
       toast("Zugang angelegt", { text: `${r.user.name} kann sich jetzt anmelden.`, ton: "erfolg" });
     } catch (e) {
@@ -292,7 +293,7 @@ function EinladenModal({ open, onClose, voll }: { open: boolean; onClose: () => 
             <div className="min-w-0">
               <div className="truncate text-[14px] font-semibold">{ergebnis.user.name}</div>
               <div className="truncate text-[12.5px] text-fg-3">
-                {ROLLEN_LABEL[ergebnis.user.rolle]} · {ergebnis.user.email}
+                {rollenLabel(ergebnis.user)} · {ergebnis.user.email}
               </div>
             </div>
           </div>
@@ -342,7 +343,7 @@ function EinladenModal({ open, onClose, voll }: { open: boolean; onClose: () => 
               <Input id="inv-titel" value={titel} onChange={(e) => setTitel(e.target.value)} placeholder={TITEL_VORSCHLAG[rolle]} />
             </Field>
           </div>
-          {voll && <div className="rounded-[12px] bg-amber-soft px-3.5 py-2.5 text-[13px] text-fg-2">Alle Arbeitsplätze sind belegt. Weitere Arbeitsplätze erhalten Sie über Ihren Ansprechpartner.</div>}
+          {voll && <div className="rounded-[12px] bg-amber-soft px-3.5 py-2.5 text-[13px] text-fg-2">Alle Arbeitsplätze sind belegt. Weitere Arbeitsplätze erhalten Sie über {tenant.ansprechpartner.name}.</div>}
           {fehler && (
             <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} role="alert" className={cn("rounded-[12px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal")}>
               {fehler}

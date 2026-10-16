@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Navigate, useLocation, useOutlet } from "react-router";
+import { Navigate, useLocation, useNavigate, useOutlet } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { useSession } from "@/store/session";
 import { useData } from "@/store/data";
-import { istConsole } from "@/lib/backend";
+import { hatBeispieldaten, istConsole } from "@/lib/backend";
 import { usePointerGlow } from "@/lib/usePointerGlow";
 import { useMotor } from "@/lib/motor";
 import { Sidebar } from "./Sidebar";
@@ -20,13 +20,23 @@ export function AppShell() {
   const dataStatus = useData((s) => s.status);
   const load = useData((s) => s.load);
   const loc = useLocation();
+  const nav = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
   usePointerGlow();
-  useMotor(dataStatus === "bereit");
+  // Simulierter 38h-Motor nur für Präsentations- und Beispieldaten-Kanzleien – nie in echten Kundendaten.
+  useMotor(dataStatus === "bereit" && hatBeispieldaten(sitzung));
 
   useEffect(() => {
     if (sitzung && !istConsole(sitzung) && dataStatus === "leer") void load();
   }, [sitzung, dataStatus, load]);
+
+  // Sitzung wurde in einem anderen Tab gewechselt: Die bisherige Seite (z. B. eine Akte) gehört zur alten Kanzlei → Cockpit.
+  const kanzleiSchluessel = sitzung && !istConsole(sitzung) ? `${sitzung.tenant.id}:${sitzung.user.id}` : null;
+  const vorherSchluessel = useRef(kanzleiSchluessel);
+  useEffect(() => {
+    if (vorherSchluessel.current && kanzleiSchluessel && vorherSchluessel.current !== kanzleiSchluessel && loc.pathname !== "/cockpit") nav("/cockpit", { replace: true });
+    vorherSchluessel.current = kanzleiSchluessel;
+  }, [kanzleiSchluessel, loc.pathname, nav]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0 });
@@ -34,7 +44,19 @@ export function AppShell() {
 
   if (status !== "angemeldet" || !sitzung) return <Navigate to="/login" replace />;
   if (istConsole(sitzung)) return <Navigate to="/console" replace />;
-  if (dataStatus !== "bereit") return <LadeBildschirm fehler={dataStatus === "fehler" ? useData.getState().fehler : undefined} />;
+  if (dataStatus !== "bereit")
+    return (
+      <LadeBildschirm
+        fehler={dataStatus === "fehler" ? useData.getState().fehler ?? "Die Kanzleidaten konnten nicht geladen werden." : undefined}
+        onErneut={() => void load()}
+        onAbmelden={() =>
+          void (async () => {
+            await useSession.getState().logout();
+            useData.getState().clear();
+          })()
+        }
+      />
+    );
 
   return (
     <div className="relative flex h-full">

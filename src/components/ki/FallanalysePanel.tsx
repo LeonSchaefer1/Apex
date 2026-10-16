@@ -13,6 +13,21 @@ import { analysiereFall, ANALYSE_PHASEN, type Fallanalyse } from "@/ai/fallanaly
 import { nowLocal, relTime } from "@/core/dates";
 import { Button, Card, Chip } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { kopiereText } from "@/lib/zwischenablage";
+
+/** Fehler der Analyse verständlich formulieren – keine Rohmeldungen wie „Failed to fetch“ oder „Fehler 500“. */
+function fehlerText(e: unknown): string {
+  const roh = e instanceof Error ? e.message : String(e);
+  if (e instanceof TypeError || /failed to fetch|networkerror|load failed|network request failed/i.test(roh))
+    return "Keine Verbindung zum Kanzlei-Server. Bitte prüfen Sie die Netzwerkverbindung und starten Sie die Analyse erneut.";
+  if (/\b5\d\d\b|server error|bad gateway|service unavailable/i.test(roh)) return "Der Kanzlei-Server antwortet gerade nicht. Bitte versuchen Sie es in einer Minute erneut.";
+  if (/\b(401|403)\b|nicht angemeldet|unauthori[sz]ed/i.test(roh)) return "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an und starten Sie die Analyse noch einmal.";
+  if (/timeout|zeitüberschreitung|zeitlimit/i.test(roh)) return "Die Analyse hat zu lange gedauert. Bitte starten Sie sie erneut.";
+  // bereits verständliche Meldungen (z. B. vom Kanzlei-Server übersetzt) übernehmen
+  return /^[A-ZÄÖÜ][a-zäöüß]/.test(roh) && /[äöüß]|\b(der|die|das|nicht|bitte)\b/i.test(roh)
+    ? `Die Fallanalyse konnte nicht erstellt werden: ${roh}`
+    : "Die Fallanalyse konnte gerade nicht erstellt werden. Bitte starten Sie sie erneut – bleibt der Fehler, hilft Ihr Ansprechpartner weiter.";
+}
 
 /**
  * Zwischenspeicher der letzten Analyse je Akte – Mandantentrennung: geschlüsselt nach Kanzlei-ID,
@@ -114,7 +129,7 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
       st.patch("akten", akteId, { kiAnalyse: { erstelltAm: r.erstelltAm, prozent: r.erfolgsaussicht.prozent, quelle: r.quelle } });
       st.log({ akteur: "ki", akteId, text: `KI-Fallanalyse erstellt – Erfolgsaussicht ${r.erfolgsaussicht.prozent} % (${akte.aktenzeichen})`, minutenGespart: 45 });
     } catch (e) {
-      if (!veraltet()) setFehler(e instanceof Error ? e.message : String(e));
+      if (!veraltet()) setFehler(fehlerText(e));
     } finally {
       if (ctl.current === c) setLaeuft(false);
     }
@@ -155,12 +170,10 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
 
   const kopieren = async () => {
     if (!ergebnis) return;
-    try {
-      await navigator.clipboard.writeText(ergebnis.entwurf.text);
-      toast("Entwurf kopiert", { ton: "erfolg" });
-    } catch {
-      toast("Kopieren nicht möglich", { ton: "warnung", text: "Bitte den Text markieren und manuell kopieren." });
-    }
+    const r = await kopiereText(ergebnis.entwurf.text, document.getElementById("fa-entwurf-text"));
+    if (r === "kopiert") toast("Entwurf kopiert", { ton: "erfolg" });
+    else if (r === "markiert") toast("Text markiert – jetzt Strg/⌘+C", { ton: "info", text: "Die Zwischenablage ist hier gesperrt. Der Entwurf ist markiert und lässt sich direkt kopieren." });
+    else toast("Kopieren nicht möglich", { ton: "warnung", text: "Bitte den Text markieren und manuell kopieren." });
   };
 
   // ── Startzustand ──
@@ -212,7 +225,7 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
             <ol className="grid gap-2.5">
               {ANALYSE_PHASEN.map((p, i) => (
                 <motion.li key={p} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.06 }} className="flex items-center gap-3 text-[13.5px]">
-                  <span className={cn("grid size-6 shrink-0 place-items-center rounded-full transition-colors duration-500", i < phase ? "bg-green text-white" : i === phase ? "ai-fill text-white" : "bg-[var(--line)] text-fg-4")}>
+                  <span className={cn("grid size-6 shrink-0 place-items-center rounded-full transition-colors duration-500", i < phase ? "bg-green text-[var(--on-green)]" : i === phase ? "ai-fill text-white" : "bg-[var(--line)] text-fg-4")}>
                     {i < phase ? <CheckCircle2 className="size-4" /> : i === phase ? <Loader2 className="size-3.5 animate-spin" /> : <span className="text-[11px] font-semibold">{i + 1}</span>}
                   </span>
                   <span className={cn(i <= phase ? "text-fg" : "text-fg-4", i === phase && "font-medium")}>{p}</span>
@@ -381,7 +394,7 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
               </Button>
             )}
           </div>
-          <div className="paper max-h-[520px] overflow-y-auto whitespace-pre-wrap px-6 py-7 sm:px-10">{r.entwurf.text}</div>
+          <div id="fa-entwurf-text" className="paper max-h-[520px] overflow-y-auto whitespace-pre-wrap px-6 py-7 sm:px-10">{r.entwurf.text}</div>
           <p className="mt-3 flex items-center gap-1.5 text-[11.5px] text-fg-4">
             <BookOpen className="size-3.5" /> Entwurf der KI – vor Verwendung anwaltlich prüfen. Zitierte Entscheidungen stammen ausschließlich aus der Fall-Datenbank.
           </p>

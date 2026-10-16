@@ -75,7 +75,9 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
 
   const voll = wertgebuehr(Math.max(0, wert), fassung);
   const hatPositionen = erg.zeilen.length > 0 && wert > 0;
-  const anrechnungMoeglich = !!pos["2300"]?.an && !!pos["3100"]?.an;
+  // Vorbem. 3 Abs. 4 (2300 → 3305 bzw. 3100) und Anm. zu Nr. 3305 (3305 → 3100)
+  const an = (nr: string) => !!pos[nr]?.an;
+  const anrechnungMoeglich = (an("2300") && (an("3100") || an("3305"))) || (an("3305") && an("3100"));
 
   const toggle = (nr: string) => setPos((s) => ({ ...s, [nr]: { ...s[nr], an: !s[nr].an } }));
   const setSatz = (nr: string, satz: number) => setPos((s) => ({ ...s, [nr]: { ...s[nr], satz, an: true } }));
@@ -256,7 +258,7 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
               {
                 id: "rvg-anr",
                 label: "Anrechnung",
-                text: "Geschäftsgebühr zur Hälfte, höchstens 0,75, auf die Verfahrensgebühr (Vorbem. 3 Abs. 4 VV RVG).",
+                text: "Geschäftsgebühr zur Hälfte, höchstens 0,75, auf die Verfahrensgebühr (Vorbem. 3 Abs. 4 VV RVG) – im Mahnverfahren auf Nr. 3305; Nr. 3305 auf die Verfahrensgebühr des Rechtsstreits (Anm. zu Nr. 3305).",
                 v: anrechnung,
                 set: setAnrechnung,
                 aus: !anrechnungMoeglich,
@@ -422,7 +424,7 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
 
 function ErgebnisZeile({ z, hinweis, kurz }: { z: RvgZeile; hinweis?: string; kurz?: boolean }) {
   // Unter einer Angelegenheits-Überschrift ist der Instanz-Zusatz („(1. Instanz)“) doppelt.
-  const titel = z.anrechnung ? "Anrechnung Geschäftsgebühr" : kurz ? z.titel.replace(/ \((1\. Instanz|Berufung)\)$/, "") : z.titel;
+  const titel = z.anrechnung ? z.titel.replace(/ \([\d,]+\)$/, "") : kurz ? z.titel.replace(/ \((1\. Instanz|Berufung)\)$/, "") : z.titel;
   return (
     <motion.li
       layout
@@ -433,7 +435,7 @@ function ErgebnisZeile({ z, hinweis, kurz }: { z: RvgZeile; hinweis?: string; ku
       className="flex items-baseline gap-2 py-1.5 text-[13px]"
     >
       <span className={cn("mono w-[58px] shrink-0 text-[11.5px]", z.anrechnung ? "text-amber" : "text-fg-3")}>
-        {z.anrechnung ? "Vorb. 3" : z.nr}
+        {z.anrechnung ? (z.nr.startsWith("Vorb.") ? "Vorb. 3" : z.nr) : z.nr}
         {z.erhoehung ? <span className="block text-[10.5px] leading-tight">+ 1008</span> : null}
       </span>
       <span className={cn("min-w-0 flex-1 truncate", z.nr === "7002" && "text-fg-2")} title={z.erhoehung ? `${z.titel}, erhöht nach Nr. 1008 VV RVG um ${fmtSatz(z.erhoehung)}` : z.titel}>

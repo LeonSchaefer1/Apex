@@ -274,7 +274,9 @@ export default function Login() {
                     )}
                     {mitEigenen && <li>Kundentests und neu vergebene Passwörter: das in der Apex Console angezeigte Passwort</li>}
                   </ul>
-                  {info?.modus === "demo" && <p className="mt-1.5">Demo-Modus: Ihre Änderungen bleiben in diesem Browser gespeichert.</p>}
+                  {info?.modus === "demo" && (
+                    <p className="mt-1.5">{info.speicherDauerhaft === false ? "Demo-Modus: Änderungen gelten nur für diese Sitzung – der Browser-Speicher ist hier nicht verfügbar." : "Demo-Modus: Ihre Änderungen bleiben in diesem Browser gespeichert."}</p>
+                  )}
                 </div>
               </div>
             )}

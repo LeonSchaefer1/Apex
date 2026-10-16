@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { AlarmClock, Calculator, CalendarDays, CalendarRange, List, ShieldAlert, Sparkles, X, CalendarClock } from "lucide-react";
-import { addDays, fmtDateShort, fmtDateWd, today } from "@/core/dates";
-import { fristenLage, zaehltAlsFrist } from "@/core/fristenLage";
-import type { Akte, FristTyp } from "@/core/types";
+import { AlarmClock, Calculator, CalendarDays, CalendarRange, List, ShieldAlert, UserCheck, X, CalendarClock } from "lucide-react";
+import { addDays, fmtDateShort, today } from "@/core/dates";
+import { FENSTER_TAGE, fristenImZeitraum, fristenLage, istKritisch, nachDringlichkeit, zaehltAlsFrist } from "@/core/fristenLage";
+import type { Akte, Frist, FristTyp } from "@/core/types";
 import { useCol } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { AnimatedNumber, Button, PageHeader, Segmented, Select, Stat, Switch } from "@/components/ui";
@@ -15,26 +15,47 @@ import { MonatsAnsicht } from "./MonatsAnsicht";
 import { FristDetail } from "./FristDetail";
 import { Fristenrechner } from "./Fristenrechner";
 import { FeiertageInfo } from "./FeiertageInfo";
-import { TYP_META, TYP_REIHENFOLGE, istUngeprueft, wochenAnsichtStart, wochenStart } from "./logik";
+import { QUELLE_LABEL, TYP_META, TYP_REIHENFOLGE, brauchtKontrolle, wochenAnsichtStart, wochenStart } from "./logik";
 
 type Ansicht = "liste" | "woche" | "monat";
-type Fokus = "heute" | "woche" | "notfristen" | "unkontrolliert";
+type Fokus = "heute" | "woche" | "kritisch" | "unkontrolliert";
 
 const FOKUS_LABEL: Record<Fokus, string> = {
   heute: "Heute fällig",
-  woche: "Diese Woche",
-  notfristen: "Offene Notfristen",
-  unkontrolliert: "Unkontrollierte KI-Fristen",
+  woche: "Nächste 7 Tage",
+  kritisch: "Kritische Fristen",
+  unkontrolliert: "Vier-Augen-Kontrolle offen",
 };
 
-/** Deep-Link `?filter=…` → Kennzahl-Filter (`kontrolle` = Vier-Augen-Kontrolle ausstehend). */
+/** Deep-Link `?filter=…` → Kennzahl-Filter (`kontrolle` = Vier-Augen-Kontrolle offen, `notfristen` = kritische Fristen). */
 const FILTER_PARAM: Record<string, Fokus> = {
   kontrolle: "unkontrolliert",
   unkontrolliert: "unkontrolliert",
   heute: "heute",
   woche: "woche",
-  notfristen: "notfristen",
+  notfristen: "kritisch",
+  kritisch: "kritisch",
 };
+
+/** Deep-Link `?quelle=ki|migration` (z. B. aus KI-Status oder Umzug) – grenzt zusätzlich auf die Herkunft ein. */
+const QUELLEN: Frist["quelle"][] = ["ki", "migration", "automatisch", "manuell"];
+
+function anz(n: number, eins: string, viele: string) {
+  return `${n} ${n === 1 ? eins : viele}`;
+}
+
+/** „1 Frist, 2 Wiedervorlagen, 1 Vorfrist“ – Fristen und andere Einträge getrennt gezählt (wie fristenLage). */
+function aufschluesselung(liste: Frist[]): string {
+  const n = (p: (f: Frist) => boolean) => liste.filter(p).length;
+  const teile = [
+    [n(zaehltAlsFrist), "Frist", "Fristen"],
+    [n((f) => f.typ === "wiedervorlage"), "Wiedervorlage", "Wiedervorlagen"],
+    [n((f) => f.typ === "vorfrist"), "Vorfrist", "Vorfristen"],
+    [n((f) => f.typ === "termin"), "Termin", "Termine"],
+  ] as const;
+  const text = teile.filter(([k]) => k > 0).map(([k, e, v]) => anz(k, e, v)).join(", ");
+  return text || "keine Einträge";
+}
 
 const istDatum = (d: string | null): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(`${d}T12:00:00Z`));
 
@@ -60,6 +81,8 @@ export default function Fristen() {
   const pFilter = params.get("filter");
   const pDatum = params.get("datum");
   const pAkte = params.get("rechner") === "1" ? null : params.get("akte");
+  const pQuelle = params.get("quelle");
+  const quelleFilter = pQuelle && (QUELLEN as string[]).includes(pQuelle) ? (pQuelle as Frist["quelle"]) : null;
   const dlFokus = (pFilter && FILTER_PARAM[pFilter]) || null;
   const dlDatum = istDatum(pDatum) ? pDatum : null;
 
@@ -102,7 +125,7 @@ export default function Fristen() {
   };
   const setFokus = (f: Fokus | null | ((cur: Fokus | null) => Fokus | null)) => {
     setFokusRaw(f);
-    entferneParam("filter");
+    entferneParam("filter", "quelle");
   };
   const setAkteFilter = (a: string | null) => {
     setAkteFilterRaw(a);
@@ -132,34 +155,49 @@ export default function Fristen() {
 
   const akten = useMemo(() => new Map<string, Akte>(aktenListe.map((a) => [a.id, a])), [aktenListe]);
 
-  // Kennzahlen (immer über alle Fristen). „Heute fällig“ = fristenLage().faellig (heute + überfällig, ohne Vorfristen und Termine) –
-  // dieselbe Zählweise wie Seitenleiste, Cockpit und Apex Assistent.
+  // Kennzahlen (immer über alle Einträge) – dieselbe Zählweise wie Seitenleiste, Cockpit und Apex Assistent (fristenLage):
+  // „Heute fällig“ = Fristen (Notfristen und Fristen) bis heute inkl. überfälliger; „Nächste 7 Tage“ = Fristen danach bis heute + 7.
+  // Wiedervorlagen, Vorfristen und Termine werden jeweils getrennt genannt. „Kritisch“ = Notfrist oder nicht verlängerbar.
+  // „Vier-Augen-Kontrolle offen“ = jede offene Notfrist/Frist ohne Bestätigung durch eine zweite Person (brauchtKontrolle).
   const kpi = useMemo(() => {
     const offen = fristen.filter((f) => f.status === "offen");
     const lage = fristenLage(fristen, heute);
-    const mo = wochenStart(heute);
-    const so = addDays(mo, 6);
-    const woche = offen.filter((f) => f.datum >= mo && f.datum <= so && f.typ !== "vorfrist");
-    const notfristen = offen.filter((f) => f.typ === "notfrist").sort((a, b) => a.datum.localeCompare(b.datum));
-    const unkontrolliert = offen.filter(istUngeprueft);
-    return { heute: lage.faellig.length, ueberfaellig: lage.ueberfaellig.length, woche: woche.length, so, notfristen, unkontrolliert: unkontrolliert.length };
+    const in7 = addDays(heute, FENSTER_TAGE);
+    const spaeter = fristenImZeitraum(fristen, addDays(heute, 1), in7);
+    const kritisch = offen.filter(istKritisch).sort(nachDringlichkeit);
+    const kontrolle = offen.filter(brauchtKontrolle);
+    return {
+      heute: lage.faellig.length,
+      ueberfaellig: lage.ueberfaellig.length,
+      wvHeute: lage.wiedervorlagen.length,
+      vorHeute: lage.vorfristen.length,
+      woche: lage.woche.length,
+      wvWoche: lage.wiedervorlagenWoche.length,
+      termineWoche: spaeter.termine.length,
+      in7,
+      kritisch,
+      kontrolle: kontrolle.length,
+      kontrolleKi: kontrolle.filter((f) => f.quelle === "ki").length,
+      kontrolleUmzug: kontrolle.filter((f) => f.quelle === "migration").length,
+    };
   }, [fristen, heute]);
 
   const gefiltert = useMemo(() => {
-    const mo = wochenStart(heute);
-    const so = addDays(mo, 6);
+    const in7 = addDays(heute, FENSTER_TAGE);
     return fristen.filter((f) => {
       if (!erledigte && f.status === "erledigt") return false;
       if (typ !== "alle" && f.typ !== typ) return false;
       if (nurMeine && f.verantwortlichId !== user.id) return false;
       if (akteFilter && f.akteId !== akteFilter) return false;
-      if (fokus === "heute" && !(f.status === "offen" && f.datum <= heute && zaehltAlsFrist(f))) return false;
-      if (fokus === "woche" && !(f.status === "offen" && f.datum >= mo && f.datum <= so && f.typ !== "vorfrist")) return false;
-      if (fokus === "notfristen" && !(f.status === "offen" && f.typ === "notfrist")) return false;
-      if (fokus === "unkontrolliert" && !istUngeprueft(f)) return false;
+      if (quelleFilter && f.quelle !== quelleFilter) return false;
+      // Kennzahl-Filter zeigen Fristen und die getrennt genannten Einträge (Wiedervorlagen, Vorfristen, Termine) mit Typ
+      if (fokus === "heute" && !(f.status === "offen" && f.datum <= heute && f.typ !== "termin")) return false;
+      if (fokus === "woche" && !(f.status === "offen" && f.datum > heute && f.datum <= in7 && f.typ !== "vorfrist")) return false;
+      if (fokus === "kritisch" && !(f.status === "offen" && istKritisch(f))) return false;
+      if (fokus === "unkontrolliert" && !brauchtKontrolle(f)) return false;
       return true;
     });
-  }, [fristen, erledigte, typ, nurMeine, user.id, fokus, heute, akteFilter]);
+  }, [fristen, erledigte, typ, nurMeine, user.id, fokus, heute, akteFilter, quelleFilter]);
 
   const detail = detailId ? fristen.find((f) => f.id === detailId) : undefined;
 
@@ -172,7 +210,19 @@ export default function Fristen() {
     setAnsicht("liste");
   };
 
-  const istGefiltert = typ !== "alle" || nurMeine || !!fokus || !!akteFilter;
+  const istGefiltert = typ !== "alle" || nurMeine || !!fokus || !!akteFilter || !!quelleFilter;
+  const dazu = (teile: string[]) => (teile.length ? `dazu ${teile.join(" und ")}` : "");
+  const subHeute = [
+    kpi.ueberfaellig ? `davon ${kpi.ueberfaellig} überfällig` : "",
+    dazu([kpi.wvHeute ? anz(kpi.wvHeute, "Wiedervorlage", "Wiedervorlagen") : "", kpi.vorHeute ? anz(kpi.vorHeute, "Vorfrist", "Vorfristen") : ""].filter(Boolean)),
+  ].filter(Boolean).join(" · ") || (kpi.heute ? "bis 24:00 Uhr" : "Keine Frist offen");
+  // „Nächste 7 Tage“ = morgen bis heute + 7 (gleitend, nicht die Kalenderwoche); Wiedervorlagen und Termine getrennt
+  const subWoche =
+    dazu([kpi.wvWoche ? anz(kpi.wvWoche, "Wiedervorlage", "Wiedervorlagen") : "", kpi.termineWoche ? anz(kpi.termineWoche, "Termin", "Termine") : ""].filter(Boolean)).replace(" und ", ", ") ||
+    `bis ${fmtDateShort(kpi.in7)}`;
+  const subKontrolle = kpi.kontrolle
+    ? [kpi.kontrolleKi ? `davon ${kpi.kontrolleKi} von der KI erkannt` : "", kpi.kontrolleUmzug ? `${kpi.kontrolleUmzug} aus Umzug` : ""].filter(Boolean).join(", ") || "Bestätigung durch zweite Person"
+    : "Alle Fristen kontrolliert";
   const filterAkte = akteFilter ? akten.get(akteFilter) : undefined;
 
   return (
@@ -192,10 +242,10 @@ export default function Fristen() {
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         {(
           [
-            { key: "heute", label: "Heute fällig", icon: <AlarmClock className="size-4" />, tone: kpi.heute ? "seal" : "green", wert: kpi.heute, sub: kpi.ueberfaellig ? `davon ${kpi.ueberfaellig} überfällig` : kpi.heute ? "bis 24:00 Uhr" : "Nichts mehr offen" },
-            { key: "woche", label: "Diese Woche", icon: <CalendarRange className="size-4" />, tone: "amber", wert: kpi.woche, sub: `bis ${fmtDateWd(kpi.so)}` },
-            { key: "notfristen", label: "Notfristen", icon: <ShieldAlert className="size-4" />, tone: "seal", wert: kpi.notfristen.length, sub: kpi.notfristen[0] ? `offen · nächste ${fmtDateShort(kpi.notfristen[0].datum)}` : "keine offen" },
-            { key: "unkontrolliert", label: "Unkontrolliert", icon: <Sparkles className="size-4" />, tone: "violet", wert: kpi.unkontrolliert, sub: kpi.unkontrolliert ? "Zweitkontrolle offen" : "Alle KI-Fristen geprüft" },
+            { key: "heute", label: "Heute fällig", icon: <AlarmClock className="size-4" />, tone: kpi.heute ? "seal" : "green", wert: kpi.heute, sub: subHeute },
+            { key: "woche", label: "Nächste 7 Tage", icon: <CalendarRange className="size-4" />, tone: "amber", wert: kpi.woche, sub: subWoche },
+            { key: "kritisch", label: "Kritische Fristen", icon: <ShieldAlert className="size-4" />, tone: "seal", wert: kpi.kritisch.length, sub: kpi.kritisch[0] ? `nicht verlängerbar · nächste ${fmtDateShort(kpi.kritisch[0].datum)}` : "keine offen" },
+            { key: "unkontrolliert", label: "Vier-Augen-Kontrolle offen", icon: <UserCheck className="size-4" />, tone: kpi.kontrolle ? "amber" : "green", wert: kpi.kontrolle, sub: subKontrolle },
           ] as const
         ).map((k, i) => (
           <motion.div key={k.key} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", stiffness: 420, damping: 34, delay: i * 0.05 }} className="min-w-0">
@@ -246,13 +296,13 @@ export default function Fristen() {
       </div>
 
       <AnimatePresence>
-        {(fokus || akteFilter) && (
+        {(fokus || akteFilter || quelleFilter) && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
             <div className="mb-4 flex flex-wrap items-center gap-2 text-[13px] text-fg-2">
               {fokus && (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-ink-soft py-1 pl-3 pr-1 font-medium text-ink">
                   {FOKUS_LABEL[fokus]}
-                  {!akteFilter && ` · ${gefiltert.length}`}
+                  {!akteFilter && !quelleFilter && ` · ${fokus === "heute" || fokus === "woche" ? aufschluesselung(gefiltert) : gefiltert.length}`}
                   <button type="button" onClick={() => setFokus(null)} className="grid size-6 place-items-center rounded-full hover:bg-[var(--ink-soft)]" aria-label="Filter entfernen">
                     <X className="size-3.5" />
                   </button>
@@ -269,7 +319,16 @@ export default function Fristen() {
                   </button>
                 </span>
               )}
-              {fokus === "unkontrolliert" && <span className="text-fg-3">Von der KI erkannte Fristen müssen von einer zweiten Person bestätigt werden – nie von der verantwortlichen Person selbst.</span>}
+              {quelleFilter && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-ink-soft py-1 pl-3 pr-1 font-medium text-ink">
+                  {QUELLE_LABEL[quelleFilter]}
+                  {!akteFilter && ` · ${gefiltert.length}`}
+                  <button type="button" onClick={() => entferneParam("quelle")} className="grid size-6 place-items-center rounded-full hover:bg-[var(--ink-soft)]" aria-label="Herkunftsfilter entfernen">
+                    <X className="size-3.5" />
+                  </button>
+                </span>
+              )}
+              {fokus === "unkontrolliert" && <span className="text-fg-3">Jede Notfrist und Frist bestätigt eine zweite Person – nie die verantwortliche Person selbst.</span>}
             </div>
           </motion.div>
         )}
@@ -286,7 +345,7 @@ export default function Fristen() {
               heute={heute}
               land={tenant.bundesland}
               gefiltert={istGefiltert}
-              ohneHorizont={!!akteFilter || fokus === "unkontrolliert" || fokus === "notfristen"}
+              ohneHorizont={!!akteFilter || !!quelleFilter || fokus === "unkontrolliert" || fokus === "kritisch"}
               markiert={markiert ?? undefined}
             />
           )}

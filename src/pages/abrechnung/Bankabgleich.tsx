@@ -568,7 +568,7 @@ export function BankabgleichTab() {
                       r.folge === "auto" ? "bg-green-soft text-green" : r.folge === "vorschlag" ? "bg-amber-soft text-amber" : "bg-[var(--line)] text-fg-2",
                     )}
                   >
-                    {r.sicherheit ? `${Math.round(r.sicherheit * 100)}%` : "–"}
+                    {r.sicherheit ? `${Math.round(r.sicherheit * 100)} %` : "–"}
                   </span>
                   <div className="min-w-0">
                     <div className="text-[13px] font-medium">{r.titel}</div>

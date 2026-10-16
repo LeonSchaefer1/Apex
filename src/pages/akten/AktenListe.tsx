@@ -5,6 +5,7 @@ import { AlarmClock, AlertTriangle, Archive, CalendarClock, Check, FolderOpen, F
 import type { Akte, Frist } from "@/core/types";
 import { addDays, fmtDate, fmtDateShort, fmtEUR, nowLocal, relTime, today } from "@/core/dates";
 import { search } from "@/core/search";
+import { aktenMitFrist } from "@/core/fristenLage";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
@@ -90,27 +91,23 @@ export default function AktenListe() {
   );
 
   const heute = today();
-  const in7 = addDays(heute, 7);
   const montag = addDays(heute, -((new Date(heute + "T00:00:00Z").getUTCDay() + 6) % 7));
 
-  // Akten mit Fristen in den nächsten 7 Tagen (inkl. überfälliger)
+  // Akten mit Frist ≤ 7 Tage (inkl. überfälliger) – dieselbe Hilfsfunktion wie die Cockpit-Karte „Akten mit Handlungsbedarf“.
+  // „Kritisch“ = Notfrist oder gesetzlich nicht verlängerbare Frist (z. B. § 4 KSchG, StPO, OWiG).
   const fristInfo = useMemo(() => {
-    const frist7 = new Set<string>();
-    const notfrist7 = new Set<string>();
-    for (const f of fristen) {
-      if (f.status !== "offen" || f.datum > in7) continue;
-      if (f.typ === "notfrist" || f.typ === "frist") frist7.add(f.akteId);
-      if (f.typ === "notfrist") notfrist7.add(f.akteId);
-    }
+    const je = aktenMitFrist(fristen, heute);
+    const frist7 = new Set(je.keys());
+    const notfrist7 = new Set([...je].filter(([, x]) => x.kritisch).map(([id]) => id));
     return { frist7, notfrist7 };
-  }, [fristen, in7]);
+  }, [fristen, heute]);
 
   const ansichten: Ansicht[] = [
     { key: "alle", label: "Alle offenen", hinweis: "Alle offenen Akten der Kanzlei", icon: <FolderOpen className="size-3.5" />, filter: { status: "offen", sg: "", ra: "", prio: "", frist: "", seit: "" } },
     { key: "meine", label: "Meine Akten", hinweis: `Offene Akten, die ${user.name} bearbeitet`, icon: <UserRound className="size-3.5" />, filter: { status: "offen", sg: "", ra: user.id, prio: "", frist: "", seit: "" } },
     { key: "hoch", label: "Hohe Priorität", hinweis: "Offene Akten mit hoher Priorität", icon: <Flag className="size-3.5" />, filter: { status: "offen", sg: "", ra: "", prio: "hoch", frist: "", seit: "" } },
-    { key: "notfrist", label: "Mit Notfrist diese Woche", hinweis: "Offene Notfrist in den nächsten 7 Tagen oder überfällig", icon: <AlarmClock className="size-3.5" />, filter: { status: "offen", sg: "", ra: "", prio: "", frist: "notfrist7", seit: "" } },
-    { key: "frist7", label: "Frist ≤ 7 Tage", hinweis: "Notfrist oder Frist in den nächsten 7 Tagen", icon: <CalendarClock className="size-3.5" />, filter: { status: "offen", sg: "", ra: "", prio: "", frist: "frist7", seit: "" } },
+    { key: "notfrist", label: "Kritische Frist ≤ 7 Tage", hinweis: "Notfrist oder nicht verlängerbare Frist in den nächsten 7 Tagen oder überfällig", icon: <AlarmClock className="size-3.5" />, filter: { status: "offen", sg: "", ra: "", prio: "", frist: "notfrist7", seit: "" } },
+    { key: "frist7", label: "Frist ≤ 7 Tage", hinweis: "Notfrist oder Frist in den nächsten 7 Tagen oder überfällig – Wiedervorlagen zählen nicht", icon: <CalendarClock className="size-3.5" />, filter: { status: "offen", sg: "", ra: "", prio: "", frist: "frist7", seit: "" } },
   ];
   const aktiveAnsicht = ansichten.find((a) => (Object.keys(a.filter) as (keyof Filter)[]).every((k) => a.filter[k] === filter[k]))?.key;
 
@@ -347,7 +344,7 @@ export default function AktenListe() {
         {[
           { label: "Offene Akten", value: kpi.offen, sub: `davon ${kpi.hoch} mit hoher Priorität`, icon: <FolderOpen className="size-4" />, tone: "ink" as const, on: () => setze({ status: "offen", sg: "", ra: "", prio: "", frist: "", seit: "" }) },
           { label: "Neu diese Woche", value: kpi.neu, sub: `seit Montag, ${fmtDate(kpi.montag)}`, icon: <Sparkle className="size-4" />, tone: "green" as const, on: () => setze({ status: "alle", sg: "", ra: "", prio: "", frist: "", seit: "woche" }) },
-          { label: "Akten mit Frist ≤ 7 Tage", value: kpi.frist, sub: kpi.notfrist ? `${kpi.notfrist} davon mit Notfrist` : "keine Notfrist darunter", icon: <AlarmClock className="size-4" />, tone: kpi.notfrist ? ("seal" as const) : ("amber" as const), on: () => setze({ status: "offen", frist: "frist7", sg: "", ra: "", prio: "", seit: "" }) },
+          { label: "Akten mit Frist ≤ 7 Tage", value: kpi.frist, sub: kpi.notfrist ? `davon ${kpi.notfrist} mit kritischer Frist` : "keine kritische Frist darunter", icon: <AlarmClock className="size-4" />, tone: kpi.notfrist ? ("seal" as const) : ("amber" as const), on: () => setze({ status: "offen", frist: "frist7", sg: "", ra: "", prio: "", seit: "" }) },
         ].map((k, i) => (
           <motion.button
             key={k.label}
@@ -592,8 +589,11 @@ export default function AktenListe() {
 
 /** Prüfschritt vor dem Sammel-Abschluss: offene Fristen und Termine je Akte, damit nichts unbemerkt liegen bleibt. */
 function AbschlussPruefung({ rows, fristen }: { rows: Akte[]; fristen: Frist[] }) {
-  const mitOffenen = rows.map((a) => ({ a, o: offeneEintraege(a.id, fristen) })).filter((x) => x.o.fristen || x.o.termine);
-  const summe = mitOffenen.reduce((s, x) => ({ fristen: s.fristen + x.o.fristen, notfristen: s.notfristen + x.o.notfristen, termine: s.termine + x.o.termine }), { fristen: 0, notfristen: 0, termine: 0 });
+  const mitOffenen = rows.map((a) => ({ a, o: offeneEintraege(a.id, fristen) })).filter((x) => x.o.fristen || x.o.wiedervorlagen || x.o.termine);
+  const summe = mitOffenen.reduce(
+    (s, x) => ({ fristen: s.fristen + x.o.fristen, notfristen: s.notfristen + x.o.notfristen, wiedervorlagen: s.wiedervorlagen + x.o.wiedervorlagen, termine: s.termine + x.o.termine }),
+    { fristen: 0, notfristen: 0, wiedervorlagen: 0, termine: 0 },
+  );
   return (
     <div className="grid grid-cols-1 gap-3">
       {mitOffenen.length > 0 ? (
@@ -601,7 +601,7 @@ function AbschlussPruefung({ rows, fristen }: { rows: Akte[]; fristen: Frist[] }
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-seal" />
           <div className="min-w-0 flex-1">
             <div className="font-semibold text-seal">
-              {mitOffenen.length === 1 ? "In 1 Akte" : `In ${mitOffenen.length} Akten`} {summe.fristen + summe.termine === 1 ? "ist" : "sind"} noch {offeneEintraegeText(summe)} eingetragen
+              {mitOffenen.length === 1 ? "In 1 Akte" : `In ${mitOffenen.length} Akten`} {summe.fristen + summe.wiedervorlagen + summe.termine === 1 ? "ist" : "sind"} noch {offeneEintraegeText(summe)} eingetragen
             </div>
             <div className="mt-0.5 text-fg-2">Sie bleiben nach dem Abschluss im Fristenkalender stehen. Bitte vorher erledigen oder bewusst offen lassen.</div>
             <ul className="mt-2 grid grid-cols-1 gap-1">
@@ -610,7 +610,7 @@ function AbschlussPruefung({ rows, fristen }: { rows: Akte[]; fristen: Frist[] }
                   <span className="mono shrink-0 text-[12px] font-semibold text-fg-2">{a.aktenzeichen}</span>
                   <span className="min-w-0 flex-1 truncate text-fg">{a.titel}</span>
                   <span className={cn("shrink-0 text-[12px] font-medium", o.notfristen ? "text-seal" : "text-fg-3")}>
-                    {o.notfristen ? `${o.notfristen} Notfrist${o.notfristen === 1 ? "" : "en"}` : `${o.fristen + o.termine} offen`}
+                    {o.notfristen ? `${o.notfristen} nicht verlängerbar` : `${o.fristen + o.wiedervorlagen + o.termine} offen`}
                   </span>
                 </li>
               ))}
@@ -621,7 +621,7 @@ function AbschlussPruefung({ rows, fristen }: { rows: Akte[]; fristen: Frist[] }
       ) : (
         <div className="flex gap-3 rounded-[16px] bg-green-soft p-3.5 text-[13px]">
           <Check className="mt-0.5 size-4 shrink-0 text-green" />
-          <div className="text-fg-2">{rows.length === 1 ? "Die Akte hat keine offenen Fristen oder Termine mehr." : "Keine der Akten hat noch offene Fristen oder Termine."}</div>
+          <div className="text-fg-2">{rows.length === 1 ? "Die Akte hat keine offenen Fristen, Wiedervorlagen oder Termine mehr." : "Keine der Akten hat noch offene Fristen, Wiedervorlagen oder Termine."}</div>
         </div>
       )}
       <p className="px-1 text-[12.5px] leading-relaxed text-fg-3">

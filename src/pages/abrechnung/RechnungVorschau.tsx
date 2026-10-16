@@ -17,6 +17,7 @@ import { Anschrift, Betrag, Briefkopf, FormatChip, InfoZeile, StatusChip, useLoo
 function vvAnzeige(vv: string) {
   if (vv === "Std") return "Zeit";
   if (vv.startsWith("Vorb.")) return "Vorb. 3 IV";
+  if (vv.startsWith("Anm.")) return vv; // „Anm. 3305“: Anrechnung der Mahnverfahrensgebühr
   return vv;
 }
 

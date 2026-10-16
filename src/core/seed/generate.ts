@@ -1,5 +1,5 @@
 // Erzeugt einen vollständigen, in sich stimmigen Datenbestand für eine Kanzlei – relativ zum heutigen Datum.
-import { AUTOMATION_DEFS } from "../automationen";
+import { AUTOMATION_DEFS, ausloesungAm } from "../automationen";
 import { addDays, addMonthsBGB, diffDays, fmtDate, fmtEUR, round2, toLocalISO } from "../dates";
 import { istWerktag } from "../feiertage";
 import { berechneNachRegel, regel as fristRegel } from "../fristen";
@@ -13,7 +13,7 @@ import { createRng, hashString, type Rng } from "./rng";
 import { vorlagenFuer, type FallVorlage, type Parteien } from "./vorlagen";
 import { heroesBerlin, heroesMuenchen, heroesHamburg } from "./heroes";
 
-export const SEED_VERSION = 6;
+export const SEED_VERSION = 7;
 
 export interface SeedInput {
   tenant: Tenant;
@@ -251,6 +251,8 @@ export function addRechnung(ctx: Ctx, akte: Akte, opts: { positionen?: string[];
   const nummer = `RE-20${ctx.yy}-${String(ctx.counters["re"] = (ctx.counters["re"] ?? 0) + 1).padStart(4, "0")}`;
   if (opts.stunden) {
     const satz = ctx.users.find((u) => u.id === akte.bearbeiterId)?.stundensatz ?? 250;
+    // Abrechnung nach Stunden setzt eine Vergütungsvereinbarung in Textform voraus (§ 3a Abs. 1 RVG) – an der Akte vermerkt
+    akte.verguetungsvereinbarung ??= { datum: akte.createdAt.slice(0, 10), stundensatz: satz, erfasstVon: akte.bearbeiterId };
     const netto = round2(opts.stunden * satz);
     const ust = round2(netto * 0.19);
     r = {
@@ -262,12 +264,14 @@ export function addRechnung(ctx: Ctx, akte: Akte, opts: { positionen?: string[];
     const pos = opts.positionen ?? [];
     if (!pos.length || akte.gegenstandswert <= 0) return undefined;
     const calc = berechneRvg({ positionen: pos.map((nr) => ({ nr })), gegenstandswert: akte.gegenstandswert, fassung: fassungFuerAuftrag(akte.createdAt.slice(0, 10)) });
+    // E-Rechnung (XRechnung) nur an Unternehmen – Verbraucher erhalten eine PDF-Rechnung
+    const eRechnung = ctx.rng.chance(0.3) && ctx.data.kontakte.find((k) => k.id === akte.mandantId)?.typ === "organisation";
     r = {
       id: ctx.id("r"), nummer, akteId: akte.id, empfaengerId: akte.rsv?.deckung === "erteilt" ? akte.mandantId : akte.mandantId,
       datum, faellig: addDays(datum, 14),
       positionen: rvgRechnungsPositionen(calc.angelegenheiten),
       netto: calc.netto, ust: calc.ust, brutto: calc.brutto, status: "gestellt", bezahlt: 0,
-      format: ctx.rng.chance(0.3) ? "XRechnung" : "PDF", createdAt: `${datum}T10:00:00`,
+      format: eRechnung ? "XRechnung" : "PDF", createdAt: `${datum}T10:00:00`,
     };
   }
   const age = -opts.datumOffset;
@@ -528,10 +532,10 @@ function generischerPosteingang(ctx: Ctx) {
     }
   });
   addMsg(ctx, {
-    kanal: "email", von: "Rechtsanwaltskammer – Kammerreport", vonAdresse: "newsletter@rak.example", betreff: "Kammerreport: Neuerungen zum beA und zur E-Rechnung",
+    kanal: "email", von: "Rechtsanwaltskammer – Kammerreport", vonAdresse: "kammerreport@rak-mitgliederservice.de", betreff: "Kammerreport: Neuerungen zum beA und zur E-Rechnung",
     text: "Liebe Kammermitglieder, in dieser Ausgabe: Neuerungen beim beA, Pflicht zum Empfang von E-Rechnungen, Fortbildungsangebote im Herbst.",
     eingang: ctx.dt(-2, 7, 30), status: "gelesen", kiStatus: "analysiert", zugeordnet: false,
-    ki: { sicherheit: 0.99, zusammenfassung: "Newsletter der Kammer, keiner Akte zuzuordnen.", aktion: "Kein Handlungsbedarf – archiviert." },
+    ki: { sicherheit: 0.99, zusammenfassung: "Newsletter der Rechtsanwaltskammer mit allgemeinen Informationen – keiner Akte zuzuordnen.", aktion: "Kein Handlungsbedarf – als erledigt markieren." },
   });
 }
 
@@ -589,13 +593,16 @@ function zeiten(ctx: Ctx) {
 }
 
 function automationenUndAktivitaeten(ctx: Ctx) {
-  const { rng, data } = ctx;
+  const { data } = ctx;
+  // Eigener Zufallsstrom für den Verlauf des 38h-Motors: Änderungen hier verschieben nicht den übrigen Demobestand.
+  const rng = createRng(hashString(`${ctx.tenant.id}|motor`));
+  /** Zeitpunkt ohne Zufallszug aus dem Hauptstrom (Stunde und Minute kommen immer aus dem Motor-Strom). */
+  const zeitpunkt = (off: number, hh = rng.int(8, 17), mm = rng.int(0, 59)) => ctx.dt(off, hh, mm);
   const autos: Automation[] = AUTOMATION_DEFS.map((def, i) => ({
     ...def,
     id: ctx.id("au"),
     aktiv: !(def.key === "kostenfestsetzung" && rng.chance(0.4)),
     laeufe: rng.int(60, 420) + (i === 0 ? 300 : 0),
-    letzterLauf: ctx.dt(-rng.int(0, 1)),
   }));
   data.automationen.push(...autos);
 
@@ -628,45 +635,67 @@ function automationenUndAktivitaeten(ctx: Ctx) {
     "mahnwesen": (a) => `Zahlungserinnerung versendet – ${a.aktenzeichen}`,
     "kostenfestsetzung": (a) => `Kostenfestsetzungsantrag vorbereitet – ${a.aktenzeichen}`,
     "archivierung": (a) => `Akte archiviert, Aufbewahrungsfrist bis ${Number((a.abgeschlossenAm ?? ctx.today).slice(0, 4)) + 6} vorgemerkt – ${a.aktenzeichen}`,
-    "zeiterfassung": () => `${rng.int(4, 11)} Zeiteinträge aus Telefonaten und E-Mails vorgeschlagen`,
+    "zeiterfassung": () => zeiterfassungText(),
     "zuordnung": (a) => `Nachricht automatisch der Akte ${a.aktenzeichen} zugeordnet`,
   };
-  const ohneAkte = ["bankabgleich", "zeiterfassung"];
+  function zeiterfassungText() {
+    return `${rng.int(4, 11)} Zeiteinträge aus Telefonaten und E-Mails vorgeschlagen`;
+  }
+  const def = (key: string) => AUTOMATION_DEFS.find((x) => x.key === key)!;
+  const akteur = (key: string): Aktivitaet["akteur"] => (key === "posteingang-fristen" ? "ki" : "automation");
+  // Ereignisgesteuerte Automationen laufen zu beliebigen Zeiten; zeitgesteuerte (Mandanten-Update, Zeiterfassung) nur zu
+  // ihren Auslösezeiten – sie werden unten getrennt erzeugt.
+  const ohneAkte = ["bankabgleich"];
   const gewichte: [string, number][] = [
-    ["posteingang-fristen", 10], ["zuordnung", 12], ["vorfristen", 8], ["mandanten-update", 7], ["bankabgleich", 4],
-    ["mandatsaufnahme", 3], ["deckungsanfrage", 3], ["eeb", 4], ["mahnwesen", 3], ["zeiterfassung", 5], ["archivierung", 2], ["kostenfestsetzung", 1],
+    ["posteingang-fristen", 10], ["zuordnung", 12], ["vorfristen", 8], ["bankabgleich", 5],
+    ["mandatsaufnahme", 3], ["deckungsanfrage", 3], ["eeb", 4], ["mahnwesen", 3], ["archivierung", 2], ["kostenfestsetzung", 1],
   ];
-  /** Eine Automations-Aktivität zum Zeitpunkt `zeit` – passt keine Akte, wird es ein Lauf ohne Aktenbezug. */
+  /** Eine Automations-Aktivität zum Zeitpunkt `zeit` – passt keine Akte, wird es ein Bankabgleich (ohne Aktenbezug). */
   const eintrag = (zeit: string, faktor = 1): Aktivitaet => {
     let key = pickWeighted(rng, gewichte);
     const kandidaten = ohneAkte.includes(key) ? [] : generisch.filter((a) => passt(key, a, zeit));
     const a = kandidaten.length ? rng.pick(kandidaten) : undefined;
-    if (!a && !ohneAkte.includes(key)) key = rng.chance(0.5) ? "bankabgleich" : "zeiterfassung";
-    const def = AUTOMATION_DEFS.find((x) => x.key === key)!;
+    if (!a && !ohneAkte.includes(key)) key = "bankabgleich";
     return {
-      id: ctx.id("ak"), zeit, akteur: key === "posteingang-fristen" ? "ki" : "automation", automationKey: key,
-      akteId: a?.id, text: texte[key](a as Akte), minutenGespart: def.minutenProLauf * faktor,
+      id: ctx.id("ak"), zeit, akteur: akteur(key), automationKey: key,
+      akteId: a?.id, text: texte[key](a as Akte), minutenGespart: def(key).minutenProLauf * faktor,
     };
   };
 
-  // Woche: Ziel ≈ 38 Std. gesparte Zeit (inkl. der festen Einträge der Präsentationsakten)
-  const wochenStart = ctx.d(-6);
-  let wochenMin = data.aktivitaeten.filter((x) => x.zeit >= wochenStart).reduce((sum, x) => sum + (x.minutenGespart ?? 0), 0);
-  const ziel = 2280 + rng.int(-40, 60);
   const acts: Aktivitaet[] = [];
+  // Zeitgesteuerte Läufe der letzten fünf Wochen – nur an vergangenen Tagen, damit kein Lauf vor seiner Uhrzeit liegt:
+  // Zeiterfassung werktags um 18:00 Uhr, Mandanten-Update freitags ab 14:00 Uhr (je Akte mit Mandantenportal eine Nachricht).
+  for (let off = -34; off <= -1; off++) {
+    const datum = ctx.d(off);
+    const ze = ausloesungAm("zeiterfassung", datum, ctx.tenant.bundesland);
+    if (ze) acts.push({ id: ctx.id("ak"), zeit: ze, akteur: "automation", automationKey: "zeiterfassung", text: zeiterfassungText(), minutenGespart: def("zeiterfassung").minutenProLauf });
+    const mu = ausloesungAm("mandanten-update", datum, ctx.tenant.bundesland);
+    if (mu) {
+      const empfaenger = rng.shuffle(generisch.filter((a) => a.mandantenportal && passt("mandanten-update", a, mu))).slice(0, rng.int(5, 8));
+      empfaenger.forEach((a, i) => {
+        const zeit = `${datum}T14:${String(i * 2 + rng.int(0, 1)).padStart(2, "0")}:00`;
+        acts.push({ id: ctx.id("ak"), zeit, akteur: "automation", automationKey: "mandanten-update", akteId: a.id, text: texte["mandanten-update"](a), minutenGespart: def("mandanten-update").minutenProLauf });
+      });
+    }
+  }
+
+  // Letzte 7 Tage: Ziel ≈ 38 Std. gesparte Zeit (inkl. der festen Einträge der Präsentationsakten und der zeitgesteuerten Läufe)
+  const wochenStart = ctx.d(-6);
+  let wochenMin = [...data.aktivitaeten, ...acts].filter((x) => x.zeit >= wochenStart).reduce((sum, x) => sum + (x.minutenGespart ?? 0), 0);
+  const ziel = 2280 + rng.int(-40, 60);
   while (wochenMin < ziel) {
     const off = -rng.int(0, 6);
     let hh = rng.int(7, 19);
     if (off === 0) hh = Math.min(hh, 9);
-    const e = eintrag(ctx.dt(off, hh));
+    const e = eintrag(zeitpunkt(off, hh));
     acts.push(e);
     wochenMin += e.minutenGespart ?? 0;
   }
-  // ältere Einträge (Vorwochen)
-  for (let i = 0; i < 70; i++) acts.push(eintrag(ctx.dt(-rng.int(7, 34)), rng.int(4, 9)));
+  // ältere Einträge (Vorwochen, zusammengefasst)
+  for (let i = 0; i < 70; i++) acts.push(eintrag(zeitpunkt(-rng.int(7, 34)), rng.int(4, 9)));
   // menschliche Aktivitäten
   for (let i = 0; i < 18; i++) {
-    const zeit = ctx.dt(-rng.int(0, 6));
+    const zeit = zeitpunkt(-rng.int(0, 6));
     const kandidaten = generisch.filter((a) => a.status === "offen" && a.createdAt <= zeit);
     const a = rng.pick(kandidaten.length ? kandidaten : generisch);
     const u = rng.pick(ctx.users);
@@ -674,17 +703,61 @@ function automationenUndAktivitaeten(ctx: Ctx) {
     if (a.createdAt <= zeit) acts.push({ id: ctx.id("ak"), zeit, akteur: "nutzer", userId: u.id, akteId: a.id, text });
   }
   data.aktivitaeten.push(...acts);
+
+  // „Letzter Lauf“ jeder Automation = jüngster Eintrag im Verlauf (Karte und Live-Feed zeigen dieselbe Zeit)
+  for (const au of autos) {
+    const eigene = data.aktivitaeten.filter((x) => x.automationKey === au.key);
+    au.letzterLauf = eigene.reduce<string | undefined>((max, x) => (!max || x.zeit > max ? x.zeit : max), undefined);
+    au.laeufe = Math.max(au.laeufe, eigene.length);
+  }
 }
 
-function verteileHeuteFristen(ctx: Ctx) {
-  const offen = ctx.data.fristen.filter((f) => f.status === "offen" && (f.typ === "wiedervorlage" || f.typ === "frist") && !f.regelKey && f.datum > ctx.d(3));
-  const pick = ctx.rng.shuffle(offen).slice(0, 4);
-  if (istWerktag(ctx.today, ctx.tenant.bundesland)) {
-    if (pick[0]) pick[0].datum = ctx.today;
-    if (pick[1]) pick[1].datum = ctx.today;
+/**
+ * Gerichtlich gesetzte Fristen in laufenden Verfahren (Stellungnahme, Replik, Anspruchsbegründung): In einer Kanzlei dieser
+ * Größe laufen jede Woche mehrere echte Fristen – nicht nur Wiedervorlagen. Eigener Zufallsstrom; Präsentationsakten bleiben unberührt.
+ */
+function gerichtlicheFristen(ctx: Ctx) {
+  const rng = createRng(hashString(`${ctx.tenant.id}|gerichtliche-fristen`));
+  const { data } = ctx;
+  const mitFrist = new Set(data.fristen.filter((f) => f.status === "offen" && (f.typ === "frist" || f.typ === "notfrist")).map((f) => f.akteId));
+  const kandidaten = data.akten.filter((a) => !a.id.startsWith("hero") && a.status === "offen" && a.gerichtId && a.gerichtsAz && (a.phase === "Gerichtlich" || a.phase === "Beweisaufnahme") && !mitFrist.has(a.id));
+  const art = (a: Akte): { titel: string; grundlage: string } | undefined => {
+    const az = a.gerichtsAz ?? "";
+    if (a.phase === "Beweisaufnahme") return { titel: "Stellungnahme zum Sachverständigengutachten", grundlage: "Richterliche Frist (§ 411 Abs. 4 ZPO)" };
+    if (/ Ca /.test(az)) return { titel: "Stellungnahme zur Klageerwiderung (Auflage des Arbeitsgerichts)", grundlage: "Richterliche Frist (Auflagenbeschluss)" };
+    if (/ F /.test(az)) return { titel: "Stellungnahme zum Bericht des Jugendamts", grundlage: "Gerichtlich gesetzte Frist (FamFG)" };
+    if (/-0-/.test(az)) return { titel: "Anspruchsbegründung einreichen", grundlage: "Aufforderung nach § 697 Abs. 1 ZPO" };
+    if (/ (O|C) /.test(az)) return { titel: "Stellungnahme zum Schriftsatz der Gegenseite", grundlage: "Richterliche Frist (§ 273 Abs. 2 Nr. 1 ZPO)" };
+    return undefined;
+  };
+  // Verteilung über die nächsten zwei Wochen, Schwerpunkt auf den nächsten Werktagen
+  const abstaende = [2, 3, 4, 5, 7, 9, 11, 13];
+  let i = 0;
+  for (const a of rng.shuffle(kandidaten)) {
+    const x = art(a);
+    if (!x || i >= abstaende.length) continue;
+    addFrist(ctx, {
+      akteId: a.id, titel: x.titel, typ: "frist", datum: ctx.werktag(abstaende[i++] + rng.int(0, 1)), grundlage: x.grundlage,
+      verantwortlichId: a.bearbeiterId, quelle: rng.chance(0.5) ? "ki" : "manuell", kontrolliertVon: rng.chance(0.7) ? ctx.refas[0]?.id : undefined,
+      createdAt: ctx.dt(-rng.int(2, 12), rng.int(8, 17), rng.int(0, 59)),
+    });
   }
-  if (pick[2]) pick[2].datum = ctx.werktag(1);
-  if (pick[3]) pick[3].datum = ctx.werktag(2);
+}
+
+/**
+ * Heute und an den nächsten Werktagen liegt immer etwas an: heute eine Frist und eine Wiedervorlage, am nächsten Werktag
+ * eine Wiedervorlage, am übernächsten eine Frist (zusätzlich zu den Präsentationsakten).
+ */
+function verteileHeuteFristen(ctx: Ctx) {
+  const offen = ctx.data.fristen.filter((f) => f.status === "offen" && (f.typ === "wiedervorlage" || f.typ === "frist") && !f.regelKey && !f.akteId.startsWith("hero") && f.datum > ctx.d(3));
+  const fristen = ctx.rng.shuffle(offen.filter((f) => f.typ === "frist"));
+  const wv = ctx.rng.shuffle(offen.filter((f) => f.typ === "wiedervorlage"));
+  if (istWerktag(ctx.today, ctx.tenant.bundesland)) {
+    if (fristen[0]) fristen[0].datum = ctx.today;
+    if (wv[0]) wv[0].datum = ctx.today;
+  }
+  if (wv[1]) wv[1].datum = ctx.werktag(1);
+  if (fristen[1]) fristen[1].datum = ctx.werktag(2);
 }
 
 /** Hauptfunktion: kompletter Datenbestand für eine Kanzlei. */
@@ -714,6 +787,7 @@ export function generateTenantData(input: SeedInput, today: string, opts: { leer
   bankUmsaetze(ctx);
   zeiten(ctx);
   automationenUndAktivitaeten(ctx);
+  gerichtlicheFristen(ctx);
   verteileHeuteFristen(ctx);
 
   ctx.data.akten.sort((a, b) => b.aktenzeichen.localeCompare(a.aktenzeichen, "de", { numeric: true }));

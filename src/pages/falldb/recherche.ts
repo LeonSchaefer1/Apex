@@ -229,12 +229,12 @@ export async function kiRecherche(sachverhalt: string, opts: { live: boolean; si
       if (treffer.length >= 4) break;
     }
     if (!treffer.length) {
-      return { treffer: offline(), quelle: "offline", hinweis: "Die Live-KI hat keine Entscheidung aus der Datenbank ausgewählt – angezeigt wird die Offline-Recherche.", dauerMs: performance.now() - t0 };
+      return { treffer: offline(), quelle: "offline", hinweis: "Die Live-KI hat keine Entscheidung aus der Datenbank ausgewählt – angezeigt wird die Recherche der Demo-KI (offline).", dauerMs: performance.now() - t0 };
     }
     return { treffer, quelle: "live", verworfen, dauerMs: performance.now() - t0 };
   } catch (e) {
     if (opts.signal?.aborted) throw e;
-    const hinweis = e instanceof DemoModus ? undefined : `Die Live-KI war nicht erreichbar (${e instanceof Error ? e.message : String(e)}). Angezeigt wird die Offline-Recherche.`;
+    const hinweis = e instanceof DemoModus ? undefined : `Die Live-KI war nicht erreichbar (${e instanceof Error ? e.message : String(e)}). Angezeigt wird die Recherche der Demo-KI (offline).`;
     return { treffer: offline(), quelle: "offline", hinweis, dauerMs: performance.now() - t0 };
   }
 }

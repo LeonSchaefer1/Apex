@@ -2,6 +2,8 @@ import { motion } from "motion/react";
 import { CheckCircle2, Inbox, Landmark, Loader2, Mail, Paperclip } from "lucide-react";
 import { fmtTime, relTime, today } from "@/core/dates";
 import type { Akte, Nachricht } from "@/core/types";
+import { fristArtZu } from "@/core/fristen";
+import { istKritisch } from "@/core/fristenLage";
 import { AiChip, Chip, Empty } from "@/components/ui";
 import { Highlight } from "@/components/Highlight";
 import { cn } from "@/lib/cn";
@@ -31,7 +33,7 @@ export function KanalChip({ kanal }: { kanal: Nachricht["kanal"] }) {
   );
 }
 
-/** KI-Zustand einer Nachricht als Chip. */
+/** KI-Zustand einer Nachricht als Chip: „KI analysiert …“ (läuft), „Wartet auf KI-Analyse“, „KI-Analyse fertig“ bzw. Frist-Stand. */
 export function KiStatusChip({ n, laufend }: { n: Nachricht; laufend: boolean }) {
   if (laufend)
     return (
@@ -40,7 +42,7 @@ export function KiStatusChip({ n, laufend }: { n: Nachricht; laufend: boolean })
         <span className="ai-text font-semibold">KI analysiert …</span>
       </span>
     );
-  if (!n.ki || n.kiStatus === "ausstehend") return <Chip tone="outline" dot className="!text-fg-3">Wartet auf KI</Chip>;
+  if (!n.ki || n.kiStatus === "ausstehend") return <Chip tone="outline" dot className="!text-fg-3">Wartet auf KI-Analyse</Chip>;
   if (n.ki.frist) {
     if (n.kiStatus === "uebernommen")
       return (
@@ -49,12 +51,12 @@ export function KiStatusChip({ n, laufend }: { n: Nachricht; laufend: boolean })
         </Chip>
       );
     return (
-      <Chip tone={n.ki.frist.typ === "notfrist" ? "seal" : "amber"} dot>
+      <Chip tone={istKritisch(n.ki.frist) ? "seal" : "amber"} dot title={fristArtZu(n.ki.frist)?.kurz}>
         Frist erkannt
       </Chip>
     );
   }
-  return <AiChip>KI analysiert</AiChip>;
+  return <AiChip>KI-Analyse fertig</AiChip>;
 }
 
 /** Eingangszeit: heute relativ („vor 12 Min.“) bzw. Uhrzeit, ältere Nachrichten „gestern“, „vor 3 Tagen“ … */

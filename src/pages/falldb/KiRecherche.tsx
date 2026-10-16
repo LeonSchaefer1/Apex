@@ -157,7 +157,7 @@ export function KiRecherche({ startText, onOpen }: { startText?: string; onOpen:
           <motion.section ref={ergebnisRef} key="ergebnis" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="grid scroll-mt-24 gap-3">
             <div className="flex flex-wrap items-center gap-2">
               <div className="title-md">{ergebnis.treffer.length ? `${ergebnis.treffer.length} passende Entscheidungen` : "Keine passende Entscheidung gefunden"}</div>
-              {ergebnis.quelle === "live" ? <AiChip>Claude</AiChip> : <Chip>Demo-KI</Chip>}
+              {ergebnis.quelle === "live" ? <AiChip>Claude</AiChip> : <Chip>Demo-KI (offline)</Chip>}
               <span className="num text-[12px] text-fg-3">
                 {ergebnis.dauerMs < 1000 ? `${Math.max(1, Math.round(ergebnis.dauerMs))} ms` : `${fmtNum(ergebnis.dauerMs / 1000, 1)} s`} · {ENTSCHEIDUNGEN.length} Entscheidungen bewertet
               </span>

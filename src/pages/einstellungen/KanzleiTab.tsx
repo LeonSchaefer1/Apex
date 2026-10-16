@@ -165,12 +165,14 @@ export function KanzleiTab() {
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
             <dt className="text-fg-3">Kunde seit</dt>
             <dd className="num text-right font-medium">{fmtDate(tenant.createdAt.slice(0, 10))}</dd>
-            <dt className="text-fg-3">Kanzlei-ID</dt>
-            <dd className="mono truncate text-right text-[12px]">{tenant.id}</dd>
+            <dt className="text-fg-3">Lizenz</dt>
+            <dd className="truncate text-right font-medium">{tenant.status === "test" ? "Testzugang" : "Lifetime-Lizenz"}</dd>
+            <dt className="text-fg-3">Arbeitsplätze</dt>
+            <dd className="num text-right font-medium">{tenant.lizenz.arbeitsplaetze}</dd>
             <dt className="text-fg-3">Kanzleifarbe</dt>
-            <dd className="flex items-center justify-end gap-2">
+            <dd className="flex items-center justify-end gap-2" title={`Farbwert ${tenant.farbe}`}>
               <span className="size-3.5 rounded-full ring-1 ring-[var(--line)]" style={{ background: tenant.farbe }} />
-              <span className="mono text-[12px]">{tenant.farbe}</span>
+              <span className="text-[12px] text-fg-3">im Briefkopf</span>
             </dd>
           </dl>
         </div>

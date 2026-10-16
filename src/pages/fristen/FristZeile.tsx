@@ -2,13 +2,13 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { ChevronDown, Clock, MapPin, RotateCcw, ShieldAlert, Sparkles, UserCheck, Users } from "lucide-react";
-import { fmtDate, fmtDateShort, fmtDateWd } from "@/core/dates";
+import { fmtDate, fmtDateShort, fmtDateWd, schuetzeLeerzeichen } from "@/core/dates";
 import { fristArtZu } from "@/core/fristen";
 import type { Akte, Frist, FristTyp, User } from "@/core/types";
 import { toast } from "@/store/ui";
 import { Avatar, Chip } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { QUELLE_LABEL, TYP_META, bestaetigeKontrolle, brauchtKontrolle, darfKontrollieren, erledigeFrist, istUngeprueft, oeffneFristWieder, streifenFarbe } from "./logik";
+import { QUELLE_LABEL, QUELLE_TITEL, TYP_META, bestaetigeKontrolle, brauchtKontrolle, darfKontrollieren, erledigeFrist, oeffneFristWieder, streifenFarbe } from "./logik";
 
 const spring = { type: "spring", stiffness: 460, damping: 36 } as const;
 
@@ -29,16 +29,17 @@ export function TypChip({ typ, regelKey }: { typ: FristTyp; regelKey?: string })
   );
 }
 
+/** Herkunft der Frist – dieselben Bezeichnungen im Fristenkalender und im Akten-Reiter (QUELLE_LABEL). */
 export function QuelleChip({ quelle }: { quelle: Frist["quelle"] }) {
   if (quelle === "ki")
     return (
-      <span className="chip ai-ring !bg-transparent" title="Von der KI im Posteingang erkannt – berechnet mit dem Fristenrechner">
+      <span className="chip ai-ring !bg-transparent" title={QUELLE_TITEL.ki}>
         <Sparkles className="size-3 text-violet" />
-        <span className="ai-text font-semibold">KI</span>
+        <span className="ai-text font-semibold">{QUELLE_LABEL.ki}</span>
       </span>
     );
   return (
-    <Chip tone="neutral" title={quelle === "automatisch" ? "Automatisch angelegt (z. B. Vorfrist, Automation)" : quelle === "migration" ? "Aus der Altsoftware übernommen" : "Von Hand eingetragen"}>
+    <Chip tone={quelle === "migration" ? "ink" : "neutral"} title={QUELLE_TITEL[quelle]}>
       {QUELLE_LABEL[quelle]}
     </Chip>
   );
@@ -90,44 +91,43 @@ export function useFristAktionen(f: Frist, user: User) {
     }, 520);
   };
   const kontrollieren = () => {
-    if (bestaetigeKontrolle(f, user.id)) toast("Kontrolle bestätigt", { text: `Vier-Augen-Prinzip erfüllt: ${f.titel} (${fmtDate(f.datum)})`, ton: "erfolg" });
+    if (bestaetigeKontrolle(f, user.id)) toast("Kontrolle bestätigt", { text: `Vier-Augen-Kontrolle erfüllt: ${f.titel} (${fmtDate(f.datum)})`, ton: "erfolg" });
   };
   return { erledigt, umschalten, kontrollieren };
 }
 
+/**
+ * Aktion zur Vier-Augen-Kontrolle: „Kontrolle bestätigen“ für eine zweite Person. Für die verantwortliche Person selbst
+ * gibt es keine Aktion (keine Selbstkontrolle) – den Stand zeigt `KontrollStatus` („Vier-Augen-Kontrolle offen“).
+ */
 export function KontrolleAktion({ f, user, kontrollieren, verantwortlich }: { f: Frist; user: User; kontrollieren: () => void; verantwortlich?: User }) {
-  if (!brauchtKontrolle(f)) return null;
-  if (!darfKontrollieren(f, user.id))
-    return (
-      <span
-        className="chip chip-amber"
-        title={`Sie sind für diese Frist verantwortlich. Eine zweite Person muss Datum und Rechenweg bestätigen (Vier-Augen-Prinzip).`}
-      >
-        <Users className="size-3" />
-        Prüfung durch zweite Person
-      </span>
-    );
+  if (!brauchtKontrolle(f) || !darfKontrollieren(f, user.id)) return null;
   return (
-    <button type="button" onClick={kontrollieren} className="btn btn-sm btn-secondary" title={`Frist von ${verantwortlich?.name ?? "Kollegin/Kollege"} prüfen und bestätigen (Vier-Augen-Prinzip)`}>
+    <button type="button" onClick={kontrollieren} className="btn btn-sm btn-secondary" title={`Datum und Rechenweg der Frist von ${verantwortlich?.name ?? "Kollegin/Kollege"} prüfen und bestätigen (Vier-Augen-Kontrolle)`}>
       <UserCheck className="size-4 text-ink" />
       Kontrolle bestätigen
     </button>
   );
 }
 
+/** Stand der Vier-Augen-Kontrolle – einheitlich „Vier-Augen-Kontrolle offen“ bzw. „Kontrolliert von …“. */
 export function KontrollStatus({ f, team }: { f: Frist; team: User[] }) {
   if (f.kontrolliertVon) {
     const k = team.find((u) => u.id === f.kontrolliertVon);
     return (
-      <Chip tone="green" icon={<UserCheck className="size-3" />} title={`Vier-Augen-Kontrolle durch ${k?.name ?? "Teammitglied"}`}>
-        Geprüft{k ? ` · ${k.initialen}` : ""}
+      <Chip tone="green" icon={<UserCheck className="size-3" />} title={`Vier-Augen-Kontrolle durch ${k?.name ?? "ein Teammitglied"}`}>
+        Kontrolliert von {k ? k.initialen : "Team"}
       </Chip>
     );
   }
-  if (istUngeprueft(f))
+  if (brauchtKontrolle(f))
     return (
-      <Chip tone="amber" dot title="KI-erkannte Frist – noch nicht durch eine zweite Person bestätigt">
-        Ungeprüft
+      <Chip
+        tone="amber"
+        icon={<Users className="size-3" />}
+        title={`${f.quelle === "ki" ? "Von der KI erkannt – " : f.quelle === "migration" ? "Aus der Altsoftware übernommen – " : ""}noch nicht durch eine zweite Person bestätigt. Die verantwortliche Person kann sich nicht selbst kontrollieren.`}
+      >
+        Vier-Augen-Kontrolle offen
       </Chip>
     );
   return null;
@@ -239,8 +239,8 @@ export function FristZeile({ f, akte, team, user, index = 0, zeigeDatum }: { f: 
                 <p className={cn("mt-3 flex gap-2 text-[12.5px] leading-relaxed", art.kritisch ? "text-seal" : "text-fg-2")}>
                   <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
                   <span>
-                    {art.art && <strong className="font-semibold">{art.art} </strong>}
-                    {art.versaeumnis}
+                    {art.art && <strong className="font-semibold">{schuetzeLeerzeichen(art.art)} </strong>}
+                    {schuetzeLeerzeichen(art.versaeumnis)}
                   </span>
                 </p>
               )}
@@ -248,7 +248,7 @@ export function FristZeile({ f, akte, team, user, index = 0, zeigeDatum }: { f: 
               {brauchtKontrolle(f) && f.verantwortlichId === user.id && (
                 <p className="mt-3 flex gap-2 text-[12.5px] leading-relaxed text-amber">
                   <Users className="mt-0.5 size-3.5 shrink-0" />
-                  Sie sind verantwortlich – die Kontrolle muss eine zweite Person bestätigen (Vier-Augen-Prinzip).
+                  Sie sind verantwortlich – die Vier-Augen-Kontrolle muss eine zweite Person bestätigen.
                 </p>
               )}
             </div>

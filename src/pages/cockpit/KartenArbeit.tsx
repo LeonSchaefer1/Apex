@@ -5,15 +5,21 @@ import { Avatar, Chip } from "@/components/ui";
 import { toast } from "@/store/ui";
 import { useData } from "@/store/data";
 import { addDays, diffDays, fmtDateShort, monatName, fromISO, nowLocal, relTime, wochentagName } from "@/core/dates";
+import { fristArtZu } from "@/core/fristen";
+import { istKritisch } from "@/core/fristenLage";
 import type { Frist, Nachricht } from "@/core/types";
 import { cn } from "@/lib/cn";
 import { BentoKarte, KartenKopf, MehrLink, Streifen } from "./Basis";
 import { TYP_LABEL, tagLabel, type CockpitDaten } from "./daten";
 
+function anzahl(n: number, eins: string, viele: string) {
+  return `${n} ${n === 1 ? eins : viele}`;
+}
+
 const TYP_TON = { notfrist: "seal", frist: "amber", vorfrist: "ink", wiedervorlage: "neutral", termin: "violet" } as const;
 
 function streifenTon(f: Frist, heute: string): "seal" | "amber" | "ink" | "neutral" {
-  if (f.datum < heute || f.typ === "notfrist") return "seal";
+  if (f.datum < heute || istKritisch(f)) return "seal";
   if (f.typ === "frist") return f.datum === heute ? "seal" : "amber";
   if (f.typ === "vorfrist") return "ink";
   return "neutral";
@@ -24,7 +30,8 @@ export function FristenKarte({ d, i, className }: { d: CockpitDaten; i: number; 
   const MAX = 7;
   const sichtbar = d.bisWerktag.slice(0, MAX);
   const rest = d.bisWerktag.length - sichtbar.length;
-  const spotlight = d.notfristenWoche.filter((f) => f.datum > d.bisTag).slice(0, 2);
+  // Kritische Fristen (Notfrist oder nicht verlängerbar) der nächsten 7 Tage, die nicht ohnehin in der Liste stehen
+  const spotlight = d.kritischWoche.filter((f) => f.datum > d.bisTag).slice(0, 2);
   const gruppen: { key: string; label: string; items: Frist[] }[] = [];
   for (const f of sichtbar) {
     const key = f.datum < d.heute ? "ueber" : f.datum;
@@ -37,27 +44,30 @@ export function FristenKarte({ d, i, className }: { d: CockpitDaten; i: number; 
     g.items.push(f);
   }
   const bisLabel = d.wochenende ? `bis ${wochentagName(d.bisTag)}` : "bis morgen";
-  // Kopfzeile mit derselben Zählweise wie Briefing, Navigation und Fristenkalender (Vorfristen getrennt)
+  // Freitags (oder vor Feiertagen) reicht die Karte bis zum nächsten Werktag – der Titel sagt das.
+  const titel = d.wochenende ? `Heute & ${wochentagName(d.bisTag)} fällig` : "Heute & morgen fällig";
+  // Kopfzeile mit derselben Zählweise wie Briefing, Navigation und Fristenkalender: Fristen, Wiedervorlagen und Vorfristen getrennt
   const nF = d.lage.faellig.length;
-  const nV = d.lage.vorfristen.length;
-  const heuteText = nF === 0 ? "Heute keine Frist" : `Heute ${nF} ${nF === 1 ? "Frist" : "Fristen"}`;
-  const vorText = nV > 0 ? ` + ${nV} ${nV === 1 ? "Vorfrist" : "Vorfristen"}` : "";
+  const dazu = [
+    d.lage.wiedervorlagen.length ? anzahl(d.lage.wiedervorlagen.length, "Wiedervorlage", "Wiedervorlagen") : "",
+    d.lage.vorfristen.length ? anzahl(d.lage.vorfristen.length, "Vorfrist", "Vorfristen") : "",
+  ].filter(Boolean);
+  const heuteText = `${nF === 0 ? "Heute keine Frist" : `Heute ${anzahl(nF, "Frist", "Fristen")}`}${dazu.length ? `, dazu ${dazu.join(" und ")}` : ""}`;
   const naechsteWoche = addDays(d.heute, 7);
 
   return (
-    <BentoKarte i={i} label="Heute und morgen fällige Fristen" className={className}>
+    <BentoKarte i={i} label={d.wochenende ? `Heute und bis ${wochentagName(d.bisTag)} fällig` : "Heute und morgen fällig"} className={className}>
       <KartenKopf
         icon={<CalendarClock />}
-        ton={d.ueberfaellig > 0 || d.bisWerktag.some((f) => f.typ === "notfrist") ? "seal" : "ink"}
-        titel="Heute & morgen fällig"
+        ton={d.ueberfaellig > 0 || d.bisWerktag.some(istKritisch) ? "seal" : "ink"}
+        titel={titel}
         unter={
           d.bisWerktag.length === 0 ? (
             `Nichts offen ${bisLabel}`
           ) : (
             <>
               {heuteText}
-              {vorText}
-              <span className="hidden @md:inline"> · {d.bisWerktag.length} offen {bisLabel}</span>
+              <span className="hidden @md:inline"> · {anzahl(d.bisWerktag.length, "Eintrag", "Einträge")} {bisLabel}</span>
             </>
           )
         }
@@ -78,7 +88,7 @@ export function FristenKarte({ d, i, className }: { d: CockpitDaten; i: number; 
             <CheckCircle2 className="size-6 shrink-0 text-green" />
             <div className="min-w-0">
               <div className="text-[14px] font-semibold">Alles im Griff</div>
-              <p className="text-[12.5px] text-fg-3">Bis {wochentagName(d.bisTag)} ist keine Frist offen. Vorfristen setzt der 38h-Motor automatisch.</p>
+              <p className="text-[12.5px] text-fg-3">Bis {wochentagName(d.bisTag)} ist nichts offen. Vorfristen setzt der 38h-Motor automatisch.</p>
             </div>
           </div>
           {d.woche.filter((f) => f.datum > d.bisTag).length > 0 && (
@@ -127,6 +137,7 @@ function NotfristSpot({ f, d }: { f: Frist; d: CockpitDaten }) {
   const tage = diffDays(d.heute, f.datum);
   const gesamt = f.ereignisDatum ? Math.max(1, diffDays(f.ereignisDatum, f.datum)) : 0;
   const vergangen = f.ereignisDatum ? Math.min(gesamt, Math.max(0, diffDays(f.ereignisDatum, d.heute))) : 0;
+  const art = fristArtZu(f);
   return (
     <Link
       to={`/akten/${f.akteId}?tab=fristen`}
@@ -134,11 +145,11 @@ function NotfristSpot({ f, d }: { f: Frist; d: CockpitDaten }) {
       style={{ boxShadow: "inset 0 0 0 1px color-mix(in oklab, var(--seal) 22%, transparent)" }}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <Chip tone="seal" icon={<ShieldAlert className="size-3" />}>
-          Notfrist
+        <Chip tone="seal" icon={<ShieldAlert className="size-3" />} title={art?.kurz}>
+          {f.typ === "notfrist" ? "Notfrist" : "Nicht verlängerbar"}
         </Chip>
         <span className="text-[12px] font-semibold text-seal">
-          noch {tage} {tage === 1 ? "Tag" : "Tage"} · {wochentagName(f.datum, true)}, {fmtDateShort(f.datum)}
+          {tage === 0 ? "heute" : `noch ${tage} ${tage === 1 ? "Tag" : "Tage"}`} · {wochentagName(f.datum, true)}, {fmtDateShort(f.datum)}
         </span>
         <ArrowRight className="ml-auto size-4 text-seal opacity-60 transition-transform group-hover:translate-x-0.5" />
       </div>
@@ -170,7 +181,9 @@ function FristZeile({ f, d, mitDatum }: { f: Frist; d: CockpitDaten; mitDatum?: 
   const a = d.akten.get(f.akteId);
   const v = d.team.get(f.verantwortlichId);
   const erledigbar = f.typ === "wiedervorlage" || f.typ === "vorfrist";
-  const notfrist = f.typ === "notfrist";
+  // rot: Notfrist oder gesetzlich nicht verlängerbare Frist (z. B. § 4 KSchG, StPO, OWiG)
+  const notfrist = istKritisch(f);
+  const art = notfrist ? fristArtZu(f) : undefined;
 
   const erledigen = () => {
     const st = useData.getState();
@@ -205,7 +218,7 @@ function FristZeile({ f, d, mitDatum }: { f: Frist; d: CockpitDaten; mitDatum?: 
             {f.uhrzeit && <span className="num ml-1.5 font-normal text-fg-3">{f.uhrzeit} Uhr</span>}
           </div>
           <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[12px] text-fg-3">
-            <Chip tone={TYP_TON[f.typ]} className="!h-[19px] !px-1.5 !text-[10.5px]">
+            <Chip tone={notfrist ? "seal" : TYP_TON[f.typ]} className="!h-[19px] !px-1.5 !text-[10.5px]" title={art?.kurz}>
               {TYP_LABEL[f.typ]}
             </Chip>
             {(f.datum < d.heute || mitDatum) && <span className={cn("shrink-0 font-semibold", f.datum < d.heute ? "text-seal" : "text-fg-2")}>{tagLabel(f.datum, d.heute)}</span>}
@@ -299,7 +312,7 @@ function PostZeile({ n, d }: { n: Nachricht; d: CockpitDaten }) {
           )}
           <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
             {n.kanal === "bea" && <Chip tone="ink" className="!h-[19px] !px-1.5 !text-[10.5px]">beA</Chip>}
-            {n.eebErforderlich && !n.eebAbgegeben && <Chip tone="amber" className="!h-[19px] !px-1.5 !text-[10.5px]">eEB erforderlich</Chip>}
+            {n.eebErforderlich && !n.eebAbgegeben && <Chip tone="amber" className="!h-[19px] !px-1.5 !text-[10.5px]">eEB offen</Chip>}
             {n.ki?.frist && <Chip tone="seal" className="!h-[19px] !px-1.5 !text-[10.5px]">Frist erkannt</Chip>}
             {a ? (
               <span className="mono text-[11.5px] font-medium text-fg-3">{a.aktenzeichen}</span>
@@ -331,7 +344,7 @@ export function TermineKarte({ d, i, className }: { d: CockpitDaten; i: number; 
             <Link
               key={t.datum}
               to={`/fristen?datum=${t.datum}`}
-              title={`${wochentagName(t.datum)}: ${t.fristen} Fristen, ${t.termine} Termine`}
+              title={`${wochentagName(t.datum)}: ${anzahl(t.fristen, "Frist", "Fristen")}, ${anzahl(t.termine, "Termin", "Termine")}${t.wiedervorlagen ? ` · dazu ${anzahl(t.wiedervorlagen, "Wiedervorlage", "Wiedervorlagen")}` : ""}`}
               className={cn(
                 "group relative flex flex-col items-center rounded-[14px] px-1 pb-2 pt-1.5 transition-colors",
                 ist ? "bg-ink text-[var(--on-ink)] shadow-[0_8px_20px_-10px_var(--ink)]" : "bg-[var(--ink-softer)] hover:bg-ink-soft",
@@ -341,7 +354,7 @@ export function TermineKarte({ d, i, className }: { d: CockpitDaten; i: number; 
               <span className="num text-[17px] font-semibold leading-tight">{fromISO(t.datum).getUTCDate()}</span>
               <span className="mt-1 flex h-[14px] w-full items-end justify-center gap-[3px] px-2">
                 <span
-                  className={cn("w-full max-w-[22px] rounded-full", ist ? "bg-white/70" : t.notfrist ? "bg-seal" : "bg-ink/60")}
+                  className={cn("w-full max-w-[22px] rounded-full", ist ? "bg-white/70" : t.kritisch ? "bg-seal" : "bg-ink/60")}
                   style={{ height: `${Math.max(3, (last / maxLast) * 14)}px`, opacity: last ? 1 : 0.25 }}
                 />
               </span>
@@ -405,7 +418,12 @@ export function AktenKarte({ d, i, className }: { d: CockpitDaten; i: number; cl
   const items = d.handlungsbedarf.slice(0, 5);
   return (
     <BentoKarte i={i} label="Akten mit Handlungsbedarf" className={className}>
-      <KartenKopf icon={<FolderOpen />} titel="Akten mit Handlungsbedarf" unter={`${d.handlungsbedarf.length} Akten · hohe Priorität oder Frist in ≤ 7 Tagen`} mehr={{ to: "/akten", label: "Alle Akten" }} />
+      <KartenKopf
+        icon={<FolderOpen />}
+        titel="Akten mit Handlungsbedarf"
+        unter={`${anzahl(d.aktenMitFrist, "Akte", "Akten")} mit Frist ≤ 7 Tage${d.aktenNurPrio ? ` · dazu ${d.aktenNurPrio} mit hoher Priorität` : ""}`}
+        mehr={{ to: "/akten?frist=frist7", label: "In Akten ansehen" }}
+      />
       {items.length === 0 ? (
         <p className="relative z-[1] rounded-[14px] bg-green-soft px-4 py-6 text-center text-[13px] text-fg-2">Keine Akte braucht gerade Ihre Aufmerksamkeit.</p>
       ) : (

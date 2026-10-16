@@ -173,7 +173,7 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
         messages: [{ role: "user", content: prompt }],
         signal: ctl.signal,
         effort: "medium",
-        maxTokens: 3000,
+        maxTokens: 8000,
         onText: (t) => {
           if (nr !== laufNr.current) return;
           teil = t;

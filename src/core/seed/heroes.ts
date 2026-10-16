@@ -108,7 +108,7 @@ export function heroesBerlin(ctx: Ctx) {
 
   // 3) Verkehrsunfall Yilmaz – Fremdgeld
   const yilmaz = ctx.person(["mandant"], { vorname: "Elif", nachname: "Yilmaz", weiblich: true });
-  const elbtal = ctx.firma("Elbtal Versicherung AG", ["gegner", "versicherung"], { email: "schaden@elbtal-versicherung.example" });
+  const elbtal = ctx.firma("Elbtal Versicherung AG", ["gegner", "versicherung"], { email: "schadenservice@elbtal-versicherung.de" });
   const a3 = akte(ctx, {
     aktenzeichen: nextAz(ctx, 131), titel: "Yilmaz ./. Elbtal Versicherung AG", sachgebiet: "Verkehrsrecht", phase: "Außergerichtlich", status: "offen",
     mandantId: yilmaz.id, gegnerId: elbtal.id, gegenstandswert: 7420, bearbeiterId: jonas.id, sachbearbeiterId: mia?.id,
@@ -147,7 +147,7 @@ export function heroesBerlin(ctx: Ctx) {
   });
 
   // 5) Forderungseinzug Berger ./. Lenz – Forderungskonto
-  const berger = ctx.firma("Berger Haustechnik GmbH", ["mandant"], { email: "buchhaltung@berger-haustechnik.example" });
+  const berger = ctx.firma("Berger Haustechnik GmbH", ["mandant"], { email: "buchhaltung@berger-haustechnik.de" });
   const lenz = ctx.person(["gegner"], { vorname: "Rainer", nachname: "Lenz", weiblich: false });
   const mahn = ctx.gericht(G.mahn);
   const a5 = akte(ctx, {

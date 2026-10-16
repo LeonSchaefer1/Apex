@@ -69,6 +69,21 @@ docker compose up -d    # http://localhost:8787 – Daten im Volume „anwaltape
 
 Ein Klick genügt: Das Repository mit [Render](https://render.com) verbinden, `render.yaml` wird erkannt (Region Frankfurt, persistente Platte). Dort `CONSOLE_ADMIN_PASSWORD` und optional `ANTHROPIC_API_KEY` eintragen.
 
+### Betrieb & Sicherheit (Server)
+
+| Variable | Wirkung |
+|---|---|
+| `CONSOLE_ADMIN_PASSWORD` | Mindestens 12 Zeichen. Platzhalter aus `.env.example` und öffentlich bekannte Demo-Passwörter werden abgelehnt – die Console bleibt dann deaktiviert (Hinweis im Log). |
+| `COOKIE_SECURE` | Hinter HTTPS auf `true`: Sitzungs-Cookie nur über HTTPS, zusätzlich HSTS. |
+| `TRUST_PROXY` | Nur hinter einem eigenen Reverse Proxy (z. B. Render) auf `true`: Die Anmeldebegrenzung nutzt dann den vom Proxy angehängten letzten `X-Forwarded-For`-Eintrag, sonst die Socket-Adresse. |
+| `AI_DEMO_TENANTS` | `off` schaltet die Live-KI für die eingebauten Präsentationskanzleien ab (deren Zugangsdaten sind öffentlich); dort arbeitet dann die Demo-KI. |
+| `AI_MAX_TOKENS`, `AI_DAILY_REQUESTS_PER_TENANT`, `AI_DAILY_TOKENS_PER_TENANT`, `AI_DAILY_TOKENS_TOTAL` | Obergrenze je KI-Antwort und Tageskontingente je Kanzlei bzw. Server (`0` = unbegrenzt). Ist ein Kontingent erschöpft, übernimmt die Demo-KI. |
+| `TZ` | Zeitzone für „heute“, Fristen und den Tageswechsel der Beispieldaten (Docker und Render: `Europe/Berlin`). |
+
+- **Datenbestand:** Präsentationskanzleien werden jeden Tag frisch erzeugt (Änderungen während einer Präsentation bleiben bis zum Tagesende). Kunden-Kanzleien werden nur neu erzeugt, solange sie unveränderte Beispieldaten haben – sobald eine Kanzlei etwas geändert hat, löscht der Server nie automatisch, auch nicht bei einer neuen Version der Beispieldaten. „Demo-Daten zurücksetzen“ gibt es nur für Präsentations- und Beispieldaten-Kanzleien.
+- **Sitzungen:** 12 Stunden, bei Nutzung gleitend verlängert. Entfernte Personen, pausierte Kanzleien und abgelaufene Testzugänge verlieren den Zugriff sofort. Jede Daten-, Team- und KI-Anfrage ist zusätzlich an Kanzlei und Person des Browser-Tabs gebunden – meldet sich in einem anderen Tab jemand anderes an, weist der Server alte Anfragen ab und der Tab lädt neu.
+- **Begrenzungen:** Anfragen bis 64 KB (Dokumente und KI-Anfragen bis 3 MB), Passwörter bis 256 Zeichen, Anmeldeversuche je IP und je Zugang begrenzt; gespeicherte Dokumente werden auf Pflichtfelder geprüft. Sicherheits-Header inkl. Content-Security-Policy (nur eigene Skripte), `Cache-Control: no-store` für die API. Anmeldungen, Fehlversuche, Team- und Statusänderungen sowie Passwort-Neuvergaben stehen im Audit-Protokoll (Tabelle `audit`).
+
 ### Statische Demo (GitHub Pages, Netlify, Präsentations-Laptop)
 
 ```bash

@@ -107,10 +107,17 @@ export async function starteAnalyse(n: Nachricht, land: Bundesland, opts: { schl
     await warte(380);
     if (!gueltig()) return undefined;
     const aktuell = useData.getState().data.nachrichten.find((x) => x.id === n.id) ?? n;
-    useData.getState().patch("nachrichten", n.id, {
-      ki: vorschlag,
-      kiStatus: aktuell.kiStatus === "uebernommen" ? "uebernommen" : "analysiert",
-    });
+    // Analyse-Ergebnis und Protokoll sind automatische Schreibvorgänge (keine Änderung durch die Kanzlei).
+    const system = { system: true };
+    useData.getState().patch(
+      "nachrichten",
+      n.id,
+      {
+        ki: vorschlag,
+        kiStatus: aktuell.kiStatus === "uebernommen" ? "uebernommen" : "analysiert",
+      },
+      system,
+    );
     useAnalyse.setState({ ergebnisse: { ...useAnalyse.getState().ergebnisse, [n.id]: analyse } });
     const akte = analyse.akteId ? data.akten.find((a) => a.id === analyse.akteId) : undefined;
     const fristText = analyse.fristen.length ? `${analyse.fristen.length} ${analyse.fristen.length === 1 ? "Frist" : "Fristen"} erkannt` : "keine Frist erkannt";
@@ -119,7 +126,7 @@ export async function starteAnalyse(n: Nachricht, land: Bundesland, opts: { schl
       akteId: akte?.id,
       text: `Posteingang analysiert: „${n.betreff}“ – ${analyse.typ}, ${fristText}${akte ? `, Akte ${akte.aktenzeichen} zugeordnet (Vorschlag)` : ""}`,
       minutenGespart: 6,
-    });
+    }, system);
     return analyse;
   } catch (e) {
     clearInterval(takt);

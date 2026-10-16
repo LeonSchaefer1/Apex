@@ -228,14 +228,14 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
   const anhaengeDa = zugeordnet && anhaengeAbgelegt(n, ziel?.id, dokumente);
 
   const quelleText = ansicht?.frisch
-    ? `${ansicht.quelle === "demo" ? "Offline-KI (regelbasiert)" : "Claude · live"}${ansicht.dauerMs ? ` · ${(ansicht.dauerMs / 1000).toFixed(1).replace(".", ",")} s` : ""}`
+    ? `${ansicht.quelle === "demo" ? "Demo-KI (offline)" : "Claude · live"}${ansicht.dauerMs ? ` · ${(ansicht.dauerMs / 1000).toFixed(1).replace(".", ",")} s` : ""}`
     : "Gespeicherter KI-Vorschlag";
 
   const uebernehmen = () => {
     if (!ziel || !ansicht) return;
     const { anzahl, rueckgaengig } = fristenUebernehmen(n, ziel, user, ansicht, fristen);
     toast(anzahl === 1 ? "Frist eingetragen" : `${anzahl} Fristen eingetragen`, {
-      text: `In Akte ${ziel.aktenzeichen} mit Vorfristen notiert. Zweitkontrolle (Vier-Augen-Prinzip) steht aus.`,
+      text: `In Akte ${ziel.aktenzeichen} mit Vorfristen notiert. Vier-Augen-Kontrolle offen.`,
       ton: "erfolg",
       aktion: {
         label: "Rückgängig",
@@ -458,13 +458,13 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
                           </Chip>
                           {unkontrolliert > 0 && ziel ? (
                             <span>
-                              {nurEigene ? "Zweitkontrolle durch eine Kollegin oder einen Kollegen ausstehend" : "Zweitkontrolle ausstehend"} ·{" "}
+                              {nurEigene ? "Vier-Augen-Kontrolle offen – bestätigt eine Kollegin oder ein Kollege" : "Vier-Augen-Kontrolle offen"} ·{" "}
                               <Link to={`/fristen?filter=kontrolle&akte=${encodeURIComponent(ziel.id)}`} className="font-medium text-ink hover:underline">
                                 {nurEigene ? "im Fristenkalender ansehen" : "im Fristenkalender bestätigen"}
                               </Link>
                             </span>
                           ) : (
-                            <span>Vier-Augen-Kontrolle erfolgt</span>
+                            <span>Vier-Augen-Kontrolle erledigt</span>
                           )}
                         </div>
                       ) : (

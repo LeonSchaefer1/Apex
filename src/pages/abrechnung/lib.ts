@@ -1,6 +1,6 @@
 // Fachliche Hilfen der Abrechnung: offene Posten, Rechnungsnummern, Abrechnungsvorschläge je Akte.
 import { addDays, fmtDate, fromISO, round2, today } from "@/core/dates";
-import { berechnetePauschalen, berechneRvg, fassungFuerAuftrag, gebuehr, rvgRechnungsPositionen, UST_SATZ, type RvgFassung, type RvgZeile } from "@/core/rvg";
+import { berechnetePauschalen, berechneRvg, fassungFuerAuftrag, rvgRechnungsPositionen, UST_SATZ, type RvgFassung, type RvgZeile } from "@/core/rvg";
 import type { Akte, AktenPhase, Dokument, Frist, ISODate, Kontakt, Rechnung, RechnungsPosition, User, Zeiteintrag } from "@/core/types";
 
 export type TabKey = "uebersicht" | "rechnungen" | "rvg" | "bank" | "forderung" | "zeit";
@@ -53,7 +53,8 @@ export function fmtEURkompakt(n: number): string {
 
 /** Deutsche Betragseingabe („10.000,50“, „5000“, „1.000“) in eine Zahl umwandeln. */
 export function parseBetrag(s: string): number {
-  const clean = s.replace(/[^\d,.-]/g, "");
+  // typografisches Minus (U+2212, so formatiert fmtEUR negative Beträge) wie Bindestrich behandeln
+  const clean = s.replace(/\u2212/g, "-").replace(/[^\d,.-]/g, "");
   if (!clean) return 0;
   if (clean.includes(",")) return Number(clean.replace(/\./g, "").replace(",", ".")) || 0;
   if (/^\d{1,3}(\.\d{3})+$/.test(clean)) return Number(clean.replace(/\./g, "")) || 0;
@@ -164,11 +165,6 @@ function vollstreckungsbescheidBeantragt(akte: Akte, dokumente: Dokument[]): boo
   return /vollstreckungsbescheid/i.test(akte.forderung?.titel ?? "") || dokumente.some((d) => d.akteId === akte.id && /vollstreckungsbescheid/i.test(d.name));
 }
 
-/** Anrechnungszeile auf eine Verfahrensgebühr (gleiche Darstellung wie die Anrechnung aus `berechneRvg`). */
-function anrechnungsZeile(nr: string, titel: string, satz: number, wert: number, fassung: RvgFassung, angelegenheit: RvgZeile["angelegenheit"]): RvgZeile {
-  return { nr, titel, satz: -satz, gegenstandswert: wert, betrag: -gebuehr(wert, satz, fassung), anrechnung: true, angelegenheit };
-}
-
 /** Stundenpositionen je Bearbeiter (Vergütungsvereinbarung nach § 3a RVG). */
 export function stundenPositionen(eintraege: Zeiteintrag[], usersById: Map<string, User>, fallbackSatz: number, vereinbarterSatz?: number): RechnungsPosition[] {
   const proUser = new Map<string, number>();
@@ -236,31 +232,26 @@ export function vorschlagFuerAkte(
   const frueher = gueltig.flatMap((r) => r.positionen);
   const fruehere2300 = frueher.find((p) => p.vv === "2300");
   const fruehere3305 = frueher.find((p) => p.vv === "3305");
-  // Geschäftsgebühr → erste gerichtliche Verfahrensgebühr (Mahnverfahren oder Rechtsstreit); 3305 → 3100 des Rechtsstreits.
-  const anrechnen2300auf3100 = neu.includes("3100") && !!fruehere2300 && !fruehere3305;
-  const anrechnen2300auf3305 = neu.includes("3305") && !!fruehere2300;
+  // Anrechnungen rechnet src/core/rvg.ts: Geschäftsgebühr → erste gerichtliche Verfahrensgebühr (3305 im Mahnverfahren,
+  // sonst 3100; Vorbem. 3 Abs. 4 VV RVG), Mahnverfahrensgebühr 3305 → 3100 des Rechtsstreits (Anm. zu Nr. 3305).
+  // Früher berechnete Gebühren gehen nur als Anrechnungsgrundlage ein; ihre Angelegenheit ist bereits abgerechnet.
   const anrechnen3305auf3100 = neu.includes("3100") && !!fruehere3305;
-  const eingabe = [...(anrechnen2300auf3100 ? [{ nr: "2300", satz: fruehere2300?.satz ?? 1.3 }] : []), ...neu.map((nr) => ({ nr }))];
+  const anrechnen2300 = !!fruehere2300 && (neu.includes("3305") || (neu.includes("3100") && !fruehere3305));
+  const grundlage = (p: RechnungsPosition, standardSatz: number) => ({ nr: p.vv, satz: p.satz ?? standardSatz, gegenstandswert: p.gegenstandswert ?? akte.gegenstandswert });
+  const eingabe = [
+    ...(anrechnen2300 && fruehere2300 ? [grundlage(fruehere2300, 1.3)] : []),
+    ...(anrechnen3305auf3100 && fruehere3305 ? [grundlage(fruehere3305, 1)] : []),
+    ...neu.map((nr) => ({ nr })),
+  ];
   // Pauschale Nr. 7002 je Angelegenheit nur einmal: in früheren Rechnungen schon berechnete Beträge zählen mit.
   const erg = berechneRvg({ positionen: eingabe, gegenstandswert: akte.gegenstandswert, fassung, anrechnung: true, bereitsPauschale: berechnetePauschalen(gueltig) });
-  // Die früher berechnete Geschäftsgebühr dient nur der Anrechnung – ihre Angelegenheit ist abgerechnet.
-  let angelegenheiten = anrechnen2300auf3100 ? erg.angelegenheiten.filter((a) => a.key !== "aussergerichtlich") : erg.angelegenheiten;
-  const zusatz = (key: RvgZeile["angelegenheit"], z: RvgZeile) => {
-    angelegenheiten = angelegenheiten.map((a) => (a.key === key && !a.zeilen.some((x) => x.anrechnung) ? { ...a, zeilen: [...a.zeilen, z] } : a));
-  };
-  if (anrechnen2300auf3305 && fruehere2300) {
-    const satz = Math.min((fruehere2300.satz ?? 1.3) / 2, 0.75);
-    zusatz("mahnverfahren", anrechnungsZeile("Vorb. 3 IV", `Anrechnung Geschäftsgebühr (${satz.toLocaleString("de-DE")})`, satz, Math.min(fruehere2300.gegenstandswert ?? akte.gegenstandswert, akte.gegenstandswert), fassung, "mahnverfahren"));
-  }
-  if (anrechnen3305auf3100 && fruehere3305) {
-    const satz = fruehere3305.satz ?? 1;
-    zusatz("gerichtlich", anrechnungsZeile("Anm. 3305", `Anrechnung Verfahrensgebühr Mahnverfahren (${satz.toLocaleString("de-DE")})`, satz, Math.min(fruehere3305.gegenstandswert ?? akte.gegenstandswert, akte.gegenstandswert), fassung, "gerichtlich"));
-  }
+  const nurGrundlage = new Set<RvgZeile["angelegenheit"]>([...(anrechnen2300 ? (["aussergerichtlich"] as const) : []), ...(anrechnen3305auf3100 ? (["mahnverfahren"] as const) : [])]);
+  const angelegenheiten = erg.angelegenheiten.filter((a) => !nurGrundlage.has(a.key));
   const positionen = rvgRechnungsPositionen(angelegenheiten);
   const vorschuss = LAUFENDES_VERFAHREN.includes(akte.phase);
   const hinweise = [
     mahn ? "Mahnverfahren" : "",
-    anrechnen2300auf3100 || anrechnen2300auf3305 ? "Geschäftsgebühr aus Vorrechnung angerechnet" : "",
+    anrechnen2300 ? "Geschäftsgebühr aus Vorrechnung angerechnet" : "",
     anrechnen3305auf3100 ? "Mahnverfahrensgebühr angerechnet" : "",
     basis.includes("3104") && !neu.includes("3104") && !abgerechnet.has("3104") ? "Terminsgebühr erst nach dem Termin" : "",
   ].filter(Boolean);
