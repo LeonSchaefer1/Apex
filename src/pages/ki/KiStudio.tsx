@@ -17,7 +17,7 @@ const ERKLAERUNG: Record<Tab, string> = {
   schriftsatz: "Mandantenbriefe, Deckungsanfragen und Schriftsatz-Gerüste aus den Daten der Akte – ohne erfundene Tatsachen.",
 };
 
-/** Apex KI: Fallanalyse, Dokument-Analyse und Schriftsatz-Assistent – das KI-Schaufenster der Kanzlei. */
+/** Apex KI: Fallanalyse, Dokument-Analyse und Schriftsatz-Entwurf – das KI-Schaufenster der Kanzlei. */
 export default function KiStudio() {
   const [params, setParams] = useSearchParams();
   const roh = params.get("tab");
@@ -64,7 +64,7 @@ export default function KiStudio() {
           options={[
             { value: "fallanalyse", label: "Fallanalyse", icon: mobil ? undefined : <BrainCircuit className="size-4" /> },
             { value: "dokument", label: mobil ? "Dokument" : "Dokument-Analyse", icon: mobil ? undefined : <FileScan className="size-4" /> },
-            { value: "schriftsatz", label: mobil ? "Schriftsatz" : "Schriftsatz-Assistent", icon: mobil ? undefined : <FileSignature className="size-4" /> },
+            { value: "schriftsatz", label: mobil ? "Schriftsatz" : "Schriftsatz-Entwurf", icon: mobil ? undefined : <FileSignature className="size-4" /> },
           ]}
         />
         <AnimatePresence mode="wait" initial={false}>

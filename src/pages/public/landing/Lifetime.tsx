@@ -30,7 +30,7 @@ const TOOLTIP: Record<number, { abo: string; apex: string }> = {
   2: { abo: "Gebühren laufen weiter – Preiserhöhung möglich", apex: "Investition ist ausgeglichen" },
   3: { abo: "Kosten steigen weiter", apex: "Sie sparen jeden Monat" },
   4: { abo: "Kosten steigen weiter", apex: "Software gehört weiterhin Ihnen" },
-  5: { abo: "Nach fünf Jahren: höchste Gesamtkosten", apex: "Keine Abo-Falle, kein Lock-in" },
+  5: { abo: "Nach fünf Jahren: höchste Gesamtkosten", apex: "Keine Abo-Falle, keine Anbieterbindung" },
 };
 
 export function Lifetime() {
@@ -53,10 +53,10 @@ export function Lifetime() {
           <Reveal>
             <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {[
-                { i: <InfinityIcon className="size-4" />, t: "Lifetime-Zugang", s: "Keine versteckten Monatsgebühren" },
+                { i: <InfinityIcon className="size-4" />, t: "Lifetime-Lizenz", s: "Unbefristet nutzen, ohne Monatsgebühren" },
                 { i: <Server className="size-4" />, t: "Ihr Betrieb, Ihre Wahl", s: "On-Premise oder Private Cloud in Deutschland" },
                 { i: <Wrench className="size-4" />, t: "Wartung transparent", s: "Optional und klar geregelt" },
-                { i: <BadgeCheck className="size-4" />, t: "Kein Lock-in", s: "Ihre Daten bleiben exportierbar" },
+                { i: <BadgeCheck className="size-4" />, t: "Keine Anbieterbindung", s: "Ihre Daten bleiben exportierbar" },
               ].map((x) => (
                 <li key={x.t} className="glass-thin flex items-start gap-3 rounded-[18px] p-3.5">
                   <span className="relative z-[2] grid size-8 shrink-0 place-items-center rounded-[10px] bg-ink-soft text-ink">{x.i}</span>

@@ -3,9 +3,10 @@ import { createStore, get as idbGet, set as idbSet, del as idbDel, type UseStore
 import { fmtDate, today } from "@/core/dates";
 import { generateTenantData, SEED_VERSION } from "@/core/seed/generate";
 import { DEMO_TENANTS, DEMO_PASSWORT, CONSOLE_DEMO, publicUser, type DemoTenant, type DemoUser } from "@/core/seed/tenants";
-import { baueKunde, baueNutzer, profilFuer, zufallsPasswort } from "@/core/seed/kunde";
+import { baueKunde, baueNutzer, profilFuer } from "@/core/seed/kunde";
 import type { CollectionKey, TenantData, Tenant } from "@/core/types";
 import { PasswortWechselNoetig, darfVerwalten, pruefeNeuesPasswort, type Backend, type ConsoleKunde, type KanzleiProfil, type NeuerKunde, type Sitzung } from "./types";
+import { sicheresPasswort, zufallsKennung, zufallsZahl } from "./zufall";
 
 const LS_SESSION = "aa:session";
 const LS_REGISTRY = "aa:registry";
@@ -139,7 +140,34 @@ function sitzungFuer(s: DemoSession): Sitzung | null {
   const t = findTenant(s.tenantId);
   const u = t?.users.find((x) => x.id === s.userId);
   if (!t || !u) return null;
-  return { user: publicUser(u), tenant: t.tenant, team: t.users.map(publicUser) };
+  const leer = (t as DemoTenant & { leer?: boolean }).leer ?? false;
+  return { user: publicUser(u), tenant: t.tenant, team: t.users.map(publicUser), betrieb: { praesentation: istPraesentationskanzlei(t.tenant.id), beispieldaten: !leer } };
+}
+
+/** Prüft mit einem Probe-Schreibzugriff, ob Änderungen dauerhaft im Browser landen (gesperrter Speicher, Sandbox ohne Speicher …). */
+async function speicherProbe(): Promise<boolean> {
+  try {
+    localStorage.setItem("aa:probe", "1");
+    const ok = localStorage.getItem("aa:probe") === "1";
+    localStorage.removeItem("aa:probe");
+    if (!ok) return false;
+  } catch {
+    return false;
+  }
+  if (!idbOk) return false;
+  const probe = (async () => {
+    try {
+      await idbSet("aa:probe", 1, kvStore());
+      const ok = (await idbGet("aa:probe", kvStore())) === 1;
+      await idbDel("aa:probe", kvStore());
+      return ok;
+    } catch {
+      idbOk = false;
+      return false;
+    }
+  })();
+  // Manche Umgebungen beantworten IndexedDB nie – dann gilt der Speicher als nicht dauerhaft.
+  return Promise.race([probe, new Promise<boolean>((r) => setTimeout(() => r(false), 1500))]);
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -219,7 +247,7 @@ export function createDemoBackend(): Backend {
   return {
     modus: "demo",
     async info() {
-      return { modus: "demo", schnellLogin: true, ki: { server: false }, version: "0.9.0" };
+      return { modus: "demo", schnellLogin: true, ki: { server: false }, version: "0.9.0", speicherDauerhaft: await speicherProbe() };
     },
     async schnellLogins() {
       const list = registry().flatMap((t) =>
@@ -349,8 +377,10 @@ export function createDemoBackend(): Backend {
           throw new Error("Diese E-Mail-Adresse ist bereits vergeben.");
         }
         if (t.users.length >= t.tenant.lizenz.arbeitsplaetze) throw new Error(`Alle ${t.tenant.lizenz.arbeitsplaetze} Arbeitsplätze der Lizenz sind belegt.`);
-        const passwort = zufallsPasswort();
-        const user: DemoUser = { ...baueNutzer(t.tenant.id, input, t.users.length + 1 + Math.floor(Math.random() * 900)), passwort };
+        const passwort = sicheresPasswort();
+        // Kennung ohne Kollision mit bestehenden Zugängen der Kanzlei
+        let user: DemoUser = { ...baueNutzer(t.tenant.id, input, t.users.length + 1 + zufallsZahl(900)), passwort };
+        while (all.some((x) => x.users.some((y) => y.id === user.id))) user = { ...baueNutzer(t.tenant.id, input, t.users.length + 1 + zufallsZahl(9000)), passwort };
         const builtin = DEMO_TENANTS.some((x) => x.tenant.id === t.tenant.id);
         if (builtin) {
           const eu = lsGet<Record<string, DemoUser[]>>(LS_EXTRA_USERS) ?? {};
@@ -388,7 +418,7 @@ export function createDemoBackend(): Backend {
         const { t, u } = kanzleiSitzung(true);
         if (id === u.id) throw new Error("Ihr eigenes Passwort können Sie hier nicht neu vergeben.");
         if (!t.users.some((x) => x.id === id)) throw new Error("Dieser Zugang gehört nicht zu Ihrer Kanzlei.");
-        const pw = zufallsPasswort();
+        const pw = sicheresPasswort();
         const map = lsGet<Record<string, string>>(LS_PW) ?? {};
         map[id] = pw;
         lsSet(LS_PW, map);
@@ -408,9 +438,9 @@ export function createDemoBackend(): Backend {
       async create(input: NeuerKunde) {
         const email = input.adminEmail.trim().toLowerCase();
         if (registry().some((t) => t.users.some((u) => u.email.toLowerCase() === email))) throw new Error("Diese E-Mail-Adresse ist bereits einem Zugang zugeordnet.");
-        const suffix = Math.random().toString(36).slice(2, 8);
+        const suffix = zufallsKennung(6);
         const { tenant, admin } = baueKunde(input, suffix);
-        const passwort = zufallsPasswort();
+        const passwort = sicheresPasswort();
         const neu: DemoTenant & { leer?: boolean } = {
           tenant,
           users: [{ ...admin, passwort }],
@@ -439,7 +469,7 @@ export function createDemoBackend(): Backend {
         lsSet(LS_OVERRIDES, o);
       },
       async neuesPasswort(userId) {
-        const pw = zufallsPasswort();
+        const pw = sicheresPasswort();
         const map = lsGet<Record<string, string>>(LS_PW) ?? {};
         map[userId] = pw;
         lsSet(LS_PW, map);

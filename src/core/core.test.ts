@@ -129,8 +129,8 @@ test("Verzugszinsen und § 367 BGB", () => {
   assert.ok(k.hauptforderung < 5000);
 });
 
-test("Fristenlage: einheitliche Zählweise", async () => {
-  const { fristenLage } = await import("./fristenLage");
+test("Fristenlage: einheitliche Zählweise – Fristen getrennt von Wiedervorlagen, Vorfristen und Terminen", async () => {
+  const { fristenLage, istKritisch, zaehltAlsFrist } = await import("./fristenLage");
   const basis = { akteId: "a", titel: "t", status: "offen" as const, verantwortlichId: "u1", quelle: "manuell" as const, createdAt: "2026-10-01T09:00" };
   const fr = [
     { ...basis, id: "1", typ: "notfrist" as const, datum: "2026-10-16" },
@@ -139,14 +139,49 @@ test("Fristenlage: einheitliche Zählweise", async () => {
     { ...basis, id: "4", typ: "frist" as const, datum: "2026-10-14", verantwortlichId: "u2" },
     { ...basis, id: "5", typ: "wiedervorlage" as const, datum: "2026-10-20" },
     { ...basis, id: "6", typ: "frist" as const, datum: "2026-10-16", status: "erledigt" as const },
+    { ...basis, id: "7", typ: "wiedervorlage" as const, datum: "2026-10-16" },
+    { ...basis, id: "8", typ: "frist" as const, datum: "2026-10-22", regelKey: "kschg_klage" },
+    { ...basis, id: "9", typ: "frist" as const, datum: "2026-10-21" },
+    { ...basis, id: "10", typ: "vorfrist" as const, datum: "2026-10-15", regelKey: "kschg_klage" },
   ];
   const l = fristenLage(fr, "2026-10-16");
+  // „Heute sind 2 Fristen fällig, dazu 1 Wiedervorlage und 2 Vorfristen.“
   assert.deepEqual(l.faellig.map((f) => f.id), ["4", "1"]);
   assert.equal(l.heute.length, 1);
   assert.equal(l.ueberfaellig.length, 1);
-  assert.equal(l.vorfristen.length, 1);
-  assert.deepEqual(l.woche.map((f) => f.id), ["5"]);
+  assert.deepEqual(l.wiedervorlagen.map((f) => f.id), ["7"]);
+  assert.deepEqual(l.vorfristen.map((f) => f.id), ["10", "2"]);
+  // nächste 7 Tage: nur Fristen; Wiedervorlagen getrennt
+  assert.deepEqual(l.woche.map((f) => f.id), ["9", "8"]);
+  assert.deepEqual(l.wiedervorlagenWoche.map((f) => f.id), ["5"]);
+  // kritisch: Notfrist heute und nicht verlängerbare KSchG-Klagefrist – nicht die Vorfrist mit derselben Regel
+  assert.deepEqual(l.kritischWoche.map((f) => f.id), ["1", "8"]);
+  assert.deepEqual(l.notfristenWoche.map((f) => f.id), ["1"]);
+  assert.ok(istKritisch(fr[7]) && !istKritisch(fr[9]) && !istKritisch(fr[8]));
+  assert.ok(!zaehltAlsFrist(fr[4]) && !zaehltAlsFrist(fr[1]) && !zaehltAlsFrist(fr[2]));
   assert.equal(fristenLage(fr, "2026-10-16", "u1").faellig.length, 1);
+});
+
+test("Akten mit Frist ≤ 7 Tage: dieselbe Hilfsfunktion für Akten-Kennzahl, Spalte und Cockpit", async () => {
+  const { aktenMitFrist, fristenJeAkte } = await import("./fristenLage");
+  const basis = { titel: "t", status: "offen" as const, verantwortlichId: "u1", quelle: "manuell" as const, createdAt: "2026-10-01T09:00" };
+  const fr = [
+    { ...basis, id: "1", akteId: "a", typ: "wiedervorlage" as const, datum: "2026-10-17" },
+    { ...basis, id: "2", akteId: "a", typ: "frist" as const, datum: "2026-10-30" },
+    { ...basis, id: "3", akteId: "b", typ: "frist" as const, datum: "2026-10-12" },
+    { ...basis, id: "4", akteId: "b", typ: "frist" as const, datum: "2026-10-20", regelKey: "einspruch_bussgeld" },
+    { ...basis, id: "5", akteId: "c", typ: "termin" as const, datum: "2026-10-18" },
+    { ...basis, id: "6", akteId: "d", typ: "notfrist" as const, datum: "2026-10-23" },
+  ];
+  const m = aktenMitFrist(fr, "2026-10-16");
+  assert.deepEqual([...m.keys()].sort(), ["b", "d"]); // Akte a nur mit Wiedervorlage im Fenster, c nur mit Termin
+  assert.equal(m.get("b")!.naechste.id, "3"); // überfällige zuerst
+  assert.equal(m.get("b")!.kritisch?.id, "4");
+  assert.equal(m.get("b")!.anzahl, 2);
+  assert.equal(m.get("d")!.kritisch?.id, "6");
+  // ohne Fenster: nächste Frist je Akte (Spalte „Nächste Frist“) – Wiedervorlagen zählen nicht
+  assert.equal(fristenJeAkte(fr).get("a")!.naechste.id, "2");
+  assert.equal(fristenJeAkte(fr).has("c"), false);
 });
 
 test("Rechenweg: § 187 Abs. 1 BGB, Dauer-Grundlage und § 222 Abs. 2 ZPO nur bei Verschiebung", () => {
@@ -173,10 +208,13 @@ test("Fristen im Zeitraum: gleiche Zählweise wie fristenLage", async () => {
     { ...basis, id: "3", typ: "termin" as const, datum: "2026-10-18" },
     { ...basis, id: "4", typ: "wiedervorlage" as const, datum: "2026-10-18" },
     { ...basis, id: "5", typ: "frist" as const, datum: "2026-10-30" },
+    { ...basis, id: "6", typ: "frist" as const, datum: "2026-10-19", regelKey: "einspruch_strafbefehl" },
   ];
   const z = fristenImZeitraum(fr, "2026-10-17", "2026-10-23");
-  assert.deepEqual(z.fristen.map((f) => f.id), ["1", "4"]);
+  assert.deepEqual(z.fristen.map((f) => f.id), ["1", "6"]);
   assert.equal(z.notfristen.length, 1);
+  assert.deepEqual(z.kritisch.map((f) => f.id), ["1", "6"]);
+  assert.deepEqual(z.wiedervorlagen.map((f) => f.id), ["4"]);
   assert.equal(z.vorfristen.length, 1);
   assert.equal(z.termine.length, 1);
 });

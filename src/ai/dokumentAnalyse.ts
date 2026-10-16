@@ -301,7 +301,7 @@ export function analysiereRegelbasiert(input: { text: string; betreff?: string; 
       const [ein, begr, norm] = arbeitsgericht ? (["berufung_arbg", "berufungsbegruendung_arbg", "§ 66 Abs. 1 S. 2 ArbGG"] as const) : (["berufung", "berufungsbegruendung", "§ 517 Hs. 2 ZPO"] as const);
       const g = fuenfMonatsGrenze(n, zustellung, norm);
       fristen.push(vorschlag(ein, g.ereignis, ort, { ereignisLabel: g.label, warnung: g.warnung }), vorschlag(begr, g.ereignis, ort, { ereignisLabel: g.label }));
-      aktionen.push(`Mandanten über das Urteil informieren und Berufung prüfen (${arbeitsgericht ? "Zulassung oder Beschwer über 600 €, § 64 Abs. 2 ArbGG" : "Beschwer über 600 € oder Zulassung, § 511 Abs. 2 ZPO"}; Kostenrisiko).`);
+      aktionen.push(`Mandanten über das Urteil informieren und Berufung prüfen (${arbeitsgericht ? "Zulassung, Beschwer über 600 € oder Bestandsstreit, § 64 Abs. 2 ArbGG" : "Beschwer über 1.000 € oder Zulassung, § 511 Abs. 2 ZPO"}; Kostenrisiko).`);
     }
   } else if (typ === "Versäumnisurteil") {
     fristen.push(vorschlag("einspruch_vu", zustellung, ort));
@@ -356,7 +356,7 @@ export function analysiereRegelbasiert(input: { text: string; betreff?: string; 
   if (/zeuge|bestätigen/.test(n) && typ === "Mandantenkorrespondenz") aktionen.push("Zeugenhinweis in der Akte notieren und Zeugen benennen lassen.");
   if (/arbeitsagentur|arbeitsuchend/.test(n)) aktionen.push(meldepflichtHinweis(data, match.akteId, eingang, land));
   if (/anbei|anhang|unterlagen/.test(n) && typ === "Mandantenkorrespondenz") aktionen.push("Anhänge in der E-Akte (Ordner „Mandant“) ablegen.");
-  if (/vermögensauskunft/.test(n)) aktionen.push("Vermögensverzeichnis abrufen und Pfändungsmöglichkeiten prüfen (Kontopfändung, Lohnpfändung).");
+  if (/vermögensauskunft/.test(n)) aktionen.push("Vermögensverzeichnis auswerten und Pfändungsmöglichkeiten prüfen (Kontopfändung, Lohnpfändung).");
   if (/widerspruch erhoben|widerspruch gegen (den )?mahnbescheid/.test(n)) aktionen.push("Weitere Gerichtskosten einzahlen und Anspruchsbegründung vorbereiten (§ 697 ZPO).");
   if (typ === "Klageerwiderung") aktionen.push("Replik vorbereiten – Einwendungen der Gegenseite einzeln prüfen.");
   if (typ.startsWith("Mandatsanfrage")) aktionen.push("Mandatsaufnahme starten: Akte anlegen, Vollmacht und Deckungsanfrage automatisch erzeugen.");

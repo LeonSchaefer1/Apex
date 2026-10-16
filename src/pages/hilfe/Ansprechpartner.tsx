@@ -6,6 +6,7 @@ import { useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
 import { Avatar, Button, Card, Chip, Field, Input, Modal, Segmented, Select, Textarea } from "@/components/ui";
+import { festeAnsprechperson } from "@/lib/rollen";
 import { CopyButton } from "./kopieren";
 
 const THEMEN = ["Umzug & Datenübernahme", "Fristen & beA", "Abrechnung & RVG", "Schnittstellen (E-Mail, Bank)", "Team & Zugänge", "Etwas anderes"];
@@ -42,7 +43,7 @@ export function AnsprechpartnerKarte({ ap, className }: { ap: Ansprechpartner; c
           <div className="min-w-0 flex-1 basis-[220px]">
             <div className="eyebrow">Ihr direkter Draht</div>
             <h2 className="title-lg mt-1">{ap.name}</h2>
-            <div className="text-[13px] text-fg-3">{ap.rolle}</div>
+            <div className="text-[13px] text-fg-3">{festeAnsprechperson(ap)}</div>
             <div className="mt-2.5 flex flex-wrap gap-1.5">
               <Chip tone="green" dot>
                 Erreichbar · {ap.verfuegbar}
@@ -71,7 +72,7 @@ export function AnsprechpartnerKarte({ ap, className }: { ap: Ansprechpartner; c
         <div className="relative mt-6 rounded-[18px] bg-[var(--surface-2)] p-4 ring-1 ring-[var(--line)]">
           <div className="mb-3 text-[12.5px] font-semibold">Statt Warteschleife und Ticket-Sackgasse: {vorname} kennt Ihre Kanzlei.</div>
           <Vergleich label="Hotline klassischer Kanzleisoftware" wert="45–60 Min." anteil={1} ton="neutral" />
-          <Vergleich label={`Ihr Ansprechpartner (Ø heute)`} wert="4 Min." anteil={4 / 60} ton="green" />
+          <Vergleich label={`${ap.name} (Ø heute)`} wert="4 Min." anteil={4 / 60} ton="green" />
           <p className="mt-2.5 text-[11.5px] leading-snug text-fg-4">Wartezeiten klassischer Hotlines laut Bewertungen von Kanzleien; Antwortzeit hier ist ein Demo-Wert. Unser Ziel: Rückruf innerhalb von 30 Minuten.</p>
         </div>
       </div>

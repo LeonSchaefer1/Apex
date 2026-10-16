@@ -3,6 +3,9 @@ import { createServerBackend, serverErreichbar } from "./server";
 import type { Backend, BackendInfo } from "./types";
 
 export * from "./types";
+export { sicheresPasswort, zufallsKennung, zufallsZahl } from "./zufall";
+export { beiSitzungsproblem, meldeSitzungsproblem, type SitzungsProblem } from "./ereignisse";
+
 
 let backend: Backend | null = null;
 let info: BackendInfo | null = null;

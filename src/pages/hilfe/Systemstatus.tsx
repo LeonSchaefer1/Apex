@@ -37,7 +37,7 @@ export function Systemstatus() {
   }, []);
 
   const kiDetail =
-    ai.quelle === "server" ? `Claude über Ihren Kanzlei-Server${ai.modell ? ` · ${ai.modell}` : ""}` : ai.quelle === "artefakt" ? "Claude über die Vorschau-Laufzeit" : "Offline-Demo-KI · keine Datenübertragung";
+    ai.quelle === "server" ? `Claude über Ihren Kanzlei-Server${ai.modell ? ` · ${ai.modell}` : ""}` : ai.quelle === "artefakt" ? "Claude über die Vorschau-Laufzeit" : "Demo-KI (offline) · nach festen Regeln, keine Datenübertragung";
 
   const dienste: Dienst[] = useMemo(
     () => [
@@ -47,7 +47,7 @@ export function Systemstatus() {
         vorfall: { tageZurueck: 37, text: "Verzögerte Zustellung beim E-Mail-Anbieter (23 Min.) – Verbindung automatisch wiederhergestellt, keine Nachricht verloren." },
       },
       { key: "bank", name: "Bankabruf (FinTS/CAMT)", detail: "Kontoumsätze stündlich als CAMT.053", icon: <Landmark className="size-[18px]" />, latenz: [290, 420] },
-      { key: "ki", name: `KI (${ai.quelle === "demo" ? "Demo" : "Claude"})`, detail: kiDetail, icon: <Sparkles className="size-[18px]" />, latenz: ai.quelle === "demo" ? null : [620, 940], latenzText: ai.quelle === "demo" ? "lokal" : undefined, ki: true },
+      { key: "ki", name: ai.quelle === "demo" ? "Demo-KI (offline)" : "KI (Claude)", detail: kiDetail, icon: <Sparkles className="size-[18px]" />, latenz: ai.quelle === "demo" ? null : [620, 940], latenzText: ai.quelle === "demo" ? "lokal" : undefined, ki: true },
       { key: "falldb", name: "Fall-Datenbank", detail: `${fmtNum(ENTSCHEIDUNGEN.length)} Entscheidungen im Demo-Auszug · Suche lokal`, icon: <Library className="size-[18px]" />, latenz: [6, 18] },
       { key: "backup", name: "Backups", detail: "Letzte Sicherung heute 03:00 Uhr · verschlüsselt · 3-2-1-Prinzip", icon: <DatabaseBackup className="size-[18px]" />, latenz: null, latenzText: "03:00" },
     ],

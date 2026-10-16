@@ -49,7 +49,7 @@ export function WikiBibliothek() {
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h2 className="title-lg">Animiertes Wiki</h2>
-          <p className="mt-1 text-[13px] text-fg-3">Kurze Anleitungen, die sich wie Stories abspielen – anhalten, vor- und zurückspulen, direkt zur Funktion springen.</p>
+          <p className="mt-1 text-[13px] text-fg-3">Kurze Anleitungen, die Schritt für Schritt von selbst ablaufen – anhalten, vor- und zurückspulen, direkt zur Funktion springen.</p>
         </div>
         <SearchField id="wiki-suche" value={q} onChange={setQ} placeholder="Wiki durchsuchen, z. B. „Berufungsfrist“" className="w-full sm:w-[320px]" />
       </div>

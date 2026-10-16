@@ -13,7 +13,7 @@ import { createRng, hashString, type Rng } from "./rng";
 import { vorlagenFuer, type FallVorlage, type Parteien } from "./vorlagen";
 import { heroesBerlin, heroesMuenchen, heroesHamburg } from "./heroes";
 
-export const SEED_VERSION = 5;
+export const SEED_VERSION = 6;
 
 export interface SeedInput {
   tenant: Tenant;
@@ -74,10 +74,19 @@ export function zeitBisJetzt(sek: number, jetzt: number | undefined): number {
   return Math.max(0, Math.min(jetzt - 60, Math.round(start + anteil * fenster)));
 }
 
+/**
+ * „Jetzt“ je Kanzlei und Erzeugungstag einmal festhalten: Wird derselbe Bestand am selben Tag erneut erzeugt
+ * (z. B. zwei Aufrufe kurz nacheinander), ist der Inhalt identisch – auch wenn dazwischen eine Sekunde vergeht.
+ */
+const JETZT_JE_TAG = new Map<string, number>();
+
 export function createCtx(input: SeedInput, today: string): Ctx {
   // Aktuelle Uhrzeit nur, wenn für heute erzeugt wird (sonst keine Korrektur)
   const jetzt = typeof Date !== "undefined" ? new Date() : undefined;
-  const sekundenJetzt = jetzt && toLocalISO(jetzt).slice(0, 10) === today ? jetzt.getHours() * 3600 + jetzt.getMinutes() * 60 + jetzt.getSeconds() : undefined;
+  const schluessel = `${input.tenant.id}|${today}`;
+  const sekundenJetzt = jetzt && toLocalISO(jetzt).slice(0, 10) === today
+    ? (JETZT_JE_TAG.get(schluessel) ?? (JETZT_JE_TAG.set(schluessel, jetzt.getHours() * 3600 + jetzt.getMinutes() * 60 + jetzt.getSeconds()), JETZT_JE_TAG.get(schluessel)!))
+    : undefined;
   const rng = createRng(hashString(input.tenant.id + "|apex"));
   const s = stadtDatenFuer(input.tenant.stadt, input.tenant.bundesland, input.profil.stadt);
   const data = emptyData();

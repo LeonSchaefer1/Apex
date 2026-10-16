@@ -27,7 +27,11 @@ export function MotorAbschnitt() {
   return (
     <Abschnitt id="motor">
       <Kopf
-        eyebrow="So spart der 38h-Motor Zeit"
+        eyebrow={
+          <>
+            So spart der <span className="normal-case">38h</span>-Motor Zeit
+          </>
+        }
         titel={
           <>
             Routine erledigt sich.

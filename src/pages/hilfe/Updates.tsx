@@ -4,6 +4,7 @@ import { CalendarClock, Check, FlaskConical, GitBranch, Rocket, ShieldCheck, Und
 import { getInfo } from "@/lib/backend";
 import { fmtDate, fmtNum } from "@/core/dates";
 import { toast } from "@/store/ui";
+import { useKanzlei } from "@/store/session";
 import { Card, Chip, Segmented } from "@/components/ui";
 import { cn } from "@/lib/cn";
 
@@ -17,7 +18,7 @@ interface Version {
 const VERSIONEN: Version[] = [
   {
     version: "0.9.0", datum: "2026-10-06", tests: 1248,
-    notizen: ["Umzug-Assistent mit Dublettenprüfung und Rückgängig-Funktion", "Systemstatus mit 90-Tage-Verlauf je Schnittstelle", "Fristenrechner: Feiertage 2027 für alle Bundesländer hinterlegt"],
+    notizen: ["Umzug mit Dublettenprüfung und Rückgängig-Funktion", "Systemstatus mit 90-Tage-Verlauf je Schnittstelle", "Fristenrechner: Feiertage 2027 für alle Bundesländer hinterlegt"],
   },
   {
     version: "0.8.4", datum: "2026-09-22", tests: 1231,
@@ -34,9 +35,9 @@ const VERSIONEN: Version[] = [
 ];
 
 const STUFEN = [
-  { icon: <GitBranch className="size-4" />, titel: "Entwicklung", text: "Jede Änderung mit Code-Review" },
-  { icon: <FlaskConical className="size-4" />, titel: "Staging", text: "Test mit anonymisierten Kanzlei-Datenbeständen" },
-  { icon: <ShieldCheck className="size-4" />, titel: "Regressionstests", text: "Fristen, RVG, Zinsen und beA-Abläufe automatisch geprüft" },
+  { icon: <GitBranch className="size-4" />, titel: "Entwicklung", text: "Jede Änderung von einer zweiten Person gegengelesen" },
+  { icon: <FlaskConical className="size-4" />, titel: "Testumgebung", text: "Probelauf mit anonymisierten Kanzlei-Datenbeständen" },
+  { icon: <ShieldCheck className="size-4" />, titel: "Automatische Prüfungen", text: "Fristen, RVG, Zinsen und beA-Abläufe bei jeder Version erneut geprüft" },
   { icon: <Users className="size-4" />, titel: "Pilotkanzleien", text: "Erst im Alltag einiger Kanzleien, dann für alle" },
   { icon: <Rocket className="size-4" />, titel: "Ihre Freigabe", text: "Sie bestimmen den Zeitpunkt – mit Rückkehr zur Vorversion" },
 ];
@@ -53,10 +54,11 @@ function ladeZeitpunkt(): Zeitpunkt {
   }
 }
 
-/** Geprüfte Updates: jede Version durchläuft Staging und automatische Regressionstests – eingespielt wird, wann Sie wollen. */
+/** Geprüfte Updates: jede Version durchläuft eine Testumgebung und automatische Prüfungen – eingespielt wird, wann Sie wollen. */
 export function GepruefteUpdates() {
   const installiert = getInfo()?.version ?? VERSIONEN[0].version;
   const [zeitpunkt, setZeitpunkt] = useState<Zeitpunkt>(ladeZeitpunkt);
+  const ap = useKanzlei().tenant.ansprechpartner;
 
   return (
     <section>
@@ -90,7 +92,7 @@ export function GepruefteUpdates() {
                     </div>
                     <div className="mt-1.5">
                       <Chip tone="green" icon={<ShieldCheck className="size-3" />} className="!h-auto whitespace-normal py-0.5 text-left">
-                        Getestet in Staging · {fmtNum(v.tests)} automatische Regressionstests bestanden
+                        In einer Testumgebung geprüft · {fmtNum(v.tests)} automatische Prüfungen bestanden
                       </Chip>
                     </div>
                     <ul className="mt-2 grid grid-cols-1 gap-1 text-[13px] text-fg-2">
@@ -163,7 +165,7 @@ export function GepruefteUpdates() {
               ]}
             />
             <div className="mt-3 flex items-center gap-2 text-[12px] text-fg-3">
-              <Undo2 className="size-3.5 shrink-0 text-ink" /> Rückkehr zur Vorversion jederzeit mit Ihrem Ansprechpartner.
+              <Undo2 className="size-3.5 shrink-0 text-ink" /> Rückkehr zur Vorversion jederzeit – gemeinsam mit {ap.name}.
             </div>
           </Card>
         </div>

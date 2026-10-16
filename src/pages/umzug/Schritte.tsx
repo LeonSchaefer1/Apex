@@ -276,7 +276,10 @@ export function SchrittZuordnung({
     [],
   );
 
-  const mitFrist = zeilen.filter((z) => z.fristDatum && !z.fehler).length;
+  // wie in der Übernahme: nur Zeilen, die übernommen werden; Wiedervorlagen und Termine getrennt von Fristen
+  const uebernommen = zeilen.filter((z) => z.fristDatum && !z.fehler && !(z.dublette && (ausnahmen[z.nr] ?? modus) === "skip"));
+  const mitFrist = uebernommen.filter((z) => z.fristTyp === "notfrist" || z.fristTyp === "frist").length;
+  const mitWv = uebernommen.length - mitFrist;
 
   return (
     <div className="flex flex-col gap-6">
@@ -288,7 +291,10 @@ export function SchrittZuordnung({
           <Chip tone="ink" icon={<Users className="size-3" />}>
             {kontaktZahl.gesamt} Kontakte{kontaktZahl.bekannt ? ` · ${kontaktZahl.bekannt} bereits vorhanden` : ""}
           </Chip>
-          <Chip tone="ink" icon={<CalendarClock className="size-3" />}>{mitFrist} Fristen</Chip>
+          <Chip tone="ink" icon={<CalendarClock className="size-3" />}>
+            {mitFrist} {mitFrist === 1 ? "Frist" : "Fristen"}
+            {mitWv ? ` · ${mitWv} WV/Termine` : ""}
+          </Chip>
           {dubletten.length > 0 && <Chip tone="amber">{dubletten.length} Dubletten</Chip>}
           {fristWarnungen > 0 && <Chip tone="amber" icon={<AlertTriangle className="size-3" />}>{fristWarnungen} {fristWarnungen === 1 ? "Fristende prüfen" : "Fristenden prüfen"}</Chip>}
           {sgPruefen > 0 && <Chip tone="amber">{sgPruefen} {sgPruefen === 1 ? "Sachgebiet prüfen" : "Sachgebiete prüfen"}</Chip>}

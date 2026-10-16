@@ -32,7 +32,9 @@ const kurz = (z: string) =>
   z
     .replace(" → Verschiebung auf den nächsten Werktag", " → nächster Werktag")
     .replace("Zustellung des vollständigen Urteils", "Zustellung des Urteils")
-    .replace("Fristende nach § 222 Abs. 2 ZPO / § 193 BGB", "Fristende (§ 222 Abs. 2 ZPO)")
+    .replace(/^Fristbeginn am Folgetag – .*$/, "Fristbeginn am Folgetag (§ 187 Abs. 1 BGB)")
+    .replace("Fristende nach § 222 Abs. 2 ZPO", "Fristende (§ 222 Abs. 2 ZPO)")
+    .replace("Fristende fällt auf einen Werktag – keine Verschiebung", "Fristende – Werktag, keine Verschiebung")
     .replace("Ende am Tag mit derselben Zahl – ", "")
     .replace(", auf Werktag gelegt", "");
 

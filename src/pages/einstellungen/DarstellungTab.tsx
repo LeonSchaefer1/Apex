@@ -2,6 +2,7 @@ import { CircleHelp, Columns3, Monitor, Moon, PanelLeft, Rows3, Rows4, Sparkles,
 import { useUI, type Dichte, type ThemeWahl } from "@/store/ui";
 import { useMedia } from "@/lib/useMedia";
 import { Chip, Segmented, Switch } from "@/components/ui";
+import { tabellenDichteZuruecksetzen } from "@/components/ui/DataTable";
 import { Abschnitt, Zeile } from "./teile";
 
 export function DarstellungTab() {
@@ -27,7 +28,10 @@ export function DarstellungTab() {
           <Zeile titel="Dichte" text={dichte === "compact" ? "Kompakt: engere Tabellenzeilen und kleinere Grundschrift – mehr Zeilen auf einen Blick, ideal für große Aktenlisten." : "Großzügig: mehr Luft, ruhiger zu lesen. Gilt für alle Tabellen, sofern Sie dort nichts anderes gewählt haben."}>
             <Segmented<Dichte>
               value={dichte}
-              onChange={setDichte}
+              onChange={(d) => {
+                tabellenDichteZuruecksetzen();
+                setDichte(d);
+              }}
               options={[
                 { value: "comfortable", label: "Großzügig", icon: <Rows3 className="size-3.5" /> },
                 { value: "compact", label: "Kompakt", icon: <Rows4 className="size-3.5" /> },

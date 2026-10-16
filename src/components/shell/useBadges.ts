@@ -15,7 +15,8 @@ export function useBadges(): Record<string, Badge | undefined> {
   const transaktionen = useData((s) => s.data.transaktionen);
   return useMemo(() => {
     const neu = nachrichten.filter((n) => n.status === "neu").length;
-    // Einheitliche Zählweise wie Cockpit, Fristenkalender und Assistent: heute fällig + überfällig, ohne Vorfristen und Termine.
+    // Einheitliche Zählweise wie Cockpit, Fristenkalender und Assistent (fristenLage): fällige Fristen = Notfristen und Fristen,
+    // heute fällig + überfällig. Wiedervorlagen, Vorfristen und Termine zählen nicht mit.
     const faellig = fristenLage(fristen, today()).faellig.length;
     const bank = transaktionen.filter((t) => t.status === "offen").length;
     return {

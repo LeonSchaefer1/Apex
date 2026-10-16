@@ -29,6 +29,21 @@ function lade(id: string): Gespeichert {
     return {};
   }
 }
+/** Globale Dichte geändert (Einstellungen → Darstellung): eigene Dichte-Wahl aller Tabellen verwerfen, damit sie wieder der globalen folgen. */
+export function tabellenDichteZuruecksetzen() {
+  try {
+    for (const k of Object.keys(localStorage)) {
+      if (!k.startsWith("aa:table:")) continue;
+      const v = JSON.parse(localStorage.getItem(k) ?? "{}") as Gespeichert;
+      if (!v.eigeneDichte) continue;
+      delete v.eigeneDichte;
+      localStorage.setItem(k, JSON.stringify(v));
+    }
+  } catch {
+    /* optional */
+  }
+}
+
 function speichere(id: string, v: Gespeichert) {
   try {
     localStorage.setItem(`aa:table:${id}`, JSON.stringify(v));

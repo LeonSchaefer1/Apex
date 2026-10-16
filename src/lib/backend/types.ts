@@ -5,6 +5,8 @@ export interface BackendInfo {
   schnellLogin: boolean;
   ki: { server: boolean; modell?: string };
   version: string;
+  /** Nur Demo-Betrieb: Änderungen werden dauerhaft im Browser gespeichert (false: Speicher gesperrt, Daten nur für diese Sitzung). */
+  speicherDauerhaft?: boolean;
 }
 
 export interface SchnellLogin {
@@ -52,7 +54,35 @@ export interface NeuerNutzer {
   titel: string;
 }
 
-export type Sitzung = SessionInfo | ConsoleSession;
+/** Betriebsart der angemeldeten Kanzlei – vom Server bzw. Demo-Backend mit der Sitzung geliefert. */
+export interface KanzleiBetrieb {
+  /** Fest eingebaute Präsentationskanzlei (öffentliche Demo-Zugangsdaten). */
+  praesentation: boolean;
+  /** Kanzlei mit Beispieldaten (Präsentations- oder Testkanzlei). Nur hier laufen der simulierte 38h-Motor und „Demo-Daten zurücksetzen“. */
+  beispieldaten: boolean;
+  /** Server-Betrieb: Live-KI ist für diese Kanzlei freigegeben (z. B. per AI_DEMO_TENANTS=off für Präsentationskanzleien abgeschaltet). */
+  kiLive?: boolean;
+}
+
+export type KanzleiSitzung = SessionInfo & { betrieb?: KanzleiBetrieb };
+
+export type Sitzung = KanzleiSitzung | ConsoleSession;
+
+/** Beispiel- bzw. Präsentationsdaten? Ältere Server ohne Angabe gelten als Beispielkanzlei (bisheriges Verhalten). */
+export function hatBeispieldaten(s: Sitzung | null | undefined): boolean {
+  if (!s || "console" in s) return false;
+  return s.betrieb?.beispieldaten ?? true;
+}
+
+/** Gleiche Kanzlei und gleiche Person (z. B. nach einem Abgleich mit dem Server oder einem anderen Tab)? */
+export function gleicheSitzung(a: Sitzung | null | undefined, b: Sitzung | null | undefined): boolean {
+  if (!a || !b) return !a && !b;
+  if ("console" in a || "console" in b) return "console" in a && "console" in b;
+  return a.tenant.id === b.tenant.id && a.user.id === b.user.id;
+}
+
+/** Fehlercode des Servers, wenn die Anfrage nicht zur aktuell angemeldeten Kanzlei bzw. Person passt (anderer Tab). */
+export const CODE_SITZUNG_GEWECHSELT = "sitzung_gewechselt";
 
 /** Felder des Kanzleiprofils, die die Kanzlei selbst pflegt (Einstellungen → Kanzlei). */
 export interface KanzleiProfil {
@@ -61,6 +91,17 @@ export interface KanzleiProfil {
   adresse: string;
   stadt: string;
   schwerpunkte: string[];
+}
+
+export const ROLLEN: readonly Rolle[] = ["partner", "anwalt", "refa", "admin"];
+
+export const BUNDESLAENDER: readonly Bundesland[] = ["BW", "BY", "BE", "BB", "HB", "HH", "HE", "MV", "NI", "NW", "RP", "SL", "SN", "ST", "SH", "TH"];
+
+export const SACHGEBIETE_ALLE: readonly Sachgebiet[] = ["Arbeitsrecht", "Mietrecht", "Verkehrsrecht", "Familienrecht", "Erbrecht", "Strafrecht", "Forderungseinzug", "Vertragsrecht", "Baurecht", "Verwaltungsrecht"];
+
+/** Einfache Formatprüfung für E-Mail-Adressen (gleiche Regel in Oberfläche, Demo-Backend und Server). */
+export function istEmail(v: string): boolean {
+  return v.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v);
 }
 
 /** Rollen, die Team & Zugänge, Kanzleiprofil und Datenbestand verwalten dürfen – gleiche Regel im Demo-Backend und auf dem Server. */
@@ -89,6 +130,9 @@ export function pruefeNeuesPasswort(neu: string, alt?: string): string | null {
   if (alt && neu === alt) return "Das neue Passwort muss sich vom Startpasswort unterscheiden.";
   return null;
 }
+
+/** Längstes zulässiges Passwort – längere Eingaben werden vor dem (teuren) Hashen abgewiesen. */
+export const PASSWORT_MAX = 256;
 
 export interface SchreibOptionen {
   /** Hintergrund- bzw. Systemschreibvorgang: zählt nicht als Änderung durch die Kanzlei (Demodaten werden weiter täglich neu erzeugt). */
@@ -123,6 +167,11 @@ export interface Backend {
   passwortErsetzen(email: string, startPasswort: string, neuesPasswort: string): Promise<Sitzung>;
   me(): Promise<Sitzung | null>;
   logout(): Promise<void>;
+  /**
+   * Bindet alle folgenden Daten-, Team- und KI-Anfragen an diese Sitzung (Kanzlei + Person). Der Server weist Anfragen ab,
+   * wenn inzwischen – z. B. in einem anderen Tab – eine andere Kanzlei angemeldet ist (Schutz vor kanzleiübergreifendem Schreiben).
+   */
+  bindeSitzung?(s: Sitzung | null): void;
   loadData(): Promise<TenantData>;
   /** `system`: Hintergrundlauf (z. B. simulierter 38h-Motor) – wird gespeichert, markiert die Daten aber nicht als „von der Kanzlei geändert". */
   putDoc(col: CollectionKey, doc: { id: string }, opts?: SchreibOptionen): Promise<void>;

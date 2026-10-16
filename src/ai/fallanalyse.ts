@@ -270,7 +270,8 @@ function hatVorfrist(f: Frist, data: TenantData): boolean {
 
 /** Nächster Schritt zur Frist – „Vorfrist gesetzt“ nur, wenn es sie wirklich gibt. */
 function fristSchritt(akte: Akte, data: TenantData, ersatz: { titel: string; detail: string }, typen?: Frist["typ"][]): { titel: string; detail: string } {
-  const f = offeneFristen(akte, data, typen)[0];
+  // ohne vorgegebene Typen: zuerst echte Fristen, sonst die nächste Wiedervorlage
+  const f = offeneFristen(akte, data, typen)[0] ?? (typen ? undefined : offeneFristen(akte, data, ["wiedervorlage"])[0]);
   if (!f) return ersatz;
   if (f.typ === "wiedervorlage" || f.typ === "termin") return { titel: `${f.titel} am ${fmtDate(f.datum)}${f.uhrzeit ? `, ${f.uhrzeit} Uhr` : ""}`, detail: "Im Fristenkalender eingetragen." };
   return {
@@ -390,7 +391,7 @@ function anspruchsAnalyse(akte: Akte, data: TenantData, treffer: Treffer[], verf
         }
       : {
           titel: "Mandantenschreiben (Entwurf)",
-          text: `${anschrift(mandant, "Mandantschaft")}\n\nUnser Zeichen: ${akte.aktenzeichen} – ${akte.titel}\n\n${anrede(mandant)}\n\nwir haben Ihre Angelegenheit geprüft und fassen den Stand zusammen:\n\n${akte.beschreibung}\n\n[Empfehlung und nächste Schritte]\n\nMit freundlichen Grüßen\n\n${unterschrift(verfasser)}`,
+          text: `${anschrift(mandant, "Mandantschaft")}\n\nUnser Zeichen: ${akte.aktenzeichen} – ${akte.titel}\n\n${anrede(mandant)}\n\nwir haben Ihre Angelegenheit geprüft und fassen den Stand zusammen:\n\n[Sachstand verständlich zusammenfassen]${top ? `\n\nNach der Rechtsprechung des ${top.gericht} (${top.az}) gilt: ${top.bedeutung}` : ""}\n\n[Empfehlung und nächste Schritte]\n\nMit freundlichen Grüßen\n\n${unterschrift(verfasser)}`,
         };
   return {
     zusammenfassung: `${akte.titel}: ${akte.beschreibung}`,
@@ -449,7 +450,7 @@ function verteidigungsAnalyse(akte: Akte, data: TenantData, treffer: Treffer[], 
     ],
     praezedenzfaelle: praezedenzListe(treffer),
     naechsteSchritte: [
-      fristSchritt(akte, data, strafbefehl ? { titel: "Einspruchsfrist prüfen", detail: "Zwei Wochen ab Zustellung des Strafbefehls (§ 410 Abs. 1 StPO) – im Fristenrechner eintragen." } : { titel: "Fristen prüfen", detail: "Für diese Akte ist keine offene Frist notiert." }),
+      fristSchritt(akte, data, strafbefehl ? { titel: "Einspruchsfrist prüfen", detail: "Zwei Wochen ab Zustellung des Strafbefehls (§ 410 Abs. 1 StPO) – im Fristenrechner eintragen." } : { titel: "Fristen prüfen", detail: "Für diese Akte ist keine offene Frist notiert." }, ["notfrist", "frist"]),
       { titel: "Akteneinsicht beantragen", detail: "Verteidigung anzeigen und Einsicht in die Ermittlungsakte beantragen (§ 147 StPO)." },
       { titel: "Mandantschaft beraten", detail: "Bis zur Akteneinsicht keine Angaben zur Sache machen; Rechtsfolgen und Kosten erläutern." },
       ...(fahrerlaubnis ? [{ titel: "Fahrerlaubnis absichern", detail: "Berufliche Folgen (Berufskraftfahrer) belegen und Alternativen zur Entziehung vortragen." }] : []),
@@ -553,7 +554,7 @@ function urteilsAnalyse(akte: Akte, data: TenantData, treffer: Treffer[], verfas
     argumenteContra: ["Neue Tatsachen sind in der Berufung nur eingeschränkt zulässig (§ 531 Abs. 2 ZPO).", "Ein Rechtsmittel verursacht weitere Kosten."],
     praezedenzfaelle: praezedenzListe(treffer),
     naechsteSchritte: [
-      fristSchritt(akte, data, { titel: "Rechtsmittelfristen notieren", detail: "Berufungsfrist (§ 517 ZPO) und Begründungsfrist (§ 520 Abs. 2 ZPO) laufen ab Zustellung – mit dem Fristenrechner eintragen." }),
+      fristSchritt(akte, data, { titel: "Rechtsmittelfristen notieren", detail: "Berufungsfrist (§ 517 ZPO) und Begründungsfrist (§ 520 Abs. 2 ZPO) laufen ab Zustellung – mit dem Fristenrechner eintragen." }, ["notfrist", "frist"]),
       { titel: "Urteil auswerten und Mandantschaft informieren", detail: "Ergebnis, Kostenquote und Empfehlung erläutern; Entscheidung über ein Rechtsmittel einholen." },
       { titel: "Kostenfestsetzung und Vollstreckung vorbereiten", detail: "Kostenfestsetzungsantrag (§ 104 ZPO) bzw. vollstreckbare Ausfertigung vorbereiten." },
     ],
@@ -608,9 +609,9 @@ function urteilNeumann(akte: Akte, data: TenantData, treffer: Treffer[], verfass
       "Ist der Annahmeverzug der Beklagten festgestellt? Ohne ihn ist die Vollstreckung Zug um Zug aufwendiger (§§ 756, 765 ZPO).",
     ],
     erfolgsaussicht: {
-      prozent: 30,
-      stufe: "gering",
-      begruendung: `Bezogen auf eine eigene Berufung: Nutzungsersatz schuldet der Käufer nach dem Rücktritt dem Grunde nach (§ 346 Abs. 1, Abs. 2 S. 1 Nr. 1 BGB). Angreifbar ist allenfalls die Höhe, etwa eine zu niedrig angesetzte Gesamtlaufleistung. Das Urteil selbst ist für den Mandanten überwiegend günstig (${qBeklagte} % der Kosten trägt die Gegenseite).`,
+      prozent: Math.round((zu / Math.max(1, zu + ab)) * 100),
+      stufe: stufe(Math.round((zu / Math.max(1, zu + ab)) * 100)),
+      begruendung: `Erfolg in erster Instanz: ${Math.round((zu / Math.max(1, zu + ab)) * 100)} % der Klageforderung zugesprochen, ${qBeklagte} % der Kosten trägt die Gegenseite. Eine eigene Berufung hätte nur geringe Aussicht: Nutzungsersatz schuldet der Käufer nach dem Rücktritt dem Grunde nach (§ 346 Abs. 1, Abs. 2 S. 1 Nr. 1 BGB) – angreifbar ist allenfalls die Höhe, etwa eine zu niedrig angesetzte Gesamtlaufleistung.`,
     },
     argumentePro: [
       `Berufung statthaft: Beschwer ${fmtEUR(ab)} > 1.000 € (§ 511 Abs. 2 Nr. 1 ZPO).`,

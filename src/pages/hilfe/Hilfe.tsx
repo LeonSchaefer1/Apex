@@ -9,6 +9,7 @@ import { AnsprechpartnerKarte } from "./Ansprechpartner";
 import { WikiBibliothek } from "./WikiBibliothek";
 import { Systemstatus } from "./Systemstatus";
 import { GepruefteUpdates } from "./Updates";
+import { festeAnsprechperson } from "@/lib/rollen";
 
 const BEISPIELE = ["Wie berechne ich eine Berufungsfrist?", "Wie lade ich eine Kollegin ins Team ein?", "Was erledigt der 38h-Motor für mich?"];
 
@@ -25,7 +26,7 @@ export default function Hilfe() {
 
   return (
     <div>
-      <PageHeader title="Hilfe & Support" hilfe="hilfe" subtitle="Animiertes Wiki, Systemstatus und Ihr persönlicher Ansprechpartner – Hilfe, die wirklich hilft, ohne Hotline-Warteschleife." />
+      <PageHeader title="Hilfe & Support" hilfe="hilfe" subtitle={`Animiertes Wiki, Schnellhilfe, Systemstatus und ${festeAnsprechperson(tenant.ansprechpartner)} – Hilfe, die wirklich hilft, ohne Hotline-Warteschleife.`} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <AnsprechpartnerKarte ap={tenant.ansprechpartner} className="lg:col-span-2" />
@@ -69,7 +70,7 @@ function AssistentKarte() {
       </div>
       <div className="mt-4">
         <div className="title-lg">Apex Assistent</div>
-        <p className="mt-1.5 text-[13px] leading-relaxed text-fg-3">Fragen Sie per Text oder Sprache. Der Assistent erklärt, zeigt den Weg, erledigt Aufgaben – und verbindet Sie bei Bedarf mit einem Menschen.</p>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-fg-3">Ihr KI-Avatar für Live-Support: Fragen Sie per Text oder Sprache. Der Assistent erklärt, zeigt den Weg, erledigt Aufgaben – und verbindet Sie bei Bedarf mit einem Menschen.</p>
       </div>
       <div className="mt-4 grid grid-cols-1 gap-1.5">
         {BEISPIELE.map((b) => (

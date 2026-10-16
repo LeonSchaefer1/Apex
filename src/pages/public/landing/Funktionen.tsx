@@ -62,19 +62,19 @@ export function Funktionen() {
             <KachelKopf
               icon={<Library />}
               titel="Die Fall-Datenbank"
-              text="Präzedenzfall-Recherche in Sekunden: passende Entscheidungen mit Gericht, Datum und Aktenzeichen zum Nachprüfen – so finden Sie die einschlägige Rechtsprechung in einem Bruchteil der Zeit. Vorbereitet für Open Legal Data und die amtlichen Veröffentlichungen der Bundesgerichte; im Prototyp ein kuratierter Auszug echter Leitentscheidungen."
+              text="Präzedenzfall-Recherche in Sekunden: passende Entscheidungen mit Gericht, Datum und Aktenzeichen zum Nachprüfen – so finden Sie die einschlägige Rechtsprechung in einem Bruchteil der Zeit. Im Produktivbetrieb angebunden an offene Rechtsprechungsquellen wie Open Legal Data und die amtlichen Veröffentlichungen der Bundesgerichte; im Prototyp ein kuratierter Auszug echter Leitentscheidungen von BVerfG, EuGH und Bundesgerichten."
             />
             <SucheDemo />
           </div>
         </Kachel>
 
         <Kachel className="lg:col-span-2" i={1}>
-          <KachelKopf icon={<Zap />} titel="Der 38h-Automatisierungs-Motor" text="Standard-Schriftsätze, Vorfristen und Mandanten-Updates laufen autonom im Hintergrund – mit dem Ziel von Ø 38 Stunden weniger Routinearbeit pro Woche. Fristen legt der Motor zur Vier-Augen-Kontrolle vor." />
+          <KachelKopf icon={<Zap />} titel="Der 38h-Motor" text="Automatisierung im Hintergrund: Standard-Schriftsätze, Vorfristen und Mandanten-Updates laufen von selbst – mit dem Ziel von Ø 38 Stunden weniger Routinearbeit pro Woche und Kanzlei. Fristen legt der Motor zur Vier-Augen-Kontrolle vor." />
           <MotorTicker />
         </Kachel>
 
         <Kachel className="lg:col-span-2" i={2}>
-          <KachelKopf icon={<InfinityIcon />} titel="Lifetime Ownership" text="Keine SaaS-Abo-Falle: einmalige Investition, Lifetime-Zugang ohne versteckte Monatsgebühren. Die Software gehört Ihrer Kanzlei." />
+          <KachelKopf icon={<InfinityIcon />} titel="Lifetime Ownership" text="Kaufen statt mieten: Sie investieren einmal und erhalten eine unbefristete Lizenz – ohne Abo-Falle und ohne versteckte Monatsgebühren. Ihre Kanzlei-Software gehört Ihnen." />
           <div className="relative z-[1] mt-auto grid grid-cols-2 gap-2 pt-6 text-[12.5px]">
             <div className="rounded-[16px] bg-[var(--ink-softer)] p-3">
               <div className="text-fg-3">Abo-Modell</div>
@@ -98,18 +98,18 @@ export function Funktionen() {
         </Kachel>
 
         <Kachel className="lg:col-span-2" i={3}>
-          <KachelKopf icon={<ArrowRightLeft />} titel="One-Klick-Migration" text="Akten, Kontakte und Fristen ziehen mit einem Klick um – mit Vorschau, Dublettenprüfung, Plausibilitätsprüfung der Fristen und Vier-Augen-Kontrolle." />
+          <KachelKopf icon={<ArrowRightLeft />} titel="Umzug mit einem Klick" text="Akten, Kontakte und Fristen aus Ihrer bisherigen Software ziehen mit einem Klick um – mit Vorschau, Dublettenprüfung, Plausibilitätsprüfung der Fristen und Vier-Augen-Kontrolle." />
           <UmzugCheck />
         </Kachel>
 
         <Kachel className="lg:col-span-2" i={4}>
-          <KachelKopf icon={<LifeBuoy />} titel="Support, der wirklich hilft" text="Animiertes Wiki und Quickhelp direkt in der Software – plus ein fester, direkter Ansprechpartner statt Hotline-Warteschleife." />
+          <KachelKopf icon={<LifeBuoy />} titel="Support, der wirklich hilft" text="Animiertes Wiki und Schnellhilfe direkt in der Software – plus ein fester Ansprechpartner mit direkter Durchwahl statt Hotline-Warteschleife." />
           <div className="relative z-[1] mt-auto grid gap-2 pt-6">
             <div className="flex items-center gap-3 rounded-[16px] bg-[var(--ink-softer)] p-3">
               <PlayCircle className="size-5 shrink-0 text-ink" />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[13px] font-semibold">Eine Berufungsfrist berechnen</div>
-                <div className="text-[11.5px] text-fg-3">Quickhelp · 30 Sek.</div>
+                <div className="text-[11.5px] text-fg-3">Schnellhilfe · 30 Sek.</div>
               </div>
               <BookOpenText className="size-4 text-fg-4" />
             </div>
@@ -293,7 +293,7 @@ function UmzugCheck() {
   );
 }
 
-/** KI-Avatar: lebendige Glaskugel mit Gesprächsauszug. */
+/** Apex Assistent als KI-Avatar: lebendige Glaskugel mit Gesprächsauszug (Inhalte passen zu den Beispieldaten an jedem Tag). */
 function AvatarDemo() {
   const ref = useRef<HTMLDivElement>(null);
   const sichtbar = useInView(ref, { amount: 0.4 });
@@ -302,18 +302,18 @@ function AvatarDemo() {
       <div className="flex flex-col items-start gap-6 sm:flex-row sm:items-center">
         <Orb aktiv={sichtbar} />
         <div className="min-w-0">
-          <AiChip>KI-Avatar</AiChip>
-          <h3 className="mt-3 text-[21px] font-semibold leading-tight tracking-[-0.025em]">Live-Support, mit dem Sie sprechen können</h3>
-          <p className="mt-2 max-w-[44ch] text-[14.5px] leading-relaxed text-fg-2">Der Apex Assistent versteht gesprochene Fragen, kennt die Software und Ihre Akten – und antwortet sofort. Wenn es knifflig wird, verbindet er Sie mit Ihrem Ansprechpartner.</p>
+          <AiChip>Per Sprache oder Text</AiChip>
+          <h3 className="mt-3 text-[21px] font-semibold leading-tight tracking-[-0.025em]">Apex Assistent – Ihr KI-Avatar für Live-Support</h3>
+          <p className="mt-2 max-w-[44ch] text-[14.5px] leading-relaxed text-fg-2">Sprechen Sie einfach los: Der Assistent versteht gesprochene Fragen, kennt die Software und Ihre Akten – und antwortet sofort. Wenn es knifflig wird, verbindet er Sie mit Ihrem festen Ansprechpartner.</p>
         </div>
       </div>
       <div className="grid gap-2.5">
         <Blase rolle="sie">
           <Mic className="mr-1.5 inline size-3.5 -translate-y-px text-ink" />
-          „Welche kritischen Fristen laufen diese Woche ab?“
+          „Welche nicht verlängerbaren Fristen stehen als Nächstes an?“
         </Blase>
         <Blase rolle="apex">
-          Zwei nicht verlängerbare Fristen: die Klagefrist für die <b>Kündigungsschutzklage</b> (§ 4 KSchG) in Akte <span className="mono">142/26</span> und der <b>Einspruch gegen den Bußgeldbescheid</b> (§ 67 OWiG) in <span className="mono">121/26</span> – beide mit Vorfrist und Vier-Augen-Kontrolle. Soll ich die Klageschrift vorbereiten?
+          Als Nächstes der <b>Einspruch gegen einen Bußgeldbescheid</b> (§ 67 OWiG), danach die Klagefristen für <b>Kündigungsschutzklagen</b> (§ 4 KSchG) – darunter Herr Weber in Akte <span className="mono">142/26</span>. Alle mit Vorfrist und Vier-Augen-Kontrolle. Soll ich die Klageschrift für Herrn Weber vorbereiten?
         </Blase>
         <Blase rolle="sie">„Ja, bitte – mit dem Emmely-Urteil.“</Blase>
       </div>

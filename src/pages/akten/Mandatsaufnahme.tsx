@@ -701,7 +701,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                       <Info className="mt-0.5 size-3.5 shrink-0" />
                       <span>
                         Vor Übernahme des Mandats: Hinweis auf die Abrechnung nach dem Gegenstandswert (§ 49b Abs. 5 BRAO)
-                        {sache.sachgebiet === "Arbeitsrecht" ? " und auf den Ausschluss der Kostenerstattung im ersten Rechtszug (§ 12a Abs. 1 S. 2 ArbGG)" : ""} erteilen – das Paket dokumentiert ihn zur Gegenzeichnung.
+                        {sache.sachgebiet === "Arbeitsrecht" ? " und auf den Ausschluss der Kostenerstattung im ersten Rechtszug (§ 12a Abs. 1 S. 2 ArbGG)" : ""} erteilen – das Paket dokumentiert {sache.sachgebiet === "Arbeitsrecht" ? "beide Hinweise" : "den Hinweis"} zur Gegenzeichnung.
                       </span>
                     </p>
                   </div>

@@ -176,7 +176,7 @@ export function heroesBerlin(ctx: Ctx) {
   const drII = `DR II 2214/${ctx.yy}`;
   addMsg(ctx, {
     kanal: "bea", von: "Gerichtsvollzieherin Petra Lindemann (Amtsgericht Charlottenburg)", betreff: `Vermögensauskunft Rainer Lenz – ${drII} – Geschäftsnr. ${ctx.yy}-4471820-0-3`,
-    text: `Zwangsvollstreckungssache Berger Haustechnik GmbH ./. Rainer Lenz\nTitel: Amtsgericht Wedding, Geschäftsnr. ${ctx.yy}-4471820-0-3\nDienstregister: ${drII}\n\nDer Schuldner hat am ${fmtDate(d(-3))} die Vermögensauskunft nach § 802c ZPO abgegeben. Den Ausdruck des Vermögensverzeichnisses übersende ich Ihnen anliegend (§ 802f Abs. 6 ZPO). Das Verzeichnis ist beim zentralen Vollstreckungsgericht hinterlegt.\n\nLindemann\nGerichtsvollzieherin`,
+    text: `Zwangsvollstreckungssache Berger Haustechnik GmbH ./. Rainer Lenz\nTitel: AG Wedding, ${ctx.yy}-4471820-0-3\nDienstregister: ${drII}\n\nDer Schuldner hat am ${fmtDate(d(-3))} die Vermögensauskunft nach § 802c ZPO abgegeben. Den Ausdruck des Vermögensverzeichnisses übersende ich Ihnen anliegend (§ 802f Abs. 6 ZPO). Das Verzeichnis ist beim zentralen Vollstreckungsgericht hinterlegt.\n\nLindemann\nGerichtsvollzieherin`,
     eingang: dt(-1, 16, 20), status: "neu", zugeordnet: false, kiStatus: "ausstehend", anhaenge: [{ name: `Vermoegensverzeichnis_DRII-2214-${ctx.yy}.pdf`, groesseKb: 212 }],
   });
 

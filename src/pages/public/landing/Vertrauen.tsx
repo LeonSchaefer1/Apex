@@ -5,7 +5,7 @@ import { AppIcon } from "@/components/Logo";
 import { cn } from "@/lib/cn";
 import { Abschnitt, Kopf, Reveal } from "./basis";
 
-/** „Umzug in einem Klick" – Band mit fließenden Datenpaketen. */
+/** „Umzug mit einem Klick" – Band mit fließenden Datenpaketen. */
 export function UmzugBand() {
   const pakete = [
     { i: <FolderOpen className="size-3.5" />, t: "Akten" },
@@ -19,9 +19,9 @@ export function UmzugBand() {
       <Reveal className="glass mx-auto max-w-[1200px] overflow-hidden rounded-[30px] p-6 sm:p-8">
         <div className="relative z-[2] grid items-center gap-8 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
           <div>
-            <div className="eyebrow mb-3 !text-ink">One-Klick-Migration</div>
+            <div className="eyebrow mb-3 !text-ink">Umzug</div>
             <h2 id="umzug-titel" className="text-[clamp(26px,3.2vw,38px)] font-bold leading-[1.06] tracking-[-0.04em]">
-              Umzug in einem Klick.
+              Umzug mit einem Klick.
             </h2>
             <p className="mt-3 max-w-[48ch] text-[15px] leading-relaxed text-fg-2">
               Akten, Kontakte und Fristen ziehen mit einem Klick um; Dokumente und Aktenkonten übernehmen Sie gemeinsam mit Ihrem Ansprechpartner. Sie sehen vorab eine Vorschau, Dubletten werden erkannt, Fristen auf Plausibilität geprüft und zur Vier-Augen-Kontrolle vorgelegt. Bei Bedarf laufen beide Systeme parallel.
@@ -65,7 +65,7 @@ export function UmzugBand() {
 }
 
 const PRINZIPIEN = [
-  { i: <Calculator className="size-5" />, t: "KI erkennt – Rechenkern berechnet", s: "Fristen rät keine KI. Sie erkennt das auslösende Ereignis, der geprüfte Fristenrechner rechnet nach §§ 187 ff. BGB und § 222 ZPO – mit Rechenweg und Feiertagen je Bundesland." },
+  { i: <Calculator className="size-5" />, t: "KI erkennt – Rechenkern berechnet", s: "Fristen rät keine KI. Sie erkennt das auslösende Ereignis, der geprüfte Fristenrechner rechnet nach §§ 187 ff. BGB und der jeweiligen Verfahrensordnung (z. B. § 222 ZPO, § 43 StPO) – mit Rechenweg und Feiertagen je Bundesland." },
   { i: <BookCheck className="size-5" />, t: "Nachprüfbare Quellen", s: "Präzedenzfälle übernimmt die KI nur aus der Fall-Datenbank – jeweils mit Gericht, Datum und Aktenzeichen zum Nachprüfen. KI-Texte sind als Entwurf gekennzeichnet und werden vor Verwendung anwaltlich geprüft." },
   { i: <ServerCog className="size-5" />, t: "Daten in Deutschland oder On-Premise", s: "Betrieb in deutschen Rechenzentren oder auf Ihrem eigenen Server. Live-KI nur aufgabenbezogen über Ihren Server beim KI-Anbieter – oder komplett offline. Keine externen Schriften, kein Tracking." },
   { i: <Lock className="size-5" />, t: "Verschwiegenheit nach § 203 StGB", s: "Strikte Mandantentrennung auf Datenbankebene, verschlüsselte Übertragung, Rollen und Rechte. Sie behalten die Kontrolle über jede Freigabe." },
@@ -133,7 +133,7 @@ export function Vertrauen() {
       <Reveal className="mt-4 flex items-center gap-3 rounded-[20px] bg-green-soft px-5 py-4 text-[14px] text-fg-2">
         <ShieldCheck className="size-5 shrink-0 text-green" />
         <span>
-          <span className="font-semibold text-fg">Sie behalten die Hoheit:</span> In den Einstellungen legen Sie fest, ob die Live-KI (Claude) oder die Offline-KI arbeitet – und sehen jederzeit, wohin Daten fließen.
+          <span className="font-semibold text-fg">Sie behalten die Hoheit:</span> In den Einstellungen legen Sie fest, ob die Live-KI (Claude) oder die Demo-KI (offline) arbeitet – und sehen jederzeit, wohin Daten fließen.
         </span>
       </Reveal>
     </Abschnitt>
