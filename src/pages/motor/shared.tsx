@@ -4,7 +4,7 @@ import { CalendarClock, FileText, Inbox, ReceiptEuro, Users, type LucideIcon } f
 import type { Automation } from "@/core/types";
 
 export const ZIEL_STUNDEN = 38;
-export const ARBEITSWOCHEN = 46;
+export { WOCHEN_PRO_JAHR as ARBEITSWOCHEN, WERT_PRO_STUNDE } from "@/core/automationen";
 
 export const KATEGORIE_ICON: Record<Automation["kategorie"], LucideIcon> = {
   Posteingang: Inbox,

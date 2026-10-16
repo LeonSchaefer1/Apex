@@ -10,6 +10,8 @@ import type { Backend, ConsoleKunde, NeuerKunde, Sitzung } from "./types";
 const LS_SESSION = "aa:session";
 const LS_REGISTRY = "aa:registry";
 const LS_OVERRIDES = "aa:tenant-overrides";
+const LS_EXTRA_USERS = "aa:extra-users"; // eingeladene Personen in den eingebauten Demo-Kanzleien
+const LS_PW = "aa:pw-overrides"; // neu vergebene Passwörter (userId → Passwort)
 
 const memory = new Map<string, unknown>();
 let idbOk = true;
@@ -67,7 +69,13 @@ type DemoSession = { kind: "tenant"; tenantId: string; userId: string } | { kind
 function registry(): DemoTenant[] {
   const extra = lsGet<DemoTenant[]>(LS_REGISTRY) ?? [];
   const overrides = lsGet<Record<string, Partial<Tenant>>>(LS_OVERRIDES) ?? {};
-  return [...DEMO_TENANTS, ...extra].map((t) => ({ ...t, tenant: { ...t.tenant, ...(overrides[t.tenant.id] ?? {}) } }));
+  const extraUsers = lsGet<Record<string, DemoUser[]>>(LS_EXTRA_USERS) ?? {};
+  const pw = lsGet<Record<string, string>>(LS_PW) ?? {};
+  return [...DEMO_TENANTS, ...extra].map((t) => ({
+    ...t,
+    tenant: { ...t.tenant, ...(overrides[t.tenant.id] ?? {}) },
+    users: [...t.users, ...(extraUsers[t.tenant.id] ?? []).filter((u) => !t.users.some((x) => x.id === u.id))].map((u) => (pw[u.id] ? { ...u, passwort: pw[u.id] } : u)),
+  }));
 }
 
 function findTenant(id: string) {
@@ -205,9 +213,12 @@ export function createDemoBackend(): Backend {
         const t = all.find((x) => x.tenant.id === s.tenantId)!;
         const passwort = zufallsPasswort();
         const user: DemoUser = { ...baueNutzer(t.tenant.id, input, t.users.length + 1 + Math.floor(Math.random() * 900)), passwort };
-        const builtin = DEMO_TENANTS.find((x) => x.tenant.id === t.tenant.id);
-        if (builtin) builtin.users.push(user);
-        else {
+        const builtin = DEMO_TENANTS.some((x) => x.tenant.id === t.tenant.id);
+        if (builtin) {
+          const eu = lsGet<Record<string, DemoUser[]>>(LS_EXTRA_USERS) ?? {};
+          eu[t.tenant.id] = [...(eu[t.tenant.id] ?? []), user];
+          lsSet(LS_EXTRA_USERS, eu);
+        } else {
           const idx = extra.findIndex((x) => x.tenant.id === t.tenant.id);
           if (idx >= 0) extra[idx].users.push(user);
           lsSet(LS_REGISTRY, extra);
@@ -216,8 +227,11 @@ export function createDemoBackend(): Backend {
       },
       async remove(id) {
         const extra = lsGet<DemoTenant[]>(LS_REGISTRY) ?? [];
-        for (const t of [...DEMO_TENANTS, ...extra]) t.users = t.users.filter((u) => u.id !== id || u.rolle === "partner");
+        for (const t of extra) t.users = t.users.filter((u) => u.id !== id || u.rolle === "partner");
         lsSet(LS_REGISTRY, extra);
+        const eu = lsGet<Record<string, DemoUser[]>>(LS_EXTRA_USERS) ?? {};
+        for (const k of Object.keys(eu)) eu[k] = eu[k].filter((u) => u.id !== id);
+        lsSet(LS_EXTRA_USERS, eu);
       },
     },
     console: {
@@ -261,9 +275,9 @@ export function createDemoBackend(): Backend {
       },
       async neuesPasswort(userId) {
         const pw = zufallsPasswort();
-        const extra = lsGet<DemoTenant[]>(LS_REGISTRY) ?? [];
-        for (const t of [...DEMO_TENANTS, ...extra]) for (const u of t.users) if (u.id === userId) u.passwort = pw;
-        lsSet(LS_REGISTRY, extra);
+        const map = lsGet<Record<string, string>>(LS_PW) ?? {};
+        map[userId] = pw;
+        lsSet(LS_PW, map);
         return pw;
       },
     },

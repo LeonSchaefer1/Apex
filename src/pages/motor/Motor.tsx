@@ -13,12 +13,11 @@ import { WochenChart, type TagWert } from "./WochenChart";
 import { AutomationDrawer, AutomationKarte } from "./AutomationKarte";
 import { LiveFeed } from "./LiveFeed";
 import { RoiRechner } from "./RoiRechner";
-import { ARBEITSWOCHEN, FLOW_CSS, KATEGORIEN, ZIEL_STUNDEN, useNow } from "./shared";
+import { ARBEITSWOCHEN, FLOW_CSS, KATEGORIEN, WERT_PRO_STUNDE, ZIEL_STUNDEN, useNow } from "./shared";
 
 type Filter = "alle" | Automation["kategorie"];
 
 /** Konservative Bewertung nur zu Personalkosten (Annahme) – zeigt, dass sich der Motor auch ohne Abrechnung rechnet. */
-const PERSONALKOSTEN_STD = 21;
 
 export default function Motor() {
   const automationen = useCol("automationen");
@@ -60,9 +59,9 @@ export default function Motor() {
   const laeufeWoche = tage.reduce((s, t) => s + t.laeufe, 0);
   const stunden = wochenMin / 60;
   const anteil = stunden / ZIEL_STUNDEN;
-  const wertWoche = stunden * satz;
+  const wertWoche = stunden * WERT_PRO_STUNDE;
   const wertJahr = wertWoche * ARBEITSWOCHEN;
-  const wertJahrPersonal = stunden * PERSONALKOSTEN_STD * ARBEITSWOCHEN;
+  const potenzialJahr = stunden * satz * ARBEITSWOCHEN;
   const aktiv = automationen.filter((a) => a.aktiv).length;
 
   const gefiltert = filter === "alle" ? automationen : automationen.filter((a) => a.kategorie === filter);
@@ -117,12 +116,12 @@ export default function Motor() {
               </p>
             </div>
             <div className="grid grid-cols-1 gap-2.5 sm:col-span-2 sm:grid-cols-3">
-              <Kpi icon={<Euro className="size-3.5" />} label="Wert dieser Woche" wert={fmtEUR(Math.round(wertWoche), { cents: false })} sub={`bei ${fmtEUR(satz, { cents: false })}/Std. (Ihr Stundensatz)`} />
+              <Kpi icon={<Euro className="size-3.5" />} label="Gesparte Kosten dieser Woche" wert={fmtEUR(Math.round(wertWoche), { cents: false })} sub={`zu Personalkosten (≈ ${fmtEUR(WERT_PRO_STUNDE, { cents: false })}/Std.)`} />
               <Kpi icon={<Target className="size-3.5" />} label="Hochgerechnet pro Jahr" wert={`≈ ${fmtEUR(Math.round(wertJahr / 1000) * 1000, { cents: false })}`} sub={`Wochenwert × ${ARBEITSWOCHEN} Arbeitswochen`} betont />
               <Kpi icon={<Repeat className="size-3.5" />} label="Automatische Läufe" wert={fmtNum(laeufeWoche)} sub="in den letzten 7 Tagen" />
             </div>
             <p className="text-[12px] leading-snug text-fg-3 sm:col-span-2">
-              Selbst nur zu Personalkosten gerechnet (Annahme {PERSONALKOSTEN_STD} €/Std.): <span className="num whitespace-nowrap font-semibold text-fg">≈ {fmtEUR(Math.floor(wertJahrPersonal / 1000) * 1000, { cents: false })}+ pro Jahr</span>.
+              Wird die frei gewordene Zeit als anwaltliche Arbeit abgerechnet (Ihr Stundensatz {fmtEUR(satz, { cents: false })}), entspricht das einem Umsatzpotenzial von <span className="num whitespace-nowrap font-semibold text-fg">≈ {fmtEUR(Math.floor(potenzialJahr / 1000) * 1000, { cents: false })} pro Jahr</span>.
             </p>
           </div>
           <div className="border-t border-[var(--line)] px-5 pb-3 pt-4 md:px-6">
