@@ -81,3 +81,23 @@ test("Verzugszinsen und § 367 BGB", () => {
   assert.ok((zahlung.aufZinsen ?? 0) > 0);
   assert.ok(k.hauptforderung < 5000);
 });
+
+test("Fristenlage: einheitliche Zählweise", async () => {
+  const { fristenLage } = await import("./fristenLage");
+  const basis = { akteId: "a", titel: "t", status: "offen" as const, verantwortlichId: "u1", quelle: "manuell" as const, createdAt: "2026-10-01T09:00" };
+  const fr = [
+    { ...basis, id: "1", typ: "notfrist" as const, datum: "2026-10-16" },
+    { ...basis, id: "2", typ: "vorfrist" as const, datum: "2026-10-16" },
+    { ...basis, id: "3", typ: "termin" as const, datum: "2026-10-16" },
+    { ...basis, id: "4", typ: "frist" as const, datum: "2026-10-14", verantwortlichId: "u2" },
+    { ...basis, id: "5", typ: "wiedervorlage" as const, datum: "2026-10-20" },
+    { ...basis, id: "6", typ: "frist" as const, datum: "2026-10-16", status: "erledigt" as const },
+  ];
+  const l = fristenLage(fr, "2026-10-16");
+  assert.deepEqual(l.faellig.map((f) => f.id), ["4", "1"]);
+  assert.equal(l.heute.length, 1);
+  assert.equal(l.ueberfaellig.length, 1);
+  assert.equal(l.vorfristen.length, 1);
+  assert.deepEqual(l.woche.map((f) => f.id), ["5"]);
+  assert.equal(fristenLage(fr, "2026-10-16", "u1").faellig.length, 1);
+});

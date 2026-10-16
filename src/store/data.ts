@@ -9,6 +9,8 @@ interface DataState {
   status: "leer" | "laedt" | "bereit" | "fehler";
   fehler?: string;
   data: TenantData;
+  /** Zählt jeden vollständigen Datenwechsel (Laden, Zurücksetzen, Abmelden) – Caches außerhalb des Stores (z. B. KI-Ergebnisse) verwerfen sich bei einer neuen Epoche. */
+  epoch: number;
   load: () => Promise<void>;
   reset: () => Promise<void>;
   clear: () => void;
@@ -34,11 +36,12 @@ function persist(col: CollectionKey, doc: { id: string }) {
 export const useData = create<DataState>((set, get) => ({
   status: "leer",
   data: empty,
+  epoch: 0,
   load: async () => {
     set({ status: "laedt" });
     try {
       const data = await getBackend().loadData();
-      set({ data: structuredClone(data), status: "bereit" });
+      set({ data: structuredClone(data), status: "bereit", epoch: get().epoch + 1 });
     } catch (e) {
       set({ status: "fehler", fehler: e instanceof Error ? e.message : String(e) });
     }
@@ -46,9 +49,9 @@ export const useData = create<DataState>((set, get) => ({
   reset: async () => {
     set({ status: "laedt" });
     const data = await getBackend().resetData();
-    set({ data: structuredClone(data), status: "bereit" });
+    set({ data: structuredClone(data), status: "bereit", epoch: get().epoch + 1 });
   },
-  clear: () => set({ data: empty, status: "leer" }),
+  clear: () => set({ data: empty, status: "leer", epoch: get().epoch + 1 }),
   upsert: (col, doc) => {
     const arr = get().data[col] as Doc<typeof col>[];
     const i = arr.findIndex((x) => x.id === doc.id);
