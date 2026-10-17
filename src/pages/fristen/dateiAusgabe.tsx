@@ -24,8 +24,39 @@ function eingebettet(): boolean {
   }
 }
 
-/** Speichert die Datei über einen temporären Objekt-Link – mit Rückmeldung, wenn der Browser das nicht erlaubt. */
-export function speichereDatei(d: AusgabeDatei): boolean {
+type DownloadsApi = { save: (r: { filename: string; data: string }) => Promise<{ status: string }> };
+let downloadsApi: Promise<DownloadsApi | null> | null = null;
+
+/** Download-Fähigkeit der Artefakt-Laufzeit (claude.use("downloads")) – `null`, wenn die App nicht als Artefakt läuft. */
+function artefaktDownloads(): Promise<DownloadsApi | null> {
+  if (downloadsApi) return downloadsApi;
+  const w = window as unknown as { claude?: { use?: (n: string) => Promise<unknown> } };
+  if (!w.claude?.use) return (downloadsApi = Promise.resolve(null));
+  downloadsApi = Promise.race([w.claude.use("downloads"), new Promise((r) => setTimeout(() => r(null), 8000))])
+    .then((d) => (d as DownloadsApi | null) ?? null)
+    .catch(() => null);
+  return downloadsApi;
+}
+
+export type SpeicherErgebnis = "gespeichert" | "abgelehnt" | "format" | "nicht-moeglich";
+
+/**
+ * Speichert die Datei: in der Artefakt-Vorschau über die Download-Bestätigung der Laufzeit,
+ * sonst über einen temporären Objekt-Link – mit ehrlicher Rückmeldung, wenn das nicht geht.
+ */
+export async function speichereDatei(d: AusgabeDatei): Promise<SpeicherErgebnis> {
+  const dl = await artefaktDownloads();
+  if (dl) {
+    try {
+      await dl.save({ filename: d.name, data: d.inhalt });
+      return "gespeichert";
+    } catch (e) {
+      const code = (e as { code?: string })?.code;
+      if (code === "declined") return "abgelehnt";
+      if (code === "rejected_extension" || code === "extension_not_enabled") return "format";
+      return "nicht-moeglich";
+    }
+  }
   try {
     const blob = new Blob([d.inhalt], { type: `${d.mime};charset=utf-8` });
     const url = URL.createObjectURL(blob);
@@ -37,9 +68,9 @@ export function speichereDatei(d: AusgabeDatei): boolean {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
-    return true;
+    return "gespeichert";
   } catch {
-    return false;
+    return "nicht-moeglich";
   }
 }
 
@@ -56,10 +87,21 @@ export function DateiDialog({ datei: einzel, dateien, onClose, titel }: { datei?
   const preRef = useRef<HTMLPreElement>(null);
   const [kopiert, setKopiert] = useState(false);
   const groesse = datei ? new TextEncoder().encode(datei.inhalt).length : 0;
-  const embed = eingebettet();
-  const speichern = () => {
+  const [laufzeitDownload, setLaufzeitDownload] = useState(false);
+  useEffect(() => {
+    let aktiv = true;
+    void artefaktDownloads().then((d) => aktiv && setLaufzeitDownload(!!d));
+    return () => {
+      aktiv = false;
+    };
+  }, []);
+  const embed = eingebettet() && !laufzeitDownload;
+  const speichern = async () => {
     if (!datei) return;
-    if (speichereDatei(datei)) toast("Datei gespeichert", { text: `${datei.name} – im Download-Ordner Ihres Browsers.`, ton: "erfolg" });
+    const r = await speichereDatei(datei);
+    if (r === "gespeichert") toast("Datei gespeichert", { text: `${datei.name} – im Download-Ordner Ihres Browsers.`, ton: "erfolg" });
+    else if (r === "abgelehnt") toast("Speichern abgebrochen", { text: datei.name, ton: "info" });
+    else if (r === "format") toast("Dieses Dateiformat lässt sich hier nicht speichern", { text: "Bitte „In Zwischenablage kopieren“ nutzen und als Datei sichern.", ton: "warnung" });
     else toast("Speichern nicht möglich", { text: "Der Browser erlaubt hier keinen Download – bitte „In Zwischenablage kopieren“ nutzen.", ton: "warnung" });
   };
   const kopieren = async () => {
@@ -88,7 +130,7 @@ export function DateiDialog({ datei: einzel, dateien, onClose, titel }: { datei?
           <Button variant="secondary" icon={<Copy className="size-4" />} onClick={() => void kopieren()}>
             {kopiert ? "Kopiert" : "In Zwischenablage kopieren"}
           </Button>
-          <Button variant="primary" icon={<Download className="size-4" />} onClick={speichern}>
+          <Button variant="primary" icon={<Download className="size-4" />} onClick={() => void speichern()}>
             Datei speichern
           </Button>
         </>
