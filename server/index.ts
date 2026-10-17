@@ -15,16 +15,18 @@ import { COLLECTIONS, type Aktivitaet, type Bundesland, type CollectionKey, type
 import { DEMO_TENANTS, DEMO_PASSWORT, publicUser } from "../src/core/seed/tenants";
 import { generateTenantData, SEED_VERSION, type SeedInput } from "../src/core/seed/generate";
 import { baueKunde, baueNutzer, profilFuer } from "../src/core/seed/kunde";
-import { fmtDate, today } from "../src/core/dates";
+import { fmtDate, heuteBerlin, today } from "../src/core/dates";
 import { neuerSchluessel, neueWiederherstellungscodes, otpauthUri, pruefeTotp, wiederherstellungNormal } from "../src/core/totp";
 import {
-  ANMELDUNG_FALSCH, AZUBI_GESPERRT, AZUBI_KEIN_ZUGRIFF, BUNDESLAENDER, CODE_SITZUNG_GEWECHSELT, PASSWORT_MAX, ROLLEN, SACHGEBIETE_ALLE, SPERRE_MINUTEN, VERWALTUNGS_ROLLEN, ZUGANG_DEAKTIVIERT,
+  ALTES_PASSWORT_FALSCH, ANMELDUNG_FALSCH, AZUBI_GESPERRT, AZUBI_KEIN_ZUGRIFF, BUNDESLAENDER, CODE_SITZUNG_GEWECHSELT, FRIST_AUTOMATIK_GESPERRT, PASSWORT_MAX, ROLLEN, SACHGEBIETE_ALLE, SPERRE_MINUTEN, VERWALTUNGS_ROLLEN, ZUGANG_DEAKTIVIERT,
   darfSammlung, istEmail, kanzleiSicherheit, pruefeNeuesPasswort, pruefeTeamAenderung, type KanzleiSitzung, type SperreMinuten, type TeamAenderung,
 } from "../src/lib/backend/types";
+import { geaenderteRechnungsangaben, normalisiereRechnungsangaben, pruefeRechnungsangaben } from "../src/core/abrechnung";
+import { istFristAutomatik } from "../src/core/automationen";
 import { pruefeDokument } from "../src/lib/backend/schema";
 import { sicheresPasswort, zufallsZahl } from "../src/lib/backend/zufall";
-import { ANMELDE_WARN_SCHWELLE, VORGANG, anmeldeVorgang, letzteEchteAktivitaet, mischeVorgaenge, vorgang, zaehleFehlversuch, zeitBerlin, type FehlGrund } from "../src/lib/backend/protokoll";
-import { festeAnsprechperson, rollenLabel } from "../src/lib/rollen";
+import { ANMELDE_WARN_SCHWELLE, VORGANG, anmeldeVorgang, letzteEchteAktivitaet, mischeVorgaenge, pruefeConsolePasswortAnlass, vorgang, zaehleFehlversuch, zeitBerlin, type FehlGrund } from "../src/lib/backend/protokoll";
+import { darfAutomatikSchalten, festeAnsprechBezeichnung, rollenLabel } from "../src/lib/rollen";
 
 // ───────────── Konfiguration ─────────────
 function zahlAusUmgebung(name: string, standard: number, min: number, max: number): number {
@@ -42,6 +44,8 @@ const PORT = Number(process.env.PORT ?? 8787);
 const DB_PATH = process.env.DATABASE_PATH ?? "./data/anwaltapex.db";
 const CONSOLE_EMAIL = (process.env.CONSOLE_ADMIN_EMAIL ?? "admin@anwaltapex.de").trim().toLowerCase();
 const CONSOLE_PASSWORD = process.env.CONSOLE_ADMIN_PASSWORD ?? "";
+/** Anzeigename des Console-Zugangs (z. B. „Lena Vogt“) – erscheint im Kanzleiprotokoll, wenn im Dialog niemand genannt ist. */
+const CONSOLE_NAME = (process.env.CONSOLE_ADMIN_NAME ?? "").trim().slice(0, 120) || "AnwaltApex Team";
 const QUICK_LOGIN = (process.env.DEMO_QUICK_LOGIN ?? "true") === "true";
 const SEED_DEMO = (process.env.SEED_DEMO ?? "true") === "true";
 const AI_MODEL = process.env.AI_MODEL ?? "claude-opus-5-5";
@@ -322,9 +326,9 @@ function zugangsSperre(tenantId: string): string | null {
   const t = tenantById(tenantId);
   if (!t) return "Kanzlei nicht gefunden.";
   const ap = t.tenant.ansprechpartner;
-  const kontakt = `${festeAnsprechperson(ap)}: ${ap.name} (${ap.telefon}).`;
+  const kontakt = `${festeAnsprechBezeichnung(ap)}: ${ap.name} (${ap.telefon}).`;
   if (t.tenant.status === "pausiert") return `Der Zugang dieser Kanzlei ist pausiert. ${kontakt}`;
-  if (t.tenant.testBis && t.tenant.testBis < today() && t.tenant.status === "test" && !t.demo) return `Der Testzeitraum ist am ${fmtDate(t.tenant.testBis)} abgelaufen. ${kontakt} ${ap.name} verlängert den Zugang gern.`;
+  if (t.tenant.testBis && t.tenant.testBis < heuteBerlin() && t.tenant.status === "test" && !t.demo) return `Der Testzeitraum ist am ${fmtDate(t.tenant.testBis)} abgelaufen. ${kontakt} ${ap.name} verlängert den Zugang gern.`;
   return null;
 }
 
@@ -381,6 +385,8 @@ function sessionInfo(s: TenantSess): KanzleiSitzung | null {
 }
 
 const fehler = (c: Context, status: 400 | 401 | 403 | 404 | 409 | 413 | 429 | 500 | 503, text: string) => c.json({ fehler: text }, status);
+/** Fehler mit Bezug zu einem Formularfeld – die Oberfläche zeigt die Meldung direkt am Feld. */
+const feldFehler = (c: Context, status: 400 | 403 | 429, text: string, feld: string) => c.json({ fehler: text, feld }, status);
 
 /**
  * Zugriff auf Kanzleidaten: angemeldet UND an genau diese Kanzlei/Person gebunden (Kopfzeilen X-Kanzlei, X-Nutzer).
@@ -574,7 +580,7 @@ app.post("/api/auth/login", async (c) => {
     grenze.erfolg();
     neueSitzung(c, { kind: "console" });
     audit("console.login", email);
-    return c.json({ console: true, email, name: "AnwaltApex Team" });
+    return c.json({ console: true, email, name: CONSOLE_NAME });
   }
   const u = db.prepare("SELECT * FROM users WHERE email = ?").get(email) as UserRow | undefined;
   // Auch für unbekannte Adressen wird ein Hash geprüft – gleiche Antwortzeit, kein Hinweis auf bestehende Zugänge.
@@ -737,6 +743,38 @@ app.post("/api/auth/entsperren", async (c) => {
   return c.body(null, 204);
 });
 
+// Eigenes Passwort ändern (jede Rolle, an die Sitzung gebunden): altes Passwort prüfen – ein falsches zählt als Fehlversuch
+// wie bei der Anmeldung –, gleiche Regeln wie bei der ersten Anmeldung, Protokoll „Eigenes Passwort geändert – …“ (I3-T13-02)
+app.post("/api/auth/passwort-aendern", async (c) => {
+  const s = kanzleiZugriff(c, { zweiFaktorEinrichtung: true });
+  if (s instanceof Response) return s;
+  const u = db.prepare("SELECT * FROM users WHERE id = ? AND tenant_id = ?").get(s.userId, s.tenantId) as UserRow | undefined;
+  if (!u) return fehler(c, 401, "Sitzung ungültig – bitte melden Sie sich erneut an.");
+  const body = (await c.req.json().catch(() => ({}))) as { altesPasswort?: unknown; neuesPasswort?: unknown };
+  const alt = String(body.altesPasswort ?? "");
+  const neu = String(body.neuesPasswort ?? "");
+  if (alt.length > PASSWORT_MAX || neu.length > PASSWORT_MAX) return feldFehler(c, 400, `Bitte höchstens ${PASSWORT_MAX} Zeichen verwenden.`, "neu");
+  const grenze = anmeldeSperre(c, u.email);
+  if (grenze.sperre) return grenze.sperre;
+  if (!pruefePw(alt, u.pw_hash)) {
+    grenze.fehlversuch();
+    audit("passwort.aendern.fehlgeschlagen", u.email, u.tenant_id, u.id);
+    protokolliereFehlversuch(u, "passwort");
+    // 400 statt 401: Die Sitzung bleibt gültig, nur das alte Passwort stimmt nicht
+    return feldFehler(c, 400, ALTES_PASSWORT_FALSCH, "alt");
+  }
+  grenze.erfolg();
+  const regel = pruefeNeuesPasswort(neu, alt, "dem bisherigen Passwort");
+  if (regel) return feldFehler(c, 400, regel, "neu");
+  db.prepare("UPDATE users SET pw_hash = ?, pw_wechsel = 0 WHERE id = ?").run(hashPw(neu), u.id);
+  // andere Sitzungen dieser Person beenden – die aktuelle bleibt bestehen
+  const token = getCookie(c, "aa_sid");
+  db.prepare("DELETE FROM sessions WHERE user_id = ? AND token != ?").run(u.id, token ?? "");
+  audit("passwort.geaendert", u.email, u.tenant_id, u.id);
+  protokolliere(u.tenant_id, vorgang(VORGANG.eigenesPasswortGeaendert(userJson(u).name), { akteur: "nutzer", userId: u.id }));
+  return c.body(null, 204);
+});
+
 // Sperre wegen Inaktivität (die Sperre selbst setzt der Browser) – nur protokollieren, für die angemeldete Person
 app.post("/api/auth/sperre", (c) => {
   const s = kanzleiZugriff(c, { zweiFaktorEinrichtung: true });
@@ -751,7 +789,7 @@ app.post("/api/auth/sperre", (c) => {
 app.get("/api/auth/me", (c) => {
   const s = sitzung(c);
   if (!s) return fehler(c, 401, "Nicht angemeldet");
-  if (s.kind === "console") return c.json({ console: true, email: CONSOLE_EMAIL, name: "AnwaltApex Team" });
+  if (s.kind === "console") return c.json({ console: true, email: CONSOLE_EMAIL, name: CONSOLE_NAME });
   const info = sessionInfo(s);
   return info ? c.json(info) : fehler(c, 401, "Sitzung ungültig");
 });
@@ -804,7 +842,28 @@ app.put("/api/data/:col/:id", async (c) => {
   if (!doc || typeof doc !== "object" || (doc as { id?: unknown }).id !== id) return fehler(c, 400, "ID stimmt nicht überein");
   const problem = pruefeDokument(col, doc);
   if (problem) return fehler(c, 400, `Die Änderung wurde nicht gespeichert: ${problem}`);
-  db.prepare("INSERT OR REPLACE INTO docs (tenant_id, col, id, json, updated_at) VALUES (?, ?, ?, ?, ?)").run(s.tenantId, col, id, raw, Date.now());
+  let json = raw;
+  // Fristautomatiken (Fristerkennung, Vorfristen, eEB) schalten nur Partner und Administration; beim Pausieren werden Zeitpunkt
+  // und Person gespeichert (I3-T10-01) – die Person immer aus der Sitzung, nie aus der Anfrage.
+  if (col === "automationen") {
+    const a = doc as { key: string; aktiv: boolean; pausiertAm?: string; pausiertVon?: string };
+    const vorher = db.prepare("SELECT json FROM docs WHERE tenant_id = ? AND col = 'automationen' AND id = ?").get(s.tenantId, id) as { json: string } | undefined;
+    const warAktiv = vorher ? (JSON.parse(vorher.json) as { aktiv?: boolean }).aktiv !== false : true;
+    if (istFristAutomatik(a.key) && warAktiv !== a.aktiv) {
+      const me = sessionInfo(s);
+      if (!me || !darfAutomatikSchalten(me.user, a.key)) return fehler(c, 403, FRIST_AUTOMATIK_GESPERRT);
+    }
+    if (warAktiv && !a.aktiv) {
+      a.pausiertAm = a.pausiertAm ?? zeitBerlin();
+      a.pausiertVon = s.userId;
+      json = JSON.stringify(a);
+    } else if (a.aktiv && (a.pausiertAm || a.pausiertVon)) {
+      delete a.pausiertAm;
+      delete a.pausiertVon;
+      json = JSON.stringify(a);
+    }
+  }
+  db.prepare("INSERT OR REPLACE INTO docs (tenant_id, col, id, json, updated_at) VALUES (?, ?, ?, ?, ?)").run(s.tenantId, col, id, json, Date.now());
   // Hintergrundläufe (simulierter 38h-Motor, automatische Posteingangs-Analyse, ?system=1) zählen nicht als Änderung durch die
   // Kanzlei – unveränderte Beispieldaten werden dann weiter täglich relativ zu „heute" neu erzeugt.
   if (c.req.query("system") !== "1") db.prepare("UPDATE tenant_state SET dirty = 1 WHERE tenant_id = ?").run(s.tenantId);
@@ -870,6 +929,34 @@ app.put("/api/kanzlei/sicherheit", async (c) => {
   const tenant: Tenant = { ...me.tenant, sicherheit: { zweiFaktorPflicht: pflicht, sperreMinuten: minuten as SperreMinuten } };
   db.prepare("UPDATE tenants SET json = ? WHERE id = ?").run(JSON.stringify(tenant), s.tenantId);
   audit("kanzlei.sicherheit", `2FA-Pflicht ${pflicht ? "an" : "aus"}, Sperre ${minuten} Min.`, s.tenantId, s.userId);
+  return c.json(tenant);
+});
+
+// Rechnungsangaben (§ 14 Abs. 4 UStG): Steuernummer, USt-IdNr., Geschäftskonto – nur Partner und Administration (I3-T07-03)
+app.put("/api/kanzlei/rechnungsangaben", async (c) => {
+  const s = kanzleiZugriff(c);
+  if (s instanceof Response) return s;
+  const me = sessionInfo(s);
+  if (!me || !darfVerwalten(me.user)) return fehler(c, 403, "Nur Partner und Administration dürfen die Rechnungsangaben ändern.");
+  const b = (await c.req.json().catch(() => ({}))) as { steuernummer?: unknown; ustIdNr?: unknown; geschaeftskonto?: unknown };
+  const k = (b.geschaeftskonto && typeof b.geschaeftskonto === "object" ? b.geschaeftskonto : {}) as { iban?: unknown; bic?: unknown; bank?: unknown };
+  const roh = {
+    steuernummer: text(b.steuernummer, 40),
+    ustIdNr: text(b.ustIdNr, 40),
+    geschaeftskonto: { iban: text(k.iban, 60), bic: text(k.bic, 20), bank: typeof k.bank === "string" ? k.bank.trim().slice(0, 200) : "" },
+  };
+  const f = Object.entries(pruefeRechnungsangaben(roh))[0];
+  if (f) return feldFehler(c, 400, f[1], f[0]);
+  const neu = normalisiereRechnungsangaben(roh);
+  const geaendert = geaenderteRechnungsangaben(me.tenant, neu);
+  const tenant: Tenant = { ...me.tenant };
+  delete tenant.steuernummer;
+  delete tenant.ustIdNr;
+  delete tenant.geschaeftskonto;
+  Object.assign(tenant, neu);
+  db.prepare("UPDATE tenants SET json = ? WHERE id = ?").run(JSON.stringify(tenant), s.tenantId);
+  audit("kanzlei.rechnungsangaben", geaendert.join(", ") || "unverändert", s.tenantId, s.userId);
+  if (geaendert.length) protokolliere(s.tenantId, vorgang(VORGANG.rechnungsangabenGeaendert(geaendert, me.user.name), { akteur: "nutzer", userId: s.userId }));
   return c.json(tenant);
 });
 
@@ -1105,7 +1192,7 @@ app.post("/api/console/kunden", async (c) => {
   let testBis: string | undefined;
   if (b.testBis !== undefined && b.testBis !== null && b.testBis !== "") {
     if (!istIsoDatum(b.testBis)) return fehler(c, 400, "Bitte ein gültiges Datum für das Ende des Testzeitraums angeben.");
-    if (b.testBis < today()) return fehler(c, 400, "Das Ende des Testzeitraums liegt in der Vergangenheit.");
+    if (b.testBis < heuteBerlin()) return fehler(c, 400, "Das Ende des Testzeitraums liegt in der Vergangenheit.");
     testBis = b.testBis;
   }
   const schwerpunkte = Array.isArray(b.schwerpunkte) ? [...new Set(b.schwerpunkte.filter((x): x is Sachgebiet => SACHGEBIETE_ALLE.includes(x as Sachgebiet)))] : [];
@@ -1156,7 +1243,7 @@ app.post("/api/console/kunden/:id/status", async (c) => {
   const neu: Tenant = { ...t.tenant, status: status as Tenant["status"] };
   // Testzugang → Kunde: Die Lifetime-Lizenz gilt ab heute, der Testzeitraum entfällt.
   if (t.tenant.status === "test" && status === "aktiv") {
-    neu.lizenz = { ...t.tenant.lizenz, seit: today() };
+    neu.lizenz = { ...t.tenant.lizenz, seit: heuteBerlin() };
     delete neu.testBis;
   }
   db.prepare("UPDATE tenants SET json = ? WHERE id = ?").run(JSON.stringify(neu), t.id);
@@ -1179,9 +1266,14 @@ app.post("/api/console/nutzer/:id/standardpasswort", (c) => {
   return c.body(null, 204);
 });
 
-app.post("/api/console/nutzer/:id/passwort", (c) => {
+app.post("/api/console/nutzer/:id/passwort", async (c) => {
   if (!consoleOk(c)) return fehler(c, 403, "Nur für das AnwaltApex-Team");
   const id = c.req.param("id");
+  // Pflichtangaben: wer in der Kanzlei hat angefordert, aus welchem Anlass (I3-T21-02)
+  const b = (await c.req.json().catch(() => ({}))) as { angefordertVon?: unknown; anlass?: unknown; bearbeiter?: unknown };
+  const anlass = { angefordertVon: text(b.angefordertVon, 120), anlass: text(b.anlass, 200), bearbeiter: text(b.bearbeiter, 120) || CONSOLE_NAME };
+  const f = Object.entries(pruefeConsolePasswortAnlass(anlass))[0];
+  if (f) return feldFehler(c, 400, f[1], f[0]);
   const pw = sicheresPasswort();
   const r = db.prepare("UPDATE users SET pw_hash = ?, pw_wechsel = 1 WHERE id = ?").run(hashPw(pw), id);
   if (!r.changes) return fehler(c, 404, "Nutzer nicht gefunden – bitte laden Sie die Kundenliste neu.");
@@ -1189,7 +1281,8 @@ app.post("/api/console/nutzer/:id/passwort", (c) => {
   const u = db.prepare("SELECT tenant_id, email, json FROM users WHERE id = ?").get(id) as { tenant_id: string; email: string; json: string } | undefined;
   audit("console.passwort", u?.email ?? id, u?.tenant_id);
   // Anbieter-Eingriff: Die Kanzlei sieht ihn in ihrem Protokoll (Einstellungen → Datenschutz).
-  if (u) protokolliere(u.tenant_id, vorgang(VORGANG.consolePasswort(userJson(u).name), { akteur: "system", userId: id }));
+  // Kanzleiprotokoll mit Anbieter-Person, Anforderer und Anlass; zugleich Hinweis in der Glocke für Partner und Administration
+  if (u) protokolliere(u.tenant_id, anmeldeVorgang(VORGANG.consolePasswort(userJson(u).name, anlass, CONSOLE_NAME), { akteur: "system", userId: id, meldung: true }));
   return c.json({ passwort: pw });
 });
 

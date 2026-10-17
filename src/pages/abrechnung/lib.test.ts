@@ -2,7 +2,25 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Akte, Rechnung, User, Zeiteintrag } from "@/core/types";
-import { betragFuerMinuten, istReineZeitrechnung, leistungszeitraum, satzAusPosition, satzFuerEintrag, stundenPositionen, summen, wertEintrag } from "./lib";
+import {
+  auswahlFuerAbrechnung,
+  auswahlFuerFilter,
+  betragFuerMinuten,
+  fehlendKurz,
+  istReineZeitrechnung,
+  kopfUmschalten,
+  kopfZustand,
+  leistungszeitraum,
+  naechsteNummern,
+  satzAusPosition,
+  satzFuerEintrag,
+  sichtbareVorschlaege,
+  stellenErlaubt,
+  stellenTitel,
+  stundenPositionen,
+  summen,
+  wertEintrag,
+} from "./lib";
 
 const users: User[] = [
   { id: "u-jh", tenantId: "t", name: "Dr. Julia Hartmann", email: "", rolle: "partner", titel: "Rechtsanwältin", initialen: "JH", farbe: "", stundensatz: 280 } as User,
@@ -70,4 +88,75 @@ test("Leistungszeitraum einer Zeitrechnung: erster bis letzter abgerechneter Ein
   assert.ok(istReineZeitrechnung(r));
   assert.ok(!istReineZeitrechnung({ positionen: [...r.positionen, { vv: "2300", bezeichnung: "GG", betrag: 100, gegenstandswert: 5000 }] }));
   assert.ok(istReineZeitrechnung({ positionen: [...r.positionen, { vv: "7002", bezeichnung: "Pauschale", betrag: 20 }] }));
+});
+
+// ───────────── Sammelabrechnung: nur Sichtbares abrechnen (I3-T07-01) ─────────────
+
+const sv = (id: string, deckung?: "erteilt" | "angefragt", umzug = false) => ({
+  akte: { id, rsv: deckung ? ({ deckung } as Akte["rsv"]) : undefined, umzugLaufId: umzug ? "lauf" : undefined, abrechnungGeprueft: false },
+  brutto: 100,
+});
+
+test("Sammelabrechnung: Auswahl ∩ Filter – ausgeblendete Auswahl wird nie abgerechnet", () => {
+  const vs = [sv("a", "erteilt"), sv("b", "erteilt"), sv("c"), sv("d", "angefragt"), sv("e"), sv("f", "erteilt", true)];
+  const alleGewaehlt = auswahlFuerFilter(vs, "alle");
+  assert.equal(alleGewaehlt.size, 5, "Umzugsakte mit ungeprüftem Stand nicht vorausgewählt");
+  // Filter „Deckung erteilt“: abgerechnet wird nur, was sichtbar UND gewählt ist
+  assert.deepEqual(auswahlFuerAbrechnung(vs, alleGewaehlt, "erteilt").map((v) => v.akte.id), ["a", "b"]);
+  assert.equal(sichtbareVorschlaege(vs, "erteilt").length, 3);
+  // Filterwechsel setzt die Auswahl auf die sichtbaren Akten des neuen Filters
+  const nachFilter = auswahlFuerFilter(vs, "erteilt");
+  assert.deepEqual([...nachFilter].sort(), ["a", "b"]);
+  assert.equal(kopfZustand(vs, nachFilter, "erteilt"), "an");
+  // Kopf-Häkchen: 1× → 0 gewählt, 2× → alle wählbaren sichtbaren
+  const einmal = kopfUmschalten(vs, nachFilter, "erteilt");
+  assert.equal(einmal.size, 0);
+  assert.equal(kopfZustand(vs, einmal, "erteilt"), "aus");
+  const zweimal = kopfUmschalten(vs, einmal, "erteilt");
+  assert.deepEqual([...zweimal].sort(), ["a", "b"]);
+  // Teilweise: nur eine sichtbare gewählt; ausgeblendete Wahl zählt nicht
+  const teil = new Set(["a", "c", "e"]);
+  assert.equal(kopfZustand(vs, teil, "erteilt"), "teilweise");
+  assert.deepEqual([...kopfUmschalten(vs, teil, "erteilt")].sort(), ["a", "b"], "Kopf-Häkchen verwirft ausgeblendete Auswahl");
+  // Von Hand gewählte Umzugsakte zählt mit
+  assert.equal(kopfZustand(vs, new Set(["a", "b", "f"]), "erteilt"), "an");
+});
+
+test("Zinsabschnitte: Grund je Abschnitt – Kostenbuchung teilt den Lauf bei gleichem Kapital und Satz (I3-T09-01)", async () => {
+  const { forderungskonto } = await import("@/core/zinsen");
+  const { zinsAbschnittGrund } = await import("./lib");
+  const stand = forderungskonto({
+    verzugAb: "2026-05-01",
+    stichtag: "2026-10-17",
+    verbraucher: false,
+    vorgaenge: [
+      { datum: "2026-05-01", art: "hauptforderung", betrag: 2000, text: "Hauptforderung" },
+      { datum: "2026-06-19", art: "kosten", betrag: 40, text: "Mahnkosten" },
+      { datum: "2026-08-16", art: "kosten", betrag: 25, text: "Auskunft" },
+    ],
+  } as Parameters<typeof forderungskonto>[0]);
+  const gruende = stand.zinsAbschnitte.map((z, i) => zinsAbschnittGrund(z, stand.zinsAbschnitte[i - 1], stand.verlauf));
+  assert.equal(gruende[0], "Verzugsbeginn 01.05.2026");
+  assert.ok(gruende.includes("Kostenbuchung 19.06.2026"), gruende.join(" | "));
+  assert.ok(gruende.includes("Kostenbuchung 16.08.2026"), gruende.join(" | "));
+  assert.ok(gruende.includes("Basiszinssatz geändert zum 01.07.2026"), gruende.join(" | "));
+});
+
+test("Rückfrage „Rechnung stellen“: nächste Nummer(n), Pflichtangaben einmal mit Paragraph, Sperre nur außerhalb der Präsentationskanzlei", () => {
+  const rechnungen = [
+    { nummer: "RE-2026-0024", stornoNummer: "RE-2026-0025" },
+    { nummer: "Entwurf-001" },
+  ] as Rechnung[];
+  const eine = naechsteNummern(rechnungen, 1, "2026");
+  assert.deepEqual(eine, ["RE-2026-0026"]);
+  assert.equal(stellenTitel(eine), "RE-2026-0026 stellen?");
+  assert.deepEqual(naechsteNummern(rechnungen, 3, "2026"), ["RE-2026-0026", "RE-2026-0027", "RE-2026-0028"]);
+  assert.equal(stellenTitel(naechsteNummern(rechnungen, 3, "2026")), "3 Rechnungen stellen?");
+  const fehlend = ["Steuernummer oder USt-IdNr. (§ 14 Abs. 4 S. 1 Nr. 2 UStG)", "Bankverbindung (IBAN)"];
+  assert.equal(fehlendKurz(fehlend), "Pflichtangaben fehlen: Steuernummer oder USt-IdNr. (§ 14 Abs. 4 UStG) · Bankverbindung (IBAN) für den Zahlungsweg");
+  assert.equal(fehlendKurz(fehlend.slice(1)), "Rechnungsangaben fehlen: Bankverbindung (IBAN) für den Zahlungsweg");
+  assert.equal(stellenErlaubt([], false, false), true);
+  assert.equal(stellenErlaubt(fehlend, false, true), false, "Kundenkanzlei: gesperrt, auch mit Häkchen");
+  assert.equal(stellenErlaubt(fehlend, true, false), false, "Präsentationskanzlei: nur mit Häkchen");
+  assert.equal(stellenErlaubt(fehlend, true, true), true);
 });

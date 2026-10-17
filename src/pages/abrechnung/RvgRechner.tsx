@@ -1,5 +1,6 @@
 // Reiter „RVG-Rechner“: Wertgebühren nach § 13 RVG mit automatischer Tabellenwahl (§ 60 RVG), Anrechnung und Auslagen.
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { Calculator, CalendarDays, ChevronDown, FilePlus2, Info, Minus, Plus, Table2, Users } from "lucide-react";
 import { AnimatedNumber, Button, Card, CardHeader, Checkbox, Chip, Field, Input, Modal, Select, Switch } from "@/components/ui";
@@ -22,7 +23,10 @@ const STANDARD_AN = new Set(["2300", "3100", "3104"]);
 type PosState = Record<string, { an: boolean; satz: number }>;
 
 /** Einigungsgebühren im passenden Abschnitt: 1000 außergerichtlich, 1003 gerichtlich (nach 3100/3104). */
-const ANZEIGE_PHASE: Record<string, VVPosition["phase"]> = { "1000": "Außergerichtlich", "1003": "Gerichtlich" };
+const ANZEIGE_PHASE: Record<string, VVPosition["phase"]> = {
+  "1000": "Außergerichtlich",
+  "1003": "Gerichtlich",
+};
 const anzeigePhase = (p: VVPosition) => ANZEIGE_PHASE[p.nr] ?? p.phase;
 
 /**
@@ -83,7 +87,11 @@ function SatzRegler({ p, satz, onChange }: { p: VVPosition; satz: number; onChan
 
 /** Gleiche Positionen (Nr., Satz, Wert, Betrag) – erkennt einen schon angelegten, identischen Entwurf. */
 function gleichePositionen(a: RechnungsPosition[], b: RechnungsPosition[]): boolean {
-  const sig = (ps: RechnungsPosition[]) => ps.map((p) => `${p.vv}|${p.satz ?? ""}|${p.gegenstandswert ?? ""}|${round2(p.betrag)}`).sort().join(";");
+  const sig = (ps: RechnungsPosition[]) =>
+    ps
+      .map((p) => `${p.vv}|${p.satz ?? ""}|${p.gegenstandswert ?? ""}|${round2(p.betrag)}`)
+      .sort()
+      .join(";");
   return sig(a) === sig(b);
 }
 
@@ -108,7 +116,19 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
   const [akteId, setAkteId] = useState(gespeichert.akteId ?? "");
   useEffect(() => {
     try {
-      localStorage.setItem(speicherKey(user.id), JSON.stringify({ wertText, auftrag, pos, auftraggeber, anrechnung, pauschale, ust, akteId } satisfies Eingaben));
+      localStorage.setItem(
+        speicherKey(user.id),
+        JSON.stringify({
+          wertText,
+          auftrag,
+          pos,
+          auftraggeber,
+          anrechnung,
+          pauschale,
+          ust,
+          akteId,
+        } satisfies Eingaben),
+      );
     } catch {
       /* Speicher nicht verfügbar – Eingaben gelten dann nur bis zum Neuladen */
     }
@@ -126,7 +146,14 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
   const erg = useMemo(() => {
     const positionen = VV_KATALOG.filter((p) => p.nr !== "1008" && pos[p.nr]?.an).map((p) => ({ nr: p.nr, satz: pos[p.nr].satz }));
     if (erhoehung > 0) positionen.push({ nr: "1008", satz: round2(erhoehung) });
-    return berechneRvg({ positionen, gegenstandswert: Math.max(0, wert), anrechnung, auslagenpauschale: pauschale, ust, fassung });
+    return berechneRvg({
+      positionen,
+      gegenstandswert: Math.max(0, wert),
+      anrechnung,
+      auslagenpauschale: pauschale,
+      ust,
+      fassung,
+    });
   }, [pos, erhoehung, wert, anrechnung, pauschale, ust, fassung]);
 
   const voll = wertgebuehr(Math.max(0, wert), fassung);
@@ -142,7 +169,10 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
     if (!akte) return;
     setWertText(akte.gegenstandswert.toLocaleString("de-DE"));
     setAuftrag(akte.createdAt.slice(0, 10));
-    toast("Werte übernommen", { text: `Gegenstandswert und Auftragsdatum aus Akte ${akte.aktenzeichen}`, ton: "info" });
+    toast("Werte übernommen", {
+      text: `Gegenstandswert und Auftragsdatum aus Akte ${akte.aktenzeichen}`,
+      ton: "info",
+    });
   };
 
   const alsRechnung = (trotzdem = false) => {
@@ -151,7 +181,18 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
     const gleich = rechnungen.find((x) => x.akteId === akte.id && x.status === "entwurf" && gleichePositionen(x.positionen, positionen));
     if (gleich && !trotzdem) return setDublette(gleich);
     setDublette(null);
-    const [r] = erstelleRechnungen([{ akte, positionen, summen: { netto: erg.netto, ust: erg.ust, brutto: erg.brutto } }], "auto", "entwurf", user.id);
+    const [r] = erstelleRechnungen(
+      [
+        {
+          akte,
+          positionen,
+          summen: { netto: erg.netto, ust: erg.ust, brutto: erg.brutto },
+        },
+      ],
+      "auto",
+      "entwurf",
+      user.id,
+    );
     toast("Rechnungsentwurf erstellt", {
       text: `${r.nummer} · ${akte.aktenzeichen} · ${fmtEUR(r.brutto)}`,
       ton: "erfolg",
@@ -230,18 +271,26 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
           </div>
         </Card>
 
-        {/* Mobil: Ergebnis bleibt beim Scrollen sichtbar */}
-        <button
-          type="button"
-          onClick={() => document.getElementById("rvg-ergebnis")?.scrollIntoView({ behavior: "smooth", block: "start" })}
-          className="glass-strong sticky top-[78px] z-20 flex items-center gap-3 rounded-full py-2 pl-4 pr-2 text-left xl:hidden"
-        >
-          <span className="min-w-0 flex-1 text-[12.5px] text-fg-3">
-            Gesamt brutto · {erg.zeilen.length} {erg.zeilen.length === 1 ? "Position" : "Positionen"}
-          </span>
-          <AnimatedNumber value={erg.brutto} format={(n) => fmtEUR(n)} className="text-[16px] font-semibold" />
-          <Chip tone={fassung === "2025" ? "ink" : "amber"}>RVG {fassung}</Chip>
-        </button>
+        {/* Mobil/Tablet: Ergebnis bleibt beim Scrollen sichtbar – unten über der Tab-Leiste (bzw. am unteren Rand) statt oben
+            über den Gebührenzeilen, in der Ebene der Tab-Leiste (außerhalb des Seiteninhalts). Der untere Innenabstand des Inhalts
+            und scroll-padding-bottom halten Häkchen und Fokus darüber frei (I3-T07-02, WCAG 2.4.11). */}
+        {createPortal(
+          <button
+            type="button"
+            data-rvg-summe
+            onClick={() => document.getElementById("rvg-ergebnis")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            aria-label={`Gesamt brutto ${fmtEUR(erg.brutto)}, ${erg.zeilen.length} ${erg.zeilen.length === 1 ? "Position" : "Positionen"}, RVG ${fassung} – zum Ergebnis`}
+            className="glass-strong tabbar-deckend fixed bottom-[calc(var(--tabbar-h)+env(safe-area-inset-bottom)+16px)] left-3 right-[84px] z-30 flex min-h-11 items-center gap-2 rounded-full py-1.5 pl-4 pr-2 text-left md:bottom-5 md:left-auto md:right-24 md:w-[min(460px,calc(100vw-10rem))] xl:hidden"
+            style={{ boxShadow: "var(--glass-shadow-lg)" }}
+          >
+            <span className="min-w-0 flex-1 text-[12.5px] text-fg-3">
+              Gesamt brutto · {erg.zeilen.length} {erg.zeilen.length === 1 ? "Position" : "Positionen"}
+            </span>
+            <AnimatedNumber value={erg.brutto} format={(n) => fmtEUR(n)} className="text-[16px] font-semibold" />
+            <Chip tone={fassung === "2025" ? "ink" : "amber"}>RVG {fassung}</Chip>
+          </button>,
+          document.body,
+        )}
 
         <Card>
           <CardHeader icon={<FilePlus2 className="size-4" />} title="Gebührentatbestände" subtitle="Wählen Sie die angefallenen Gebühren; Rahmengebühren stellen Sie innerhalb des Rahmens ein." />
@@ -322,8 +371,22 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
                 set: setAnrechnung,
                 aus: !anrechnungMoeglich,
               },
-              { id: "rvg-7002", label: "Auslagenpauschale 7002", text: "20 % der Gebühren, höchstens 20,00 € je Angelegenheit.", v: pauschale, set: setPauschale, aus: false },
-              { id: "rvg-7008", label: "Umsatzsteuer 7008", text: "19 % auf Gebühren und Auslagen.", v: ust, set: setUst, aus: false },
+              {
+                id: "rvg-7002",
+                label: "Auslagenpauschale 7002",
+                text: "20 % der Gebühren, höchstens 20,00 € je Angelegenheit.",
+                v: pauschale,
+                set: setPauschale,
+                aus: false,
+              },
+              {
+                id: "rvg-7008",
+                label: "Umsatzsteuer 7008",
+                text: "19 % auf Gebühren und Auslagen.",
+                v: ust,
+                set: setUst,
+                aus: false,
+              },
             ].map((o) => (
               <div key={o.id} className={cn("flex items-start gap-3", o.aus && "opacity-55")}>
                 <div className="min-w-0 flex-1">
@@ -399,7 +462,7 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
         </Card>
       </div>
 
-      <div id="rvg-ergebnis" className="scroll-mt-24 xl:sticky xl:top-24">
+      <div id="rvg-ergebnis" className="scroll-mt-24 xl:sticky xl:top-7">
         <Card className="glow overflow-hidden">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -424,7 +487,14 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
                     {pauschale && (
                       <ErgebnisZeile
                         key="7002"
-                        z={{ nr: "7002", titel: "Auslagenpauschale", satz: 0, gegenstandswert: 0, betrag: a.auslagenpauschale, angelegenheit: a.key }}
+                        z={{
+                          nr: "7002",
+                          titel: "Auslagenpauschale",
+                          satz: 0,
+                          gegenstandswert: 0,
+                          betrag: a.auslagenpauschale,
+                          angelegenheit: a.key,
+                        }}
                         hinweis=""
                       />
                     )}

@@ -4,6 +4,7 @@ import { addDays, addMonthsBGB, diffDays, fmtDate, fmtEUR, round2, toLocalISO } 
 import { istWerktag } from "../feiertage";
 import { berechneNachRegel, regel as fristRegel } from "../fristen";
 import { berechneRvg, fassungFuerAuftrag, rvgRechnungsPositionen } from "../rvg";
+import { istBerufstraeger } from "../vertretung";
 import type {
   Akte, Aktivitaet, Automation, Dokument, Frist, Kontakt, KontaktRolle, Nachricht,
   Rechnung, Sachgebiet, Tenant, TenantData, Transaktion, User, Zeiteintrag,
@@ -16,8 +17,11 @@ import { heroesBerlin, heroesMuenchen, heroesHamburg, zusatzBerlin } from "./her
 /**
  * 10: ArbG-Präsentationsakte mit Gütetermin (T14) und drei weitere RSV-Akten am Ende, Portal-Freigaben, Freigabestatus,
  * Deckungsanfrage 142/26 als Brief-Entwurf, Zeuge „Seifert“, kein Gerichts-Az. in vorgerichtlichen Phasen.
+ * 11: Fristverantwortung (Vorgabe der Projektleitung): Notfristen und Fristen tragen immer Berufsträger; „Fremdgeld an
+ * Mandantin weiterleiten“ (131/26) ist eine Wiedervorlage von Mia Becker. 142/26: Herkunft der Schaden-Nr. (Notiz, Verlauf),
+ * Deckungsanfrage mit Antragsbestandteilen (10.200 € + 3.400 € = 13.600 €).
  */
-export const SEED_VERSION = 10;
+export const SEED_VERSION = 11;
 
 export interface SeedInput {
   tenant: Tenant;
@@ -168,6 +172,20 @@ export function createCtx(input: SeedInput, today: string): Ctx {
   return ctx;
 }
 
+/**
+ * Verantwortliche einer Frist in den Demodaten: Notfristen und Fristen tragen immer eine Anwältin, einen Anwalt bzw. Partner
+ * (Vorgabe der Projektleitung). Ist eine Fachangestellte oder Auszubildende eingetragen, übernimmt die Bearbeiterin bzw. der
+ * Bearbeiter der Akte, sonst der erste Berufsträger. Wiedervorlagen, Vorfristen und Termine dürfen Fachangestellten gehören.
+ */
+export function fristVerantwortung(ctx: Pick<Ctx, "users" | "anwaelte" | "data">, f: Pick<Frist, "typ" | "akteId" | "verantwortlichId">): string {
+  if (f.typ !== "frist" && f.typ !== "notfrist") return f.verantwortlichId;
+  const person = ctx.users.find((u) => u.id === f.verantwortlichId);
+  if (person && istBerufstraeger(person)) return f.verantwortlichId;
+  const bearbeiter = ctx.data.akten.find((a) => a.id === f.akteId)?.bearbeiterId;
+  const ra = ctx.users.find((u) => u.id === bearbeiter && istBerufstraeger(u)) ?? ctx.anwaelte[0];
+  return ra?.id ?? f.verantwortlichId;
+}
+
 /** Fügt eine Frist hinzu (mit Rechenweg, falls Regel). */
 export function addFrist(ctx: Ctx, f: Partial<Frist> & { akteId: string; titel: string; datum: string }): Frist {
   const frist: Frist = {
@@ -179,6 +197,7 @@ export function addFrist(ctx: Ctx, f: Partial<Frist> & { akteId: string; titel: 
     createdAt: ctx.dt(-ctx.rng.int(1, 20)),
     ...f,
   };
+  frist.verantwortlichId = fristVerantwortung(ctx, frist);
   ctx.data.fristen.push(frist);
   return frist;
 }

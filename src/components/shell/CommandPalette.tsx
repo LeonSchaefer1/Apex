@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { Command } from "cmdk";
 import { AnimatePresence, motion } from "motion/react";
@@ -6,14 +6,16 @@ import { FolderOpen, FileText, User, CalendarClock, CalendarPlus, Inbox, Keyboar
 import { toast, useUI } from "@/store/ui";
 import { useData } from "@/store/data";
 import { useSession } from "@/store/session";
-import { bereichErlaubt, navFuer } from "@/app/nav";
+import { bereichErlaubt, beschreibungFuer, navFuer } from "@/app/nav";
+import type { Ansprechpartner } from "@/core/types";
 import { darfLizenzSehen, darfVerwalten, istConsole } from "@/lib/backend";
 import type { Rolle } from "@/core/types";
-import { akteAusPfad, oeffneZeiterfassung } from "./Tastenkuerzel";
+import { akteAusKontext, oeffneZeiterfassung } from "./Tastenkuerzel";
 import { search, snippet } from "@/core/search";
 import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
 import { fmtDate } from "@/core/dates";
 import { Highlight } from "@/components/Highlight";
+import { istReineAnsicht, obersterDialog, fokussierbareIn } from "@/components/ui/Modal";
 import type { Akte } from "@/core/types";
 
 /** Sprungziel der Suche: Schnellaktion, Bereich (Navigation) oder Unterbereich (Reiter). */
@@ -27,7 +29,7 @@ interface Ziel {
   /** Tastaturkürzel außerhalb der Suche (z. B. „W“) */
   kuerzel?: string;
   /** statt Navigation: Aktion im Rahmen (Dialog, Übersicht) */
-  aktion?: "wiedervorlage" | "zeit" | "kuerzel" | "assistent";
+  aktion?: "wiedervorlage" | "zeit" | "kuerzel" | "assistent" | "passwort";
 }
 
 /** Schnellaktionen – die KI-Fallanalyse startet direkt für die zuletzt bearbeitete offene Akte. */
@@ -66,19 +68,21 @@ const UNTERBEREICHE: Ziel[] = [
   { to: "/abrechnung?tab=zeit", label: "Zeiterfassung", sub: "Abrechnung · Stoppuhr und Zeiteinträge", icon: <Timer />, stichworte: "Zeiten Stoppuhr Zeitliste" },
   { to: "/abrechnung?aktion=sammelabrechnung", label: "Sammelabrechnung", sub: "Abrechnung · mehrere Akten in einem Durchgang abrechnen", icon: <FileStack />, stichworte: "Sammelrechnung Stapelabrechnung RSV-Akten abrechnen mehrere Akten" },
   // Einstellungen: jeder Reiter mit Direktlink und Synonymen
-  { to: "/einstellungen?tab=kanzlei", label: "Kanzlei", sub: "Einstellungen · Name, Anschrift, Bundesland (Feiertage), Steuernummer", icon: <Building2 />, stichworte: "Kanzleidaten Anschrift Adresse Bundesland Kanzleisitz Steuernummer USt-IdNr Briefkopf" },
+  { to: "/einstellungen?tab=kanzlei", label: "Kanzlei", sub: "Einstellungen · Name, Anschrift, Bundesland (Feiertage), Briefkopf", icon: <Building2 />, stichworte: "Kanzleidaten Anschrift Adresse Bundesland Kanzleisitz Briefkopf Kanzleiprofil" },
+  { to: "/einstellungen?tab=kanzlei&abschnitt=rechnung", label: "Rechnungsangaben", sub: "Einstellungen · Kanzlei · Steuernummer, USt-IdNr., IBAN, BIC und Bank für Rechnungen", icon: <Receipt />, stichworte: "Rechnungsangaben Steuernummer USt-IdNr. USt-IdNr Umsatzsteuer-Identifikationsnummer UStIdNr IBAN BIC Bankverbindung Geschäftskonto Konto Bank § 14 UStG Pflichtangaben" },
   { to: "/einstellungen?tab=team", label: "Team & Zugänge", sub: "Einstellungen · Personen einladen, Rollen, Abwesenheit und Vertretung", icon: <UsersRound />, stichworte: "Benutzer Nutzer Mitarbeiter Einladen Rolle Abwesenheit Vertretung Startpasswort" },
   { to: "/einstellungen?tab=lizenz", label: "Lizenz", sub: "Einstellungen · Lifetime-Lizenz, Arbeitsplätze, Wartung, Übertragbarkeit", icon: <InfinityIcon />, stichworte: "Lizenz Lifetime Wartung Arbeitsplätze Lizenznummer Escrow Übertragbarkeit Preis" },
   { to: "/einstellungen?tab=datenschutz", label: "Datenschutz & Verträge", sub: "Einstellungen · § 43e BRAO, AVV, Unterauftragnehmer, Löschkonzept, Protokoll", icon: <Scale />, stichworte: "Datenschutz 43e BRAO AVV Auftragsverarbeitung Art. 28 DSGVO Unterauftragnehmer Löschkonzept Aufbewahrung Protokoll Verschwiegenheit 203 Verträge Muster" },
   { to: "/einstellungen?tab=ki", label: "KI-Einstellungen", sub: "Einstellungen · Live-KI oder Demo-KI, Datenfluss, Verarbeitungsort", icon: <Sparkles />, stichworte: "KI Künstliche Intelligenz Claude Anthropic Demo-KI Live-KI Verarbeitungsort Datenfluss" },
   { to: "/einstellungen?tab=darstellung", label: "Darstellung", sub: "Einstellungen · Hell, Dunkel, Schriftgröße, Apex Island, Kugel, Tastaturkürzel", icon: <Palette />, stichworte: "Dunkelmodus Hellmodus Theme Schriftgröße Schrift größer Kugel Apex Island Live-Meldungen Tastaturkürzel Einzeltasten Kürzel abschalten" },
+  { to: "#passwort", aktion: "passwort", label: "Passwort ändern", sub: "Eigenes Passwort ändern – mit dem aktuellen Passwort, für jede Rolle", icon: <KeyRound />, stichworte: "Passwort ändern Kennwort ändern neues Passwort eigenes Passwort Passwort wechseln" },
   { to: "/einstellungen?tab=datenschutz&abschnitt=sicherheit", label: "Anmeldung & Sicherheit", sub: "Einstellungen · Passwort, Zwei-Faktor-Anmeldung, Sperre bei Inaktivität", icon: <KeyRound />, stichworte: "Sicherheit Passwort Passwort ändern Kennwort Zwei-Faktor 2FA MFA Authenticator Sperre Inaktivität Anmeldung" },
 ];
 
-function bereicheFuer(rolle: Rolle | undefined): Ziel[] {
+function bereicheFuer(rolle: Rolle | undefined, ap?: Ansprechpartner): Ziel[] {
   return navFuer(rolle).map((n) => {
     const Icon = n.icon;
-    return { to: n.to, label: n.label, sub: n.beschreibung, icon: <Icon />, stichworte: n.kurz };
+    return { to: n.to, label: n.label, sub: beschreibungFuer(n, ap), icon: <Icon />, stichworte: n.kurz };
   });
 }
 
@@ -95,7 +99,8 @@ export function CommandPalette() {
   const verwalten = !!rolle && darfVerwalten(rolle);
   const [q, setQ] = useState("");
   const aktionen = useMemo(() => schnellaktionen(data.akten).filter((z) => erlaubt(z, rolle)), [data.akten, rolle]);
-  const bereiche = useMemo(() => bereicheFuer(rolle), [rolle]);
+  const ap = kanzlei?.tenant.ansprechpartner;
+  const bereiche = useMemo(() => bereicheFuer(rolle, ap), [rolle, ap]);
   const unterbereiche = useMemo(
     () =>
       UNTERBEREICHE.filter((z) => erlaubt(z, rolle)).map((z) =>
@@ -104,23 +109,85 @@ export function CommandPalette() {
     [rolle, verwalten],
   );
 
+  /** Wohin der Fokus nach dem Schließen der Suche zurückkehrt (Auslöser bzw. Auslöser eines per Strg+K geschlossenen Dialogs). */
+  const rueckfokus = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         // gesperrter Bildschirm: keine Suche über verborgenen Inhalten
         if (useSession.getState().gesperrt) return;
-        // Ein modaler Dialog hält den Fokus (Hintergrund inert) – die Suche öffnet erst nach dem Schließen
-        if (!useUI.getState().paletteOffen && document.querySelector('[aria-modal="true"]')) {
-          toast("Suche gerade nicht verfügbar", { text: "Bitte schließen Sie zuerst den offenen Dialog (Esc).", ton: "info" });
+        const offen = useUI.getState().paletteOffen;
+        if (!offen && document.querySelector('[aria-modal="true"]')) {
+          const oben = obersterDialog();
+          const el = oben?.el();
+          // Reine Ansicht (Dokumentvorschau, Entscheidung …): wie Escape schließen und die Suche in derselben Aktion öffnen
+          if (oben && el && document.querySelectorAll('[aria-modal="true"]').length === 1 && istReineAnsicht(el)) {
+            rueckfokus.current = oben.ausloeser;
+            oben.schliessen();
+            setPalette(true);
+            return;
+          }
+          // Dialog mit Eingaben: offen lassen – Getipptes landet weiter im Feld des Dialogs, nicht im Nichts
+          toast("Suche gerade nicht verfügbar", { text: "Bitte schließen Sie zuerst den offenen Dialog (Esc) – Ihre Eingaben bleiben bis dahin erhalten.", ton: "info" });
+          const akt = document.activeElement as HTMLElement | null;
+          if (el && (!akt || !el.contains(akt) || !/^(INPUT|TEXTAREA|SELECT)$/.test(akt.tagName))) {
+            const feld = fokussierbareIn(el).find((x) => /^(INPUT|TEXTAREA)$/.test(x.tagName));
+            feld?.focus();
+          }
           return;
         }
-        setPalette(!useUI.getState().paletteOffen);
+        if (!offen) {
+          const akt = document.activeElement;
+          rueckfokus.current = akt instanceof HTMLElement && akt !== document.body ? akt : null;
+        }
+        setPalette(!offen);
       }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, [setPalette]);
+
+  // Suche geöffnet: Fokus ins Suchfeld – auch wenn gerade noch ein (per Strg+K geschlossener) Dialog den Hintergrund inert hielt
+  const eingabe = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!paletteOffen) return;
+    let n = 0;
+    let raf = 0;
+    const fokus = () => {
+      const el = eingabe.current;
+      if (el && document.activeElement !== el && !el.closest("[inert]")) el.focus({ preventScroll: true });
+      if ((!el || document.activeElement !== el) && n++ < 20) raf = requestAnimationFrame(fokus);
+    };
+    raf = requestAnimationFrame(fokus);
+    // Bis das Suchfeld den Fokus hat (z. B. während eine Ansicht noch schließt), gehen getippte Zeichen nicht verloren
+    const puffer = (e: KeyboardEvent) => {
+      const el = eingabe.current;
+      if (!el || document.activeElement === el || e.ctrlKey || e.metaKey || e.altKey || e.key.length !== 1 || e.isComposing) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setQ((x) => x + e.key);
+    };
+    window.addEventListener("keydown", puffer, true);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("keydown", puffer, true);
+    };
+  }, [paletteOffen]);
+
+  // Suche geschlossen, ohne woanders hinzuspringen: Fokus zurück zum Auslöser (bzw. zum Auslöser des geschlossenen Dialogs)
+  useEffect(() => {
+    if (paletteOffen) return;
+    const ziel = rueckfokus.current;
+    rueckfokus.current = null;
+    if (!ziel) return;
+    const t = window.setTimeout(() => {
+      const akt = document.activeElement;
+      if (ziel.isConnected && !ziel.closest("[inert]") && (!akt || akt === document.body)) ziel.focus({ preventScroll: true });
+    }, 60);
+    return () => clearTimeout(t);
+  }, [paletteOffen]);
 
   // Escape schließt die Suche – vor allen anderen Ebenen (Assistent, Dialoge darunter bleiben offen).
   useEffect(() => {
@@ -204,9 +271,10 @@ export function CommandPalette() {
     if (!z.aktion) return go(z.to);
     setPalette(false);
     const ui = useUI.getState();
-    if (z.aktion === "wiedervorlage") ui.setWiedervorlage({ akteId: akteAusPfad(loc.pathname) });
-    else if (z.aktion === "zeit") oeffneZeiterfassung(loc.pathname);
+    if (z.aktion === "wiedervorlage") ui.setWiedervorlage(akteAusKontext(loc));
+    else if (z.aktion === "zeit") oeffneZeiterfassung(loc);
     else if (z.aktion === "kuerzel") ui.setKuerzel(true);
+    else if (z.aktion === "passwort") ui.setPasswortAendern(true);
     else oeffneAssistent();
   };
 
@@ -240,6 +308,7 @@ export function CommandPalette() {
               <div className="flex items-center gap-3 border-b border-[var(--line)] px-5">
                 <Sparkles className="size-[18px] shrink-0 text-ink" />
                 <Command.Input
+                  ref={eingabe}
                   autoFocus
                   value={q}
                   onValueChange={setQ}

@@ -148,7 +148,7 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
     if (window.matchMedia("(max-width: 1023px)").matches) {
       const ziel = document.getElementById("schriftsatz-vorschau");
       const scroller = document.getElementById("haupt-scroll");
-      if (ziel && scroller) scroller.scrollTo({ top: ziel.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 88, behavior: "smooth" });
+      if (ziel && scroller) scroller.scrollTo({ top: ziel.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 20, behavior: "smooth" });
       else ziel?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
     const kontext = { akte, data, tenant, user };
@@ -312,7 +312,7 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(300px,380px)_minmax(0,1fr)] lg:items-start">
       {/* ───────── Einstellungen ───────── */}
-      <Card className="min-w-0 !p-4 sm:!p-5 lg:sticky lg:top-24">
+      <Card className="min-w-0 !p-4 sm:!p-5 lg:sticky lg:top-7">
         <div className="mb-4 flex items-start gap-3">
           <span className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">
             <FileSignature className="size-[18px]" />

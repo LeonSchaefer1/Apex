@@ -1,5 +1,9 @@
 import type { Aktivitaet, CollectionKey, ConsoleSession, SessionInfo, Tenant, TenantData, User, Rolle, Sachgebiet, Bundesland } from "@/core/types";
 import { istBerufstraeger } from "../../core/vertretung";
+import type { Rechnungsangaben } from "../../core/abrechnung";
+import type { ConsolePasswortAnlass } from "./protokoll";
+export type { Rechnungsangaben } from "../../core/abrechnung";
+export type { ConsolePasswortAnlass } from "./protokoll";
 
 export interface BackendInfo {
   modus: "demo" | "server";
@@ -196,12 +200,15 @@ export class PasswortWechselNoetig extends Error {
 export const PASSWORT_MIN = 10;
 
 /** Mindestanforderung an ein selbst gewähltes Passwort (gleiche Regel im Demo-Backend und auf dem Server). Jede Meldung nennt Ursache und nächsten Schritt. */
-export function pruefeNeuesPasswort(neu: string, alt?: string): string | null {
+export function pruefeNeuesPasswort(neu: string, alt?: string, altBezeichnung = "dem Startpasswort"): string | null {
   if (neu.length < PASSWORT_MIN) return `Das neue Passwort ist zu kurz (${neu.length} von mindestens ${PASSWORT_MIN} Zeichen). Bitte verlängern Sie es – z. B. mit einem weiteren Wort.`;
   if (!/[A-Za-zÄÖÜäöüß]/.test(neu) || !/\d/.test(neu)) return "Das neue Passwort braucht Buchstaben und mindestens eine Ziffer. Bitte ergänzen Sie, was fehlt – z. B. eine Zahl am Ende.";
-  if (alt && neu === alt) return "Das neue Passwort ist identisch mit dem Startpasswort. Bitte wählen Sie ein anderes, nur Ihnen bekanntes Passwort.";
+  if (alt && neu === alt) return `Das neue Passwort ist identisch mit ${altBezeichnung}. Bitte wählen Sie ein anderes, nur Ihnen bekanntes Passwort.`;
   return null;
 }
+
+/** Meldung, wenn eine andere Rolle als Partner/Administration eine Fristautomatik schalten will (Demo-Backend und Server). */
+export const FRIST_AUTOMATIK_GESPERRT = "Fristautomatiken (Fristerkennung, Vorfristen, eEB) schalten nur Partner und Administration – an ihnen hängt die Fristenkontrolle der Kanzlei. Bitte wenden Sie sich an sie.";
 
 /** Anmeldung braucht den zweiten Faktor: Passwort war richtig, jetzt folgt der Code aus der Authenticator-App. */
 export class ZweiFaktorNoetig extends Error {
@@ -221,6 +228,19 @@ export const ZUGANG_DEAKTIVIERT = "Ihr Zugang ist deaktiviert – bitte wenden S
 
 /** Falsche Zugangsdaten – ohne Hinweis darauf, ob es die E-Mail-Adresse gibt. */
 export const ANMELDUNG_FALSCH = "E-Mail-Adresse oder Passwort stimmen nicht. Bitte prüfen Sie Schreibweise sowie Groß- und Kleinschreibung – oder lassen Sie über „Passwort vergessen?“ ein neues Startpasswort vergeben.";
+
+/** Fehler mit Bezug zu einem Formularfeld (Meldung am Feld statt allgemein) – Demo-Backend wirft ihn, der Server liefert `feld` mit. */
+export function feldFehler<F extends string>(text: string, feld: F): Error & { feld: F } {
+  return Object.assign(new Error(text), { feld });
+}
+/** Feld eines Fehlers aus `feldFehler` bzw. der Serverantwort (oder undefined). */
+export function fehlerFeld(e: unknown): string | undefined {
+  const f = (e as { feld?: unknown } | null)?.feld;
+  return typeof f === "string" ? f : undefined;
+}
+
+/** Falsches aktuelles Passwort beim Ändern des eigenen Passworts – Ursache und nächster Schritt. */
+export const ALTES_PASSWORT_FALSCH = "Das aktuelle Passwort stimmt nicht. Bitte prüfen Sie Groß- und Kleinschreibung. Passwort vergessen? Partner oder Administration vergeben Ihnen unter Team & Zugänge ein Startpasswort.";
 
 /** Längstes zulässiges Passwort – längere Eingaben werden vor dem (teuren) Hashen abgewiesen. */
 export const PASSWORT_MAX = 256;
@@ -295,6 +315,11 @@ export interface Backend {
   zweiFaktorAnmelden(vorgang: string, code: string): Promise<Sitzung>;
   /** Ersetzt das Startpasswort durch ein eigenes und meldet an (wirft `ZweiFaktorNoetig`, wenn die Person Zwei-Faktor nutzt). */
   passwortErsetzen(email: string, startPasswort: string, neuesPasswort: string): Promise<Sitzung>;
+  /**
+   * Eigenes Passwort ändern (jede Rolle, an die Sitzung gebunden): altes Passwort prüfen (falsch = Fehlversuch wie bei der
+   * Anmeldung), gleiche Regeln wie bei der ersten Anmeldung; Protokoll „Eigenes Passwort geändert – …“.
+   */
+  passwortAendern(altesPasswort: string, neuesPasswort: string): Promise<void>;
   /** Wiederanmeldung nach der Sperre bei Inaktivität: prüft das Passwort der angemeldeten Person. */
   entsperren(passwort: string): Promise<void>;
   me(): Promise<Sitzung | null>;
@@ -316,6 +341,8 @@ export interface Backend {
     profilSpeichern(p: KanzleiProfil): Promise<Tenant>;
     /** Zwei-Faktor-Pflicht und Sperre bei Inaktivität (nur Partner und Administration). */
     sicherheitSpeichern(s: KanzleiSicherheit): Promise<Tenant>;
+    /** Rechnungsangaben (Steuernummer, USt-IdNr., Geschäftskonto) – nur Partner und Administration; leere Felder entfernen die Angabe. */
+    rechnungsangabenSpeichern(a: Rechnungsangaben): Promise<Tenant>;
   };
   zweiFaktor: {
     status(): Promise<ZweiFaktorStatus>;
@@ -340,7 +367,8 @@ export interface Backend {
     remove(tenantId: string): Promise<void>;
     reset(tenantId: string): Promise<void>;
     setStatus(tenantId: string, status: Tenant["status"]): Promise<void>;
-    neuesPasswort(userId: string): Promise<string>;
+    /** Neues Startpasswort – nur mit Angabe, wer es angefordert hat und warum (Kanzleiprotokoll, Hinweis an Partner/Administration). */
+    neuesPasswort(userId: string, anlass: ConsolePasswortAnlass): Promise<string>;
     /** Stellt für Zugänge der fest eingebauten Beispielkanzleien das öffentliche Demo-Passwort wieder her. */
     standardPasswort(userId: string): Promise<void>;
   };

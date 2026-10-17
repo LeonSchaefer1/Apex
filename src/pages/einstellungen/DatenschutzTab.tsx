@@ -6,7 +6,7 @@ import { SPERRE_MINUTEN, darfVerwalten, getBackend, getInfo, hatBeispieldaten, i
 import { fmtDate, fmtTime, relTime, today } from "@/core/dates";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei, useSession } from "@/store/session";
-import { toast } from "@/store/ui";
+import { toast, useUI } from "@/store/ui";
 import { Avatar, Button, Chip, Segmented, Switch, confirmDialog } from "@/components/ui";
 import { ZweiFaktorEinrichtung } from "@/components/sicherheit/ZweiFaktorEinrichtung";
 import { DateiDialog, type AusgabeDatei } from "@/pages/fristen/dateiAusgabe";
@@ -365,13 +365,18 @@ function AnmeldungSicherheit({ praesentation }: { praesentation: boolean }) {
               <KeyRound className="size-4 text-ink" /> Passwort ändern
             </h3>
             <p className="mt-1 text-[12.5px] leading-relaxed text-fg-2">
-              Ein neues Passwort vergeben Partner und Administration unter Team & Zugänge („⋯“ → „Neues Startpasswort vergeben“). Bei der nächsten Anmeldung legen Sie damit Ihr eigenes Passwort fest – der Vorgang steht im Protokoll.
+              Ihr eigenes Passwort ändern Sie hier selbst – mit dem aktuellen Passwort; der Vorgang steht im Protokoll. Ein Startpasswort über Team & Zugänge ist für den Notfall gedacht (Passwort vergessen).
             </p>
-            {darf && (
-              <Button size="sm" className="mt-2" onClick={() => nav("/einstellungen?tab=team")}>
-                Team & Zugänge öffnen
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button size="sm" variant="primary" icon={<KeyRound className="size-3.5" />} onClick={() => useUI.getState().setPasswortAendern(true)}>
+                Passwort ändern
               </Button>
-            )}
+              {darf && (
+                <Button size="sm" variant="ghost" onClick={() => nav("/einstellungen?tab=team")}>
+                  Team & Zugänge öffnen
+                </Button>
+              )}
+            </div>
           </div>
         </div>
         <div className="min-w-0 rounded-[18px] bg-[var(--surface-2)] p-4 ring-1 ring-[var(--line)]">

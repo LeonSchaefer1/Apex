@@ -11,7 +11,8 @@ import { fassungFuerAuftrag } from "@/core/rvg";
 import type { Aktivitaet, Akte, Kontakt, Rechnung, RechnungsPosition, Tenant, User, Zeiteintrag } from "@/core/types";
 import { cn } from "@/lib/cn";
 import { aktiveZahlungen, aktualisierePositionen, belegArt, erfasseZahlung, korrigiereRechnung, loescheEntwurf, nimmZahlungZurueck, sendeZahlungserinnerungen, setzeFormat, stelleRechnung, storniereRechnung } from "./aktionen";
-import { betragFuerMinuten, ERECHNUNG_PFLICHT, FASSUNG_LABEL, fmtDauer, fmtSatz, istEntwurfsKennung, istOffen, istReineZeitrechnung, korrekturText, leistungszeitraum, offenerBetrag, parseBetrag, RSV_VORSTEUER_HINWEIS, rsvBlockText, satzAusPosition } from "./lib";
+import { betragFuerMinuten, ERECHNUNG_PFLICHT, FASSUNG_LABEL, fmtDauer, fmtSatz, ibanFormatiert, ibanGueltig, istEntwurfsKennung, istOffen, istReineZeitrechnung, korrekturText, leistungszeitraum, offenerBetrag, parseBetrag, RSV_VORSTEUER_HINWEIS, rsvBlockText, satzAusPosition } from "./lib";
+import { StellenDialog } from "./StellenDialog";
 import { Anschrift, Betrag, Briefkopf, FORMAT_INFO, FormatChip, InfoZeile, StatusChip, useLookups } from "./ui";
 import { xrechnungXml, zugferdXml } from "./erechnung";
 import { DateiDialog, type AusgabeDatei } from "@/pages/fristen/dateiAusgabe";
@@ -26,11 +27,19 @@ function vvAnzeige(vv: string) {
   return vv;
 }
 
-/** Steuernummer bzw. USt-IdNr. der Kanzlei (§ 14 Abs. 4 S. 1 Nr. 2 UStG) – bis zur Pflege im Kanzleiprofil als Platzhalter. */
-function steuerAngabe(t: Tenant): { label: string; wert: string; platzhalter: boolean } {
-  if (t.ustIdNr) return { label: "USt-IdNr.", wert: t.ustIdNr, platzhalter: false };
-  if (t.steuernummer) return { label: "Steuernummer", wert: t.steuernummer, platzhalter: false };
-  return { label: "USt-IdNr.", wert: "DE000000000", platzhalter: true };
+/** Steuernummer und/oder USt-IdNr. der Kanzlei (§ 14 Abs. 4 S. 1 Nr. 2 UStG) aus dem Kanzleiprofil – sonst gekennzeichneter Platzhalter. */
+function steuerAngaben(t: Tenant): { label: string; wert: string; platzhalter: boolean }[] {
+  const a: { label: string; wert: string; platzhalter: boolean }[] = [];
+  if (t.ustIdNr?.trim()) a.push({ label: "USt-IdNr.", wert: t.ustIdNr.replace(/\s+/g, "").toUpperCase(), platzhalter: false });
+  if (t.steuernummer?.trim()) a.push({ label: "Steuernummer", wert: t.steuernummer.trim(), platzhalter: false });
+  return a.length ? a : [{ label: "USt-IdNr.", wert: "DE000000000", platzhalter: true }];
+}
+
+/** Geschäftskonto aus dem Kanzleiprofil (Zahlungsweg auf der Rechnung) – Platzhalter nur ohne gültige IBAN. */
+function kontoAngabe(t: Tenant): { iban: string; bic?: string; bank?: string; platzhalter: boolean } {
+  const g = t.geschaeftskonto;
+  if (g?.iban && ibanGueltig(g.iban)) return { iban: ibanFormatiert(g.iban), bic: g.bic?.trim() || undefined, bank: g.bank?.trim() || undefined, platzhalter: false };
+  return { iban: "DE00 0000 0000 0000 0000 00", bic: "XXXXDEXXXXX", platzhalter: true };
 }
 
 function PositionZeile({ p }: { p: RechnungsPosition }) {
@@ -153,7 +162,9 @@ export function RechnungPapier({
   const wert = reineZeit ? undefined : (r.positionen.find((p) => p.gegenstandswert)?.gegenstandswert ?? akte?.gegenstandswert);
   const entwurf = r.status === "entwurf" || istEntwurfsKennung(r.nummer);
   const vorschuss = r.art === "vorschuss";
-  const steuer = steuerAngabe(tenant);
+  const steuer = steuerAngaben(tenant);
+  const konto = kontoAngabe(tenant);
+  const stempel = r.status === "storniert" || r.status === "bezahlt";
   return (
     <div className="paper relative overflow-hidden px-5 py-6 sm:px-10 sm:py-9">
       {r.status === "entwurf" && (
@@ -174,14 +185,25 @@ export function RechnungPapier({
         </div>
       </div>
 
-      <div className="relative mt-8">
-        {(r.status === "storniert" || r.status === "bezahlt") && (
+      {/* Stempel im eigenen Bereich rechts neben dem Betreff (nicht darüber) – Gegenstandswert und Betreff bleiben lesbar, auch im Druck (I3-T07-05) */}
+      <div className="mt-8 flex flex-wrap items-start justify-between gap-x-8 gap-y-3">
+        <div className="min-w-0 flex-1 basis-[240px]">
+          <div className="text-[19px] font-semibold tracking-[-0.02em]">{belegArt(r)}</div>
+          {r.korrekturVon && korrekturNummer && <div className="mt-0.5 text-[12.5px] font-medium">{korrekturText(korrekturNummer)} (storniert)</div>}
+          {akte && (
+            <div className="mt-1 text-[12.5px] opacity-75">
+              In Sachen {akte.titel}
+              {wert ? ` · Gegenstandswert ${fmtEUR(wert)}` : ""}
+            </div>
+          )}
+        </div>
+        {stempel && (
           <motion.div
             initial={{ scale: 1.6, opacity: 0, rotate: -14 }}
-            animate={{ scale: 1, opacity: 1, rotate: -9 }}
+            animate={{ scale: 1, opacity: 1, rotate: -6 }}
             transition={{ type: "spring", stiffness: 380, damping: 18 }}
             className={cn(
-              "pointer-events-none absolute -top-1 right-0 rounded-[8px] border-[2.5px] border-current px-3 py-1 text-center font-black uppercase tracking-[0.14em]",
+              "pointer-events-none mr-2 mt-1 shrink-0 self-center rounded-[8px] border-[2.5px] border-current px-3 py-1 text-center font-black uppercase tracking-[0.14em]",
               r.status === "storniert" ? "text-seal" : "text-green",
             )}
           >
@@ -189,14 +211,6 @@ export function RechnungPapier({
             {r.status === "bezahlt" && r.bezahltAm && <div className="mt-1 text-[12.5px] font-bold tracking-[0.1em]">am {fmtDate(r.bezahltAm)}</div>}
             {r.status === "storniert" && r.storniertAm && <div className="mt-1 text-[12.5px] font-bold tracking-[0.1em]">am {fmtDate(r.storniertAm)}</div>}
           </motion.div>
-        )}
-        <div className="text-[19px] font-semibold tracking-[-0.02em]">{belegArt(r)}</div>
-        {r.korrekturVon && korrekturNummer && <div className="mt-0.5 text-[12.5px] font-medium">{korrekturText(korrekturNummer)} (storniert)</div>}
-        {akte && (
-          <div className={cn("mt-1 text-[12.5px] opacity-75", (r.status === "storniert" || r.status === "bezahlt") && "pr-32")}>
-            In Sachen {akte.titel}
-            {wert ? ` · Gegenstandswert ${fmtEUR(wert)}` : ""}
-          </div>
         )}
       </div>
 
@@ -293,11 +307,20 @@ export function RechnungPapier({
           </p>
         )}
         <div className="rounded-[6px] bg-black/[0.035] px-3 py-2 text-[12.5px]">
-          <span className="font-medium">Bankverbindung</span> · Geschäftskonto {tenant.kurzname} · IBAN <span className="mono">DE00 0000 0000 0000 0000 00</span> · BIC{" "}
-          <span className="mono">XXXXDEXXXXX</span> <span className="opacity-55">(Platzhalter)</span>
-          <br />
-          <span className="font-medium">{steuer.label}</span> <span className="mono">{steuer.wert}</span>
-          {steuer.platzhalter && <span className="opacity-55"> (Platzhalter – im Kanzleiprofil hinterlegen)</span>}
+          <span className="font-medium">Bankverbindung</span> · {konto.bank ?? `Geschäftskonto ${tenant.kurzname}`} · IBAN <span className="mono">{konto.iban}</span>
+          {konto.bic && (
+            <>
+              {" "}
+              · BIC <span className="mono">{konto.bic}</span>
+            </>
+          )}
+          {konto.platzhalter && <span className="opacity-55"> (Platzhalter – im Kanzleiprofil hinterlegen)</span>}
+          {steuer.map((st) => (
+            <span key={st.label} className="block">
+              <span className="font-medium">{st.label}</span> <span className="mono">{st.wert}</span>
+              {st.platzhalter && <span className="opacity-55"> (Platzhalter – im Kanzleiprofil hinterlegen)</span>}
+            </span>
+          ))}
         </div>
         {rvg && <p className="text-[12.5px] opacity-60">Abrechnung nach dem Rechtsanwaltsvergütungsgesetz, Gebührentabelle {FASSUNG_LABEL[fassung]} (§ 13 RVG, Übergangsrecht § 60 RVG).</p>}
       </div>
@@ -332,6 +355,8 @@ export function RechnungVorschau({ id, onClose }: { id: string | null; onClose: 
   const [betrag, setBetrag] = useState("");
   const [datum, setDatum] = useState(today());
   const [datei, setDatei] = useState<AusgabeDatei | null>(null);
+  // Rückfrage vor dem Stellen: nächste Nummer, Festschreibung, Pflichtangaben (I3-T07-03)
+  const [stellenFrage, setStellenFrage] = useState(false);
   const [bearbeiten, setBearbeiten] = useState(false);
   const buchungen = useCol("buchungen");
 
@@ -479,7 +504,7 @@ export function RechnungVorschau({ id, onClose }: { id: string | null; onClose: 
         <Button variant="ghost" className="mr-auto !text-seal" icon={<Trash2 className="size-4" />} onClick={entwurfLoeschen}>
           Entwurf löschen
         </Button>
-        <Button variant="primary" icon={<Send className="size-4" />} onClick={stellen}>
+        <Button variant="primary" icon={<Send className="size-4" />} onClick={() => setStellenFrage(true)}>
           Rechnung stellen
         </Button>
       </>
@@ -642,6 +667,15 @@ export function RechnungVorschau({ id, onClose }: { id: string | null; onClose: 
         </>
       )}
       <DateiDialog datei={datei} onClose={() => setDatei(null)} />
+      <StellenDialog
+        open={stellenFrage}
+        anzahl={1}
+        onClose={() => setStellenFrage(false)}
+        onStellen={() => {
+          setStellenFrage(false);
+          stellen();
+        }}
+      />
     </Drawer>
   );
 }

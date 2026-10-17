@@ -1,8 +1,10 @@
 // Fristart wählen: Suchfeld als Kombifeld mit Trefferliste (Listbox, aria-activedescendant) – ein Tab-Stopp,
 // ↑/↓ markieren, Enter übernimmt den markierten bzw. ersten Treffer und springt ins nächste Feld (I2-T18-02).
+// Der markierte Treffer ist deutlich erkennbar (Tönung, Balken links, Rahmen); nach der Übernahme steht der Name der
+// gewählten Fristart im Feld statt des Suchtexts (I3-T18-01). Tastaturhinweis nur bei feinem Zeiger (I3-T14-03).
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { motion } from "motion/react";
-import { ShieldAlert } from "lucide-react";
+import { Check, ShieldAlert } from "lucide-react";
 import { SearchField } from "@/components/ui";
 import { FRIST_REGELN, fristArt, type FristRegel } from "@/core/fristen";
 import { cn } from "@/lib/cn";
@@ -57,9 +59,10 @@ export function FristartAuswahl({
   const listeRef = useRef<HTMLDivElement>(null);
   const tastatur = useRef(false);
 
-  // Neue Suche → erster Treffer markiert; ohne Suche die gewählte Fristart
+  // Neue Suche → erster Treffer markiert; ohne Suche (bzw. mit dem Namen der gewählten Fristart im Feld) die gewählte Fristart
   useEffect(() => {
-    setAktivKey(suche.trim() ? (sichtbar[0]?.key ?? "") : value);
+    const gewaehltImFeld = !!value && FRIST_REGELN.find((r) => r.key === value)?.titel === suche;
+    setAktivKey(suche.trim() && !gewaehltImFeld ? (sichtbar[0]?.key ?? "") : value);
   }, [suche]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const aktivIndex = sichtbar.findIndex((r) => r.key === aktivKey);
@@ -95,6 +98,8 @@ export function FristartAuswahl({
 
   const waehle = (r: FristRegel, weiter: boolean) => {
     onWaehle(r);
+    // Name der gewählten Fristart ins Feld (statt des Suchtexts) – die Liste zeigt sie markiert und gewählt
+    onSuche(r.titel);
     setAktivKey(r.key);
     if (weiter && naechstesFeldId) requestAnimationFrame(() => document.getElementById(naechstesFeldId)?.focus());
   };
@@ -140,7 +145,12 @@ export function FristartAuswahl({
         placeholder="z. B. Berufung ArbG, Kündigung, 517, Mahnbescheid …"
       />
       <p id={`${id}-tipp`} className="mt-1 text-[12px] text-fg-3">
-        Wörter in beliebiger Reihenfolge, auch Abkürzungen (ArbG, LAG, OLG) · <span className="kbd">↑</span> <span className="kbd">↓</span> markieren · <span className="kbd">Enter</span> übernehmen
+        Wörter in beliebiger Reihenfolge, auch Abkürzungen (ArbG, LAG, OLG)
+        {/* Tastaturhinweis nur mit Maus/Trackpad – am Touch-Gerät gibt es kein ↑ ↓ und Enter */}
+        <span className="hidden pointer-fine:inline">
+          {" "}
+          · <span className="kbd">↑</span> <span className="kbd">↓</span> markieren · <span className="kbd">Enter</span> übernehmen
+        </span>
       </p>
       <div
         ref={listeRef}
@@ -166,15 +176,19 @@ export function FristartAuswahl({
                   aria-selected={gewaehlt}
                   onClick={() => waehle(r, false)}
                   onMouseDown={(e) => e.preventDefault()}
+                  data-markiert={markiert || undefined}
                   className={cn(
-                    "relative isolate flex min-h-[44px] w-full cursor-pointer items-center gap-2 rounded-[12px] px-2.5 py-2 text-left",
-                    !gewaehlt && "hover:bg-[var(--ink-softer)]",
+                    "relative isolate flex min-h-[44px] w-full cursor-pointer items-center gap-2 rounded-[12px] py-2 pl-3.5 pr-2.5 text-left",
+                    !gewaehlt && !markiert && "hover:bg-[var(--ink-softer)]",
+                    // Markierung: getönter Hintergrund + Rahmen + Balken links – hell und dunkel deutlich von den Nachbarzeilen abgesetzt
+                    markiert && !gewaehlt && "bg-ink-soft",
                     markiert && "ring-2 ring-inset ring-[var(--ink)]",
                   )}
                 >
                   {gewaehlt && (
                     <motion.span layoutId={`${id}-gewaehlt`} className="absolute inset-0 -z-10 rounded-[12px] bg-surface shadow-[0_2px_10px_-4px_rgba(20,30,80,0.2),0_0_0_1px_var(--line)]" transition={{ type: "spring", stiffness: 520, damping: 38 }} />
                   )}
+                  {markiert && <span aria-hidden className="absolute bottom-1.5 left-1 top-1.5 w-1 rounded-full bg-[var(--ink)]" />}
                   <div className="min-w-0 flex-1">
                     <div className={cn("text-[13px] leading-snug", gewaehlt ? "font-semibold text-fg" : "font-medium text-fg-2")}>{r.titel}</div>
                     <div className="text-[12.5px] leading-snug text-fg-3">
@@ -186,6 +200,18 @@ export function FristartAuswahl({
                       <ShieldAlert className="size-3.5" aria-hidden />
                       {r.typ === "notfrist" ? "Notfrist" : "nicht verlängerbar"}
                     </span>
+                  )}
+                  {gewaehlt ? (
+                    <span className="inline-flex shrink-0 items-center gap-1 text-[11.5px] font-semibold text-ink">
+                      <Check className="size-4" strokeWidth={2.6} aria-hidden />
+                      gewählt
+                    </span>
+                  ) : (
+                    markiert && (
+                      <span className="hidden shrink-0 text-[11.5px] font-medium text-ink pointer-fine:inline" aria-hidden>
+                        Enter ↵
+                      </span>
+                    )
                   )}
                 </div>
               );

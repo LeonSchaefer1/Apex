@@ -14,6 +14,7 @@ import { useData } from "@/store/data";
 import type { LlmMessage } from "@/ai/llm";
 import { hoeren, sprechen, spracheingabeVerfuegbar, sprachausgabeVerfuegbar } from "@/lib/speech";
 import { useIsMobile } from "@/lib/useMedia";
+import { telefonTeile, telHref } from "@/lib/telefon";
 import { cn } from "@/lib/cn";
 import { ApexOrb, type OrbZustand } from "./ApexOrb";
 
@@ -56,10 +57,12 @@ function speichereVerlauf(key: string, msgs: Msg[]) {
   }
 }
 
-/** Bedienelement oder Text unter einem Punkt (die Kugel selbst ist dabei durchlässig)? */
+/** Bedienelement, Text, Kennzahl oder Diagramm unter einem Punkt (die Kugel selbst ist dabei durchlässig)? */
 function belegtAn(x: number, y: number): boolean {
   const el = document.elementFromPoint(x, y);
   if (!el || el === document.documentElement || el === document.body) return false;
+  // Diagramme, Verlaufsstreifen und Bilder sind Inhalt – auch ohne Textknoten (z. B. 90-Tage-Verlauf im Systemstatus)
+  if (el.closest("svg, canvas, img, [role=img], [role=progressbar], [role=meter]")) return true;
   if (el.closest("a[href], button, input, select, textarea, summary, label, [role=button], [role=link], [role=tab], [role=switch], [role=checkbox], [role=menuitem], [tabindex]:not([tabindex='-1'])")) {
     // große, klickbare Flächen (z. B. eine ganze Karte) zählen nur, wenn dort auch Text steht
     const r = el.closest("a[href], button, [role=button], [role=link]")?.getBoundingClientRect();
@@ -147,21 +150,34 @@ export function AssistantDock() {
       raf = requestAnimationFrame(() => {
         const w = window.innerWidth;
         const h = window.innerHeight;
-        // Fläche der Kugel: 60 × 60 px, 24 px vom Rand (bottom-6 right-6)
+        // Fläche der Kugel: 60 × 60 px, 24 px vom Rand (bottom-6 right-6) – geprüft wird die ganze Kreisfläche plus 6 px Rand,
+        // damit auch Zeilenenden, Kennzahlen und Tabellenzellen am Rand der Kugel erkannt werden (I3-T06-05)
         const cx = w - 54;
         const cy = h - 54;
         const huelle = kugelRef.current;
         const vorher = huelle?.style.pointerEvents ?? "";
         if (huelle) huelle.style.pointerEvents = "none";
-        const punkte: [number, number][] = [[cx, cy], [cx - 20, cy], [cx + 20, cy], [cx, cy - 20], [cx, cy + 20], [cx - 14, cy - 14], [cx + 14, cy - 14], [cx - 14, cy + 14], [cx + 14, cy + 14]];
-        const belegt = punkte.some(([x, y]) => belegtAn(x, y));
+        const punkte: [number, number][] = [];
+        for (let dx = -36; dx <= 36; dx += 9) for (let dy = -36; dy <= 36; dy += 9) if (dx * dx + dy * dy <= 36 * 36) punkte.push([cx + dx, cy + dy]);
+        const belegt = punkte.some(([x, y]) => x < w && y < h && belegtAn(x, y));
         if (huelle) huelle.style.pointerEvents = vorher;
         setAusweichen(belegt);
       });
     };
     pruefe();
-    const scroller = document.getElementById("haupt-scroll");
-    scroller?.addEventListener("scroll", pruefe, { passive: true });
+    // Beim Scrollen gedrosselt prüfen (alle Scroll-Container, z. B. auch Tabellen) und nach dem Ende noch einmal
+    let zuletzt = 0;
+    let ende: ReturnType<typeof setTimeout> | undefined;
+    const beimScrollen = () => {
+      const jetzt = performance.now();
+      if (jetzt - zuletzt > 120) {
+        zuletzt = jetzt;
+        pruefe();
+      }
+      clearTimeout(ende);
+      ende = setTimeout(pruefe, 160);
+    };
+    window.addEventListener("scroll", beimScrollen, { passive: true, capture: true });
     window.addEventListener("resize", pruefe);
     let t: ReturnType<typeof setTimeout> | undefined;
     let t2: ReturnType<typeof setTimeout> | undefined;
@@ -178,8 +194,9 @@ export function AssistantDock() {
       cancelAnimationFrame(raf);
       clearTimeout(t);
       clearTimeout(t2);
+      clearTimeout(ende);
       obs.disconnect();
-      scroller?.removeEventListener("scroll", pruefe);
+      window.removeEventListener("scroll", beimScrollen, { capture: true });
       window.removeEventListener("resize", pruefe);
     };
   }, [kugelSichtbar]);
@@ -478,22 +495,29 @@ export function AssistantDock() {
                       ))}
                     </div>
                     <div className="mt-auto pt-6">
-                      <button
-                        type="button"
-                        onClick={() => void senden(ansprechBitte(ap))}
-                        className="flex w-full items-center gap-3 rounded-[18px] p-3 text-left ring-1 ring-[var(--line)] transition-colors hover:bg-ink-softer"
-                      >
-                        <span className="grid size-9 place-items-center rounded-full bg-green-soft text-green">
-                          <Phone className="size-4" />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-[13px] font-semibold">Lieber mit einem Menschen sprechen?</span>
-                          <span className="block truncate text-[13px] text-fg-3">
-                            {sitzung.tenant.ansprechpartner.name} · {sitzung.tenant.ansprechpartner.telefon}
+                      <div className="rounded-[18px] ring-1 ring-[var(--line)]">
+                        <button
+                          type="button"
+                          onClick={() => void senden(ansprechBitte(ap))}
+                          className="flex w-full items-center gap-3 rounded-t-[18px] p-3 pb-1.5 text-left transition-colors hover:bg-ink-softer"
+                        >
+                          <span className="grid size-9 place-items-center rounded-full bg-green-soft text-green">
+                            <Phone className="size-4" />
                           </span>
-                          <span className="block text-[12.5px] text-fg-3">Rückruf {RUECKRUF_SIMULIERT}</span>
-                        </span>
-                      </button>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-[13px] font-semibold">Lieber mit einem Menschen sprechen?</span>
+                            <span className="block truncate text-[13px] text-fg-3">{ap.name}</span>
+                            <span className="block text-[12.5px] text-fg-3">Rückruf {RUECKRUF_SIMULIERT}</span>
+                          </span>
+                        </button>
+                        {/* Durchwahl antippbar (tel:) – eigener Link, nicht im Knopf verschachtelt (I3-T12-01) */}
+                        <div className="flex items-center gap-2 px-3 pb-2.5 pl-[60px] text-[13px]">
+                          <span className="text-fg-3">Durchwahl</span>
+                          <a href={telHref(ap.telefon)} className="inline-flex min-h-[32px] items-center font-semibold text-ink underline decoration-[var(--ink-soft)] underline-offset-2 hover:decoration-ink" aria-label={`${ap.name} anrufen: ${ap.telefon}`}>
+                            {ap.telefon}
+                          </a>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ) : (
@@ -669,7 +693,18 @@ function Rich({ text }: { text: string }) {
       {zeilen.map((z, i) => {
         const istPunkt = /^\s*([•\-*]|\d+\.)\s+/.test(z);
         const inhalt = z.replace(/^\s*([•\-*]|\d+\.)\s+/, "");
-        const teile = inhalt.split(/(\*\*[^*]+\*\*)/g).map((t, k) => (t.startsWith("**") ? <strong key={k} className="font-semibold">{t.slice(2, -2)}</strong> : <span key={k}>{t}</span>));
+        // **fett** und Telefonnummern als antippbare Links (tel:) – z. B. die Durchwahl der Ansprechpartnerin (I3-T12-01)
+        const mitTel = (t: string, k: number) =>
+          telefonTeile(t).map((x, j) =>
+            x.tel ? (
+              <a key={`${k}-${j}`} href={x.tel} className="whitespace-nowrap font-semibold text-ink underline decoration-[var(--ink-soft)] underline-offset-2 hover:decoration-ink" aria-label={`${x.t} anrufen`}>
+                {x.t}
+              </a>
+            ) : (
+              <span key={`${k}-${j}`}>{x.t}</span>
+            ),
+          );
+        const teile = inhalt.split(/(\*\*[^*]+\*\*)/g).map((t, k) => (t.startsWith("**") ? <strong key={k} className="font-semibold">{mitTel(t.slice(2, -2), k)}</strong> : <span key={k}>{mitTel(t, k)}</span>));
         if (!z.trim()) return <div key={i} className="h-1" />;
         return istPunkt ? (
           <div key={i} className="flex gap-2">

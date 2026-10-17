@@ -108,3 +108,10 @@ test("Widerspruch Gerichts-Az. ↔ gewählte Akte wird erkannt", async () => {
   assert.match(k!.az, /28 O 211/);
   assert.equal(gerichtsAzKonflikt(urteil, neumann, akten), undefined);
 });
+
+test("Alle Anhänge beim Namen: abgelegte und nicht abgelegte Strukturdaten (I3-T02-03)", async () => {
+  const { anhaengeText } = await import("./analyse");
+  const n = { anhaenge: [{ name: "Urteil_28O211-26.pdf", groesseKb: 120 }, { name: "Zustellungsnachricht.xml", groesseKb: 4 }] } as Parameters<typeof anhaengeText>[0];
+  assert.equal(anhaengeText(n, "Gericht"), "2 Anhänge: Urteil_28O211-26.pdf in ‚Gericht‘ abgelegt · Zustellungsnachricht.xml (Strukturdaten) nicht abgelegt");
+  assert.equal(anhaengeText({ anhaenge: [] }, "Gericht"), "");
+});

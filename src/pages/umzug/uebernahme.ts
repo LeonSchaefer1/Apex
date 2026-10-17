@@ -1,4 +1,4 @@
-// Führt die Übernahme aus: Kontakte (zusammengeführt), Akten, Fristen (zur Vier-Augen-Kontrolle) und Dokument-Verweise.
+// Führt die Übernahme aus: Kontakte (zusammengeführt), Akten, Fristen (zur Vier-Augen-Kontrolle) und Datenblatt je Akte.
 // Jeder Lauf trägt eine `umzugLaufId` an allen angelegten Datensätzen und wird für „Rückgängig machen“ vorgemerkt.
 import type { Akte, Aktivitaet, Bundesland, CollectionKey, Dokument, Frist, Kontakt, User } from "@/core/types";
 import { addDays, fmtDate, nowLocal, today, uid } from "@/core/dates";
@@ -364,8 +364,9 @@ export async function fuehreUmzugAus(opts: {
         sachgebiet: z.sachgebiet,
         phase: abgeschlossen ? "Abgeschlossen" : "Außergerichtlich",
         status: z.status,
-        // Ohne Abschlussdatum im Export: Aufbewahrung vorsorglich ab Übernahme (§ 50 Abs. 1 BRAO)
-        ...(abgeschlossen ? { abgeschlossenAm: z.abgeschlossenAm ?? heute } : {}),
+        // Ohne Abschlussdatum im Export: Aufbewahrung vorsorglich ab Übernahme (§ 50 Abs. 1 BRAO) – gekennzeichnet, damit der
+        // Kopf nicht „Abgeschlossen am <Übernahmetag>“ behauptet (I3-T11-01)
+        ...(abgeschlossen ? { abgeschlossenAm: z.abgeschlossenAm ?? heute, ...(z.abgeschlossenAm ? {} : { abschlussdatumUnbekannt: true }) } : {}),
         umzugLaufId: laufId,
         mandantId: mId,
         gegnerId,
@@ -437,7 +438,7 @@ export async function fuehreUmzugAus(opts: {
 
   opts.onZwischenstand?.(e);
 
-  // 4 · Dokument-Verweise: Datenblatt je Akte mit allen Originalwerten
+  // 4 · Datenblatt je Akte mit allen Originalwerten
   const akten = zuImportieren.filter((z) => akteFuer.has(z.nr));
   onFortschritt("dokumente", { done: 0, total: akten.length });
   const dPause = Math.max(14, Math.min(50, 700 / Math.max(1, akten.length)));

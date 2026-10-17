@@ -118,7 +118,12 @@ test("Assistent (offline): „Ja“ auf die Rückfrage nach dem Rückruf, Anspre
     assert.ok(ja.werkzeuge.includes("Rückruf angefordert"), ja.text);
     assert.match(ja.text, /Rückruf bei Markus Seidel angefordert/);
     const frist = await frageAssistent({ verlauf: [{ role: "user", content: "Wann endet die Kündigungsschutzklage bei Zugang am 1.10.2026?" }], sitzung, nav, voice: false });
-    assert.ok(frist.links.some((l) => l.to === "/fristen?rechner=1&regel=kschg_klage&ereignis=2026-10-01"), JSON.stringify(frist.links));
+    const rechner = frist.links.map((l) => new URL(l.to, "http://x")).find((u) => u.pathname === "/fristen" && u.searchParams.get("rechner") === "1");
+    assert.ok(rechner, JSON.stringify(frist.links));
+    assert.equal(rechner.searchParams.get("regel"), "kschg_klage");
+    assert.equal(rechner.searchParams.get("ereignis"), "2026-10-01");
+    // Herkunft des Ereignisdatums für den Rechenweg („Ereignisdatum aus der Frage an den Apex Assistenten übernommen“)
+    assert.equal(rechner.searchParams.get("herkunft"), "der Frage an den Apex Assistenten");
     // Vorschläge nur mit Aktenzeichen, die es gibt
     const leer = { ...data, akten: data.akten.filter((a) => !a.id.startsWith("hero-")) };
     const v = vorschlaege(leer).find((x) => x.startsWith("Öffne die Akte"));
@@ -369,7 +374,8 @@ test("Assistent (offline): nicht verlängerbare Fristen nach Dringlichkeit, Notf
     const lage = fristenLage(d.fristen, heute);
     const h = await frag("Welche Fristen sind heute fällig?");
     if (lage.faellig.length > 1) assert.ok(h.startsWith(`Heute sind ${lage.faellig.length} Fristen fällig`), h);
-    if (lage.wiedervorlagen.length === 1) assert.match(h, /dazu eine Wiedervorlage/);
+    // seit SEED_VERSION 11 ist die Fremdgeld-Aufgabe eine Wiedervorlage – ohne fällige Frist heißt es „nur eine Wiedervorlage“
+    if (lage.wiedervorlagen.length === 1) assert.match(h, lage.faellig.length ? /dazu eine Wiedervorlage/ : /nur eine Wiedervorlage/);
   } finally {
     console.warn = warn;
   }

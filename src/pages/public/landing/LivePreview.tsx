@@ -18,15 +18,18 @@ import { useTakt } from "./basis";
 const SCHRITTE = 17;
 const TAKT = 950;
 
+// Urteil des Landgerichts Berlin II → Berufung zum Kammergericht: Feiertage am Ort des Berufungsgerichts (I3-T00-03)
+const GERICHTSORT = { feiertagsOrt: "Kammergericht, Berufungsgericht", kanzleiLand: "BE" } as const;
+
 function beispiel() {
   const heute = today();
   for (let i = 3; i < 60; i++) {
     const ereignis = addDays(heute, -i);
-    const r = berechneNachRegel("berufung", ereignis, "BE");
+    const r = berechneNachRegel("berufung", ereignis, "BE", undefined, GERICHTSORT);
     if (r.verschoben && r.ende >= heute) return { ereignis, ...r };
   }
   const ereignis = addDays(heute, -3);
-  return { ereignis, ...berechneNachRegel("berufung", ereignis, "BE") };
+  return { ereignis, ...berechneNachRegel("berufung", ereignis, "BE", undefined, GERICHTSORT) };
 }
 
 const kurz = (z: string) =>

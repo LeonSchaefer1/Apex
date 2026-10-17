@@ -8,6 +8,7 @@ import { toast } from "@/store/ui";
 import { cn } from "@/lib/cn";
 import { schuetzeLeerzeichen } from "@/core/dates";
 import { anzeigeText, sprechText, type Satz } from "./daten";
+import { StatusZeile } from "./KartenArbeit";
 
 const TON: Record<string, string> = {
   fg: "font-semibold text-fg",
@@ -99,14 +100,19 @@ function useVorlesen(saetze: Satz[]) {
   return { aktiv, verfuegbar, start, stopp };
 }
 
-export function Briefing({ saetze, erstellt }: { saetze: Satz[]; erstellt: string }) {
+/**
+ * KI-Tagesbriefing. `warnungen` (z. B. pausierte Fristerkennung) stehen immer zuerst und bleiben auch am Smartphone sichtbar;
+ * dort steht außerdem der Betriebsstatus (beA, E-Mail) als erste Zeile – die Kopfleiste zeigt ihn mobil nur als Symbol.
+ */
+export function Briefing({ saetze: tagesSaetze, erstellt, warnungen = [] }: { saetze: Satz[]; erstellt: string; warnungen?: Satz[] }) {
+  const saetze = warnungen.length ? [...warnungen, ...tagesSaetze] : tagesSaetze;
   const { aktiv, verfuegbar, start, stopp } = useVorlesen(saetze);
   const spricht = aktiv !== null;
   const mobil = useIsMobile();
   const [offen, setOffen] = useState(false);
-  // Auf dem Smartphone zunächst nur der wichtigste Satz – damit Fristen und Posteingang sofort sichtbar sind.
+  // Auf dem Smartphone zunächst nur der wichtigste Satz (nach den Warnungen) – damit Fristen und Posteingang sofort sichtbar sind.
   const kompakt = mobil && !offen && !spricht;
-  const sichtbar = kompakt ? saetze.slice(0, 1) : saetze;
+  const sichtbar = kompakt ? saetze.slice(0, warnungen.length + 1) : saetze;
 
   return (
     <motion.section
@@ -139,11 +145,12 @@ export function Briefing({ saetze, erstellt }: { saetze: Satz[]; erstellt: strin
           </button>
         </div>
       </div>
+      {mobil && <StatusZeile uhrzeit className="relative mt-3" />}
       <div className="relative mt-3.5 space-y-1.5 text-[15px] leading-[1.6] text-fg-2 sm:text-[16px]">
         {sichtbar.map((satz, i) => (
           <p
             key={i}
-            className={cn("transition-[opacity,filter] duration-500", spricht && aktiv !== i && "opacity-40")}
+            className={cn("transition-[opacity,filter] duration-500", i < warnungen.length && "rounded-[12px] bg-amber-soft px-2.5 py-1", spricht && aktiv !== i && "opacity-40")}
             title={anzeigeText(satz)}
           >
             {satz.map((teil, k) =>
@@ -160,7 +167,7 @@ export function Briefing({ saetze, erstellt }: { saetze: Satz[]; erstellt: strin
           </p>
         ))}
       </div>
-      {kompakt && saetze.length > 1 && (
+      {kompakt && saetze.length > sichtbar.length && (
         <button type="button" onClick={() => setOffen(true)} className="relative mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-ink">
           Posteingang und Termine im Briefing
           <ChevronDown className="size-4" />

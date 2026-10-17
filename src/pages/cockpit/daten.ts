@@ -2,7 +2,7 @@
 import { useMemo } from "react";
 import { useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
-import { addDays, diffDays, fmtDateShort, fmtEUR, today, wochentagName } from "@/core/dates";
+import { addDays, diffDays, fmtDate, fmtDateShort, fmtEUR, fmtTime, today, wochentagName } from "@/core/dates";
 import { istWerktag } from "@/core/feiertage";
 import { vertreteneIds, vertretungsUmfang } from "@/core/vertretung";
 import { gruss as foermlicherGruss } from "@/lib/rollen";
@@ -11,7 +11,8 @@ import {
   briefingText, finanzZahlen, fristArtLabel, motorZahlen, naechsteTermine, posteingangZahlen, tagesbriefing,
   type BriefingSatz, type BriefingTeil, type FinanzZahlen,
 } from "@/core/kennzahlen";
-import type { Akte, Aktivitaet, Bundesland, Frist, FristTyp, ISODate, Nachricht, User } from "@/core/types";
+import type { Akte, Aktivitaet, Automation, Bundesland, Frist, FristTyp, ISODate, Nachricht, User } from "@/core/types";
+import { folgeWaehrendPause, fristAutomatikKurzname, pausierteFristAutomatiken } from "@/core/automationen";
 
 /** Ziel des 38h-Motors (Stunden je Woche und Kanzlei). */
 export const ZIEL_STUNDEN = 38;
@@ -112,6 +113,21 @@ export interface CockpitDaten {
   kiAkte?: Akte;
   kiAkteFrist?: Frist;
   briefing: Satz[];
+  /** Warnungen vor dem Briefing: pausierte Fristautomatik (Fristerkennung, Vorfristen, eEB) mit Zeitpunkt und Person. */
+  warnungen: Satz[];
+}
+
+/** „Fristerkennung pausiert seit 17.10.2026, 01:05 Uhr (Dr. Julia Hartmann) – Neue beA-Nachrichten …“ als Briefing-Satz. */
+export function fristAutomatikWarnungen(automationen: Automation[], team: Map<string, User>): Satz[] {
+  return pausierteFristAutomatiken(automationen).map((a) => {
+    const wer = a.pausiertVon ? team.get(a.pausiertVon)?.name : undefined;
+    const seit = a.pausiertAm ? ` seit ${fmtDate(a.pausiertAm.slice(0, 10))}, ${fmtTime(a.pausiertAm)} Uhr${wer ? ` (${wer})` : ""}` : "";
+    return [
+      { t: "Achtung: ", ton: "seal" as const },
+      { t: `${fristAutomatikKurzname(a.key)} pausiert${seit}`, ton: "amber" as const, href: "/automatisierung" },
+      { t: ` – ${folgeWaehrendPause(a.key)}` },
+    ];
+  });
 }
 
 /** Gesprochene Fassung: Aktenzeichen und Paragrafen so, wie man sie vorliest. */
@@ -135,6 +151,7 @@ export function useCockpitDaten(ansicht: Ansicht): CockpitDaten {
   const rechnungen = useData((s) => s.data.rechnungen);
   const buchungen = useData((s) => s.data.buchungen);
   const transaktionen = useData((s) => s.data.transaktionen);
+  const automationen = useData((s) => s.data.automationen);
 
   return useMemo(() => {
     const heute = today();
@@ -271,9 +288,9 @@ export function useCockpitDaten(ansicht: Ansicht): CockpitDaten {
       lage, bisWerktag, ueberfaellig, heuteFaellig, kritischWoche, woche, kritischste,
       posteingang, wartetAufKi, kiFertig, eeb, termine, termineHeute, vertretung, vertreten, wochenTage, handlungsbedarf,
       aktenMitFrist: aktenMitFristAnzahl, aktenNurPrio: handlungsbedarf.length - aktenMitFristAnzahl, motor, finanzen,
-      kiAkte, kiAkteFrist, briefing,
+      kiAkte, kiAkteFrist, briefing, warnungen: fristAutomatikWarnungen(automationen, teamMap),
     };
-  }, [fristen, aktenArr, nachrichten, aktivitaeten, rechnungen, buchungen, transaktionen, ansicht, user, team, tenant.bundesland]);
+  }, [fristen, aktenArr, nachrichten, aktivitaeten, rechnungen, buchungen, transaktionen, automationen, ansicht, user, team, tenant.bundesland]);
 }
 
 export function euro(n: number) {

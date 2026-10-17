@@ -6,16 +6,52 @@ import { create } from "zustand";
 import { cn } from "@/lib/cn";
 import { Button } from "./Button";
 
-/** Zählt offene Dialoge (Modal, Drawer) – z. B. damit die schwebende Tab-Leiste dahinter verschwindet. */
-const useDialoge = create<{ offen: number }>(() => ({ offen: 0 }));
-function useDialogZaehlung(open: boolean) {
+/** Offener Dialog im Stapel: Art (zentriertes Modal oder Seitenpanel rechts) und sein Element – z. B. für die Lage der Meldungen. */
+export interface OffenerDialog {
+  id: number;
+  art: "modal" | "drawer";
+  el: () => HTMLElement | null;
+  /** Schließt den Dialog wie Escape bzw. „Schließen“ (Fokus kehrt zum Auslöser zurück). */
+  schliessen: () => void;
+  /** Element, das beim Öffnen den Fokus hatte (Auslöser) – z. B. für die Rückkehr nach Strg+K. */
+  ausloeser: HTMLElement | null;
+}
+
+/** Stapel offener Dialoge (Modal, Drawer) – z. B. damit die schwebende Tab-Leiste dahinter verschwindet und Meldungen ausweichen. */
+const useDialoge = create<{ stapel: OffenerDialog[] }>(() => ({ stapel: [] }));
+let naechsterDialog = 1;
+function useDialogZaehlung(open: boolean, art: OffenerDialog["art"], ref: RefObject<HTMLElement | null>, onClose: () => void) {
+  const schliessen = useRef(onClose);
+  useEffect(() => {
+    schliessen.current = onClose;
+  });
   useEffect(() => {
     if (!open) return;
-    useDialoge.setState((s) => ({ offen: s.offen + 1 }));
-    return () => useDialoge.setState((s) => ({ offen: Math.max(0, s.offen - 1) }));
-  }, [open]);
+    const id = naechsterDialog++;
+    const akt = typeof document !== "undefined" ? document.activeElement : null;
+    const ausloeser = akt instanceof HTMLElement && akt !== document.body ? akt : null;
+    useDialoge.setState((s) => ({ stapel: [...s.stapel, { id, art, el: () => ref.current, schliessen: () => schliessen.current(), ausloeser }] }));
+    return () => useDialoge.setState((s) => ({ stapel: s.stapel.filter((d) => d.id !== id) }));
+  }, [open, art, ref]);
 }
-export const useDialogOffen = () => useDialoge((s) => s.offen > 0);
+export const useDialogOffen = () => useDialoge((s) => s.stapel.length > 0);
+/** Der zuoberst liegende offene Dialog (oder undefined). */
+export const useObersterDialog = () => useDialoge((s) => s.stapel[s.stapel.length - 1]);
+/** Der zuoberst liegende offene Dialog – außerhalb von React (z. B. in Tastatur-Handlern). */
+export const obersterDialog = (): OffenerDialog | undefined => useDialoge.getState().stapel[useDialoge.getState().stapel.length - 1];
+
+/** Texteingaben, deren Inhalt beim Schließen verloren ginge (Auswahllisten und Schalter zählen nicht). */
+const TEXTFELD = 'textarea, [contenteditable]:not([contenteditable="false"]), input:not([type]), input[type="text"], input[type="search"], input[type="email"], input[type="number"], input[type="tel"], input[type="url"], input[type="password"], input[type="date"], input[type="time"], input[type="datetime-local"]';
+
+/**
+ * Reine Ansicht (Dokumentvorschau, Entscheidung, Kontaktansicht): kein sichtbares Texteingabefeld – oder ausdrücklich
+ * mit `ansicht` markiert. Strg+K darf sie wie Escape schließen; Dialoge mit Eingaben bleiben offen (I3-T06-03).
+ */
+export function istReineAnsicht(el: HTMLElement): boolean {
+  if (el.dataset.ansicht === "true") return true;
+  if (el.dataset.ansicht === "false") return false;
+  return !Array.from(el.querySelectorAll<HTMLElement>(TEXTFELD)).some((f) => f.getClientRects().length > 0 && !(f as HTMLInputElement).disabled && !(f as HTMLInputElement).readOnly);
+}
 
 /**
  * Ebenen-Stapel für Escape: Dialoge, Seitenpanels und Menüs melden sich beim Öffnen an. Escape schließt nur die
@@ -160,10 +196,10 @@ function setzeAnfangsfokus(root: HTMLElement | null, mitEingabe: boolean) {
   (feld ?? root.querySelector<HTMLElement>("[data-dialog-inhalt]") ?? root).focus();
 }
 
-export function Modal({ open, onClose, title, subtitle, children, footer, size = "md", icon }: { open: boolean; onClose: () => void; title: ReactNode; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode; size?: "sm" | "md" | "lg" | "xl"; icon?: ReactNode }) {
+export function Modal({ open, onClose, title, subtitle, children, footer, size = "md", icon, ansicht }: { open: boolean; onClose: () => void; title: ReactNode; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode; size?: "sm" | "md" | "lg" | "xl"; icon?: ReactNode; /** reine Ansicht (true) bzw. Eingabedialog (false) – sonst nach Eingabefeldern bestimmt */ ansicht?: boolean }) {
   useEsc(open, onClose);
-  useDialogZaehlung(open);
   const ref = useRef<HTMLDivElement>(null);
+  useDialogZaehlung(open, "modal", ref, onClose);
   useFokusfalle(open, ref);
   const titelId = useId();
   useEffect(() => {
@@ -182,6 +218,7 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
             role="dialog"
             aria-modal="true"
             aria-labelledby={titelId}
+            data-ansicht={ansicht === undefined ? undefined : String(ansicht)}
             tabIndex={-1}
             initial={{ opacity: 0, y: 40, scale: 0.96, filter: "blur(6px)" }}
             animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
@@ -216,10 +253,10 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
   );
 }
 
-export function Drawer({ open, onClose, title, subtitle, children, footer, width = 560, icon }: { open: boolean; onClose: () => void; title: ReactNode; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode; width?: number; icon?: ReactNode }) {
+export function Drawer({ open, onClose, title, subtitle, children, footer, width = 560, icon, ansicht }: { open: boolean; onClose: () => void; title: ReactNode; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode; width?: number; icon?: ReactNode; /** reine Ansicht (true) bzw. Eingabedialog (false) – sonst nach Eingabefeldern bestimmt */ ansicht?: boolean }) {
   useEsc(open, onClose);
-  useDialogZaehlung(open);
   const ref = useRef<HTMLElement>(null);
+  useDialogZaehlung(open, "drawer", ref, onClose);
   useFokusfalle(open, ref);
   const titelId = useId();
   useEffect(() => {
@@ -238,6 +275,7 @@ export function Drawer({ open, onClose, title, subtitle, children, footer, width
             role="dialog"
             aria-modal="true"
             aria-labelledby={titelId}
+            data-ansicht={ansicht === undefined ? undefined : String(ansicht)}
             tabIndex={-1}
             initial={{ x: "105%" }}
             animate={{ x: 0 }}

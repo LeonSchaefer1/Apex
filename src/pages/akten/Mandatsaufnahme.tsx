@@ -78,6 +78,22 @@ interface Entwurf {
   kollision: Kollision;
 }
 
+/**
+ * Hat der Entwurf inhaltliche Eingaben? Bloßes Umschalten („Neuer Mandant“, „Firma / Organisation“) zählt nicht –
+ * erst Name, Mandant, Sache, Rechtsschutz, Kündigungsdaten oder eine Kollisionsentscheidung (I3-T04-01).
+ */
+export function entwurfHatInhalt(e: Pick<Entwurf, "nachrichtId" | "mandantId" | "entwurf" | "sache" | "rsv" | "kschg" | "kollision">): boolean {
+  const voll = (v: unknown) => typeof v === "string" && v.trim() !== "";
+  if (e.nachrichtId || e.mandantId) return true;
+  const { typ: _typ, ...kontakt } = e.entwurf;
+  void _typ;
+  if (Object.values(kontakt).some(voll)) return true;
+  if ([e.sache.titel, e.sache.thema, e.sache.gegner, e.sache.wert, e.sache.beschreibung].some(voll)) return true;
+  if ([e.rsv.versicherung, e.rsv.nummer, e.rsv.schadennummer, e.rsv.selbstbeteiligung].some(voll)) return true;
+  if ([e.kschg?.zugang, e.kschg?.entgelt].some(voll)) return true;
+  return !!e.kollision && [e.kollision.entscheidung, e.kollision.vermerk].some(voll);
+}
+
 const entwurfKey = (userId: string) => `apex.mandatsaufnahme.entwurf.${userId}`;
 const ENTWURF_MAX_MS = 24 * 60 * 60 * 1000;
 const SPEICHER = [() => sessionStorage, () => localStorage];
@@ -86,7 +102,9 @@ function liesEntwurf(speicher: () => Storage, userId: string): Entwurf | null {
     const raw = speicher().getItem(entwurfKey(userId));
     if (!raw) return null;
     const e = JSON.parse(raw) as Entwurf;
-    if (!e || typeof e.schritt !== "number" || !e.sache || !e.entwurf) return null;
+    if (!e || typeof e.schritt !== "number" || !e.sache || !e.entwurf || !e.rsv) return null;
+    // Leere Entwürfe (nur „Neuer Mandant“ angeklickt) nicht anbieten
+    if (!entwurfHatInhalt(e)) return null;
     return Date.now() - new Date(e.gespeichert).getTime() > ENTWURF_MAX_MS ? null : e;
   } catch {
     return null;
@@ -288,12 +306,18 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
     if (startMarke) startJson.current = formJson;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startMarke]);
-  const geaendert = startJson.current !== null && formJson !== startJson.current;
+  const inhalt = entwurfHatInhalt({ nachrichtId: quelle?.id ?? null, mandantId, entwurf, sache, rsv, kschg, kollision });
+  const geaendert = startJson.current !== null && formJson !== startJson.current && inhalt;
 
-  // Entwurf bis zum Abschluss in sessionStorage halten
+  // Entwurf bis zum Abschluss in sessionStorage halten – erst ab der ersten inhaltlichen Eingabe (I3-T04-01)
   useEffect(() => {
     if (!open || erfolg || bereits || offenerEntwurf || startJson.current === null) return;
     if (formJson === startJson.current) return;
+    if (!inhalt) {
+      // Eingaben wieder gelöscht: kein leerer Entwurf bleibt stehen
+      loescheEntwurf(user.id);
+      return;
+    }
     speichereEntwurf(user.id, { gespeichert: nowLocal(), nachrichtId: quelle?.id ?? null, schritt, modus, mandantId, entwurf, sache, rsv, portalWahl, kschg, kollision });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formJson, schritt, open, erfolg, bereits, offenerEntwurf]);
@@ -394,9 +418,11 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
   const entscheidungGilt = !!kollision.entscheidung && kollision.fuer === trefferKey;
   const entscheidung = entscheidungGilt ? kollision.entscheidung : "";
 
-  // Mandantenportal: ohne E-Mail-Adresse kein Zugang – dann standardmäßig aus
+  // Mandantenportal: ohne E-Mail-Adresse kein Zugang – dann standardmäßig aus; bei Kollisionstreffern ebenfalls aus,
+  // bis das Mandat übernommen ist (I3-T04-02)
   const mandantEmail = (modus === "bestehend" ? mandant?.email : emailUngueltig(entwurf.email) ? "" : entwurf.email)?.trim() ?? "";
-  const portal = !!mandantEmail && (portalWahl ?? true);
+  const abgelehnt = treffer.length > 0 && entscheidung === "abgelehnt";
+  const portal = !abgelehnt && !!mandantEmail && (portalWahl ?? treffer.length === 0);
 
   // Kündigungsschutz: Klagefrist (Fristenkern, Regel kschg_klage) und Gegenstandswert-Vorschlag 3 × Bruttomonatsentgelt
   const arbeitsrecht = sache.sachgebiet === "Arbeitsrecht";
@@ -991,7 +1017,8 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                   <div className="grid grid-cols-1 gap-4">
                     <div className="rounded-[18px] bg-[var(--surface)] p-4 shadow-[0_0_0_1px_var(--line)]">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="mono rounded-[8px] bg-ink-soft px-2 py-0.5 text-[13px] font-semibold text-ink">{az}</span>
+                        {/* Bei Ablehnung entsteht keine Akte – also auch kein Aktenzeichen (I3-T04-02) */}
+                        {abgelehnt ? <Chip tone="seal">Abgelehnt – keine Akte</Chip> : <span className="mono rounded-[8px] bg-ink-soft px-2 py-0.5 text-[13px] font-semibold text-ink">{az}</span>}
                         <Chip>{sache.sachgebiet}</Chip>
                         {sache.prioritaet === "hoch" && <Chip tone="seal">Hohe Priorität</Chip>}
                       </div>
@@ -1015,10 +1042,10 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                             <span className="num">{rsv.selbstbeteiligung.trim() && !Number.isNaN(parseEuro(rsv.selbstbeteiligung)) ? fmtEUR(parseEuro(rsv.selbstbeteiligung)) : "keine angegeben"}</span>
                           </Zeile>
                         )}
-                        <Zeile label="Phase">Mandatsaufnahme</Zeile>
+                        {!abgelehnt && <Zeile label="Phase">Mandatsaufnahme</Zeile>}
                       </dl>
                     </div>
-                    {arbeitsrecht && (klagefrist || wertVorschlag > 0) && (
+                    {!abgelehnt && arbeitsrecht && (klagefrist || wertVorschlag > 0) && (
                       <div className="rounded-[18px] bg-[var(--surface)] p-4 shadow-[0_0_0_1px_var(--line)]">
                         <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold">
                           <CalendarClock className="size-4 text-ink" /> Kündigungsschutz
@@ -1034,12 +1061,22 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                       onVermerk={(v) => setKollision({ ...kollision, vermerk: v })}
                       fehler={zeigeFehler && !!fehler[3]}
                     />
+                    {abgelehnt ? (
+                      <div role="status" className="flex items-start gap-2.5 rounded-[18px] bg-ink-softer p-4 text-[13px] leading-snug text-fg-2 shadow-[inset_0_0_0_1px_var(--line)]">
+                        <Info className="mt-0.5 size-4 shrink-0 text-ink" aria-hidden />
+                        <span>
+                          <span className="block font-semibold text-fg">Bei Ablehnung: keine Akte, kein Portal, Vermerk im Protokoll</span>
+                          Es werden keine Vollmacht, keine Mandatsbestätigung und keine Fristen angelegt; die Entscheidung mit den Kollisionstreffern steht im Protokoll.
+                        </span>
+                      </div>
+                    ) : (
+                    <>
                     <div className="flex items-center gap-3 rounded-[16px] p-1">
                       <label htmlFor="ma-portal" className={cn("min-w-0 flex-1", mandantEmail && "cursor-pointer")}>
                         <span className="block text-[13.5px] font-semibold">Mandantenportal freischalten</span>
                         <span className="block text-[12.5px] text-fg-3">
                           {mandantEmail
-                            ? `Zugangs-E-Mail an ${mandantEmail} – der Mandant sieht den Stand seiner Sache und kann Unterlagen sicher hochladen.`
+                            ? `Zugangs-E-Mail an ${mandantEmail} – der Mandant sieht den Stand seiner Sache und kann Unterlagen sicher hochladen.${treffer.length && portalWahl === null ? " Wegen der Kollisionstreffer zunächst aus." : ""}`
                             : "Keine E-Mail-Adresse des Mandanten erfasst – ohne Adresse kein Portalzugang. Sie können das Portal später in der Akte freischalten."}
                         </span>
                       </label>
@@ -1065,6 +1102,8 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                         {sache.sachgebiet === "Arbeitsrecht" ? " und auf den Ausschluss der Kostenerstattung im ersten Rechtszug (§ 12a Abs. 1 S. 2 ArbGG)" : ""} erteilen – das Paket dokumentiert {sache.sachgebiet === "Arbeitsrecht" ? "beide Hinweise" : "den Hinweis"} zur Gegenzeichnung.
                       </span>
                     </p>
+                    </>
+                    )}
                   </div>
                 )}
               </motion.div>

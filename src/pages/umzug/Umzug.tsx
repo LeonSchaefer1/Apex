@@ -265,7 +265,7 @@ export default function Umzug() {
   const laufRueckgaengig = async (lauf: UmzugLauf) => {
     const ok = await confirmDialog({
       titel: `Umzug vom ${fmtDate(lauf.datum.slice(0, 10))} rückgängig machen?`,
-      text: `Alle in diesem Lauf angelegten Akten, Kontakte, Fristen und Dokument-Verweise werden entfernt – auch Fristen, Dokumente und Notizen, die seitdem in diesen Akten angelegt wurden. Aktualisierte Akten erhalten ihren vorherigen Stand zurück. Ihr Altsystem ist davon nicht betroffen.`,
+      text: `Alle in diesem Lauf angelegten Akten, Kontakte, Fristen und Datenblätter je Akte werden entfernt – auch Fristen, Dokumente und Notizen, die seitdem in diesen Akten angelegt wurden. Aktualisierte Akten erhalten ihren vorherigen Stand zurück. Ihr Altsystem ist davon nicht betroffen.`,
       bestaetigen: "Rückgängig machen",
       gefahr: true,
     });
@@ -427,7 +427,12 @@ export default function Umzug() {
               <span className="title-md">Was zieht um?</span>
               <ChevronDown className={cn("size-4 shrink-0 text-fg-3 transition-transform duration-300", wasZiehtUm && "rotate-180")} aria-hidden />
             </button>
-            {!wasZiehtUm && <p className="mt-1 text-[12.5px] text-fg-3">Akten, Kontakte, Fristen, Wiedervorlagen und Datenblatt – FiBu und Zugangsdaten nicht.</p>}
+            {/* Kurzfassung vollständig – auch, was nicht aus dieser Datei kommt (I3-T11-02) */}
+            {!wasZiehtUm && (
+              <p className="mt-1 text-[12.5px] leading-snug text-fg-3">
+                Akten, Kontakte, Fristen, Wiedervorlagen und Datenblatt je Akte. Nicht aus dieser Datei: Dokumente, Aktenkonten/offene Posten, Benutzer – gemeinsam mit {ap.name}. Nicht übernommen: FiBu und Zugangsdaten.
+              </p>
+            )}
             <div id="umzug-was-zieht-um" hidden={!wasZiehtUm}>
             <div className="eyebrow mb-2 mt-3">Kommt mit – aus Ihrem Export</div>
             <ul className="grid grid-cols-1 gap-2 text-[13px]">
@@ -524,7 +529,10 @@ export default function Umzug() {
             <div className="mt-3 flex items-center gap-2.5 rounded-[12px] bg-[var(--ink-softer)] px-3 py-2 text-[12.5px]">
               <Phone className="size-3.5 shrink-0 text-ink" />
               <span className="min-w-0">
-                <span className="num block select-all whitespace-nowrap font-medium">{ap.telefon}</span>
+                {/* antippbar am Telefon, Markieren/Kopieren bleibt (I3-T12-01) */}
+                <a href={`tel:${ap.telefon.replace(/[^\d+]/g, "")}`} className="num inline-flex min-h-6 select-all items-center whitespace-nowrap font-medium text-ink hover:underline pointer-coarse:min-h-11" aria-label={`${ap.name} anrufen: ${ap.telefon}`}>
+                  {ap.telefon}
+                </a>
                 <span className="block truncate text-[12px] text-fg-3">{ap.verfuegbar}</span>
               </span>
             </div>
@@ -570,6 +578,7 @@ function Umzugsprotokoll({ laeufe, onRueckgaengig, team, laufendeId }: { laeufe:
                   {z.aktenNeu} {z.aktenNeu === 1 ? "Akte" : "Akten"} neu{z.archiviert ? ` (${z.archiviert} abgeschlossen)` : ""}
                   {z.aktenAktualisiert ? `, ${z.aktenAktualisiert} aktualisiert` : ""}, {z.kontakteNeu} {z.kontakteNeu === 1 ? "Kontakt" : "Kontakte"}, {z.fristen} {z.fristen === 1 ? "Frist bzw. Wiedervorlage" : "Fristen und Wiedervorlagen"}
                   {z.zusammengefuehrt ? `, ${z.zusammengefuehrt} ${z.zusammengefuehrt === 1 ? "Dublette" : "Dubletten"} zusammengeführt` : ""}
+                  {l.undo.erstellt.some((x) => x.col === "dokumente") ? `, Datenblatt je Akte: ${l.undo.erstellt.filter((x) => x.col === "dokumente").length}` : ""}
                 </div>
               )}
               {abgebrochen || laeuftNoch ? null : l.rueckgaengig ? (

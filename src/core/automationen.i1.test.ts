@@ -66,3 +66,36 @@ test("Demodaten: Motor zählt plausibel je Vorgang – Bankabgleich ohne 12 Std.
     assert.ok(std > 10 && std < 60, `${t.tenant.kurzname}: ${std} Std.`);
   }
 });
+
+// Usability-Iteration 3 (A-00, I3-T10-01): Fristautomatiken – Folge beim Pausieren, Rechte, pausierte Liste
+test("Fristautomatiken: Folge beim Pausieren, nur Partner/Administration, pausierte in fester Reihenfolge", async () => {
+  const { FRIST_AUTOMATIKEN, folgeBeimPausieren, folgeWaehrendPause, istFristAutomatik, pausierteFristAutomatiken } = await import("./automationen");
+  const { darfAutomatikSchalten } = await import("../lib/rollen");
+  assert.deepEqual([...FRIST_AUTOMATIKEN], ["posteingang-fristen", "vorfristen", "eeb"]);
+  for (const k of FRIST_AUTOMATIKEN) {
+    assert.ok(istFristAutomatik(k));
+    assert.ok(AUTOMATION_DEFS.some((d) => d.key === k), `${k} fehlt in AUTOMATION_DEFS`);
+  }
+  assert.equal(istFristAutomatik("bankabgleich"), false);
+  assert.equal(folgeBeimPausieren("posteingang-fristen"), "Neue beA-Nachrichten werden dann nicht mehr auf Fristen geprüft – Sie notieren Fristen von Hand.");
+  assert.match(folgeBeimPausieren("eeb"), /Frist beginnt trotzdem mit der Zustellung/);
+  // als Zustand (Hinweisband, Briefing) ohne „dann“
+  assert.equal(folgeWaehrendPause("posteingang-fristen"), "Neue beA-Nachrichten werden nicht mehr auf Fristen geprüft – Sie notieren Fristen von Hand.");
+  assert.equal(folgeWaehrendPause("eeb"), folgeBeimPausieren("eeb"));
+  assert.match(folgeBeimPausieren("vorfristen"), /Vorfristen und Wiedervorlagen/);
+  assert.match(folgeBeimPausieren("bankabgleich"), /Bankabgleich/);
+  for (const rolle of ["partner", "admin"] as const) assert.equal(darfAutomatikSchalten({ rolle }, "posteingang-fristen"), true);
+  for (const rolle of ["anwalt", "refa", "azubi"] as const) {
+    assert.equal(darfAutomatikSchalten({ rolle }, "eeb"), false, rolle);
+    assert.equal(darfAutomatikSchalten({ rolle }, "bankabgleich"), true, rolle);
+  }
+  assert.equal(darfAutomatikSchalten(undefined, "bankabgleich"), false);
+  const liste = [
+    { key: "eeb", aktiv: false },
+    { key: "bankabgleich", aktiv: false },
+    { key: "posteingang-fristen", aktiv: false },
+    { key: "vorfristen", aktiv: true },
+  ];
+  assert.deepEqual(pausierteFristAutomatiken(liste).map((a) => a.key), ["posteingang-fristen", "eeb"]);
+  assert.deepEqual(pausierteFristAutomatiken([]), []);
+});

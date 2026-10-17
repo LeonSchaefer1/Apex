@@ -7,13 +7,16 @@ import { baueKunde, baueNutzer, profilFuer } from "@/core/seed/kunde";
 import type { Aktivitaet, CollectionKey, TenantData, Tenant, User } from "@/core/types";
 import { neuerSchluessel, neueWiederherstellungscodes, otpauthUri, pruefeTotp, wiederherstellungNormal } from "@/core/totp";
 import {
-  ANMELDUNG_FALSCH, AZUBI_GESPERRT, AZUBI_KEIN_ZUGRIFF, BUNDESLAENDER, PASSWORT_MAX, PasswortWechselNoetig, SPERRE_MINUTEN, ZUGANG_DEAKTIVIERT, ZweiFaktorNoetig,
-  darfSammlung, darfVerwalten, istEmail, kanzleiSicherheit, pruefeNeuesPasswort, pruefeTeamAenderung,
-  type Backend, type ConsoleKunde, type KanzleiProfil, type KanzleiSicherheit, type NeuerKunde, type Sitzung, type TeamAenderung,
+  ALTES_PASSWORT_FALSCH, ANMELDUNG_FALSCH, AZUBI_GESPERRT, AZUBI_KEIN_ZUGRIFF, BUNDESLAENDER, FRIST_AUTOMATIK_GESPERRT, PASSWORT_MAX, PasswortWechselNoetig, SPERRE_MINUTEN, ZUGANG_DEAKTIVIERT, ZweiFaktorNoetig,
+  darfSammlung, darfVerwalten, feldFehler, istEmail, kanzleiSicherheit, pruefeNeuesPasswort, pruefeTeamAenderung,
+  type Backend, type ConsoleKunde, type KanzleiProfil, type KanzleiSicherheit, type NeuerKunde, type Rechnungsangaben, type Sitzung, type TeamAenderung,
 } from "./types";
+import { geaenderteRechnungsangaben, normalisiereRechnungsangaben, pruefeRechnungsangaben } from "@/core/abrechnung";
+import { istFristAutomatik } from "@/core/automationen";
+import { darfAutomatikSchalten } from "@/lib/rollen";
 import { sicheresPasswort, zufallsKennung, zufallsZahl } from "./zufall";
-import { ANMELDE_WARN_SCHWELLE, VORGANG, anmeldeVorgang, letzteEchteAktivitaet, mischeVorgaenge, vorgang, zaehleFehlversuch, zeitBerlin, type FehlGrund } from "./protokoll";
-import { festeAnsprechperson, rollenLabel } from "@/lib/rollen";
+import { ANMELDE_WARN_SCHWELLE, VORGANG, anmeldeVorgang, letzteEchteAktivitaet, mischeVorgaenge, pruefeConsolePasswortAnlass, vorgang, zaehleFehlversuch, zeitBerlin, type FehlGrund } from "./protokoll";
+import { festeAnsprechBezeichnung, rollenLabel } from "@/lib/rollen";
 
 const LS_SESSION = "aa:session";
 const LS_REGISTRY = "aa:registry";
@@ -369,7 +372,7 @@ function istPraesentationskanzlei(tenantId: string) {
 /** Gleiche Zugangsprüfung wie im Server-Betrieb: pausierte Kanzleien und abgelaufene Testzugänge werden abgewiesen. */
 function zugangsSperre(t: Tenant): string | null {
   const ap = t.ansprechpartner;
-  const kontakt = `${festeAnsprechperson(ap)}: ${ap.name} (${ap.telefon}).`;
+  const kontakt = `${festeAnsprechBezeichnung(ap)}: ${ap.name} (${ap.telefon}).`;
   if (t.status === "pausiert") return `Der Zugang dieser Kanzlei ist pausiert. ${kontakt}`;
   if (t.status === "test" && t.testBis && t.testBis < today() && !istPraesentationskanzlei(t.id)) {
     return `Der Testzeitraum ist am ${fmtDate(t.testBis)} abgelaufen. ${kontakt} ${ap.name} verlängert den Zugang gern.`;
@@ -542,6 +545,26 @@ export function createDemoBackend(): Backend {
       }
       fehlversuche.delete(key);
     },
+    async passwortAendern(altesPasswort, neuesPasswort) {
+      const { t, u } = kanzleiSitzung();
+      // gleiche Begrenzung und Zählung wie bei der Anmeldung (ein falsches altes Passwort ist ein Fehlversuch)
+      const key = `login:${u.email.toLowerCase()}`;
+      if (gesperrtNachFehlversuchen(key)) throw feldFehler(ZU_VIELE, "alt");
+      if (altesPasswort.length > PASSWORT_MAX || neuesPasswort.length > PASSWORT_MAX) throw feldFehler(`Bitte höchstens ${PASSWORT_MAX} Zeichen verwenden.`, "neu");
+      if (altesPasswort !== u.passwort) {
+        fehlversuch(key);
+        protokolliereFehlversuch(t, u, "passwort");
+        throw feldFehler(ALTES_PASSWORT_FALSCH, "alt");
+      }
+      fehlversuche.delete(key);
+      const regel = pruefeNeuesPasswort(neuesPasswort, altesPasswort, "dem bisherigen Passwort");
+      if (regel) throw feldFehler(regel, "neu");
+      const map = lsGet<Record<string, string>>(LS_PW) ?? {};
+      map[u.id] = neuesPasswort;
+      lsSet(LS_PW, map);
+      setzePasswortWechsel(u.id, false);
+      protokolliere(t.tenant.id, vorgang(VORGANG.eigenesPasswortGeaendert(u.name), { akteur: "nutzer", userId: u.id }));
+    },
     async me() {
       const s = lsGet<DemoSession>(LS_SESSION);
       if (!s) return null;
@@ -581,6 +604,13 @@ export function createDemoBackend(): Backend {
     async putDoc(col, doc, opts) {
       if (!current) return;
       if (!darfSammlung(aktuelleRolle(), col)) throw new Error(AZUBI_KEIN_ZUGRIFF);
+      // Fristautomatiken (Fristerkennung, Vorfristen, eEB) schalten nur Partner und Administration – wie auf dem Server (I3-T10-01)
+      if (col === "automationen") {
+        const neu = doc as { id: string; key?: string; aktiv?: boolean };
+        const alt = (current.stored.data.automationen ?? []).find((x) => x.id === neu.id);
+        const rolle = aktuelleRolle();
+        if (neu.key && istFristAutomatik(neu.key) && (alt?.aktiv ?? true) !== neu.aktiv && !darfAutomatikSchalten(rolle ? { rolle } : undefined, neu.key)) throw new Error(FRIST_AUTOMATIK_GESPERRT);
+      }
       // Sammlung fehlt in älteren gespeicherten Beständen (z. B. Umzugsprotokoll) – dann neu anlegen
       const sammlungen = current.stored.data as unknown as Record<string, { id: string }[] | undefined>;
       const arr = (sammlungen[col] ??= []);
@@ -636,6 +666,19 @@ export function createDemoBackend(): Backend {
         o[t.tenant.id] = { ...(o[t.tenant.id] ?? {}), ...profil };
         lsSet(LS_OVERRIDES, o);
         return { ...t.tenant, ...profil };
+      },
+      async rechnungsangabenSpeichern(a: Rechnungsangaben) {
+        const { t, u } = kanzleiSitzung(true);
+        const fehler = Object.entries(pruefeRechnungsangaben(a))[0];
+        if (fehler) throw feldFehler(fehler[1], fehler[0]);
+        const neu = normalisiereRechnungsangaben(a);
+        const geaendert = geaenderteRechnungsangaben(t.tenant, neu);
+        const o = lsGet<Record<string, Partial<Record<keyof Tenant, unknown>>>>(LS_OVERRIDES) ?? {};
+        // leere Angaben entfernen (null löscht das Feld beim Einlesen)
+        o[t.tenant.id] = { ...(o[t.tenant.id] ?? {}), steuernummer: neu.steuernummer ?? null, ustIdNr: neu.ustIdNr ?? null, geschaeftskonto: neu.geschaeftskonto ?? null };
+        lsSet(LS_OVERRIDES, o);
+        if (geaendert.length) protokolliere(t.tenant.id, vorgang(VORGANG.rechnungsangabenGeaendert(geaendert, u.name), { akteur: "nutzer", userId: u.id }));
+        return findTenant(t.tenant.id)?.tenant ?? { ...t.tenant, ...neu };
       },
       async sicherheitSpeichern(x: KanzleiSicherheit) {
         const { t } = kanzleiSitzung(true);
@@ -836,16 +879,20 @@ export function createDemoBackend(): Backend {
         o[tenantId] = { ...(o[tenantId] ?? {}), status, ...kauf };
         lsSet(LS_OVERRIDES, o);
       },
-      async neuesPasswort(userId) {
+      async neuesPasswort(userId, anlass) {
         const ziel = findeNutzer(userId);
         if (!ziel) throw new Error("Nutzer nicht gefunden – bitte laden Sie die Kundenliste neu.");
+        // Pflichtangaben: wer in der Kanzlei hat angefordert, aus welchem Anlass (I3-T21-02)
+        const fehler = Object.entries(pruefeConsolePasswortAnlass(anlass))[0];
+        if (fehler) throw feldFehler(fehler[1], fehler[0]);
         const pw = sicheresPasswort();
         const map = lsGet<Record<string, string>>(LS_PW) ?? {};
         map[userId] = pw;
         lsSet(LS_PW, map);
         setzePasswortWechsel(userId, true);
-        // Anbieter-Eingriff: Die Kanzlei sieht ihn in ihrem Protokoll (Einstellungen → Datenschutz).
-        protokolliere(ziel.t.tenant.id, vorgang(VORGANG.consolePasswort(ziel.u.name), { akteur: "system", userId }));
+        // Anbieter-Eingriff: Die Kanzlei sieht ihn in ihrem Protokoll (Einstellungen → Datenschutz); Partner und Administration
+        // erhalten zusätzlich einen Hinweis in der Glocke (statt einer E-Mail – der Prototyp versendet keine).
+        protokolliere(ziel.t.tenant.id, anmeldeVorgang(VORGANG.consolePasswort(ziel.u.name, anlass, CONSOLE_DEMO.name), { akteur: "system", userId, meldung: true }));
         return pw;
       },
       async standardPasswort(userId) {

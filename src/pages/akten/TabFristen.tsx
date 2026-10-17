@@ -163,7 +163,8 @@ function FristKarte({ f, akte }: { f: Frist; akte: Akte }) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <Chip tone={kritisch ? "seal" : f.typ === "termin" ? "ink" : "neutral"} icon={kritisch ? <ShieldAlert className="size-3" /> : undefined} title={art?.kurz}>
-              {art?.label ?? FRIST_TYP_LABEL[f.typ]}
+              {/* „Frist · nicht verlängerbar“ wie Kalender und Liste – Text, nicht nur Farbe (I2-T04-01) */}
+              {kritisch && art && art.label !== "Notfrist" ? `${art.label} · nicht verlängerbar` : (art?.label ?? FRIST_TYP_LABEL[f.typ])}
             </Chip>
             {istOffen && (
               <Chip tone={d.tone} dot={d.stufe !== "normal"}>

@@ -98,17 +98,18 @@ export function KiStatusKarte() {
             </div>
           </div>
 
-          <ul className="-mx-5 mt-4 flex gap-2 overflow-x-auto px-5 no-scrollbar [mask-image:linear-gradient(90deg,transparent,#000_20px,#000_calc(100%-28px),transparent)] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:[mask-image:none]">
+          {/* Telefon: untereinander statt Wischleiste – der Datenhinweis ist ohne Wischen sichtbar (I3-T06-01) */}
+          <ul className="mt-4 grid gap-1.5 sm:flex sm:flex-wrap sm:gap-2" aria-label="Grundsätze der KI">
             {grundsaetze(quelle).map((g, i) => (
               <motion.li
                 key={g.text}
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.15 + i * 0.05, type: "spring", stiffness: 420, damping: 32 }}
-                className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-[var(--ink-softer)] py-1.5 pl-2 pr-3 text-[12.5px] font-medium text-fg-2 ring-1 ring-[var(--line)]"
+                className="flex min-w-0 items-center gap-2 rounded-[14px] bg-[var(--ink-softer)] py-1.5 pl-2 pr-3 text-[12.5px] font-medium text-fg-2 ring-1 ring-[var(--line)] sm:inline-flex sm:shrink-0 sm:whitespace-nowrap sm:rounded-full"
               >
-                <span className="grid size-6 place-items-center rounded-full bg-[var(--surface)] text-ink [&>svg]:size-3.5">{g.icon}</span>
-                {g.text}
+                <span className="grid size-6 shrink-0 place-items-center rounded-full bg-[var(--surface)] text-ink [&>svg]:size-3.5">{g.icon}</span>
+                <span className="min-w-0">{g.text}</span>
               </motion.li>
             ))}
           </ul>

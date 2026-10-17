@@ -4,7 +4,7 @@ import { fmtDate, fmtEUR, nowLocal, round2, today, uid } from "@/core/dates";
 import type { Akte, Aktivitaet, Kontakt, Rechnung, Transaktion } from "@/core/types";
 import { erfasseZahlung, nimmZahlungZurueck, type ZahlungsErgebnis } from "./aktionen";
 import { istOffen, offenerBetrag } from "./lib";
-import { escapeRe, fremdgeldTreffer, namensTeile, norm } from "@/core/abrechnung";
+import { escapeRe, fremdgeldTreffer, namensTeile, norm, VERSICHERER } from "@/core/abrechnung";
 // Fremdgeld-Regel (§ 43a Abs. 7 BRAO) liegt in src/core/abrechnung.ts (mit Tests).
 export { fremdgeldTreffer };
 
@@ -15,7 +15,8 @@ export type Regel = "nummer" | "aktenzeichen" | "name-datum" | "name" | "az-betr
 
 export interface Treffer {
   transaktionId: string;
-  art: "rechnung" | "fremdgeld" | "kosten" | "keine";
+  /** „vorschuss“: Zahlung der Mandantschaft auf Honorar/Vorschuss ohne Rechnungsbezug – Guthaben im Aktenkonto (I3-T08-01) */
+  art: "rechnung" | "fremdgeld" | "vorschuss" | "kosten" | "keine";
   regel: Regel;
   sicherheit: number; // 0..1
   grund: string;
@@ -133,6 +134,66 @@ export function gleicheAb(input: { transaktionen: Transaktion[]; rechnungen: Rec
   });
 }
 
+// ───────────── Zuordnung eines Eingangs zu einer Akte: Buchungsart (I3-T08-01) ─────────────
+
+/** Buchungsart bei Zuordnung eines Eingangs zu einer Akte (ohne Rechnung). */
+export type AktenBuchungsart = "vorschuss" | "fremdgeld";
+export const AKTEN_BUCHUNGSART: Record<AktenBuchungsart, string> = {
+  vorschuss: "Zahlung der Mandantschaft auf Honorar/Vorschuss (Aktenkonto, Guthaben)",
+  fremdgeld: "Fremdgeld – an die Mandantschaft weiterzuleiten (§ 43a Abs. 7 BRAO)",
+};
+/** Kurzform für Meldungen und den Reiter „Gebucht“ */
+export const AKTEN_BUCHUNGSART_KURZ: Record<AktenBuchungsart, string> = { vorschuss: "Vorschuss/Honorar", fremdgeld: "Fremdgeld" };
+
+const ibanNorm = (iban: string) => iban.replace(/\s+/g, "").toUpperCase();
+
+/**
+ * IBANs, von denen die Mandantschaft einer Akte schon gezahlt hat: zugeordnete Umsätze auf Rechnungen an sie bzw. als
+ * Honorar/Vorschuss auf ihre Akten.
+ */
+export function mandantenIbans(mandantId: string, transaktionen: Transaktion[], rechnungen: Pick<Rechnung, "id" | "empfaengerId">[], akten: Pick<Akte, "id" | "mandantId">[]): Set<string> {
+  const ibans = new Set<string>();
+  for (const t of transaktionen) {
+    const z = t.zuordnung;
+    if (t.status !== "zugeordnet" || !z || t.betrag <= 0 || !t.iban) continue;
+    const ausRechnung = z.rechnungId ? rechnungen.find((r) => r.id === z.rechnungId)?.empfaengerId === mandantId : false;
+    const ausVorschuss = z.art === "vorschuss" && !!z.akteId && akten.find((a) => a.id === z.akteId)?.mandantId === mandantId;
+    if (ausRechnung || ausVorschuss) ibans.add(ibanNorm(t.iban));
+  }
+  return ibans;
+}
+
+/**
+ * Vorbelegung der Buchungsart: Zahlt die Mandantschaft selbst (Name wie in `namensTeile` bzw. bekannte IBAN), ist es in der
+ * Regel eine Zahlung auf Honorar/Vorschuss; zahlt ein Dritter (Versicherer, Gegner, sonst jemand), ist es Fremdgeld.
+ */
+export function buchungsartVorschlag(
+  t: Pick<Transaktion, "gegenpartei" | "verwendungszweck" | "iban">,
+  akte: Pick<Akte, "mandantId" | "gegnerId">,
+  kontakteById: Map<string, Kontakt>,
+  bekannteIbans: Set<string> = new Set(),
+): { art: AktenBuchungsart; zahlerIstMandant: boolean; grund: string } {
+  const gp = norm(t.gegenpartei);
+  const mandant = kontakteById.get(akte.mandantId);
+  const name = namensTeile(mandant).some((n) => gp.includes(n));
+  const iban = !!t.iban && bekannteIbans.has(ibanNorm(t.iban));
+  if (name || iban)
+    return { art: "vorschuss", zahlerIstMandant: true, grund: `Zahler ist die Mandantschaft (${name ? "Name" : "bekannte IBAN"}) – Zahlung auf Honorar/Vorschuss` };
+  const gegner = akte.gegnerId ? namensTeile(kontakteById.get(akte.gegnerId)).some((n) => gp.includes(n)) : false;
+  const wer = VERSICHERER.test(t.gegenpartei) ? "Versicherer" : gegner ? "Gegenseite" : "Dritter";
+  return { art: "fremdgeld", zahlerIstMandant: false, grund: `Zahler ist nicht die Mandantschaft (${wer}) – Fremdgeld` };
+}
+
+/** Rechnungsnummer einer stornierten Rechnung im Verwendungszweck – mit Korrekturrechnung bzw. -entwurf, falls vorhanden (I3-T08-02). */
+export function stornierteRechnungImZweck(t: Pick<Transaktion, "verwendungszweck" | "betrag">, rechnungen: Rechnung[]): { storniert: Rechnung; korrektur?: Rechnung } | undefined {
+  if (t.betrag <= 0) return undefined;
+  const vz = norm(t.verwendungszweck);
+  const storniert = rechnungen.find((r) => r.status === "storniert" && !!r.nummer && new RegExp(`(^|[^\\w-])${escapeRe(norm(r.nummer))}($|[^\\w-])`).test(vz));
+  if (!storniert) return undefined;
+  const korrektur = rechnungen.filter((r) => r.korrekturVon === storniert.id && r.status !== "storniert").sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  return { storniert, ...(korrektur ? { korrektur } : {}) };
+}
+
 export const istAuto = (t: Treffer) => t.art === "kosten" || (t.art === "rechnung" && t.sicherheit >= AUTO_SCHWELLE);
 
 /** Gespeicherter Vorschlag am Umsatz → Treffer (übersteht Reiterwechsel und Neuladen). */
@@ -176,7 +237,7 @@ export function bucheTreffer(t: Transaktion, tr: Treffer, durch: "auto" | "manue
   const st = useData.getState();
   const wie = durch === "auto" ? "automatisch" : "manuell";
   if (tr.art === "kosten") {
-    st.patch("transaktionen", t.id, { status: "ignoriert", vorschlag: undefined, zuordnung: { sicherheit: tr.sicherheit, durch, grund: tr.grund, am: nowLocal(), von: durch === "manuell" ? userId : undefined } });
+    st.patch("transaktionen", t.id, { status: "ignoriert", vorschlag: undefined, zuordnung: { sicherheit: tr.sicherheit, durch, grund: tr.grund, am: nowLocal(), von: durch === "manuell" ? userId : undefined, art: "kosten" } });
     st.log({ akteur: durch === "auto" ? "automation" : "nutzer", automationKey: durch === "auto" ? "bankabgleich" : undefined, userId: durch === "manuell" ? userId : undefined, text: `${umsatzKennung(t)} als Kanzleikosten erfasst (${tr.kategorie ?? "ohne Rechnung"}, ${wie})` });
     return;
   }
@@ -190,8 +251,16 @@ export function bucheTreffer(t: Transaktion, tr: Treffer, durch: "auto" | "manue
         id: uid("f"), akteId: akte.id, titel: `Fremdgeld weiterleiten (${fmtEUR(t.betrag)})`, typ: "wiedervorlage", datum: today(), status: "offen",
         verantwortlichId: akte.sachbearbeiterId ?? akte.bearbeiterId, quelle: "automatisch", createdAt: nowLocal(), notiz: "Fremdgeld unverzüglich weiterleiten (§ 43a Abs. 7 BRAO, § 4 BORA).",
       });
-    st.patch("transaktionen", t.id, { status: "zugeordnet", vorschlag: undefined, zuordnung: { akteId: tr.akteId, sicherheit: tr.sicherheit, durch, grund: tr.grund, am: nowLocal(), von: userId } });
+    st.patch("transaktionen", t.id, { status: "zugeordnet", vorschlag: undefined, zuordnung: { akteId: tr.akteId, sicherheit: tr.sicherheit, durch, grund: tr.grund, am: nowLocal(), von: userId, art: "fremdgeld" } });
     st.log({ akteur: "nutzer", userId, akteId: tr.akteId, text: `${umsatzKennung(t)} als Fremdgeld gebucht (${wie}) – weiterleiten im Fremdgeld-Wächter${akte ? ` – ${akte.aktenzeichen}` : ""}` });
+    return;
+  }
+  if (tr.art === "vorschuss" && tr.akteId) {
+    // Zahlung der Mandantschaft ohne Rechnungsbezug: Guthaben im Aktenkonto (Vorschuss/Honorar) – kein Fremdgeld, keine Weiterleitung
+    const akte = st.data.akten.find((a) => a.id === tr.akteId);
+    st.upsert("buchungen", { id: uid("b"), akteId: tr.akteId, datum: t.datum, art: "vorschuss", betrag: -round2(t.betrag), text: `Zahlung ${t.gegenpartei} – Honorar/Vorschuss (Guthaben der Mandantschaft)`, transaktionId: t.id });
+    st.patch("transaktionen", t.id, { status: "zugeordnet", vorschlag: undefined, zuordnung: { akteId: tr.akteId, sicherheit: tr.sicherheit, durch, grund: tr.grund, am: nowLocal(), von: userId, art: "vorschuss" } });
+    st.log({ akteur: "nutzer", userId, akteId: tr.akteId, text: `${umsatzKennung(t)} als Zahlung auf Honorar/Vorschuss gebucht (${wie}) – Guthaben im Aktenkonto${akte ? ` – ${akte.aktenzeichen}` : ""}` });
     return;
   }
   if (tr.art !== "rechnung" || !tr.rechnungId) return;
@@ -199,7 +268,7 @@ export function bucheTreffer(t: Transaktion, tr: Treffer, durch: "auto" | "manue
   if (!r) return;
   const erg = erfasseZahlung(r, round2(t.betrag), t.datum, { transaktionId: t.id, text: `Zahlungseingang ${r.nummer} (${t.gegenpartei})`, ueberzahlung: "guthaben" });
   const grund = erg.guthaben > 0 ? `${tr.grund} · ${fmtEUR(erg.guthaben)} Überzahlung als Guthaben gebucht` : tr.grund;
-  st.patch("transaktionen", t.id, { status: "zugeordnet", vorschlag: undefined, zuordnung: { rechnungId: r.id, akteId: r.akteId, sicherheit: tr.sicherheit, durch, grund, am: nowLocal(), von: durch === "manuell" ? userId : undefined } });
+  st.patch("transaktionen", t.id, { status: "zugeordnet", vorschlag: undefined, zuordnung: { rechnungId: r.id, akteId: r.akteId, sicherheit: tr.sicherheit, durch, grund, am: nowLocal(), von: durch === "manuell" ? userId : undefined, art: "rechnung" } });
   // Menschliche Entscheidung ohne Prozentangabe – bei bestätigtem Vorschlag dessen Sicherheit als Hinweis
   st.log({
     akteur: durch === "auto" ? "automation" : "nutzer",
@@ -230,7 +299,20 @@ export function loeseZuordnung(t: Transaktion, userId?: string): string {
     if (st.data.buchungen.some((x) => x.text === `Storno: ${b.text}` && x.transaktionId === t.id)) continue;
     st.upsert("buchungen", { id: uid("b"), akteId: b.akteId, datum: today(), art: "fremdgeld", betrag: -b.betrag, text: `Storno: ${b.text}`, fremdgeld: true, transaktionId: t.id });
   }
+  // Zahlung auf Honorar/Vorschuss: Gegenbuchung (Storno) des Guthabens im Aktenkonto
+  const vorschuss = st.data.buchungen.filter((b) => b.transaktionId === t.id && b.art === "vorschuss" && b.betrag < 0 && !b.text.startsWith("Storno: "));
+  let vorschussStorniert = 0;
+  for (const b of vorschuss) {
+    if (st.data.buchungen.some((x) => x.text === `Storno: ${b.text}` && x.transaktionId === t.id)) continue;
+    st.upsert("buchungen", { id: uid("b"), akteId: b.akteId, datum: today(), art: "vorschuss", betrag: -b.betrag, text: `Storno: ${b.text}`, transaktionId: t.id });
+    vorschussStorniert = round2(vorschussStorniert - b.betrag);
+  }
   st.patch("transaktionen", t.id, { status: "offen", zuordnung: undefined });
-  st.log({ akteur: "nutzer", userId, akteId: z?.akteId, text: `Zuordnung gelöst: ${umsatzKennung(t)} wieder offen${fremd.length ? " – Fremdgeld-Eingang storniert" : t.status === "ignoriert" ? " (war Kanzleikosten)" : ""}` });
-  return fremd.length ? "Fremdgeld-Eingang storniert" : "Umsatz wieder offen";
+  st.log({
+    akteur: "nutzer",
+    userId,
+    akteId: z?.akteId,
+    text: `Zuordnung gelöst: ${umsatzKennung(t)} wieder offen${fremd.length ? " – Fremdgeld-Eingang storniert" : vorschussStorniert ? ` – Zahlung auf Honorar/Vorschuss (${fmtEUR(vorschussStorniert)}) im Aktenkonto gegengebucht` : t.status === "ignoriert" ? " (war Kanzleikosten)" : ""}`,
+  });
+  return fremd.length ? "Fremdgeld-Eingang storniert" : vorschussStorniert ? `Vorschuss/Honorar ${fmtEUR(vorschussStorniert)} im Aktenkonto gegengebucht` : "Umsatz wieder offen";
 }

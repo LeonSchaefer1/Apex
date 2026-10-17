@@ -13,6 +13,7 @@ import { WochenChart, type TagWert } from "./WochenChart";
 import { AutomationDrawer, AutomationKarte, letzteLaeufe } from "./AutomationKarte";
 import { LiveFeed } from "./LiveFeed";
 import { RoiRechner } from "./RoiRechner";
+import { FristAutomatikHinweis } from "@/components/FristAutomatikHinweis";
 import { ARBEITSWOCHEN, FLOW_CSS, JAHRESARBEITSSTUNDEN, KATEGORIEN, PERSONALKOSTEN_JAHR, ZIEL_STUNDEN, kostensatz, ungefaehr, useNow, vorgaengeVon } from "./shared";
 
 type Filter = "alle" | Automation["kategorie"];
@@ -105,6 +106,8 @@ export default function Motor() {
           </Button>
         }
       />
+      {/* Pausierte Fristautomatik: Hinweis mit Datum, Uhrzeit und Person (I3-T10-01) */}
+      <FristAutomatikHinweis className="mb-4" />
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         {/* Hero: Wochenbilanz */}

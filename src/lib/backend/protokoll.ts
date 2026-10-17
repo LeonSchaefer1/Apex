@@ -2,6 +2,7 @@
 // Diese Einträge liegen getrennt von den (ggf. täglich neu erzeugten) Beispieldaten und werden beim Laden eingemischt,
 // damit Anmeldungen, Passwortvergaben und Anbieter-Eingriffe nie verloren gehen.
 import type { Aktivitaet, ID } from "@/core/types";
+import { folgeBeimPausieren } from "../../core/automationen";
 
 /** Zeitstempel in deutscher Ortszeit („2026-10-16T09:30:00“) – wie die übrigen Aktivitäten, auch auf einem Server in UTC. */
 export function zeitBerlin(d = new Date()): string {
@@ -13,12 +14,42 @@ export function zeitBerlin(d = new Date()): string {
   return `${teile.year}-${teile.month}-${teile.day}T${teile.hour}:${teile.minute}:${teile.second}`;
 }
 
+/** Angaben zu einem neuen Startpasswort durch AnwaltApex (Apex Console) – Pflicht: wer hat es angefordert, aus welchem Anlass. */
+export interface ConsolePasswortAnlass {
+  /** Person in der Kanzlei, die das neue Passwort angefordert hat (Name). */
+  angefordertVon: string;
+  /** Anlass, z. B. „Passwort vergessen – telefonisch angefordert“. */
+  anlass: string;
+  /** Bearbeitende Person bei AnwaltApex (z. B. „Lena Vogt“); ohne Angabe der angemeldete Console-Zugang. */
+  bearbeiter?: string;
+}
+
+/** Prüft die Pflichtangaben für ein neues Startpasswort – Meldung je Feld (leer = vollständig). Gleiche Regel in Oberfläche, Demo und Server. */
+export function pruefeConsolePasswortAnlass(a: Partial<ConsolePasswortAnlass> | undefined): Partial<Record<"angefordertVon" | "anlass", string>> {
+  const f: Partial<Record<"angefordertVon" | "anlass", string>> = {};
+  const wer = (a?.angefordertVon ?? "").trim();
+  const warum = (a?.anlass ?? "").trim();
+  if (wer.length < 2) f.angefordertVon = "Bitte angeben, wer in der Kanzlei das neue Passwort angefordert hat (Name).";
+  else if (wer.length > 120) f.angefordertVon = "Bitte höchstens 120 Zeichen.";
+  if (warum.length < 4) f.anlass = "Bitte den Anlass angeben, z. B. „Passwort vergessen – telefonisch angefordert“.";
+  else if (warum.length > 200) f.anlass = "Bitte höchstens 200 Zeichen.";
+  return f;
+}
+
 export const VORGANG = {
   zugangAngelegt: (name: string, rolle: string) => `Zugang für ${name} angelegt (${rolle}) – durch AnwaltApex (Apex Console)`,
   startpasswortVergeben: (name: string) => `Startpasswort für ${name} vergeben – eigenes Passwort bei der ersten Anmeldung Pflicht`,
   ersteAnmeldung: (name: string) => `Erste Anmeldung von ${name}`,
   eigenesPasswort: (name: string) => `Eigenes Passwort festgelegt – ${name}`,
-  consolePasswort: (name: string) => `Startpasswort für ${name} durch AnwaltApex (Apex Console) neu vergeben`,
+  /** „Startpasswort für Mia Becker durch AnwaltApex neu vergeben – Lena Vogt auf Anforderung von Dr. Julia Hartmann, Anlass: …“ */
+  consolePasswort: (name: string, a?: ConsolePasswortAnlass, consoleName = "AnwaltApex Team") =>
+    a
+      ? `Startpasswort für ${name} durch AnwaltApex neu vergeben – ${(a.bearbeiter ?? "").trim() || consoleName} auf Anforderung von ${a.angefordertVon.trim()}, Anlass: ${a.anlass.trim()}`
+      : `Startpasswort für ${name} durch AnwaltApex (Apex Console) neu vergeben`,
+  eigenesPasswortGeaendert: (name: string) => `Eigenes Passwort geändert – ${name}`,
+  rechnungsangabenGeaendert: (felder: string[], durch: string) => `Rechnungsangaben geändert${felder.length ? ` (${felder.join(", ")})` : ""} – durch ${durch}`,
+  automatikPausiert: (automatik: string, durch: string, folge: string) => `Automatik „${automatik}“ pausiert – durch ${durch}. ${folge}`,
+  automatikEingeschaltet: (automatik: string, durch: string) => `Automatik „${automatik}“ wieder eingeschaltet – durch ${durch}`,
   standardPasswort: (name: string) => `Demo-Passwort für ${name} durch AnwaltApex (Apex Console) wiederhergestellt`,
   beispieldatenZurueckgesetzt: (durch?: string) => (durch ? `Beispieldaten zurückgesetzt – durch ${durch}` : "Beispieldaten durch AnwaltApex (Apex Console) zurückgesetzt"),
   zweiFaktorEingerichtet: (name: string) => `Zwei-Faktor-Anmeldung eingerichtet – ${name}`,
@@ -32,6 +63,14 @@ export const VORGANG = {
   fehlversucheWarnung: (name: string, n: number) => `${n} fehlgeschlagene Anmeldungen für ${name} innerhalb von 15 Minuten – bitte prüfen`,
   bundeslandGeaendert: (vorher: string, nachher: string) => `Bundesland geändert: ${vorher} → ${nachher}`,
 } as const;
+
+/**
+ * Protokolltext beim Schalten einer Automatik im 38h-Motor (I3-T10-01) – mit Person und, beim Pausieren, der Folge:
+ * „Automatik „Fristen aus Posteingang erkennen“ pausiert – durch Dr. Julia Hartmann. Neue beA-Nachrichten werden …“
+ */
+export function automatikSchaltText(a: { key: string; name: string }, aktiv: boolean, durch: string): string {
+  return aktiv ? VORGANG.automatikEingeschaltet(a.name, durch) : VORGANG.automatikPausiert(a.name, durch, folgeBeimPausieren(a.key));
+}
 
 /** Grund eines Fehlversuchs – nie das eingegebene Passwort. */
 export type FehlGrund = "passwort" | "startpasswort" | "zweifaktor";

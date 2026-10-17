@@ -12,6 +12,7 @@ import { Button, Field, Input, Select, confirmDialog } from "@/components/ui";
 import { VORGANG } from "@/lib/backend/protokoll";
 import { cn } from "@/lib/cn";
 import { Abschnitt } from "./teile";
+import { RechnungsangabenAbschnitt } from "./Rechnungsangaben";
 
 const SACHGEBIETE: Sachgebiet[] = ["Arbeitsrecht", "Mietrecht", "Verkehrsrecht", "Familienrecht", "Erbrecht", "Strafrecht", "Forderungseinzug", "Vertragsrecht", "Baurecht", "Verwaltungsrecht"];
 
@@ -72,6 +73,7 @@ export function KanzleiTab() {
 
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="flex min-w-0 flex-col gap-4">
       <Abschnitt titel="Kanzleiprofil" text="Name, Anschrift und Schwerpunkte – so erscheint Ihre Kanzlei auf Schriftsätzen, Rechnungen und im Mandantenportal." icon={<Building2 className="size-[18px]" />}>
         <form
           className="grid grid-cols-1 gap-4"
@@ -178,6 +180,8 @@ export function KanzleiTab() {
           </div>
         </form>
       </Abschnitt>
+      <RechnungsangabenAbschnitt />
+      </div>
 
       <div className="flex min-w-0 flex-col gap-4">
         <div className="sheet rounded-[22px] p-5">

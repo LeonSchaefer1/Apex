@@ -37,7 +37,7 @@ const eur = (n: number) => {
 };
 
 /** Vorschuss: − = eingegangen (Zahlung des Mandanten), + = angefordert, noch nicht bezahlt (Forderung). */
-const istVorschussAnforderung = (b: Buchung) => b.art === "vorschuss" && b.betrag > 0;
+const istVorschussAnforderung = (b: Buchung) => b.art === "vorschuss" && b.betrag > 0 && !b.text.startsWith("Storno: ");
 const artLabel = (b: Buchung) => (istVorschussAnforderung(b) ? "Vorschuss angefordert" : ART_INFO[b.art].label);
 
 export function TabAktenkonto({ akte }: { akte: Akte }) {

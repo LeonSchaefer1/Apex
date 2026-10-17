@@ -1,5 +1,6 @@
 // Personen- und Rollenbezeichnungen: je Person genau ein passender Begriff statt „Partner/in“ oder „ReFa“.
 import type { Ansprechpartner, Kontakt, Rolle, User } from "@/core/types";
+import { istFristAutomatik } from "../core/automationen";
 
 type Form = "w" | "m";
 
@@ -96,11 +97,28 @@ export function ansprechBezeichnung(ap: MitBezeichnung): "Ansprechpartner" | "An
 }
 
 /** „Ihre feste Ansprechpartnerin“ / „Ihr fester Ansprechpartner“; `ohneIhr` → „Feste Ansprechpartnerin“ / „Fester Ansprechpartner“. */
-export function festeAnsprechperson(ap: MitBezeichnung, opts: { ohneIhr?: boolean } = {}): string {
+export function festeAnsprechBezeichnung(ap: MitBezeichnung, opts: { ohneIhr?: boolean } = {}): string {
   const b = ansprechBezeichnung(ap);
   const w = b === "Ansprechpartnerin";
   if (opts.ohneIhr) return `${w ? "Feste" : "Fester"} ${b}`;
   return `${w ? "Ihre feste" : "Ihr fester"} ${b}`;
+}
+
+/**
+ * Platzhalter in festen Texten (Wiki, Navigation) durch die geschlechtsrichtige Bezeichnung der Ansprechperson ersetzen:
+ * „{Ihre feste Ansprechperson}“ → „Ihre feste Ansprechpartnerin“ / „Ihr fester Ansprechpartner“,
+ * „{Ihrer festen Ansprechperson}“ → „Ihrer festen …“ / „Ihrem festen …“, „{eine feste Ansprechperson}“ → „eine feste …“ / „ein fester …“,
+ * „{Feste Ansprechperson}“ → „Feste …“ / „Fester …“. Ohne Kanzleidaten gilt die Standard-Ansprechpartnerin.
+ */
+export function ansprechText(text: string, ap?: MitBezeichnung): string {
+  if (!text.includes("{")) return text;
+  const w = !ap || ansprechBezeichnung(ap) === "Ansprechpartnerin";
+  const b = w ? "Ansprechpartnerin" : "Ansprechpartner";
+  return text
+    .replace(/\{Ihre feste Ansprechperson\}/g, w ? `Ihre feste ${b}` : `Ihr fester ${b}`)
+    .replace(/\{Ihrer festen Ansprechperson\}/g, w ? `Ihrer festen ${b}` : `Ihrem festen ${b}`)
+    .replace(/\{eine feste Ansprechperson\}/g, w ? `eine feste ${b}` : `ein fester ${b}`)
+    .replace(/\{Feste Ansprechperson\}/g, w ? `Feste ${b}` : `Fester ${b}`);
 }
 
 /** „Mandantin“ oder „Mandant“ nach Anrede; Unternehmen gelten als „Mandantin“ (die Gesellschaft). */
@@ -108,4 +126,14 @@ export function mandantBezeichnung(k: Pick<Kontakt, "typ" | "anrede"> | undefine
   if (!k) return "Mandant";
   if (k.anrede === "Frau" || k.typ === "organisation") return "Mandantin";
   return "Mandant";
+}
+
+/**
+ * Darf diese Person die Automatik ein- bzw. ausschalten? Fristautomatiken (Fristerkennung, Vorfristen, eEB) nur Partner
+ * und Administration – an ihnen hängt die Fristenkontrolle der Kanzlei. Alle übrigen Automatiken wie bisher alle Rollen.
+ */
+export function darfAutomatikSchalten(u: Pick<User, "rolle"> | undefined | null, key: string): boolean {
+  if (!u) return false;
+  if (!istFristAutomatik(key)) return true;
+  return u.rolle === "partner" || u.rolle === "admin";
 }

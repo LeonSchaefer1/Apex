@@ -130,7 +130,7 @@ export function FallanalyseTab({ akteId, onAkte, autoStart, onAutoStart }: { akt
                       )}
                     </span>
                   </span>
-                  <span className="line-clamp-2 text-[13.5px] font-semibold leading-snug tracking-[-0.01em]">{a.titel}</span>
+                  <span className="break-words text-[13.5px] font-semibold leading-snug tracking-[-0.01em]">{a.titel}</span>
                   <span className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] text-fg-3">
                     <span className="min-w-0 flex-1 basis-[120px]">{a.phase}{mandantName(a) ? ` · ${mandantName(a)}` : ""}</span>
                     {a.kiAnalyse && (

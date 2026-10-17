@@ -48,3 +48,21 @@ test("naechsteServicezeit: Fr abends → Mo ab 7:30 Uhr, Mo früh → heute", ()
   assert.equal(naechsteServicezeit(new Date(2026, 9, 16, 21, 0), V).text, "Mo, 19.10.2026 ab 7:30 Uhr");
   assert.equal(naechsteServicezeit(new Date(2026, 9, 19, 6, 0), V).text, "heute ab 7:30 Uhr");
 });
+
+// Usability-Iteration 3 (A-10): Rückrufregel erklärt die Zusage außerhalb der Servicezeit; Sicherung nie in der Zukunft
+test("Rückrufregel: außerhalb der Servicezeit bis 8:30 Uhr, in der Servicezeit 30 Minuten – Zusage gekennzeichnet", async () => {
+  const { rueckrufRegel, rueckrufZusage, letzteSicherung } = await import("./rueckruf");
+  assert.equal(rueckrufRegel("Mo–Fr 7:30–19:00 Uhr"), "Anfragen von außerhalb der Servicezeit rufen wir in der ersten Stunde nach Beginn zurück (bis 8:30 Uhr); in der Servicezeit innerhalb von 30 Minuten.");
+  assert.match(rueckrufRegel("Mo–Fr 8–19 Uhr"), /in der ersten halben Stunde nach Beginn zurück \(bis 8:30 Uhr\)/);
+  // Sa 17.10.2026, 01:20 Uhr → Mo 19.10.2026 bis 8:30 Uhr, außerhalb der Servicezeit
+  const nachts = rueckrufZusage(new Date(2026, 9, 17, 1, 20), "Mo–Fr 7:30–19:00 Uhr", "NW");
+  assert.equal(nachts.text, "Rückruf am Mo, 19.10.2026 bis spätestens 8:30 Uhr");
+  assert.equal(nachts.ausserhalb, true);
+  // Di 10 Uhr → 10:30 Uhr in der Servicezeit
+  const tags = rueckrufZusage(new Date(2026, 9, 20, 10, 0), "Mo–Fr 7:30–19:00 Uhr", "NW");
+  assert.equal(tags.text, "Rückruf bis spätestens 10:30 Uhr");
+  assert.equal(tags.ausserhalb, false);
+  // Sicherung: um 01:20 Uhr „gestern, 03:00 Uhr“, um 09:00 Uhr „heute, 03:00 Uhr“
+  assert.equal(letzteSicherung(new Date(2026, 9, 17, 1, 20)).text, "gestern, 03:00 Uhr");
+  assert.equal(letzteSicherung(new Date(2026, 9, 17, 9, 0)).text, "heute, 03:00 Uhr");
+});

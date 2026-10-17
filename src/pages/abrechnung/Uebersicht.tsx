@@ -1,6 +1,6 @@
 // Reiter „Übersicht“: Kennzahlen, Monatsumsatz, Fremdgeld-Wächter und was der 38h-Motor übernimmt.
-import { useMemo, useState } from "react";
-import { useNavigate } from "react-router";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { AlertTriangle, ArrowRight, BellRing, CheckCircle2, Clock, HandCoins, Info, Landmark, Layers, ShieldCheck, Timer, TrendingUp, Wallet, Zap } from "lucide-react";
 import { AnimatedNumber, Button, Card, CardHeader, Chip, Stat, Switch } from "@/components/ui";
@@ -96,7 +96,8 @@ function OffenePosten() {
                 toast(`${n} ${n === 1 ? "Zahlungserinnerung" : "Zahlungserinnerungen"} versendet`, { text: "An alle überfälligen Rechnungen", ton: "erfolg" });
               }}
             >
-              <span className="hidden sm:inline">Alle erinnern</span>
+              {/* Telefon: nur das Symbol – der Name bleibt für Screenreader erhalten (axe button-name) */}
+              <span className="sr-only sm:not-sr-only">Alle erinnern</span>
             </Button>
           )
         }
@@ -153,6 +154,20 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
   const { vorschlaege } = useSammelKandidaten();
   const fremdgeld = useFremdgeld();
   const heute = today();
+
+  // Direktlink auf den Fremdgeld-Wächter: /abrechnung?fokus=fremdgeld (z. B. aus „Fremdgeld auszahlen“ im Erledigen-Dialog)
+  const [params, setParams] = useSearchParams();
+  const fokus = params.get("fokus");
+  useEffect(() => {
+    if (fokus !== "fremdgeld") return;
+    const t = window.setTimeout(() => {
+      document.getElementById("fremdgeld-waechter")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const p = new URLSearchParams(params);
+      p.delete("fokus");
+      setParams(p, { replace: true });
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [fokus]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const kpi = useMemo(() => {
     const grenze = addDays(heute, -30);

@@ -28,7 +28,8 @@ export function TypChip({ typ, regelKey }: { typ: FristTyp; regelKey?: string })
     );
   return (
     <Chip tone={art?.kritisch ? "seal" : m.tone} icon={art?.kritisch ? <ShieldAlert className="size-3" /> : undefined} title={art?.kurz}>
-      {art?.label ?? m.label}
+      {/* nicht verlängerbare Fristen (§ 4 KSchG …) mit Text, nicht nur Farbe – wie im Kalender (I2-T04-01) */}
+      {art?.kritisch && art.label !== "Notfrist" ? `${art.label} · nicht verlängerbar` : (art?.label ?? m.label)}
     </Chip>
   );
 }
@@ -216,6 +217,20 @@ export function KontrollStatus({ f, team }: { f: Frist; team: User[] }) {
   return null;
 }
 
+/**
+ * Eigene Frist mit offener Vier-Augen-Kontrolle: Für die verantwortliche Person gibt es keine Kontrollaktion – an der Zeile
+ * steht sichtbar, warum (I3-T03-04), nicht nur im Tooltip.
+ */
+export function EigeneKontrolleHinweis({ f, user, className }: { f: Frist; user: User; className?: string }) {
+  if (!brauchtKontrolle(f) || f.verantwortlichId !== user.id) return null;
+  return (
+    <span className={cn("inline-flex items-start gap-1 text-[12px] leading-snug text-fg-2", className)}>
+      <Users className="mt-0.5 size-3.5 shrink-0 text-amber" aria-hidden />
+      <span>{f.quelle === "manuell" ? "Von Ihnen notiert – Kontrolle durch Kollegin/Kollegen" : "Vier-Augen offen – bestätigt eine zweite Person"}</span>
+    </span>
+  );
+}
+
 /** Eine Frist als Zeile: Ampelstreifen, Typ, Akte, Grundlage, Verantwortlich, Quelle, Aktionen, Rechenweg. */
 export function FristZeile({
   f, akte, team, user, index = 0, zeigeDatum, vertretungFuer, onOpen,
@@ -235,6 +250,19 @@ export function FristZeile({
   const verantwortlich = team.find((u) => u.id === f.verantwortlichId);
   const hatDetails = !!(f.rechenweg?.length || f.notiz || f.ereignisDatum);
   const art = f.typ === "notfrist" || f.typ === "frist" ? fristArtZu(f) : undefined;
+  // Telefon: „Kontrolle bestätigen“ (falls erlaubt) bzw. „Erledigt“ sichtbar, alles Übrige im „⋯“-Menü (I3-T03-01)
+  const kannKontrolle = f.status === "offen" && darfKontrollieren(f, user.id);
+  const mobilMenue = [
+    ...(kannKontrolle && !f.korrekturAngefordert ? [{ label: "Korrektur anfordern …", icon: <Undo2 />, onClick: korrekturAnfordern }] : []),
+    ...(kannKontrolle ? [{ label: erfordertNachweis(f) ? "Erledigt – mit Nachweis …" : "Erledigt", icon: <CheckCircle2 />, onClick: umschalten }] : []),
+    ...(korrigierbar(f)
+      ? [
+          { label: "Korrigieren …", icon: <PenLine />, onClick: korrigieren },
+          ...(f.typ !== "termin" ? [{ label: "Streichen – mit Grund …", icon: <Trash2 />, danger: true, onClick: streichen }] : []),
+        ]
+      : []),
+    ...(onOpen ? [{ label: "Details öffnen", icon: <PanelRightOpen />, onClick: () => onOpen(f) }] : []),
+  ];
 
   return (
     <motion.div
@@ -306,8 +334,39 @@ export function FristZeile({
             </span>
           </div>
         </div>
-        <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2">
+        {/* Telefon (< 640 px): nie abschneiden – eine Hauptaktion sichtbar, alle übrigen im „⋯“-Menü (immer rechts, 44 × 44 px) */}
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:hidden">
+          <EigeneKontrolleHinweis f={f} user={user} className="basis-full" />
           {verantwortlich && <Avatar initialen={verantwortlich.initialen} farbe={verantwortlich.farbe} size={28} title={`Verantwortlich: ${verantwortlich.name}`} />}
+          {kannKontrolle ? (
+            <button type="button" onClick={kontrollieren} className="btn btn-sm btn-secondary min-h-11 shrink-0" title={`Datum und Rechenweg der Frist von ${verantwortlich?.name ?? "Kollegin/Kollege"} prüfen und bestätigen (Vier-Augen-Kontrolle)`}>
+              <UserCheck className="size-4 text-ink" />
+              Kontrolle bestätigen
+            </button>
+          ) : f.status === "offen" ? (
+            <ErledigtKnopf erledigt={erledigt} onClick={umschalten} className="min-h-11 shrink-0" />
+          ) : (
+            <button type="button" onClick={umschalten} className="btn btn-sm btn-ghost min-h-11 shrink-0" title="Wieder öffnen">
+              <RotateCcw className="size-3.5" />
+              Wieder öffnen
+            </button>
+          )}
+          {mobilMenue.length > 0 && (
+            <div className="ml-auto shrink-0">
+              <Menu
+                trigger={({ toggle }) => (
+                  <button type="button" onClick={toggle} className="icon-btn !size-11 text-fg-2" aria-label={`Weitere Aktionen für ${f.titel}`} title="Weitere Aktionen">
+                    <MoreHorizontal className="size-5" />
+                  </button>
+                )}
+                items={mobilMenue}
+              />
+            </div>
+          )}
+        </div>
+        <div className="ml-auto hidden shrink-0 flex-wrap items-center justify-end gap-2 sm:flex">
+          {verantwortlich && <Avatar initialen={verantwortlich.initialen} farbe={verantwortlich.farbe} size={28} title={`Verantwortlich: ${verantwortlich.name}`} />}
+          <EigeneKontrolleHinweis f={f} user={user} className="max-w-[230px]" />
           {f.status === "offen" && <KontrolleAktion f={f} user={user} kontrollieren={kontrollieren} verantwortlich={verantwortlich} anfordern={korrekturAnfordern} />}
           {f.status === "offen" ? (
             <ErledigtKnopf erledigt={erledigt} onClick={umschalten} />

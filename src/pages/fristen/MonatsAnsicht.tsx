@@ -158,7 +158,7 @@ export function MonatsAnsicht({
 
       {/* Tagesliste */}
       <div className="min-w-0 xl:pt-[52px]">
-        <Card padded={false} className="xl:sticky xl:top-[92px]">
+        <Card padded={false} className="xl:sticky xl:top-6">
           <div className="border-b border-[var(--line)] px-4 py-3.5">
             <div className="eyebrow">{wochentagName(auswahl)}</div>
             <div className="title-md mt-0.5">{fmtDateLong(auswahl)}</div>

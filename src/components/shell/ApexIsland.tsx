@@ -83,7 +83,7 @@ export function ApexIsland() {
             ) : (
               <motion.span key="ruhe" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }} className="flex min-w-0 items-baseline gap-1 text-[13px] font-medium">
                 <span className="num shrink-0 text-[#7ee2b8]">{zahl}</span>
-                <span className="min-w-0 whitespace-nowrap">in 7 Tagen</span>
+                <span className="min-w-0 truncate">in 7 Tagen</span>
               </motion.span>
             )}
           </AnimatePresence>

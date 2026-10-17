@@ -16,6 +16,7 @@ import { MiniKalender } from "./MiniKalender";
 import { legeFristAn, rohesEnde } from "./logik";
 import { FristartAuswahl } from "./FristartAuswahl";
 import { sucheFristarten } from "./fristartSuche";
+import { ereignisFehlt, ereignisHerkunftText, rechenwegMitHerkunft, startEreignisZustand, type EreignisHerkunft } from "./rechnerEingabe";
 
 function einheitLabelVon(einheit: Einheit, n: number) {
   if (einheit === "tage") return n === 1 ? "Tag" : "Tage";
@@ -39,21 +40,38 @@ export function istRechtsmittelfrist(r: FristRegel): boolean {
   return /berufung|revision|beschwerde|begruendung|einspruch_vu|einspruch_vb/.test(r.key) && !r.handlungsort;
 }
 
-const istIsoDatum = (d?: string): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(`${d}T12:00:00Z`));
 
 /**
  * Fristenrechner (Modal). Deep-Link-Vertrag der Fristen-Seite:
- * /fristen?rechner=1&regel=<regelKey>&ereignis=<YYYY-MM-DD>&akte=<akteId> – alle Parameter außer `rechner` optional;
- * der Rechner öffnet dann vorbefüllt und zeigt das Ergebnis sofort.
+ * /fristen?rechner=1&regel=<regelKey>&ereignis=<YYYY-MM-DD>&akte=<akteId>[&herkunft=<Text>] – alle Parameter außer `rechner` optional;
+ * der Rechner öffnet dann vorbefüllt und zeigt das Ergebnis sofort. Ohne `ereignis` ist das Ereignisfeld leer und Pflicht –
+ * „heute“ nur als Schnellwahl, nie still vorbelegt (I3-T18-02, wie im Akten-Dialog seit I2-T14-01).
  */
-export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEreignis }: { open: boolean; onClose: () => void; startAkteId?: string; startRegel?: string; startEreignis?: string }) {
+export function Fristenrechner({
+  open,
+  onClose,
+  startAkteId,
+  startRegel,
+  startEreignis,
+  startQuelle,
+}: {
+  open: boolean;
+  onClose: () => void;
+  startAkteId?: string;
+  startRegel?: string;
+  startEreignis?: string;
+  /** Woher das übergebene Ereignisdatum stammt, z. B. „dem Posteingang“ (Rechenweg: „Ereignisdatum aus … übernommen“). */
+  startQuelle?: string;
+}) {
   const { tenant, user } = useKanzlei();
   const akten = useCol("akten");
   const kontakte = useCol("kontakte");
   const nav = useNavigate();
   const [suche, setSuche] = useState("");
   const [key, setKey] = useState(startRegel && FRIST_REGELN.some((r) => r.key === startRegel) ? startRegel : "berufung");
-  const [ereignis, setEreignis] = useState(() => (istIsoDatum(startEreignis) ? startEreignis : today()));
+  // Ereignisdatum leer und Pflicht – vorbelegt nur, wenn es ausdrücklich übergeben wird (startEreignis)
+  const [ereignis, setEreignis] = useState(() => startEreignisZustand(startEreignis).ereignis);
+  const [ereignisHerkunft, setEreignisHerkunft] = useState<EreignisHerkunft>(() => startEreignisZustand(startEreignis).herkunft);
   const [dauer, setDauer] = useState("");
   const [einheitWahl, setEinheitWahl] = useState<Exclude<Einheit, "jahresende">>("tage");
   const [modus, setModus] = useState<"dauer" | "datum">("dauer");
@@ -89,7 +107,10 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
       setFestesEnde("");
       setSuche("");
     }
-    if (istIsoDatum(startEreignis)) setEreignis(startEreignis);
+    // Ohne übergebenes Ereignis beim Öffnen leer – kein Datum aus einer früheren Berechnung stehen lassen
+    const start = startEreignisZustand(startEreignis);
+    setEreignis(start.ereignis);
+    setEreignisHerkunft(start.herkunft);
   }, [open, startAkteId, startRegel, startEreignis]);
 
   const gefiltert = useMemo(() => sucheFristarten(suche, FRIST_REGELN), [suche]);
@@ -133,8 +154,8 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
   const effLand = ort?.land;
   const fehlt = !gewaehlt
     ? "Bitte Fristart wählen"
-    : !gueltig
-      ? "Bitte ein gültiges Datum eingeben."
+    : ereignisFehlt(ereignis, regel.ereignis)
+      ? ereignisFehlt(ereignis, regel.ereignis)
       : !ort
         ? "Bitte Gericht oder Bundesland wählen – maßgeblich sind die Feiertage am Gerichtsort"
         : mitDatum && !/^\d{4}-\d{2}-\d{2}$/.test(festesEnde)
@@ -155,6 +176,9 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
     [fehlt, ort, key, ereignis, mitDatum, dauerNum, tenant.bundesland, regel.dauerPflicht, einheit, festesEnde],
   );
   const roh = erg ? (mitDatum ? erg.rohesEnde : rohesEnde(ereignis, dauerNum ?? regel.dauer, einheit)) : null;
+  // Rechenweg mit Herkunft des Ereignisdatums (erste Zeile), z. B. „… · heute (Schnellwahl)“
+  const herkunftText = ereignisHerkunftText(ereignisHerkunft, startQuelle);
+  const rechenweg = erg ? rechenwegMitHerkunft(erg.rechenweg, herkunftText) : [];
   const landHinweis = regel.handlungsort
     ? `Diese Frist wird beim ${regel.handlungsort.ort} gewahrt – es gelten dessen Feiertage.`
     : ort?.quelle === "akte"
@@ -197,7 +221,7 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
   const kritisch = art.kritisch;
 
   const eintragen = () => {
-    if (!erg || !akte || (widerspruch && !abweichendBestaetigt)) return;
+    if (!erg || !akte || !ort || (widerspruch && !abweichendBestaetigt)) return;
     const titel = mitDatum
       ? `${regel.titel} (bis ${fmtDateWd(festesEnde)})`
       : dauerNum && (dauerNum !== regel.dauer || regel.dauerPflicht)
@@ -212,7 +236,16 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
       regelKey: regel.key,
       grundlage: regel.grundlage,
       ereignisDatum: ereignis,
-      rechenweg: erg.rechenweg,
+      rechenweg,
+      // Verwendeter Gerichtsort – Korrekturen rechnen mit denselben Feiertagen weiter (I3-T03-02)
+      gerichtsort:
+        ort.quelle === "gericht" || ort.quelle === "akte"
+          ? { land: ort.land, gericht: gerichtLand?.gericht ?? ort.label, quelle: ort.quelle }
+          : ort.quelle === "handlung"
+            ? { land: ort.land, gericht: regel.handlungsort?.ort, quelle: "gericht" }
+            : ort.quelle === "kanzlei"
+              ? { land: ort.land, quelle: "kanzleisitz" }
+              : { land: ort.land, ...(gericht.trim() ? { gericht: gericht.trim() } : {}), quelle: "hand" },
       quelle: "manuell",
       verantwortlichId: akte.bearbeiterId,
       vorfristVerantwortlichId: akte.sachbearbeiterId ?? akte.bearbeiterId,
@@ -299,8 +332,40 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
             />
           )}
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label={regel.ereignis} htmlFor="rechner-ereignis">
-              <Input id="rechner-ereignis" type="date" value={ereignis} onChange={(e) => { setEreignis(e.target.value); setEingetragen(null); }} />
+            <Field
+              label={`${regel.ereignis} (Pflicht)`}
+              htmlFor="rechner-ereignis"
+              hint={ereignisHerkunft === "start" && gueltig ? `Aus ${startQuelle?.trim() || "dem Aufruf"} übernommen – bitte prüfen.` : ereignisHerkunft === "heute" && gueltig ? "heute (Schnellwahl)" : undefined}
+            >
+              <div className="flex gap-2">
+                <Input
+                  id="rechner-ereignis"
+                  type="date"
+                  required
+                  aria-required="true"
+                  aria-invalid={!ereignis ? undefined : !gueltig}
+                  value={ereignis}
+                  onChange={(e) => {
+                    setEreignis(e.target.value);
+                    setEreignisHerkunft("hand");
+                    setEingetragen(null);
+                  }}
+                  className="min-w-0 flex-1"
+                />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="!h-11 shrink-0"
+                  title="Heutiges Datum eintragen"
+                  onClick={() => {
+                    setEreignis(today());
+                    setEreignisHerkunft("heute");
+                    setEingetragen(null);
+                  }}
+                >
+                  heute
+                </Button>
+              </div>
             </Field>
             {mitDatum ? (
               <Field label={`Fristende laut ${regel.key === "widerruf_vergleich" ? "Vergleich" : "Vereinbarung"}`} htmlFor="rechner-festes-ende">
@@ -510,7 +575,7 @@ export function Fristenrechner({ open, onClose, startAkteId, startRegel, startEr
               <div className="rounded-[18px] p-4 ring-1 ring-inset ring-[var(--line)]">
                 <div className="eyebrow mb-3">Rechenweg</div>
                 {/* sofort vollständig – ohne zeilenweises Einblenden */}
-                <RechenwegListe schritte={erg.rechenweg} />
+                <RechenwegListe schritte={rechenweg} />
               </div>
             </>
           ) : (

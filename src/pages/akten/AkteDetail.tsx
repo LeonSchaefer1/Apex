@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { CalendarClock, CalendarPlus, ChevronLeft, FolderSearch, Mail, Sparkles, StickyNote } from "lucide-react";
@@ -22,6 +23,7 @@ import { beruehreAkte, listenKontext } from "./helfer";
 import { DiktatKnopf } from "./Diktat";
 import { darfAbrechnung } from "@/lib/backend";
 import { useMedia } from "@/lib/useMedia";
+import { cn } from "@/lib/cn";
 
 const TABS = ["uebersicht", "dokumente", "fristen", "beteiligte", "aktenkonto", "verlauf", "ki"] as const;
 type TabKey = (typeof TABS)[number];
@@ -52,10 +54,31 @@ export default function AkteDetail() {
     const el = kopfRef.current;
     const root = document.getElementById("haupt-scroll");
     if (!el || typeof IntersectionObserver === "undefined") return;
-    const io = new IntersectionObserver(([e]) => setKompakt(!e.isIntersecting), { root, rootMargin: "-90px 0px 0px 0px", threshold: 0 });
+    const io = new IntersectionObserver(([e]) => setKompakt(!e.isIntersecting), { root, rootMargin: "-22px 0px 0px 0px", threshold: 0 });
     io.observe(el);
     return () => io.disconnect();
   }, [akte?.id]);
+
+  // Kurzkopf in der Ebene unter der Kopfleiste (AppShell, außerhalb der Scrollfläche) – gleiche Lage wie bisher, aber keine
+  // Bedienelemente der Akte laufen in derselben Ebene unter seine Knöpfe; Breite der Scrollleiste wird ausgespart.
+  const [ebene, setEbene] = useState<HTMLElement | null>(null);
+  useEffect(() => setEbene(document.getElementById("kopf-ebene")), []);
+  const [leiste, setLeiste] = useState(0);
+  useEffect(() => {
+    const sc = document.getElementById("haupt-scroll");
+    if (kompakt && sc) setLeiste(sc.offsetWidth - sc.clientWidth);
+  }, [kompakt]);
+
+  // Fokus nie unter dem Kurzkopf (WCAG 2.4.11): Solange er steht (ab md), hält die Scrollfläche oben seinen Platz frei
+  useEffect(() => {
+    const sc = document.getElementById("haupt-scroll");
+    if (!sc) return;
+    const breit = window.matchMedia("(min-width: 768px)").matches;
+    sc.style.scrollPaddingTop = kompakt && breit ? "64px" : "";
+    return () => {
+      sc.style.scrollPaddingTop = "";
+    };
+  }, [kompakt]);
 
   const zahlen = useMemo(
     () => ({
@@ -89,8 +112,8 @@ export default function AkteDetail() {
       const el = tabsRef.current;
       const sc = document.getElementById("haupt-scroll");
       if (el && sc) {
-        // Platz für Kopfleiste und Kurzkopf (Desktop) lassen
-        const versatz = window.matchMedia("(min-width: 768px)").matches ? 140 : 88;
+        // Platz für den Kurzkopf (Desktop) lassen – die Kopfleiste liegt über der Scrollfläche
+        const versatz = window.matchMedia("(min-width: 768px)").matches ? 72 : 20;
         const top = el.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop - versatz;
         const behavior = opts.sofort || window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
         if (t !== "uebersicht" || top < sc.scrollTop) sc.scrollTo({ top: Math.max(0, top), behavior });
@@ -129,38 +152,46 @@ export default function AkteDetail() {
 
   return (
     <div className="grid grid-cols-1 gap-5">
-      {/* Kurzkopf (sticky, ohne Layoutsprung): Aktenzeichen, Titel und die wichtigsten Aktionen */}
-      <div className="sticky top-[78px] z-30 -mb-5 h-0">
-        <AnimatePresence>
-          {kompakt && (
-            <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ type: "spring", stiffness: 460, damping: 36 }}
-              className="glass-strong glass-deckend absolute inset-x-0 top-0 hidden items-center gap-3 rounded-full py-1.5 pl-4 pr-1.5 md:flex"
-              style={{ boxShadow: "var(--glass-shadow)" }}
-            >
-              <span className="mono shrink-0 text-[13.5px] font-semibold">{akte.aktenzeichen}</span>
-              <span className="line-clamp-1 min-w-0 flex-1 text-[13.5px] font-medium text-fg-2" title={akte.titel}>
-                {akte.titel}
-              </span>
-              <Button size="sm" variant="ghost" icon={<Mail className="size-4" />} onClick={() => setEmailOffen(true)}>
-                E-Mail
-              </Button>
-              <Button size="sm" variant="ghost" icon={<CalendarPlus className="size-4" />} onClick={() => setFristOffen("regel")}>
-                Frist
-              </Button>
-              <Button size="sm" variant="ghost" icon={<CalendarClock className="size-4" />} onClick={() => setFristOffen("frei")}>
-                Wiedervorlage
-              </Button>
-              <Button size="sm" variant="ai" icon={<Sparkles className="size-4" />} onClick={() => zuTabs("ki")}>
-                KI
-              </Button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+      {/* Kurzkopf (ohne Layoutsprung): Aktenzeichen, Titel und die wichtigsten Aktionen – über der Scrollfläche */}
+      {ebene &&
+        createPortal(
+          <div style={{ paddingRight: leiste }}>
+            <div className="mx-auto w-full max-w-[1480px] px-4 pt-2.5 md:px-8">
+              <div className="relative">
+                <AnimatePresence>
+                  {kompakt && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{ type: "spring", stiffness: 460, damping: 36 }}
+                      className="glass-strong glass-deckend pointer-events-auto absolute inset-x-0 top-0 hidden items-center gap-3 rounded-full py-1.5 pl-4 pr-1.5 md:flex"
+                      style={{ boxShadow: "var(--glass-shadow)" }}
+                    >
+                      <span className="mono shrink-0 text-[13.5px] font-semibold">{akte.aktenzeichen}</span>
+                      <span className="line-clamp-1 min-w-0 flex-1 text-[13.5px] font-medium text-fg-2" title={akte.titel}>
+                        {akte.titel}
+                      </span>
+                      <Button size="sm" variant="ghost" icon={<Mail className="size-4" />} onClick={() => setEmailOffen(true)}>
+                        E-Mail
+                      </Button>
+                      <Button size="sm" variant="ghost" icon={<CalendarPlus className="size-4" />} onClick={() => setFristOffen("regel")}>
+                        Frist
+                      </Button>
+                      <Button size="sm" variant="ghost" icon={<CalendarClock className="size-4" />} onClick={() => setFristOffen("frei")}>
+                        Wiedervorlage
+                      </Button>
+                      <Button size="sm" variant="ai" icon={<Sparkles className="size-4" />} onClick={() => zuTabs("ki")}>
+                        KI
+                      </Button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+          </div>,
+          ebene,
+        )}
       <div className="-mb-1 flex items-center gap-2">
         <Link to={`/akten${listenKontext.suche}`} className="inline-flex h-8 items-center gap-1 rounded-full pl-1.5 pr-3 text-[13px] font-medium text-fg-3 transition-colors hover:bg-ink-softer hover:text-fg max-sm:h-11">
           <ChevronLeft className="size-4" /> Alle Akten
@@ -168,7 +199,7 @@ export default function AkteDetail() {
       </div>
 
       <motion.div ref={kopfRef} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", stiffness: 380, damping: 34 }}>
-        <AkteKopf akte={akte} onEmail={() => setEmailOffen(true)} onFrist={() => setFristOffen("regel")} onKi={() => zuTabs("ki")} />
+        <AkteKopf akte={akte} onEmail={() => setEmailOffen(true)} onFrist={() => setFristOffen("regel")} onKi={() => zuTabs("ki")} onNotiz={() => setNotizOffen(true)} onWiedervorlage={() => setFristOffen("frei")} />
       </motion.div>
 
       <div ref={tabsRef} className="grid grid-cols-1 gap-4">
@@ -207,8 +238,10 @@ export default function AkteDetail() {
       <FristAnlegen akte={akte} open={!!fristOffen} startModus={fristOffen || "regel"} onClose={() => setFristOffen(false)} />
       <NotizDialog akte={akte} open={notizOffen} onClose={() => setNotizOffen(false)} />
 
-      {/* Mobil: feste Aktionsleiste über der Tab-Leiste, rechts mit Abstand zur Assistent-Kugel */}
-      <div className="fixed bottom-[calc(88px+env(safe-area-inset-bottom))] left-3 right-[84px] z-30 md:hidden">
+      {/* Mobil: feste Aktionsleiste über der Tab-Leiste, rechts mit Abstand zur Assistent-Kugel. Im Reiter „Dokumente“
+          ausgeblendet – dort liegt nichts Bedienbares darunter, die Mehrfachauswahl nutzt den Platz (I3-T05-01);
+          Notiz, Frist und Wiedervorlage bleiben über den Aktenkopf („Frist“ bzw. „⋯“) erreichbar. */}
+      <div className={cn("fixed bottom-[calc(88px+env(safe-area-inset-bottom))] left-3 right-[84px] z-30 md:hidden", tab === "dokumente" && "hidden")}>
         <div className="glass-strong tabbar-deckend flex items-center gap-1 rounded-full p-1" style={{ boxShadow: "var(--glass-shadow)" }} role="toolbar" aria-label="Schnellaktionen der Akte">
           <button type="button" onClick={() => setNotizOffen(true)} className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-full text-[13px] font-medium text-fg-2 hover:bg-ink-softer">
             <StickyNote className="size-4" /> Notiz

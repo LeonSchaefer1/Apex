@@ -9,7 +9,8 @@ import { AnsprechpartnerKarte } from "./Ansprechpartner";
 import { WikiBibliothek } from "./WikiBibliothek";
 import { Systemstatus } from "./Systemstatus";
 import { GepruefteUpdates } from "./Updates";
-import { festeAnsprechperson } from "@/lib/rollen";
+import { festeAnsprechBezeichnung } from "@/lib/rollen";
+import { useIsMobile } from "@/lib/useMedia";
 
 const BEISPIELE = ["Wie berechne ich eine Berufungsfrist?", "Wie lade ich eine Kollegin ins Team ein?", "Was erledigt der 38h-Motor für mich?"];
 
@@ -24,37 +25,67 @@ export default function Hilfe() {
     if (w) useUI.getState().zeigeHilfe(w);
   }, [params]);
 
-  // Sprung zum Systemstatus (z. B. aus der Kopfleiste „Simuliert verbunden“) – sofort, ohne Verzögerung und ohne Gleitanimation
+  // Sprung zum Systemstatus (Kopfleiste, Mehr-Menü, Cockpit) – sofort, ohne Gleitanimation. Weil Seitenübergang und
+  // nachladende Abschnitte die Lage noch verschieben, wird der Sprung kurz danach wiederholt, solange niemand selbst scrollt.
   useEffect(() => {
     if (loc.hash !== "#status") return;
     let n = 0;
     let raf = 0;
-    const springe = () => {
-      const el = document.getElementById("status");
-      if (el) {
-        el.scrollIntoView({ block: "start" });
-        el.focus({ preventScroll: true });
-      } else if (n++ < 30) raf = requestAnimationFrame(springe);
+    let selbst = false;
+    const timer: number[] = [];
+    const nutzer = () => {
+      selbst = true;
     };
-    raf = requestAnimationFrame(springe);
-    return () => cancelAnimationFrame(raf);
+    const opts = { passive: true, capture: true } as const;
+    window.addEventListener("wheel", nutzer, opts);
+    window.addEventListener("touchmove", nutzer, opts);
+    window.addEventListener("keydown", nutzer, opts);
+    const springe = (fokus: boolean) => {
+      const el = document.getElementById("status");
+      if (!el) return false;
+      if (!selbst) el.scrollIntoView({ block: "start" });
+      if (fokus) el.focus({ preventScroll: true });
+      return true;
+    };
+    const erst = () => {
+      if (springe(true)) {
+        for (const ms of [180, 450, 900]) timer.push(window.setTimeout(() => springe(false), ms));
+      } else if (n++ < 60) raf = requestAnimationFrame(erst);
+    };
+    raf = requestAnimationFrame(erst);
+    return () => {
+      cancelAnimationFrame(raf);
+      timer.forEach((t) => clearTimeout(t));
+      window.removeEventListener("wheel", nutzer, opts);
+      window.removeEventListener("touchmove", nutzer, opts);
+      window.removeEventListener("keydown", nutzer, opts);
+    };
   }, [loc.hash, loc.key]);
+  // Am Smartphone steht der Systemstatus vor dem Wiki – dort sucht man ihn unterwegs zuerst (I3-T12-02)
+  const mobil = useIsMobile();
 
   return (
     <div>
-      <PageHeader title="Hilfe & Support" hilfe="hilfe" subtitle={`Animiertes Wiki, Schnellhilfe, Systemstatus und ${festeAnsprechperson(tenant.ansprechpartner)} – Hilfe, die wirklich hilft: direkt und ohne Warteschleife.`} />
+      <PageHeader title="Hilfe & Support" hilfe="hilfe" subtitle={`Animiertes Wiki, Schnellhilfe, Systemstatus und ${festeAnsprechBezeichnung(tenant.ansprechpartner)} – Hilfe, die wirklich hilft: direkt und ohne Warteschleife.`} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <AnsprechpartnerKarte ap={tenant.ansprechpartner} className="lg:col-span-2" />
         <AssistentKarte />
       </div>
 
+      {mobil && (
+        <div className="mt-10">
+          <Systemstatus />
+        </div>
+      )}
       <div className="mt-10">
         <WikiBibliothek />
       </div>
-      <div className="mt-10">
-        <Systemstatus />
-      </div>
+      {!mobil && (
+        <div className="mt-10">
+          <Systemstatus />
+        </div>
+      )}
       <div className="mt-10">
         <GepruefteUpdates />
       </div>

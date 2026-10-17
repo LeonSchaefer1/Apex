@@ -1,9 +1,10 @@
 // Gemeinsame Fristen-Helfer für Fristenkalender und Posteingang (Anlegen, Erledigen, Vier-Augen-Kontrolle, Darstellung).
 import { addDays, addMonthsBGB, fmtDate, fmtEUR, fmtTime, fromISO, nowLocal, today, uid, weekday } from "@/core/dates";
-import type { Einheit } from "@/core/fristen";
+import { berechneNachRegel, type Einheit } from "@/core/fristen";
+import { BUNDESLAENDER } from "@/core/feiertage";
 import { istKritisch } from "@/core/fristenLage";
 import { useData } from "@/store/data";
-import type { Frist, FristTyp, ID, ISODate, Nachricht, Transaktion, User } from "@/core/types";
+import type { Akte, Bundesland, Buchung, Frist, FristGerichtsort, FristTyp, ID, ISODate, Nachricht, Transaktion, User } from "@/core/types";
 import type { Tone } from "@/components/ui";
 
 export interface TypMeta {
@@ -139,6 +140,8 @@ export interface NeueFrist {
   /** Verantwortlich für die Vorfrist (z. B. ReFa); Standard: wie Frist */
   vorfristVerantwortlichId?: ID;
   notiz?: string;
+  /** Ort, mit dessen Feiertagen die Frist berechnet wurde (für spätere Korrekturen, § 222 Abs. 2 ZPO) */
+  gerichtsort?: FristGerichtsort;
 }
 
 /** Legt eine Frist an – mit Vorfrist als eigenem Kalendereintrag. Kontrolle (Vier-Augen) bleibt offen. */
@@ -162,6 +165,7 @@ export function legeFristAn(p: NeueFrist): { frist: Frist; vorfrist?: Frist } {
     verantwortlichId: p.verantwortlichId,
     quelle: p.quelle,
     notiz: p.notiz,
+    ...(p.gerichtsort ? { gerichtsort: p.gerichtsort } : {}),
     createdAt: jetzt,
   };
   upsert("fristen", frist);
@@ -235,6 +239,78 @@ export function istZahlungsfrist(f: Pick<Frist, "titel">): boolean {
 /** Nachweisarten nach Fristart: Zahlungsfristen per Überweisung (Kontoumsatz), sonst die Versandwege. */
 export function nachweisArtenFuer(f: Pick<Frist, "titel">): Nachweis["art"][] {
   return istZahlungsfrist(f) ? ["ueberweisung", "gestrichen"] : [...VERSAND_ARTEN, "gestrichen"];
+}
+
+/** Nachweisquelle einer Zahlungsfrist: Fremdgeld-Weiterleitung der Akte (Aktenkonto) oder Ausgang aus dem Bankabgleich. */
+export interface NachweisQuelle {
+  /** „b:<Buchungs-ID>“ (Weiterleitung) bzw. „t:<Transaktions-ID>“ (Kontoumsatz) */
+  id: string;
+  art: "weiterleitung" | "umsatz";
+  datum: ISODate;
+  /** Betrag des Ausgangs (negativ) */
+  betrag: number;
+  /** Zeile für die Auswahl, z. B. „Weiterleitung vom 17.10.2026 · 6.120,00 € an Elif Yilmaz (SEPA-Datei)“ */
+  label: string;
+  /** Akte, zu der der Ausgang gehört (fehlt bei einem keiner Akte zugeordneten Umsatz) */
+  akteId?: ID;
+  aktenzeichen?: string;
+  transaktionId?: ID;
+  buchungId?: ID;
+}
+
+/**
+ * Überweisungsnachweis einer Zahlungsfrist (I3-T15-01): nur Ausgänge (Betrag < 0), Eingänge (Gutschriften) nie.
+ * `passend` = zuerst die Fremdgeld-Weiterleitungen der Akte (nicht storniert), dann die der Akte zugeordneten Ausgänge;
+ * `fremd` = Ausgänge anderer oder keiner Akte – nur hinter „Anderen Umsatz wählen …“, mit Warnung und Pflichtbegründung.
+ * `erwartet` = Fremdgeld- bzw. Fristbetrag (Betrag im Titel/in der Notiz, sonst Fremdgeld-Eingänge der Akte) für den Abweichungshinweis.
+ */
+export function nachweisUmsaetze(
+  f: Pick<Frist, "akteId" | "titel" | "notiz">,
+  transaktionen: Transaktion[],
+  buchungen: Buchung[],
+  akten: Pick<Akte, "id" | "aktenzeichen">[] = [],
+): { passend: NachweisQuelle[]; fremd: NachweisQuelle[]; erwartet?: number } {
+  const az = (id?: ID) => (id ? akten.find((a) => a.id === id)?.aktenzeichen : undefined);
+  const storniert = (b: Buchung) => buchungen.some((x) => x.akteId === b.akteId && x.text === `Storno: ${b.text}` && Math.abs(x.betrag + b.betrag) < 0.005);
+  const weiterleitungen: NachweisQuelle[] = buchungen
+    .filter((b) => b.akteId === f.akteId && b.betrag < 0 && !!b.weiterleitung && !storniert(b))
+    .sort((a, b) => b.datum.localeCompare(a.datum))
+    .map((b) => ({
+      id: `b:${b.id}`,
+      art: "weiterleitung",
+      datum: b.datum,
+      betrag: b.betrag,
+      label: `Weiterleitung vom ${fmtDate(b.datum)} · ${fmtEUR(-b.betrag)} an ${b.weiterleitung!.empfaenger} (${b.weiterleitung!.wirkung === "sepa-datei" ? "SEPA-Datei" : "bereits überwiesen"})`,
+      akteId: b.akteId,
+      aktenzeichen: az(b.akteId),
+      buchungId: b.id,
+    }));
+  const ausgaenge = transaktionen
+    .filter((t) => t.betrag < 0 && t.status !== "ignoriert")
+    .sort((a, b) => b.datum.localeCompare(a.datum))
+    .map(
+      (t): NachweisQuelle => ({
+        id: `t:${t.id}`,
+        art: "umsatz",
+        datum: t.datum,
+        betrag: t.betrag,
+        label: `${fmtDate(t.datum)} · ${fmtEUR(t.betrag)} · ${t.gegenpartei} · ${t.verwendungszweck}`,
+        akteId: t.zuordnung?.akteId,
+        aktenzeichen: az(t.zuordnung?.akteId),
+        transaktionId: t.id,
+      }),
+    );
+  const passend = [...weiterleitungen, ...ausgaenge.filter((q) => q.akteId === f.akteId)];
+  const fremd = ausgaenge.filter((q) => q.akteId !== f.akteId).slice(0, 40);
+  const imText = /(\d{1,3}(?:\.\d{3})*,\d{2})\s*€/.exec(`${f.titel} ${f.notiz ?? ""}`);
+  const eingaenge = buchungen.filter((b) => b.akteId === f.akteId && b.fremdgeld && b.betrag > 0 && !b.text.startsWith("Storno: "));
+  const erwartet = imText ? Number(imText[1].replace(/\./g, "").replace(",", ".")) : eingaenge.length ? Math.round(eingaenge.reduce((s, b) => s + b.betrag, 0) * 100) / 100 : undefined;
+  return { passend, fremd, ...(erwartet !== undefined ? { erwartet } : {}) };
+}
+
+/** Warnung für einen Ausgang außerhalb der Akte: „Umsatz gehört zu 137/26 – nicht zu 131/26“. */
+export function fremdHinweis(q: Pick<NachweisQuelle, "aktenzeichen">, aktenzeichenFrist?: string): string {
+  return q.aktenzeichen ? `Umsatz gehört zu ${q.aktenzeichen} – nicht zu ${aktenzeichenFrist ?? "dieser Akte"}` : `Umsatz ist keiner Akte zugeordnet – nicht ${aktenzeichenFrist ?? "dieser Akte"}`;
 }
 
 /** Notfristen und Fristen brauchen beim Erledigen einen Nachweis (Ausgangskontrolle) – Wiedervorlagen, Vorfristen und Termine nicht. */
@@ -323,6 +399,58 @@ export interface FristKorrektur {
   grundlage?: string;
   rechenweg?: string[];
   typ?: FristTyp;
+  /** Ort, mit dessen Feiertagen korrigiert wurde – bleibt an der Frist gespeichert (I3-T03-02) */
+  gerichtsort?: FristGerichtsort;
+}
+
+/**
+ * Gerichtsort aus der Feiertagszeile eines Rechenwegs: „Feiertage am Gerichtsort geprüft: Berlin (Kammergericht,
+ * Berufungsgericht)“ → { land: "BE", gericht: "Kammergericht, Berufungsgericht", quelle: "gericht" }; „… (X – laut Akte)“ →
+ * quelle „akte“; „(von Hand gewählt)“ → quelle „hand“; „Gerichtsort noch offen – … Kanzleisitz (Y)“ → quelle „kanzleisitz“.
+ * So speichern Fristübernahmen (Posteingang) den Ort, den der Fristenrechner verwendet hat.
+ */
+export function gerichtsortAusRechenweg(rechenweg: string[] | undefined): FristGerichtsort | undefined {
+  const landVon = (name: string): Bundesland | undefined => BUNDESLAENDER.find((b) => b.name === name.trim())?.code;
+  for (const z of rechenweg ?? []) {
+    const offen = /^Gerichtsort noch offen – geprüft mit den Feiertagen am Kanzleisitz \((.+)\)$/.exec(z);
+    if (offen) {
+      const land = landVon(offen[1]);
+      return land ? { land, quelle: "kanzleisitz" } : undefined;
+    }
+    const m = /^Feiertage am Gerichtsort geprüft: ([^(]+?) \((.+)\)$/.exec(z);
+    if (!m) continue;
+    const land = landVon(m[1]);
+    if (!land) return undefined;
+    const ort = m[2].trim();
+    if (ort === "von Hand gewählt") return { land, quelle: "hand" };
+    return { land, gericht: ort, quelle: / – laut Akte$/.test(ort) ? "akte" : "gericht" };
+  }
+  return undefined;
+}
+
+/**
+ * Korrektur „Neu berechnen“: mit dem gespeicherten bzw. gewählten Gerichtsort (Feiertage am Ort der Fristwahrung) –
+ * nie still mit dem Kanzleisitz, wenn die Frist einen anderen Ort hatte (I3-T03-02).
+ */
+export function korrekturNeuBerechnet(
+  f: Pick<Frist, "regelKey">,
+  regelKey: string,
+  ereignis: ISODate,
+  ort: { land: Bundesland; feiertagsOrt?: string; gerichtsort: FristGerichtsort },
+  kanzleiLand: Bundesland,
+): FristKorrektur {
+  const erg = berechneNachRegel(regelKey, ereignis, ort.land, undefined, { feiertagsOrt: ort.feiertagsOrt, kanzleiLand });
+  return {
+    datum: erg.ende,
+    vorfrist: erg.vorfrist,
+    ereignisDatum: ereignis,
+    regelKey,
+    titel: regelKey !== f.regelKey ? erg.regel.titel : undefined,
+    grundlage: erg.regel.grundlage,
+    rechenweg: erg.rechenweg,
+    typ: erg.regel.typ,
+    gerichtsort: ort.gerichtsort,
+  };
 }
 
 /**
@@ -350,6 +478,7 @@ export function korrigiereFrist(f: Frist, userId: ID, neu: FristKorrektur, grund
   }
   const was = [
     vorher.datum !== neu.datum ? `Fristende ${fmtDate(vorher.datum)} → ${fmtDate(neu.datum)}` : "",
+    neu.gerichtsort?.quelle === "hand" && aktuell.gerichtsort?.land !== neu.gerichtsort.land ? `Feiertage ${BUNDESLAENDER.find((b) => b.code === neu.gerichtsort!.land)?.name ?? neu.gerichtsort.land} (abweichender Gerichtsort bestätigt)` : "",
     neu.ereignisDatum && neu.ereignisDatum !== vorher.ereignisDatum ? `Ereignis ${vorher.ereignisDatum ? fmtDate(vorher.ereignisDatum) : "–"} → ${fmtDate(neu.ereignisDatum)}` : "",
     neu.regelKey && neu.regelKey !== vorher.regelKey ? `Fristart „${vorher.titel}“ → „${titel}“` : "",
   ].filter(Boolean);

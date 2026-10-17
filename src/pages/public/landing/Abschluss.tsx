@@ -13,7 +13,8 @@ import { KontaktBlock, useAnfrage } from "./Anfrage";
 
 const PROBLEME = [
   { i: <AlertOctagon className="size-5" />, p: "Nach der Aktualisierung funktioniert der gewohnte Ablauf nicht mehr.", l: "Geprüfte Aktualisierungen – Zeitpunkt wählen Sie." },
-  { i: <Hourglass className="size-5" />, p: "45 bis 60 Minuten in der Telefon-Warteschleife.", l: "Feste Ansprechpartnerin mit Durchwahl." },
+  // Erfahrungswert, kein eigener Messwert – gekennzeichnet wie im Vergleich und in der Hilfe (I3-T00-02)
+  { i: <Hourglass className="size-5" />, p: "45 bis 60 Minuten in der Telefon-Warteschleife.", l: "Feste Ansprechpartnerin mit Durchwahl.", fussnote: true },
   { i: <Link2Off className="size-5" />, p: "beA oder E-Mail streikt – mit einer Fehlermeldung, die niemand versteht.", l: "Betriebsstatus und Fehler in Klartext." },
   { i: <Search className="size-5" />, p: "Die Suche in großen Akten dauert länger als das Blättern.", l: "Volltextsuche über alles mit Strg+K (Mac: ⌘K)." },
   { i: <Receipt className="size-5" />, p: "Das Forderungskonto rechnet Zinsen nicht vollständig.", l: "Taggenaue Zinsen, Verrechnung nach § 367 BGB." },
@@ -39,7 +40,14 @@ export function Erfahrungen() {
         {PROBLEME.map((x, k) => (
           <Reveal as="li" key={x.p} delay={(k % 4) * 0.05} className="sheet glow group relative flex flex-col rounded-[24px] p-5">
             <span className="relative z-[1] grid size-10 place-items-center rounded-[13px] bg-seal-soft text-seal transition-colors duration-300 group-hover:bg-green-soft group-hover:text-green">{x.i}</span>
-            <p className="relative z-[1] mb-4 mt-4 text-[14.5px] font-medium leading-snug text-fg-2">{x.p}</p>
+            <p className="relative z-[1] mb-4 mt-4 text-[14.5px] font-medium leading-snug text-fg-2" aria-describedby={"fussnote" in x ? "erfahrungen-fussnote" : undefined}>
+              {x.p}
+              {"fussnote" in x && (
+                <sup aria-hidden className="ml-0.5 text-[11px] font-semibold text-fg-3">
+                  1
+                </sup>
+              )}
+            </p>
             <p className="relative z-[1] mt-auto flex items-start gap-2 border-t border-[var(--line)] pt-3 text-[13px] font-semibold text-green">
               <ArrowRight className="mt-0.5 size-4 shrink-0" />
               {x.l}
@@ -47,6 +55,10 @@ export function Erfahrungen() {
           </Reveal>
         ))}
       </ul>
+      <p id="erfahrungen-fussnote" className="mt-4 text-[13px] text-fg-2">
+        <sup aria-hidden className="mr-0.5 text-[11px] font-semibold">1</sup>
+        Wartezeit laut Bewertungen von Kanzleien – Zusammenfassung typischer Erfahrungsberichte; einzelne Produkte können abweichen.
+      </p>
     </Abschnitt>
   );
 }

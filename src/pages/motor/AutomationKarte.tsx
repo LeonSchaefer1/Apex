@@ -1,16 +1,18 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { motion, useReducedMotion } from "motion/react";
-import { ArrowUpRight, Check, Clock, History, Play, Radio, Repeat, ShieldCheck, Timer, Zap } from "lucide-react";
+import { ArrowUpRight, Check, Clock, History, Lock, Play, Radio, Repeat, ShieldCheck, Timer, Zap } from "lucide-react";
 import type { Aktivitaet, Automation } from "@/core/types";
 import { addDays, fmtNum, nowLocal, relTime, toLocalISO, today } from "@/core/dates";
 import { useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
 import { useMotorStore } from "@/lib/motor";
-import { Button, Card, Chip, Drawer, Empty, Switch } from "@/components/ui";
+import { Button, Card, Chip, Drawer, Empty, Switch, confirmDialog } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { automationDef } from "@/core/automationen";
+import { automationDef, folgeBeimPausieren, folgeWaehrendPause, istFristAutomatik } from "@/core/automationen";
+import { automatikSchaltText } from "@/lib/backend/protokoll";
+import { darfAutomatikSchalten } from "@/lib/rollen";
 import { FLOW_SEGMENT_S, KATEGORIE_ICON, fmtStd, vorgaengeVon } from "./shared";
 
 /** „Freigabe: …“ – aus der Definition der Automatik (Paket A, A-17). */
@@ -39,12 +41,33 @@ function FreigabeZeile({ k }: { k: string }) {
  * Schaltet eine Automatik um – mit Protokolleintrag (Audit). Die Rückmeldung steht an der Karte selbst (Status mit
  * aria-live), nicht als Meldung über dem Schalter (WCAG 2.4.11).
  */
+/** Text am gesperrten Schalter einer Fristautomatik (I3-T10-01). */
+export const FRIST_AUTOMATIK_RECHT = "Fristautomatiken schalten Partner und Administration";
+
+/**
+ * Ein- bzw. Ausschalten einer Automatik. Fristautomatiken (Fristerkennung, Vorfristen, eEB) nur mit Recht (Partner,
+ * Administration) und vor dem Pausieren mit Rückfrage samt Folge (Fokus auf „Abbrechen“); übrige Automatiken bei einem Klick.
+ * Pausieren merkt Zeitpunkt und Person, das Protokoll nennt die Folge; Aktivieren löscht die Pausenangaben.
+ */
 export function useAutomationUmschalten() {
   const { user } = useKanzlei();
-  return (a: Automation, aktiv: boolean) => {
+  return async (a: Automation, aktiv: boolean) => {
+    if (!darfAutomatikSchalten(user, a.key)) return;
+    const frist = istFristAutomatik(a.key);
+    if (frist && !aktiv) {
+      const ok = await confirmDialog({
+        titel: `„${a.name}“ pausieren?`,
+        text: `${folgeBeimPausieren(a.key)} Solange die Automatik pausiert ist, weisen Cockpit und Fristen mit Datum, Uhrzeit und Person darauf hin.`,
+        bestaetigen: "Pausieren",
+        gefahr: true,
+      });
+      if (!ok) return;
+    }
     const st = useData.getState();
-    st.patch("automationen", a.id, { aktiv });
-    st.log({ akteur: "nutzer", userId: user.id, text: `Automatik „${a.name}“ ${aktiv ? "aktiviert" : "pausiert"}` });
+    st.patch("automationen", a.id, aktiv ? { aktiv, pausiertAm: undefined, pausiertVon: undefined } : { aktiv, pausiertAm: nowLocal(), pausiertVon: user.id });
+    // Einheitlicher Protokolltext mit Person und Folge (wie Server und Demo-Backend): „Automatik „…“ pausiert – durch …. Folge“
+    st.log({ akteur: "nutzer", userId: user.id, text: automatikSchaltText(a, aktiv, user.name) });
+    if (frist) toast(aktiv ? `„${a.name}“ wieder aktiv` : `„${a.name}“ pausiert`, { text: aktiv ? "Die Fristenkontrolle läuft wieder automatisch." : folgeWaehrendPause(a.key), ton: aktiv ? "erfolg" : "warnung" });
   };
 }
 
@@ -115,6 +138,8 @@ function letzterLaufVon(a: Automation, ausFeed: string | undefined, now: number)
 export function AutomationKarte({ a, onOpen, now, ausFeed }: { a: Automation; onOpen: () => void; now: number; ausFeed?: string }) {
   const letzter = letzterLaufVon(a, ausFeed, now);
   const umschalten = useAutomationUmschalten();
+  const { user } = useKanzlei();
+  const darf = darfAutomatikSchalten(user, a.key);
   const Icon = KATEGORIE_ICON[a.kategorie];
   return (
     <Card className={cn("group flex h-full flex-col gap-4 transition-[transform,box-shadow,opacity] duration-300 ease-[var(--spring)] hover:-translate-y-0.5 hover:shadow-glass", !a.aktiv && "opacity-[0.82]")}>
@@ -140,9 +165,14 @@ export function AutomationKarte({ a, onOpen, now, ausFeed }: { a: Automation; on
           </div>
         </div>
         <div className="relative z-[2]">
-          <Switch checked={a.aktiv} onChange={(v) => umschalten(a, v)} label={`${a.name} ${a.aktiv ? "pausieren" : "aktivieren"}`} />
+          <Switch checked={a.aktiv} disabled={!darf} onChange={(v) => void umschalten(a, v)} label={`${a.name} ${a.aktiv ? "pausieren" : "aktivieren"}${darf ? "" : ` – ${FRIST_AUTOMATIK_RECHT}`}`} />
         </div>
       </div>
+      {!darf && (
+        <p className="-mt-2 flex items-center gap-1.5 text-[12.5px] text-fg-3">
+          <Lock className="size-3.5 shrink-0" aria-hidden /> {FRIST_AUTOMATIK_RECHT}
+        </p>
+      )}
 
       <p className="line-clamp-3 text-[13px] leading-relaxed text-fg-3">{a.beschreibung}</p>
 
@@ -195,6 +225,8 @@ export function AutomationDrawer({ a: aktuell, onClose, aktivitaeten, now }: { a
   const a = aktuell ?? zuletzt;
   const nav = useNavigate();
   const umschalten = useAutomationUmschalten();
+  const { user: angemeldet } = useKanzlei();
+  const darfDrawer = a ? darfAutomatikSchalten(angemeldet, a.key) : false;
   const [laeuft, setLaeuft] = useState(false);
   const laeufe = useMemo(() => (a ? aktivitaeten.filter((x) => x.automationKey === a.key).slice(0, 14) : []), [a, aktivitaeten]);
   const grenze = addDays(today(), -6);
@@ -247,8 +279,13 @@ export function AutomationDrawer({ a: aktuell, onClose, aktivitaeten, now }: { a
             <div className="min-w-0">
               <div className="text-[13.5px] font-semibold" aria-live="polite">{a.aktiv ? "Automatik ist aktiv" : "Automatik ist pausiert"}</div>
               <div className="text-[12.5px] text-fg-3">{a.aktiv ? `Freigabe: ${freigabeVon(a.key)}.` : "Es werden keine Vorgänge bearbeitet."}</div>
+              {!darfDrawer && (
+                <div className="mt-1 flex items-center gap-1.5 text-[12.5px] text-fg-3">
+                  <Lock className="size-3.5 shrink-0" aria-hidden /> {FRIST_AUTOMATIK_RECHT}
+                </div>
+              )}
             </div>
-            <Switch checked={a.aktiv} onChange={(v) => umschalten(a, v)} label={a.aktiv ? "Automatik pausieren" : "Automatik aktivieren"} />
+            <Switch checked={a.aktiv} disabled={!darfDrawer} onChange={(v) => void umschalten(a, v)} label={`${a.aktiv ? "Automatik pausieren" : "Automatik aktivieren"}${darfDrawer ? "" : ` – ${FRIST_AUTOMATIK_RECHT}`}`} />
           </div>
 
           <p className="text-[14px] leading-relaxed text-fg-2">{a.beschreibung}</p>

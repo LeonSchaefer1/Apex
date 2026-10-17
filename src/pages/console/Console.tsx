@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { Building2, CircleHelp, FileClock, FlaskConical, FolderOpen, KeyRound, LogOut, Moon, Plus, RefreshCw, ShieldCheck, Sun, MonitorSmartphone, Users } from "lucide-react";
-import { Button, Chip, Drawer, Empty, Modal, PageHeader, SearchField, Segmented, Stat, confirmDialog } from "@/components/ui";
+import { Button, Chip, Drawer, Empty, Field, Input, Modal, PageHeader, SearchField, Segmented, Select, Stat, confirmDialog } from "@/components/ui";
 import { AppIcon } from "@/components/Logo";
 import { WikiPlayer } from "@/components/wiki/WikiPlayer";
 import { artikel } from "@/content/wiki";
@@ -10,6 +10,9 @@ import { useSession } from "@/store/session";
 import { useData } from "@/store/data";
 import { toast, useUI, type ThemeWahl } from "@/store/ui";
 import { getBackend, getInfo, istConsole, type ConsoleKunde } from "@/lib/backend";
+import { fehlerFeld } from "@/lib/backend/types";
+import { pruefeConsolePasswortAnlass, type ConsolePasswortAnlass } from "@/lib/backend/protokoll";
+import { rollenLabel } from "@/lib/rollen";
 import { today } from "@/core/dates";
 import type { Tenant, User } from "@/core/types";
 import { DEMO_PASSWORT } from "@/core/seed/tenants";
@@ -35,6 +38,7 @@ export default function ConsolePage() {
   const [neu, setNeu] = useState(false);
   const [beschaeftigt, setBeschaeftigt] = useState<string | null>(null);
   const [pw, setPw] = useState<{ user: User; tenant: Tenant; passwort: string; hauptnutzer: boolean } | null>(null);
+  const [anforderung, setAnforderung] = useState<{ k: ConsoleKunde; u: User } | null>(null);
   const info = getInfo();
 
   const laden = useCallback(async () => {
@@ -129,24 +133,8 @@ export default function ConsolePage() {
         if (!(await mitSperre(k.tenant.id, () => getBackend().console.remove(k.tenant.id)))) return;
         toast("Kanzlei gelöscht", { text: k.tenant.name, ton: "info" });
       })(),
-    passwort: (k, u) =>
-      void (async () => {
-        const ok = await confirmDialog({
-          titel: `Neues Startpasswort für ${u.name}?`,
-          text: `Das bisherige Passwort wird sofort ungültig. Das neue Startpasswort sehen Sie nur einmal – geben Sie es getrennt weiter (telefonisch oder per SMS). ${PROTOKOLL_SATZ}`,
-          bestaetigen: "Neues Startpasswort erzeugen",
-        });
-        if (!ok) return;
-        setBeschaeftigt(k.tenant.id);
-        try {
-          const passwort = await getBackend().console.neuesPasswort(u.id);
-          setPw({ user: u, tenant: k.tenant, passwort, hauptnutzer: k.users[0]?.id === u.id });
-        } catch (e) {
-          toast("Passwort konnte nicht erzeugt werden", { text: e instanceof Error ? e.message : String(e), ton: "fehler" });
-        } finally {
-          setBeschaeftigt(null);
-        }
-      })(),
+    // Neues Startpasswort nur mit Angabe, wer es angefordert hat und warum (I3-T21-02) – Dialog statt einfacher Rückfrage
+    passwort: (k, u) => setAnforderung({ k, u }),
     standardPasswort: (k, u) =>
       void (async () => {
         const ok = await confirmDialog({
@@ -269,6 +257,16 @@ export default function ConsolePage() {
         </main>
 
         <NeuerZugang open={neu} onClose={() => setNeu(false)} onAngelegt={() => void laden()} />
+        <AnforderungDialog
+          daten={anforderung}
+          consoleName={sitzung && istConsole(sitzung) ? sitzung.name : "AnwaltApex Team"}
+          onClose={() => setAnforderung(null)}
+          onErzeugt={(k, u, passwort) => {
+            setAnforderung(null);
+            setPw({ user: u, tenant: k.tenant, passwort, hauptnutzer: k.users[0]?.id === u.id });
+            void laden();
+          }}
+        />
         <PasswortDialog daten={pw} onClose={() => setPw(null)} />
         <ConsoleHilfe />
       </div>
@@ -307,6 +305,127 @@ function ConsoleKopf({ name, email, onAbmelden }: { name: string; email: string;
         </div>
       </div>
     </header>
+  );
+}
+
+const ANDERE = "__andere__";
+
+/**
+ * Neues Startpasswort: Pflichtangaben „Angefordert von“ (Person der Kanzlei – bevorzugt Partner/Administration – oder
+ * Freitext) und „Anlass“; dazu, wer bei AnwaltApex es vergibt. Alles steht im Kanzleiprotokoll; Partner und Administration
+ * erhalten einen Hinweis in der Glocke.
+ */
+function AnforderungDialog({ daten, consoleName, onClose, onErzeugt }: { daten: { k: ConsoleKunde; u: User } | null; consoleName: string; onClose: () => void; onErzeugt: (k: ConsoleKunde, u: User, passwort: string) => void }) {
+  const [wer, setWer] = useState("");
+  const [werFrei, setWerFrei] = useState("");
+  const [anlass, setAnlass] = useState("");
+  const [bearbeiter, setBearbeiter] = useState("");
+  const [fehler, setFehler] = useState<Partial<Record<"angefordertVon" | "anlass" | "allgemein", string>>>({});
+  const [laeuft, setLaeuft] = useState(false);
+  const personen = useMemo(() => {
+    if (!daten) return [];
+    const rang = (x: User) => (x.rolle === "partner" ? 0 : x.rolle === "admin" ? 1 : 2);
+    return [...daten.k.users].sort((a, b) => rang(a) - rang(b) || a.name.localeCompare(b.name, "de"));
+  }, [daten]);
+
+  useEffect(() => {
+    if (!daten) return;
+    setWer("");
+    setWerFrei("");
+    setAnlass("");
+    // Vorschlag: die feste Ansprechpartnerin dieser Kanzlei bei AnwaltApex (änderbar)
+    setBearbeiter(daten.k.tenant.ansprechpartner?.name ?? consoleName);
+    setFehler({});
+  }, [daten, consoleName]);
+
+  const angefordertVon = wer === ANDERE ? werFrei : personen.find((p) => p.id === wer)?.name ?? "";
+  const erzeugen = async () => {
+    if (!daten) return;
+    const angabe: ConsolePasswortAnlass = { angefordertVon, anlass, bearbeiter: bearbeiter.trim() || consoleName };
+    const f = pruefeConsolePasswortAnlass(angabe);
+    setFehler(f);
+    if (Object.keys(f).length) {
+      document.getElementById(f.angefordertVon ? (wer === ANDERE ? "sp-wer-frei" : "sp-wer") : "sp-anlass")?.focus();
+      return;
+    }
+    setLaeuft(true);
+    try {
+      const passwort = await getBackend().console.neuesPasswort(daten.u.id, angabe);
+      onErzeugt(daten.k, daten.u, passwort);
+    } catch (e) {
+      const feld = fehlerFeld(e);
+      const text = e instanceof Error ? e.message : String(e);
+      setFehler(feld === "angefordertVon" || feld === "anlass" ? { [feld]: text } : { allgemein: text });
+    } finally {
+      setLaeuft(false);
+    }
+  };
+  const fehlerText = (id: string, t?: string) =>
+    t ? (
+      <span id={id} className="text-seal">
+        {t}
+      </span>
+    ) : undefined;
+
+  return (
+    <Modal
+      open={!!daten}
+      onClose={onClose}
+      size="md"
+      icon={<KeyRound className="size-5" />}
+      title={daten ? `Neues Startpasswort für ${daten.u.name}` : "Neues Startpasswort"}
+      subtitle={daten ? `${daten.k.tenant.name} · nur auf Wunsch der Kanzlei` : undefined}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Abbrechen
+          </Button>
+          <Button variant="primary" icon={<KeyRound className="size-4" />} loading={laeuft} onClick={() => void erzeugen()}>
+            Neues Startpasswort erzeugen
+          </Button>
+        </>
+      }
+    >
+      {daten && (
+        <form
+          className="grid gap-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void erzeugen();
+          }}
+        >
+          <p className="text-[13px] leading-relaxed text-fg-2">
+            Das bisherige Passwort wird sofort ungültig. Das neue Startpasswort sehen Sie nur einmal – geben Sie es getrennt weiter (telefonisch oder per SMS). {PROTOKOLL_SATZ}
+          </p>
+          <Field label="Angefordert von (Name in der Kanzlei)" htmlFor="sp-wer" hint={fehlerText("sp-wer-fehler", fehler.angefordertVon) ?? "Bevorzugt Partner bzw. Administration der Kanzlei."}>
+            <Select id="sp-wer" value={wer} onChange={(e) => setWer(e.target.value)} aria-invalid={!!fehler.angefordertVon && wer !== ANDERE} aria-describedby={fehler.angefordertVon ? "sp-wer-fehler" : undefined} data-autofocus>
+              <option value="">Bitte wählen …</option>
+              {personen.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} · {rollenLabel(p)}
+                </option>
+              ))}
+              <option value={ANDERE}>Andere Person (Name eingeben) …</option>
+            </Select>
+            {wer === ANDERE && (
+              <Input id="sp-wer-frei" className="mt-2" value={werFrei} onChange={(e) => setWerFrei(e.target.value)} placeholder="Vor- und Nachname" maxLength={120} aria-label="Name der anfordernden Person" aria-invalid={!!fehler.angefordertVon} aria-describedby={fehler.angefordertVon ? "sp-wer-fehler" : undefined} autoComplete="off" />
+            )}
+          </Field>
+          <Field label="Anlass" htmlFor="sp-anlass" hint={fehlerText("sp-anlass-fehler", fehler.anlass) ?? "Steht im Kanzleiprotokoll, z. B. „Passwort vergessen – telefonisch angefordert“."}>
+            <Input id="sp-anlass" value={anlass} onChange={(e) => setAnlass(e.target.value)} placeholder="z. B. Passwort vergessen – telefonisch angefordert" maxLength={200} aria-invalid={!!fehler.anlass} aria-describedby={fehler.anlass ? "sp-anlass-fehler" : undefined} autoComplete="off" />
+          </Field>
+          <Field label="Vergeben durch (AnwaltApex)" htmlFor="sp-bearbeiter" hint="Ihr Name – die Kanzlei sieht, wer bei AnwaltApex das Passwort vergeben hat.">
+            <Input id="sp-bearbeiter" value={bearbeiter} onChange={(e) => setBearbeiter(e.target.value)} maxLength={120} autoComplete="name" />
+          </Field>
+          {fehler.allgemein && (
+            <div role="alert" className="rounded-[12px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal">
+              {fehler.allgemein}
+            </div>
+          )}
+          <button type="submit" className="hidden" aria-hidden tabIndex={-1} />
+        </form>
+      )}
+    </Modal>
   );
 }
 

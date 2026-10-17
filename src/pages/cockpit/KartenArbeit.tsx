@@ -9,7 +9,7 @@ import { fristArtZu } from "@/core/fristen";
 import { istKritisch } from "@/core/fristenLage";
 import type { Frist, Nachricht } from "@/core/types";
 import { cn } from "@/lib/cn";
-import { letzteAbfrageText } from "@/lib/betriebsstatus";
+import { letzteAbfrageText, letzteAbfrageUhrzeit } from "@/lib/betriebsstatus";
 import { foermlicherName } from "@/lib/rollen";
 import { BentoKarte, KartenKopf, MehrLink, Streifen } from "./Basis";
 import { TYP_LABEL, tagLabel, type CockpitDaten } from "./daten";
@@ -306,6 +306,31 @@ function TermineHeute({ d }: { d: CockpitDaten }) {
   );
 }
 
+// ───────────────────────── Betriebsstatus ─────────────────────────
+/**
+ * „beA ✓ · E-Mail ✓ · letzte Abfrage …“ – führt zum Systemstatus. In der Posteingang-Karte relativ („vor 1 Min.“),
+ * im Briefing am Smartphone mit Uhrzeit („01:20 Uhr“), immer mit der Kennzeichnung „simuliert“.
+ */
+export function StatusZeile({ className, uhrzeit = false }: { className?: string; uhrzeit?: boolean }) {
+  return (
+    <Link
+      to="/hilfe#status"
+      className={cn("inline-flex min-h-[32px] flex-wrap items-center gap-x-2 gap-y-0.5 self-start rounded-full bg-[var(--ink-softer)] px-3 py-1 text-[12.5px] text-fg-2 transition-colors hover:bg-ink-soft", className)}
+      title="Systemstatus öffnen – beA, E-Mail und Bank sind im Prototyp simuliert"
+    >
+      <span className="inline-flex items-center gap-1 font-semibold">
+        <span className="size-2 rounded-full bg-[var(--green)]" aria-hidden /> beA <Check className="size-3.5 text-green" aria-label="verbunden" />
+      </span>
+      <span aria-hidden>·</span>
+      <span className="inline-flex items-center gap-1 font-semibold">
+        E-Mail <Check className="size-3.5 text-green" aria-label="verbunden" />
+      </span>
+      <span aria-hidden>·</span>
+      <span>{uhrzeit ? `letzte Abfrage ${letzteAbfrageUhrzeit()}` : letzteAbfrageText()} (simuliert)</span>
+    </Link>
+  );
+}
+
 // ───────────────────────── Posteingang ─────────────────────────
 export function PosteingangKarte({ d, i, className }: { d: CockpitDaten; i: number; className?: string }) {
   const items = d.posteingang.slice(0, 4);
@@ -317,21 +342,7 @@ export function PosteingangKarte({ d, i, className }: { d: CockpitDaten; i: numb
         unter={d.posteingang.length ? `${d.posteingang.length} neu · ${d.wartetAufKi} ${d.wartetAufKi === 1 ? "wartet" : "warten"} auf KI-Analyse` : "beA und E-Mail in einem Postfach"}
         mehr={{ to: "/posteingang", label: "Zum Posteingang" }}
       />
-      <Link
-        to="/hilfe#status"
-        className="relative z-[1] -mt-1 mb-2.5 inline-flex flex-wrap items-center gap-x-2 gap-y-0.5 self-start rounded-full bg-[var(--ink-softer)] px-3 py-1 text-[12.5px] text-fg-2 transition-colors hover:bg-ink-soft"
-        title="Systemstatus öffnen – beA, E-Mail und Bank sind im Prototyp simuliert"
-      >
-        <span className="inline-flex items-center gap-1 font-semibold">
-          <span className="size-2 rounded-full bg-[var(--green)]" aria-hidden /> beA <Check className="size-3.5 text-green" aria-label="verbunden" />
-        </span>
-        <span aria-hidden>·</span>
-        <span className="inline-flex items-center gap-1 font-semibold">
-          E-Mail <Check className="size-3.5 text-green" aria-label="verbunden" />
-        </span>
-        <span aria-hidden>·</span>
-        <span>{letzteAbfrageText()} (simuliert)</span>
-      </Link>
+      <StatusZeile className="relative z-[1] -mt-1 mb-2.5" />
       {items.length === 0 ? (
         <div className="relative z-[1] flex flex-1 flex-col items-center justify-center rounded-[18px] bg-ink-softer px-6 py-10 text-center">
           <Inbox className="size-8 text-ink" />

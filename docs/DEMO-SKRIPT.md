@@ -79,7 +79,7 @@ Unten rechts die Kugel antippen (oder Strg+K → „Apex Assistent öffnen“) u
 
 - **RVG-Rechner**: 10.000 € mit 2300 + 3100 + 3104. Anrechnung, Pauschale und USt. kommen automatisch, ebenso die richtige Tabelle (2025/2021) nach Auftragsdatum.
 - **Sammelabrechnung**: mehrere Akten auf einmal als Entwürfe anlegen, auch als XRechnung; RSV-Status je Akte sichtbar.
-- **Bankabgleich** → „Abgleich starten“: eindeutige Zahlungen werden gebucht, mit Sicherheitsgrad – jede Zuordnung lässt sich lösen. Die Zahlung eines Versicherers auf eine Akte wird als **Fremdgeld** erkannt; weitergeleitet wird nur über den Dialog mit Empfänger und IBAN (§ 43a Abs. 7 BRAO).
+- **Bankabgleich** → „Abgleich starten“: eindeutige Zahlungen werden gebucht, mit Sicherheitsgrad – jede Zuordnung lässt sich lösen. Die Zahlung eines Versicherers auf eine Akte wird als **Fremdgeld** erkannt; weitergeleitet wird nur über den Dialog mit Empfänger und IBAN (§ 43a Abs. 7 BRAO). Die Weiterleitung steht für die Fachangestellte als Wiedervorlage im Kalender (131/26 Yilmaz, heute) – echte Fristen tragen in den Demodaten immer Anwältin oder Anwalt.
 - **Zinsrechner** (Strg+K → „Zinsrechner“): Betrag, Zeitraum, 5 oder 9 Prozentpunkte – mit Rechenweg je Basiszins-Abschnitt.
 - **Forderungskonto** für Akte 126/26 Berger ./. Lenz: taggenaue Zinsen, Verrechnung nach § 367 BGB (Kosten → Zinsen → Hauptforderung).
 

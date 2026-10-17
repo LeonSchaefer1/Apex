@@ -39,7 +39,7 @@ function useFuellHoehe(aktiv: boolean) {
       if (!el) return;
       const scroller = document.getElementById("haupt-scroll");
       const top = el.getBoundingClientRect().top + (scroller?.scrollTop ?? 0) - (scroller?.getBoundingClientRect().top ?? 0);
-      setHoehe(Math.max(560, window.innerHeight - top - 28));
+      setHoehe(Math.max(560, (scroller?.clientHeight ?? window.innerHeight) - top - 28));
     };
     messen();
     const t = setTimeout(messen, 420);
@@ -174,15 +174,29 @@ export default function Posteingang() {
   const liste = (
     <Card padded={false} className={cn("flex min-w-0 flex-col overflow-hidden", zweispaltig && "h-full")}>
       <div className="space-y-2.5 border-b border-[var(--line)] p-2.5 sm:p-3">
-        {/* Zähler nur dort, wo sie zum Handeln auffordern (neu, ohne Akte) – so stehen die Segmente mit Abstand; bei Platzmangel Umbruch */}
-        <Segmented<Filter>
-          size="sm"
-          full
-          wrap
-          options={FILTER.map((f) => ({ value: f.value, label: f.label, count: (f.value === "neu" || f.value === "ohne") && !schmal ? zaehler[f.value] : undefined }))}
-          value={filter}
-          onChange={setFilter}
-        />
+        {/* Zähler dort, wo sie zum Handeln auffordern (neu, ohne Akte) – auch am Telefon („Neu 5“, „Ohne Akte 5“, I3-T02-02):
+            dort waagerecht scrollbar, mit Randabstand, statt Zähler wegzulassen */}
+        {schmal ? (
+          <div className="-mx-2.5 overflow-x-auto px-2.5 no-scrollbar [scroll-padding-inline:10px]">
+            <Segmented<Filter>
+              size="sm"
+              mobilGross
+              className="!max-w-none !overflow-visible"
+              options={FILTER.map((f) => ({ value: f.value, label: f.label, count: f.value === "neu" || f.value === "ohne" ? zaehler[f.value] : undefined }))}
+              value={filter}
+              onChange={setFilter}
+            />
+          </div>
+        ) : (
+          <Segmented<Filter>
+            size="sm"
+            full
+            wrap
+            options={FILTER.map((f) => ({ value: f.value, label: f.label, count: f.value === "neu" || f.value === "ohne" ? zaehler[f.value] : undefined }))}
+            value={filter}
+            onChange={setFilter}
+          />
+        )}
         <SearchField id="posteingang-suche" value={q} onChange={setQ} placeholder="Absender, Betreff, Aktenzeichen …" />
       </div>
       <div data-listscroll className={cn("min-h-0 flex-1", zweispaltig && "overflow-y-auto")}>

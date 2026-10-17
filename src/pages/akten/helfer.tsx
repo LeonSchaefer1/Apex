@@ -61,6 +61,17 @@ export const STATUS_INFO: Record<Akte["status"], { label: string; tone: Tone }> 
   abgeschlossen: { label: "Abgeschlossen", tone: "green" },
 };
 
+/**
+ * Status mit Abschlussdatum für den Aktenkopf: „Abgeschlossen am 12.03.2025“ bzw. bei Umzugsakten ohne Abschlussdatum im
+ * Altsystem „Abgeschlossen (Datum im Altsystem unbekannt) · übernommen am 17.10.2026“ (I3-T11-01).
+ */
+export function abschlussText(akte: Pick<Akte, "status" | "abgeschlossenAm" | "abschlussdatumUnbekannt">): string {
+  const label = STATUS_INFO[akte.status].label;
+  if (!akte.abgeschlossenAm) return label;
+  const datum = akte.abgeschlossenAm.split("-").reverse().join(".");
+  return akte.abschlussdatumUnbekannt ? `${label} (Datum im Altsystem unbekannt) · übernommen am ${datum}` : `${label} am ${datum}`;
+}
+
 export const PRIO_INFO: Record<Akte["prioritaet"], { label: string; tone: Tone }> = {
   hoch: { label: "Hohe Priorität", tone: "seal" },
   normal: { label: "Normale Priorität", tone: "neutral" },
@@ -264,8 +275,10 @@ export function kontoSummen(buchungen: Buchung[]) {
     if (b.art === "honorar") honorar += b.betrag;
     else if (b.art === "zahlung") bezahlt += -b.betrag;
     else if (b.art === "vorschuss") {
-      // nur eingegangene Vorschüsse mindern das Offene – ein angeforderter ist eine Forderung, kein Guthaben
+      // nur eingegangene Vorschüsse mindern das Offene – ein angeforderter ist eine Forderung, kein Guthaben;
+      // die Gegenbuchung einer eingegangenen Zahlung („Storno: …“, z. B. Zuordnung im Bankabgleich gelöst) mindert den Eingang
       if (b.betrag < 0) vorschuss += -b.betrag;
+      else if (b.text.startsWith("Storno: ")) vorschuss -= b.betrag;
       else angefordert += b.betrag;
     } else auslagen += b.betrag;
   }

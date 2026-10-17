@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router";
-import { CalendarPlus, Timer, Undo2 } from "lucide-react";
-import { useUI, toast } from "@/store/ui";
+import { Link, useLocation, useNavigate } from "react-router";
+import { CalendarPlus, Inbox, Timer, Undo2 } from "lucide-react";
+import { useUI, toast, type AkteVorbelegung } from "@/store/ui";
 import { useData } from "@/store/data";
 import { useKanzlei, useSession } from "@/store/session";
 import { istConsole } from "@/lib/backend";
-import { addDays, fmtDateWd, nowLocal, today, uid } from "@/core/dates";
+import { addDays, fmtDate, fmtDateWd, fmtEUR, nowLocal, today, uid } from "@/core/dates";
 import { istWerktag, naechsterArbeitstag } from "@/core/feiertage";
-import type { Frist, Zeiteintrag } from "@/core/types";
+import type { Frist, Nachricht, Zeiteintrag } from "@/core/types";
+import { satzFuerEintrag } from "@/pages/abrechnung/lib";
 import { altKuerzel, einzeltasteErlaubt } from "@/lib/tastatur";
 import { bereichErlaubt } from "@/app/nav";
 import { Button, Field, Input, Modal, Select, Switch } from "@/components/ui";
@@ -49,9 +50,33 @@ export function akteAusPfad(pfad: string): string | undefined {
   return m ? decodeURIComponent(m[1]) : undefined;
 }
 
-/** Schnelle Zeiterfassung öffnen (Taste Z, Alt+Z, Strg+K „Zeit erfassen“) – mit der Akte der aktuellen Seite. */
-export function oeffneZeiterfassung(pfad: string) {
-  useUI.getState().setZeiterfassung({ akteId: akteAusPfad(pfad) });
+/**
+ * Akte aus dem Kontext der Seite (I3-T22-01): in einer Akte (/akten/:id) diese Akte; im Posteingang mit geöffneter Nachricht
+ * (/posteingang?id=…) die Akte, der die Nachricht zugeordnet ist. Sonst keine – dann bleibt das Aktenfeld leer.
+ */
+export function akteAusKontext(loc: { pathname: string; search?: string }, daten: { nachrichten: Pick<Nachricht, "id" | "akteId">[] } = useData.getState().data): AkteVorbelegung {
+  const ausPfad = akteAusPfad(loc.pathname);
+  if (ausPfad) return { akteId: ausPfad, herkunft: "akte" };
+  if (loc.pathname === "/posteingang" && loc.search) {
+    const id = new URLSearchParams(loc.search).get("id");
+    const n = id ? daten.nachrichten.find((x) => x.id === id) : undefined;
+    if (n?.akteId) return { akteId: n.akteId, herkunft: "nachricht" };
+  }
+  return {};
+}
+
+/** Schnelle Zeiterfassung öffnen (Taste Z, Alt+Z, Strg+K „Zeit erfassen“) – mit der Akte der aktuellen Seite bzw. Nachricht. */
+export function oeffneZeiterfassung(loc: { pathname: string; search?: string }) {
+  useUI.getState().setZeiterfassung(akteAusKontext(loc));
+}
+
+/** Hinweis unter dem Aktenfeld, wenn die Akte aus der geöffneten Nachricht stammt. */
+function NachrichtHinweis() {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-fg-3">
+      <Inbox className="size-3.5" aria-hidden /> Akte aus der geöffneten Nachricht
+    </span>
+  );
 }
 
 /**
@@ -69,24 +94,26 @@ export function useTastenkuerzel() {
       const taste = alt ?? (einzeltasteErlaubt(e) ? e.key.toLowerCase() : null);
       if (!taste) return;
       const ui = useUI.getState();
-      const akteId = akteAusPfad(loc.pathname);
+      // Akte der Seite bzw. der im Posteingang geöffneten Nachricht – zum Zeitpunkt des Tastendrucks
+      const kontext = akteAusKontext(loc);
+      const akteId = kontext.akteId;
       if (!alt && e.key === "?") {
         e.preventDefault();
         ui.setKuerzel(true);
       } else if (taste === "w") {
         e.preventDefault();
-        ui.setWiedervorlage({ akteId });
+        ui.setWiedervorlage(kontext);
       } else if (taste === "f") {
         e.preventDefault();
         nav(`/fristen?rechner=1${akteId ? `&akte=${encodeURIComponent(akteId)}` : ""}`);
       } else if (taste === "z" && rolle && bereichErlaubt("/abrechnung", rolle)) {
         e.preventDefault();
-        ui.setZeiterfassung({ akteId });
+        ui.setZeiterfassung(kontext);
       }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [nav, loc.pathname, rolle]);
+  }, [nav, loc, rolle]);
 }
 
 /** Nächster Werktag ab einem Datum (Wochenende, Feiertage des Bundeslands). */
@@ -189,7 +216,7 @@ export function WiedervorlageDialog() {
           eintragen();
         }}
       >
-        <Field label="Akte" htmlFor="wv-akte">
+        <Field label="Akte" htmlFor="wv-akte" hint={vorbelegt && wiedervorlage?.herkunft === "nachricht" && akteId === wiedervorlage.akteId ? <NachrichtHinweis /> : undefined}>
           <Select id="wv-akte" value={akteId} onChange={(e) => setAkteId(e.target.value)} data-autofocus={vorbelegt ? undefined : true}>
             <option value="">Bitte wählen …</option>
             {offen.map((a) => (
@@ -289,8 +316,9 @@ const dauerText = (m: number) => `${Math.floor(m / 60)}:${String(m % 60).padStar
 /** Schnelle Zeiterfassung (Taste Z bzw. Alt+Z, Strg+K „Zeit erfassen“): Akte vorbelegt, Fokus auf „Minuten“, Enter erfasst. */
 export function ZeiterfassungDialog() {
   const { zeiterfassung, setZeiterfassung } = useUI();
-  const { user } = useKanzlei();
+  const { user, team } = useKanzlei();
   const offen = useOffeneAkten();
+  const nav = useNavigate();
   const [akteId, setAkteId] = useState("");
   const [minuten, setMinuten] = useState("");
   const [taetigkeit, setTaetigkeit] = useState("");
@@ -366,7 +394,7 @@ export function ZeiterfassungDialog() {
         }}
       >
         <Field label="Akte" htmlFor="ze-akte">
-          <Select id="ze-akte" value={akteId} onChange={(e) => setAkteId(e.target.value)} data-autofocus={vorbelegt ? undefined : true}>
+          <Select id="ze-akte" value={akteId} onChange={(e) => setAkteId(e.target.value)} data-autofocus={vorbelegt ? undefined : true} aria-describedby={akteId ? "ze-satz" : undefined}>
             <option value="">Bitte wählen …</option>
             {offen.map((a) => (
               <option key={a.id} value={a.id}>
@@ -374,6 +402,22 @@ export function ZeiterfassungDialog() {
               </option>
             ))}
           </Select>
+          {vorbelegt && zeiterfassung?.herkunft === "nachricht" && akteId === zeiterfassung.akteId && (
+            <div className="mt-1.5 text-[12.5px]">
+              <NachrichtHinweis />
+            </div>
+          )}
+          {akteId && (
+            <SatzZeile
+              akte={offen.find((a) => a.id === akteId)}
+              user={user}
+              team={team}
+              onVereinbarung={(id) => {
+                schliessen();
+                nav(`/abrechnung?tab=zeit&akte=${encodeURIComponent(id)}`);
+              }}
+            />
+          )}
         </Field>
         <Field label="Minuten" htmlFor="ze-minuten" hint={m ? `= ${dauerText(m)} · heute, ${fmtDateWd(today())}` : "z. B. 90, 1:30 oder 1,5 h"}>
           <Input id="ze-minuten" inputMode="numeric" autoComplete="off" value={minuten} onChange={(e) => setMinuten(e.target.value)} placeholder="z. B. 90" data-autofocus={vorbelegt ? true : undefined} aria-describedby={fehler ? "ze-fehler" : undefined} />
@@ -395,6 +439,55 @@ export function ZeiterfassungDialog() {
         <button type="submit" className="hidden" aria-hidden tabIndex={-1} />
       </form>
     </Modal>
+  );
+}
+
+/**
+ * Satz, zu dem die Zeit läuft (I3-T07-04) – dieselbe Regel wie Zeitliste und Rechnung (`satzFuerEintrag`):
+ * „240 €/Std. lt. Vergütungsvereinbarung vom 01.10.2026“ bzw. „280 €/Std. – Satz von …, keine Vergütungsvereinbarung (§ 3a RVG)“.
+ */
+function SatzZeile({ akte, user, team, onVereinbarung }: {
+  akte: Parameters<typeof satzFuerEintrag>[1] & { id: string } | undefined;
+  user: { id: string; name: string; stundensatz?: number };
+  team: { id: string; stundensatz?: number }[];
+  onVereinbarung: (akteId: string) => void;
+}) {
+  if (!akte) return null;
+  const users = new Map(team.map((u) => [u.id, u]));
+  if (!users.has(user.id)) users.set(user.id, user);
+  const { satz, quelle } = satzFuerEintrag({ userId: user.id }, akte, users);
+  const v = akte.verguetungsvereinbarung;
+  const betrag = `${fmtEUR(satz, { cents: !Number.isInteger(satz) })}/Std.`;
+  return (
+    <div id="ze-satz" className="mt-1.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[12.5px] leading-snug text-fg-3" aria-live="polite">
+      {quelle === "vereinbarung" && v ? (
+        <span>
+          <span className="num font-semibold text-fg-2">{betrag}</span> lt. Vergütungsvereinbarung vom {fmtDate(v.datum)}
+        </span>
+      ) : (
+        <>
+          <span>
+            <span className="num font-semibold text-fg-2">{betrag}</span> – Satz von {user.name},{" "}
+            {v ? `Vergütungsvereinbarung vom ${fmtDate(v.datum)} ohne Stundensatz` : "keine Vergütungsvereinbarung (§ 3a RVG)"}
+          </span>
+          {!v && (
+            <span className="whitespace-nowrap">
+              <span aria-hidden>· </span>
+              <Link
+                to={`/abrechnung?tab=zeit&akte=${encodeURIComponent(akte.id)}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  onVereinbarung(akte.id);
+                }}
+                className="font-semibold text-ink underline decoration-[var(--ink-soft)] underline-offset-2 hover:decoration-ink"
+              >
+                Vereinbarung erfassen
+              </Link>
+            </span>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 

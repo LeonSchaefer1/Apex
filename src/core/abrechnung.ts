@@ -2,7 +2,7 @@
 // Vorschuss nach § 9 RVG, IBAN-Prüfung und die Fremdgeld-Regel des Bankabgleichs (§ 43a Abs. 7 BRAO).
 import { round2 } from "./dates";
 import { berechnetePauschalen, berechneRvg, fassungFuerAuftrag, rvgRechnungsPositionen, UST_SATZ, type RvgFassung } from "./rvg";
-import type { Akte, AktenPhase, Kontakt, Rechnung, RechnungsPosition, Transaktion } from "./types";
+import type { Akte, AktenPhase, Kontakt, Rechnung, RechnungsPosition, Tenant, Transaktion } from "./types";
 
 // ───────────── Summen ─────────────
 export interface Summen {
@@ -101,6 +101,96 @@ export function ibanGueltig(iban: string): boolean {
     for (const ziffer of wert) rest = (rest * 10 + Number(ziffer)) % 97;
   }
   return rest === 1;
+}
+
+// ───────────── Rechnungsangaben der Kanzlei (§ 14 Abs. 4 UStG) ─────────────
+
+/** USt-IdNr. ohne Leerzeichen, Großbuchstaben: „DE123456789“. */
+export const ustIdNrKompakt = (s: string) => s.replace(/\s+/g, "").toUpperCase();
+/** Deutsche USt-IdNr.: „DE“ und 9 Ziffern; „DE000000000“ ist der Platzhalter der Rechnungsvorschau und gilt nicht. */
+export function ustIdNrGueltig(s: string): boolean {
+  const k = ustIdNrKompakt(s);
+  return /^DE\d{9}$/.test(k) && k !== "DE000000000";
+}
+/**
+ * Steuernummer des Finanzamts: 10 bis 11 Ziffern im Landesformat („12/345/67890“, „21 815 08150“) oder 13 Ziffern im
+ * bundeseinheitlichen Format (ELSTER). Trennzeichen „/“ und Leerzeichen sind erlaubt.
+ */
+export function steuernummerGueltig(s: string): boolean {
+  const t = s.trim();
+  if (!/^[\d\s/]+$/.test(t)) return false;
+  const ziffern = t.replace(/\D/g, "").length;
+  return ziffern === 10 || ziffern === 11 || ziffern === 13;
+}
+/** BIC: 8 oder 11 Zeichen (SWIFT, ISO 9362), z. B. „COBADEFFXXX“. */
+export function bicGueltig(s: string): boolean {
+  return /^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(s.replace(/\s+/g, "").toUpperCase());
+}
+
+export interface Rechnungsangaben {
+  steuernummer?: string;
+  ustIdNr?: string;
+  geschaeftskonto?: { iban: string; bic?: string; bank?: string };
+}
+
+/**
+ * Prüft die Rechnungsangaben aus dem Kanzleiprofil feldgenau – Rückgabe: Fehlermeldung je Feld (leer = alles gültig).
+ * Leere Felder sind erlaubt (dann fehlen sie, siehe `fehlendeRechnungsangaben`); was eingegeben ist, muss stimmen.
+ */
+export function pruefeRechnungsangaben(a: Rechnungsangaben): Partial<Record<"steuernummer" | "ustIdNr" | "iban" | "bic" | "bank", string>> {
+  const f: Partial<Record<"steuernummer" | "ustIdNr" | "iban" | "bic" | "bank", string>> = {};
+  const st = a.steuernummer?.trim() ?? "";
+  if (st && !steuernummerGueltig(st)) f.steuernummer = "Die Steuernummer hat 10, 11 oder 13 Ziffern, z. B. 12/345/67890 – bitte prüfen Sie den Bescheid Ihres Finanzamts.";
+  const ust = a.ustIdNr?.trim() ?? "";
+  if (ust && !ustIdNrGueltig(ust)) f.ustIdNr = ustIdNrKompakt(ust) === "DE000000000" ? "„DE000000000“ ist nur der Platzhalter – bitte die USt-IdNr. Ihrer Kanzlei eingeben." : "Die USt-IdNr. besteht aus „DE“ und 9 Ziffern, z. B. DE123456789 – bitte prüfen Sie die Eingabe.";
+  const konto = a.geschaeftskonto;
+  const iban = konto?.iban?.trim() ?? "";
+  if (iban && !ibanGueltig(iban)) f.iban = /^[A-Za-z]{2}/.test(iban.replace(/\s+/g, "")) ? "Die Prüfziffer der IBAN stimmt nicht – meist ist eine Ziffer vertauscht. Bitte vergleichen Sie mit Ihrem Kontoauszug (deutsche IBAN: 22 Stellen)." : "Eine IBAN beginnt mit dem Ländercode, z. B. DE89 3704 0044 0532 0130 00.";
+  if (!iban && (konto?.bic?.trim() || konto?.bank?.trim())) f.iban = "Bitte die IBAN des Geschäftskontos ergänzen – BIC und Bank allein genügen nicht.";
+  const bic = konto?.bic?.trim() ?? "";
+  if (bic && !bicGueltig(bic)) f.bic = "Die BIC hat 8 oder 11 Zeichen, z. B. COBADEFFXXX.";
+  if ((konto?.bank?.length ?? 0) > 120) f.bank = "Bitte höchstens 120 Zeichen.";
+  return f;
+}
+
+/** Einheitliche Schreibweise zum Speichern: USt-IdNr. kompakt, IBAN in Vierergruppen, BIC groß; leere Angaben entfallen. */
+export function normalisiereRechnungsangaben(a: Rechnungsangaben): Rechnungsangaben {
+  const out: Rechnungsangaben = {};
+  const st = a.steuernummer?.trim().replace(/\s+/g, " ");
+  if (st) out.steuernummer = st;
+  const ust = a.ustIdNr ? ustIdNrKompakt(a.ustIdNr) : "";
+  if (ust) out.ustIdNr = ust;
+  const iban = a.geschaeftskonto?.iban ? ibanFormatiert(a.geschaeftskonto.iban) : "";
+  if (iban) {
+    const bic = a.geschaeftskonto?.bic?.replace(/\s+/g, "").toUpperCase();
+    const bank = a.geschaeftskonto?.bank?.trim();
+    out.geschaeftskonto = { iban, ...(bic ? { bic } : {}), ...(bank ? { bank } : {}) };
+  }
+  return out;
+}
+
+/** Welche Rechnungsangaben sich geändert haben – für das Kanzleiprotokoll („Steuernummer, IBAN“). */
+export function geaenderteRechnungsangaben(vorher: Rechnungsangaben, nachher: Rechnungsangaben): string[] {
+  const felder: [string, string | undefined, string | undefined][] = [
+    ["Steuernummer", vorher.steuernummer, nachher.steuernummer],
+    ["USt-IdNr.", vorher.ustIdNr, nachher.ustIdNr],
+    ["IBAN", vorher.geschaeftskonto?.iban, nachher.geschaeftskonto?.iban],
+    ["BIC", vorher.geschaeftskonto?.bic, nachher.geschaeftskonto?.bic],
+    ["Bank", vorher.geschaeftskonto?.bank, nachher.geschaeftskonto?.bank],
+  ];
+  return felder.filter(([, a, b]) => (a ?? "") !== (b ?? "")).map(([n]) => n);
+}
+
+/**
+ * Fehlende Pflichtangaben für Rechnungen der Kanzlei – leer, wenn vollständig.
+ * Steuernummer oder USt-IdNr. (§ 14 Abs. 4 S. 1 Nr. 2 UStG) und ein Geschäftskonto mit gültiger IBAN (Zahlungsweg auf der Rechnung).
+ */
+export function fehlendeRechnungsangaben(tenant: Pick<Tenant, "steuernummer" | "ustIdNr" | "geschaeftskonto">): string[] {
+  const fehlt: string[] = [];
+  const steuerOk = (!!tenant.steuernummer && steuernummerGueltig(tenant.steuernummer)) || (!!tenant.ustIdNr && ustIdNrGueltig(tenant.ustIdNr));
+  if (!steuerOk) fehlt.push("Steuernummer oder USt-IdNr. (§ 14 Abs. 4 S. 1 Nr. 2 UStG)");
+  if (!tenant.geschaeftskonto?.iban || !ibanGueltig(tenant.geschaeftskonto.iban)) fehlt.push("Bankverbindung (IBAN)");
+  return fehlt;
 }
 
 // ───────────── Fremdgeld im Bankabgleich ─────────────

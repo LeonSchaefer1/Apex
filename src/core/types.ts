@@ -39,6 +39,8 @@ export interface Tenant {
   /** Pflichtangabe auf Rechnungen (§ 14 Abs. 4 S. 1 Nr. 2 UStG): Steuernummer oder USt-IdNr. der Kanzlei. */
   steuernummer?: string;
   ustIdNr?: string;
+  /** Geschäftskonto der Kanzlei für Rechnungen (IBAN mit Prüfziffer, optional BIC und Bank). */
+  geschaeftskonto?: { iban: string; bic?: string; bank?: string };
   /** Sicherheitseinstellungen der Kanzlei: Zwei-Faktor-Pflicht und Sperre bei Inaktivität (Minuten, Standard 15). */
   sicherheit?: { zweiFaktorPflicht?: boolean; sperreMinuten?: 5 | 10 | 15 | 30 };
 }
@@ -141,6 +143,8 @@ export interface Akte {
   umzugLaufId?: string;
   /** Abrechnung geprüft (z. B. nach Umzug vor der Sammelabrechnung). */
   abrechnungGeprueft?: boolean;
+  /** Abschlussdatum unbekannt (z. B. Archivakte aus dem Umzug) – `abgeschlossenAm` ist dann nur das Übernahmedatum. */
+  abschlussdatumUnbekannt?: boolean;
 }
 
 export interface Forderungsdaten {
@@ -192,6 +196,17 @@ export interface Frist {
   korrekturen?: { am: ISODateTime; vonId: ID; grund: string; vorher: { datum: ISODate; ereignisDatum?: ISODate; regelKey?: string; titel: string } }[];
   /** Herkunft aus einem Umzugslauf (für Rückgängig). */
   umzugLaufId?: string;
+  /**
+   * Ort, mit dessen Feiertagen die Frist berechnet wurde (§ 222 Abs. 2 ZPO): Bundesland, optional Gericht,
+   * und woher der Ort stammt – Gericht der Nachricht, Gericht der Akte, Kanzleisitz oder von Hand gewählt.
+   */
+  gerichtsort?: FristGerichtsort;
+}
+
+export interface FristGerichtsort {
+  land: Bundesland;
+  gericht?: string;
+  quelle: "gericht" | "akte" | "kanzleisitz" | "hand";
 }
 
 export type DokumentArt =
@@ -369,7 +384,17 @@ export interface Transaktion {
   verwendungszweck: string;
   status: "offen" | "zugeordnet" | "ignoriert";
   /** Zuordnung im Bankabgleich – mit Zeitpunkt (`am`) und Person (`von`, bei manueller Zuordnung) für den Reiter „Gebucht“. */
-  zuordnung?: { rechnungId?: ID; akteId?: ID; sicherheit: number; durch: "auto" | "manuell"; grund: string; am?: ISODateTime; von?: ID };
+  zuordnung?: {
+    rechnungId?: ID;
+    akteId?: ID;
+    sicherheit: number;
+    durch: "auto" | "manuell";
+    grund: string;
+    am?: ISODateTime;
+    von?: ID;
+    /** Buchungsart der Zuordnung: Rechnungszahlung, Vorschuss/Honorar, Fremdgeld (§ 43a Abs. 7 BRAO) oder Kosten. */
+    art?: "rechnung" | "vorschuss" | "fremdgeld" | "kosten";
+  };
   /** Gespeicherter Zuordnungsvorschlag des Bankabgleichs (übersteht Reiterwechsel und Neuladen). */
   vorschlag?: { rechnungId?: ID; akteId?: ID; sicherheit: number; grund: string; am: ISODateTime };
   /** Abgelehnte Vorschläge – werden nicht erneut angeboten. */
@@ -404,6 +429,9 @@ export interface Automation {
   kategorie: "Fristen" | "Mandanten" | "Dokumente" | "Finanzen" | "Posteingang";
   /** Freigabestufe in Worten, z. B. „Entwurf – Versand erst nach Ihrer Freigabe“. */
   freigabe?: string;
+  /** Pausiert seit (Zeitpunkt) und von wem – gesetzt beim Ausschalten, gelöscht beim Einschalten. */
+  pausiertAm?: ISODateTime;
+  pausiertVon?: ID;
 }
 
 export interface Aktivitaet {

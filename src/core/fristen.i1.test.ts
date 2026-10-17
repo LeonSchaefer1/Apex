@@ -163,3 +163,38 @@ test("Berufungsbegründungsfrist zitiert § 520 Abs. 2 S. 1 ZPO; ohne Gericht �
   const mit = berechneNachRegel("berufungsbegruendung", "2026-10-16", "BE", undefined, { feiertagsOrt: "Kammergericht, Berufungsgericht" });
   assert.ok(mit.rechenweg.includes("Feiertage am Gerichtsort geprüft: Berlin (Kammergericht, Berufungsgericht)"));
 });
+
+// Usability-Iteration 3 (A-00, I3-T03-02): Gerichtsort einer gespeicherten Frist für Korrektur und Neuberechnung
+test("feiertagsortFuerFrist: gespeicherter Ort vor Gericht der Akte vor Kanzleisitz", async () => {
+  const { feiertagsortFuerFrist } = await import("./fristen");
+  const kontakte = [
+    { id: "g-lg", typ: "organisation" as const, name: "Landgericht Berlin II", rollen: ["gericht" as const], createdAt: "2026-01-01T00:00:00" },
+  ];
+  // Frist mit gespeichertem Gerichtsort Hessen bei Kanzlei in NRW → Hessen
+  const hessen = feiertagsortFuerFrist({ gerichtsort: { land: "HE", gericht: "Hessisches LAG", quelle: "gericht" } }, { gerichtId: "g-lg" }, kontakte, "NW");
+  assert.deepEqual(hessen, { land: "HE", feiertagsOrt: "Hessisches LAG", quelle: "gericht" });
+  const r = berechneNachRegel("berufung", "2027-09-30", hessen.land, undefined, { feiertagsOrt: hessen.feiertagsOrt, kanzleiLand: "NW" });
+  assert.ok(r.rechenweg.includes("Feiertage am Gerichtsort geprüft: Hessen (Hessisches LAG)"), r.rechenweg.join(" | "));
+  // Allerheiligen gilt in NRW, nicht in Hessen → keine Verschiebung
+  assert.equal(r.ende, "2027-11-01");
+  // Posteingang: „Kammergericht, Berufungsgericht“ bleibt wörtlich
+  const kg = feiertagsortFuerFrist({ gerichtsort: { land: "BE", gericht: "Kammergericht, Berufungsgericht", quelle: "gericht" } }, undefined, [], "BE");
+  const kgR = berechneNachRegel("berufung", "2026-10-16", kg.land, undefined, { feiertagsOrt: kg.feiertagsOrt });
+  assert.ok(kgR.rechenweg.includes("Feiertage am Gerichtsort geprüft: Berlin (Kammergericht, Berufungsgericht)"), kgR.rechenweg.join(" | "));
+  // ohne gespeicherten Ort → Gericht der Akte
+  const akte = feiertagsortFuerFrist({}, { gerichtId: "g-lg" }, kontakte, "NW");
+  assert.deepEqual(akte, { land: "BE", feiertagsOrt: "Landgericht Berlin II – laut Akte", quelle: "akte" });
+  // gespeicherte Quelle „akte“ bekommt den Zusatz genau einmal
+  assert.equal(feiertagsortFuerFrist({ gerichtsort: { land: "BE", gericht: "Landgericht Berlin II – laut Akte", quelle: "akte" } }, undefined, [], "NW").feiertagsOrt, "Landgericht Berlin II – laut Akte");
+  assert.equal(feiertagsortFuerFrist({ gerichtsort: { land: "BE", gericht: "Landgericht Berlin II", quelle: "akte" } }, undefined, [], "NW").feiertagsOrt, "Landgericht Berlin II – laut Akte");
+  // ohne Gericht → Kanzleisitz (feiertagsOrt undefined → „Gerichtsort noch offen“)
+  const sitz = feiertagsortFuerFrist({}, {}, kontakte, "NW");
+  assert.deepEqual(sitz, { land: "NW", quelle: "kanzleisitz" });
+  const sitzR = berechneNachRegel("berufung", "2026-10-16", sitz.land, undefined, { feiertagsOrt: sitz.feiertagsOrt });
+  assert.ok(sitzR.rechenweg.includes("Gerichtsort noch offen – geprüft mit den Feiertagen am Kanzleisitz (Nordrhein-Westfalen)"), sitzR.rechenweg.join(" | "));
+  // von Hand gewähltes Land ohne Gericht → „(von Hand gewählt)“
+  const hand = feiertagsortFuerFrist({ gerichtsort: { land: "BY", quelle: "hand" } }, { gerichtId: "g-lg" }, kontakte, "NW");
+  assert.deepEqual(hand, { land: "BY", feiertagsOrt: undefined, quelle: "hand" });
+  const handR = berechneNachRegel("berufung", "2026-10-16", hand.land, undefined, { feiertagsOrt: hand.feiertagsOrt, kanzleiLand: "NW" });
+  assert.ok(handR.rechenweg.includes("Feiertage am Gerichtsort geprüft: Bayern (von Hand gewählt)"), handR.rechenweg.join(" | "));
+});

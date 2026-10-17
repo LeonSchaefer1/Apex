@@ -1,5 +1,7 @@
 // Animiertes Wiki & Schnellhilfe – zugleich Wissensbasis des Apex Assistenten (Support).
 import { DEMO_KI_NAME } from "@/ai/status";
+import type { Ansprechpartner } from "@/core/types";
+import { ansprechBezeichnung, ansprechText } from "@/lib/rollen";
 
 export type WikiVisual =
   | "cockpit" | "akte" | "posteingang" | "frist" | "rechner" | "ki" | "suche" | "motor"
@@ -26,7 +28,8 @@ export interface WikiArtikel {
   stichworte?: string[];
 }
 
-export const WIKI: WikiArtikel[] = [
+/** Rohtexte mit Platzhaltern für die Ansprechperson („{Ihre feste Ansprechperson}“ …) – angezeigt nur über `wikiFuer`/`artikel`. */
+const WIKI_ROH: WikiArtikel[] = [
   {
     key: "cockpit", titel: "Das Cockpit", kategorie: "Erste Schritte", dauer: "1 Min.", pfad: "/cockpit",
     kurz: "Ihr Tagesüberblick: Was ist heute fällig, was ist neu, was hat die Automatisierung bereits erledigt?",
@@ -76,7 +79,7 @@ export const WIKI: WikiArtikel[] = [
       { titel: "Störung dokumentieren", text: "Sofort festhalten: Screenshot mit Uhrzeit, Fehlermeldung, Störungsmeldung der BRAK bzw. beA-Status, Uhrzeiten der Versuche. Das ist die Grundlage der Glaubhaftmachung.", visual: "stoerung" },
       { titel: "Ersatzeinreichung", text: "Bei vorübergehender technischer Unmöglichkeit nach den allgemeinen Vorschriften einreichen: Telefax, Papier oder Bote. Zivilgerichte (AG, LG, OLG, BGH): § 130d S. 2 ZPO; Arbeitsgerichte (ArbG, LAG, BAG): § 46g S. 3 ArbGG; entsprechend § 55d VwGO, § 65d SGG, § 52d FGO, § 32d StPO.", visual: "ersatzeinreichung" },
       { titel: "Glaubhaft machen", text: "Die vorübergehende Unmöglichkeit bei der Ersatzeinreichung oder unverzüglich danach glaubhaft machen – mit anwaltlicher Versicherung und geschlossener Schilderung der Abläufe (§ 130d S. 3 ZPO, § 46g S. 4 ArbGG). Auf Anforderung des Gerichts das elektronische Dokument nachreichen.", visual: "glaubhaft" },
-      { titel: "Frist erst nach Nachweis erledigen", text: "Die Frist erst nach Sendebericht bzw. Eingangsbestätigung als erledigt markieren (Ausgangskontrolle). Und: Ihre feste Ansprechperson bei AnwaltApex anrufen.", visual: "frist" },
+      { titel: "Frist erst nach Nachweis erledigen", text: "Die Frist erst nach Sendebericht bzw. Eingangsbestätigung als erledigt markieren (Ausgangskontrolle). Und: {Ihre feste Ansprechperson} bei AnwaltApex anrufen.", visual: "frist" },
     ],
     tipps: ["Der Apex Assistent beantwortet „beA gestört – was tun?“ auch für das konkrete Gericht (z. B. LAG oder OLG)."],
   },
@@ -142,22 +145,22 @@ export const WIKI: WikiArtikel[] = [
   },
   {
     key: "umzug", titel: "Umzug aus Ihrer bisherigen Software", kategorie: "Umzug", dauer: "2 Min.", pfad: "/umzug",
-    kurz: "Umzug in fünf Schritten – mit Vorschau und Rückgängig: Akten, Kontakte und Fristen aus Ihrer bisherigen Software ziehen vollständig um; Dokumente und Aktenkonten übernehmen Sie gemeinsam mit Ihrer festen Ansprechperson.",
+    kurz: "Umzug in fünf Schritten – mit Vorschau und Rückgängig: Akten, Kontakte und Fristen aus Ihrer bisherigen Software ziehen vollständig um; Dokumente und Aktenkonten übernehmen Sie gemeinsam mit {Ihrer festen Ansprechperson}.",
     stichworte: ["Migration", "One-Klick-Migration", "Datenübernahme", "Wechsel", "Import"],
     schritte: [
       { titel: "Bisherige Software wählen", text: "RA-MICRO, ACTAPORT, Advoware, ReNoStar oder eine CSV-/Excel-Datei.", visual: "umzug" },
       { titel: "Vorschau prüfen", text: "Spalten werden automatisch zugeordnet. Sie sehen vorab, was übernommen wird – und was doppelt wäre.", visual: "umzug" },
       { titel: "Übernehmen", text: "Nach Ihrer Prüfung übernehmen – jeder Lauf lässt sich rückgängig machen. Übernommene Fristen tragen „Aus Umzug“ und gehen in die Vier-Augen-Kontrolle.", visual: "frist" },
     ],
-    tipps: ["Ihre feste Ansprechperson bei AnwaltApex begleitet den Umzug und prüft mit Ihnen die ersten Akten."],
+    tipps: ["{Ihre feste Ansprechperson} bei AnwaltApex begleitet den Umzug und prüft mit Ihnen die ersten Akten."],
   },
   {
     key: "hilfe", titel: "Hilfe & Support", kategorie: "Erste Schritte", dauer: "1 Min.", pfad: "/hilfe",
-    kurz: "Animiertes Wiki, Schnellhilfe, Systemstatus und eine feste Ansprechperson für Ihre Kanzlei.",
+    kurz: "Animiertes Wiki, Schnellhilfe, Systemstatus und {eine feste Ansprechperson} für Ihre Kanzlei.",
     stichworte: ["Support", "Ansprechpartner", "Ansprechpartnerin", "Rückruf", "Schnellhilfe"],
     schritte: [
       { titel: "Apex Assistent", text: "Unten rechts: Fragen Sie per Text oder Sprache. Der Apex Assistent erklärt, zeigt den Weg und erledigt Aufgaben direkt.", visual: "assistent" },
-      { titel: "Feste Ansprechperson", text: "Keine Hotline-Warteschleife: Ihre feste Ansprechperson bei AnwaltApex ist mit Namen, Durchwahl und E-Mail direkt erreichbar – auf Wunsch mit Rückruf.", visual: "team" },
+      { titel: "{Feste Ansprechperson}", text: "Keine Hotline-Warteschleife: {Ihre feste Ansprechperson} bei AnwaltApex ist mit Namen, Durchwahl und E-Mail direkt erreichbar – auf Wunsch mit Rückruf.", visual: "team" },
       { titel: "Systemstatus", text: "Offen und ehrlich: Sie sehen jederzeit, ob beA, E-Mail, Bank und KI laufen – und was gerade getan wird.", visual: "status" },
     ],
   },
@@ -206,6 +209,26 @@ export const WIKI: WikiArtikel[] = [
   },
 ];
 
-export function artikel(key: string | null | undefined): WikiArtikel | undefined {
-  return WIKI.find((w) => w.key === key);
+function aufgeloest(w: WikiArtikel, ap?: Ansprechpartner): WikiArtikel {
+  const t = (x: string) => ansprechText(x, ap);
+  return { ...w, titel: t(w.titel), kurz: t(w.kurz), schritte: w.schritte.map((x) => ({ ...x, titel: t(x.titel), text: t(x.text) })), tipps: w.tipps?.map(t) };
+}
+
+const CACHE = new Map<string, WikiArtikel[]>();
+/** Wiki mit der geschlechtsrichtigen Bezeichnung der Ansprechperson der Kanzlei („Ansprechpartnerin“ / „Ansprechpartner“). */
+export function wikiFuer(ap?: Ansprechpartner): WikiArtikel[] {
+  const k = ap ? ansprechBezeichnung(ap) : "Ansprechpartnerin";
+  let liste = CACHE.get(k);
+  if (!liste) {
+    liste = WIKI_ROH.map((w) => aufgeloest(w, ap));
+    CACHE.set(k, liste);
+  }
+  return liste;
+}
+
+/** Wiki ohne Kanzleibezug (Standard-Ansprechpartnerin) – in der Kanzlei-App besser `wikiFuer(tenant.ansprechpartner)`. */
+export const WIKI: WikiArtikel[] = wikiFuer();
+
+export function artikel(key: string | null | undefined, ap?: Ansprechpartner): WikiArtikel | undefined {
+  return wikiFuer(ap).find((w) => w.key === key);
 }

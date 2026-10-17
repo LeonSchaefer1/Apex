@@ -4,9 +4,10 @@ import { ArrowRight, BookOpen, CalendarClock, Check, Handshake, Headset, Infinit
 import { diffDays, fmtDate, fmtDateLong, today } from "@/core/dates";
 import { useKanzlei } from "@/store/session";
 import { Button, Chip } from "@/components/ui";
+import { telHref } from "@/lib/telefon";
 import { CopyButton } from "@/pages/hilfe/kopieren";
 import { cn } from "@/lib/cn";
-import { festeAnsprechperson } from "@/lib/rollen";
+import { festeAnsprechBezeichnung } from "@/lib/rollen";
 import { ESCROW_HINWEIS, LIZENZ_KENNZEICHNUNG, PREIS_HINWEIS, UEBERTRAGBARKEIT_HINWEIS, WARTUNG_HINWEIS, WARTUNG_INHALT } from "@/content/lizenz";
 import { Abschnitt } from "./teile";
 
@@ -24,7 +25,7 @@ export function LizenzTab() {
 
   const inklusive = [
     { icon: <RefreshCw className="size-4" />, t: "Aktualisierungen im Rahmen der Wartung", s: "mit der optionalen Wartung (Umfang laut Angebot) – vorab geprüft, den Zeitpunkt bestimmen Sie" },
-    { icon: <Headset className="size-4" />, t: festeAnsprechperson(ap, { ohneIhr: true }), s: `${ap.name} · ${ap.verfuegbar}` },
+    { icon: <Headset className="size-4" />, t: festeAnsprechBezeichnung(ap, { ohneIhr: true }), s: `${ap.name} · ${ap.verfuegbar}` },
     { icon: <BookOpen className="size-4" />, t: "Animiertes Wiki & Schnellhilfe", s: "in jeder Ansicht, plus Apex Assistent" },
     { icon: <Truck className="size-4" />, t: "Umzug in fünf Schritten – mit Vorschau und Rückgängig", s: `aus Ihrer bisherigen Software – begleitet von ${ap.name}` },
     { icon: <Server className="size-4" />, t: "Betrieb nach Wahl", s: "Auf Ihrem eigenen Server oder in einem deutschen Rechenzentrum" },
@@ -123,7 +124,7 @@ export function LizenzTab() {
           <section className="sheet rounded-[22px] p-5">
             <div className="title-md">Lifetime-Lizenz erwerben</div>
             <p className="mt-1 text-[12.5px] leading-relaxed text-fg-3">
-              {festeAnsprechperson(ap)} {ap.name} erstellt Ihnen ein Angebot nach Kanzleigröße: <span className="num whitespace-nowrap font-medium text-fg-2">{ap.telefon}</span> · <span className="break-all">{ap.email}</span>. Beim Wechsel bleiben alle Daten der Testphase vollständig erhalten.
+              {festeAnsprechBezeichnung(ap)} {ap.name} erstellt Ihnen ein Angebot nach Kanzleigröße: <a href={telHref(ap.telefon)} className="num whitespace-nowrap font-semibold text-ink underline decoration-[var(--ink-soft)] underline-offset-2 hover:decoration-ink" aria-label={`${ap.telefon} anrufen`}>{ap.telefon}</a> · <span className="break-all">{ap.email}</span>. Beim Wechsel bleiben alle Daten der Testphase vollständig erhalten.
             </p>
           </section>
         )}

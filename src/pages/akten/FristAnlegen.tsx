@@ -193,6 +193,8 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
         id: uid("f"), akteId: akte.id, titel: titel.trim() || standardTitel, typ: r.typ, datum: ergebnis.ende, vorfrist: ergebnis.vorfrist,
         regelKey: r.key, grundlage: r.grundlage, ereignisDatum: ereignis, rechenweg: ergebnis.rechenweg, status: "offen",
         verantwortlichId: verantwortlich, quelle: "manuell", notiz: notiz.trim() || undefined, createdAt: jetzt,
+        // Ort, mit dessen Feiertagen gerechnet wurde – Korrekturen rechnen damit weiter (I3-T03-02)
+        gerichtsort: gerichtsort ? { land: gerichtsort.land, gericht: gerichtsort.gericht, quelle: "akte" } : { land, quelle: "kanzleisitz" },
       };
       st.upsert("fristen", f);
       st.upsert("fristen", {

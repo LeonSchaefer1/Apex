@@ -4,13 +4,15 @@ import { artikel } from "@/content/wiki";
 import { Drawer, Button, Segmented } from "@/components/ui";
 import { WikiPlayer } from "@/components/wiki/WikiPlayer";
 import { KuerzelListe } from "./Tastenkuerzel";
+import { useKanzlei } from "@/store/session";
 
 type Reiter = "hilfe" | "kuerzel";
 
 /** Schnellhilfe: das animierte Wiki direkt dort, wo man gerade arbeitet – mit Reiter „Tastaturkürzel“ (Taste „?“). */
 export function QuickHelp() {
   const { hilfeThema, zeigeHilfe, oeffneAssistent, kuerzelOffen, setKuerzel } = useUI();
-  const a = artikel(hilfeThema);
+  const { tenant } = useKanzlei();
+  const a = artikel(hilfeThema, tenant.ansprechpartner);
   const reiter: Reiter = kuerzelOffen || !a ? "kuerzel" : "hilfe";
   const offen = !!a || kuerzelOffen;
   const schliessen = () => {

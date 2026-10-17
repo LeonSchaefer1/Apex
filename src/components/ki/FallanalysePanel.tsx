@@ -311,13 +311,17 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
   const stagger = (i: number) => ({ initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 }, transition: { delay: 0.05 + i * 0.06, type: "spring" as const, stiffness: 300, damping: 30 } });
 
   return (
-    <div className="grid min-w-0 gap-4 [&>*]:min-w-0">
-      {/* Kopf: Erfolgsaussicht */}
+    <div className="@container grid min-w-0 gap-4 [&>*]:min-w-0">
+      {/* Kopf: Erfolgsaussicht. Gemessen an der verfügbaren Breite (Container, nicht Fenster): ab 1100 px dreispaltig
+          (Einschätzung | Zusammenfassung | Neu analysieren), darunter einspaltig – Einschätzung und „Neu analysieren“ in der
+          Kopfzeile, die Zusammenfassung in voller Breite darunter (iPad quer, I3-T06-02). */}
       <motion.div {...stagger(0)}>
         <Card className="ai-ring overflow-hidden">
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[auto_1fr_auto] lg:items-center">
-            <StufenAnzeige wort={STUFE_WORT[r.erfolgsaussicht.stufe]} ton={ton} />
-            <div className="min-w-0">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-6 gap-y-5 [grid-template-areas:'stufe_knopf'_'text_text'] @min-[1100px]:grid-cols-[auto_minmax(0,1fr)_auto] @min-[1100px]:items-center @min-[1100px]:[grid-template-areas:'stufe_text_knopf']">
+            <div className="min-w-0 [grid-area:stufe] [&>div]:!mx-0 [&>div]:!items-start [&>div]:!text-left @min-[1100px]:[&>div]:!mx-auto @min-[1100px]:[&>div]:!items-center @min-[1100px]:[&>div]:!text-center">
+              <StufenAnzeige wort={STUFE_WORT[r.erfolgsaussicht.stufe]} ton={ton} />
+            </div>
+            <div className="min-w-0 [grid-area:text]">
               <div className="mb-1.5 flex flex-wrap items-center gap-2">
                 <span className="ai-text text-[12.5px] font-semibold uppercase tracking-[0.06em]">KI-Fallanalyse</span>
                 <Chip tone="outline">{r.quelle === "demo" ? "Demo-KI" : "Claude live"}</Chip>
@@ -330,7 +334,7 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
                 <strong className="text-fg">Begründung:</strong> {r.erfolgsaussicht.begruendung}
               </p>
             </div>
-            <div className="flex flex-wrap gap-2 lg:flex-col">
+            <div className="flex flex-wrap justify-end gap-2 [grid-area:knopf] @min-[1100px]:flex-col">
               <Button size="sm" icon={<RotateCcw className="size-3.5" />} onClick={start}>
                 Neu analysieren
               </Button>
@@ -399,7 +403,7 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
                       <span className="mono text-[12.5px] font-semibold text-ink">
                         {p.gericht} {p.az}
                       </span>
-                      <span className="truncate text-[12.5px] font-medium">{p.titel}</span>
+                      <span className="min-w-0 flex-1 text-[12.5px] font-medium leading-snug">{p.titel}</span>
                       <ChevronRight className="ml-auto size-4 shrink-0 text-fg-4 transition-transform group-hover:translate-x-0.5" />
                     </div>
                     <div className="mt-1.5 flex items-center gap-2">

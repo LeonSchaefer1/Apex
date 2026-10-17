@@ -4,11 +4,11 @@ import {
   AlertTriangle, Archive, ArrowRight, CalendarClock, Check, CheckCircle2, Copy, FileSpreadsheet, FileText, FolderOpen, Info, RotateCcw,
   UploadCloud, Users, Wand2, X,
 } from "lucide-react";
-import { fmtDate, fmtEUR, fmtNum } from "@/core/dates";
+import { fmtDate, fmtEUR, fmtNum, today } from "@/core/dates";
 import type { Ansprechpartner, FristTyp } from "@/core/types";
 import { AnimatedNumber, Avatar, Button, Chip, DataTable, Segmented, Select, type ColumnDef } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { festeAnsprechperson } from "@/lib/rollen";
+import { festeAnsprechBezeichnung } from "@/lib/rollen";
 import { TRENNZEICHEN_NAME, type CsvErgebnis, type DateiInfo } from "./csv";
 import { SYSTEME, ZIELFELDER, type DateiDublettenAktion, type DublettenAktion, type MigZeile, type OhneDatumAktion, type QuellSystem, type Umfang, type ZielFeld } from "./zuordnung";
 import type { Entitaet, Ergebnis, Fortschritt, UmzugPlan } from "./uebernahme";
@@ -531,7 +531,7 @@ const ENTITAETEN: { key: Entitaet; label: string; icon: React.ReactNode }[] = [
   { key: "kontakte", label: "Kontakte", icon: <Users className="size-4" /> },
   { key: "akten", label: "Akten", icon: <FolderOpen className="size-4" /> },
   { key: "fristen", label: "Fristen", icon: <CalendarClock className="size-4" /> },
-  { key: "dokumente", label: "Dokumente-Verweise", icon: <FileText className="size-4" /> },
+  { key: "dokumente", label: "Datenblatt je Akte", icon: <FileText className="size-4" /> },
 ];
 
 const umfangOptionen = (jahr: number): { value: Umfang; titel: string; sub: string }[] => [
@@ -574,7 +574,7 @@ function OhneDatumWahl({ nr, wert, onWahl, label }: { nr: number; wert?: OhneDat
 }
 
 export function SchrittUebernahme({
-  plan, fortschritt, laeuft, onStart, systemName, umfang = "alle", setUmfang, ohneDatum = {}, setOhneDatum, setOhneDatumAlle, heute = new Date().toISOString().slice(0, 10),
+  plan, fortschritt, laeuft, onStart, systemName, umfang = "alle", setUmfang, ohneDatum = {}, setOhneDatum, setOhneDatumAlle, heute = today(),
 }: {
   plan: UmzugPlan;
   fortschritt: Partial<Record<Entitaet, Fortschritt>>;
@@ -784,7 +784,7 @@ export function SchrittFertig({
     },
     { label: "Kontakte angelegt", wert: e.kontakteNeu, sub: e.kontakteZusammengefuehrt ? `${e.kontakteZusammengefuehrt} mit vorhandenen zusammengeführt` : "ohne Dubletten", icon: <Users className="size-4" /> },
     { label: "Fristen zur Kontrolle", wert: e.fristenKontrolle, sub: e.fristen > e.fristenKontrolle ? `mit Vorfrist · dazu ${e.fristen - e.fristenKontrolle} ${e.fristen - e.fristenKontrolle === 1 ? "Wiedervorlage/Termin" : "Wiedervorlagen/Termine"}` : "mit Vorfrist, Vier-Augen-Prinzip", icon: <CalendarClock className="size-4" /> },
-    { label: "Dokumente-Verweise", wert: e.dokumente, sub: "Datenblatt je Akte", icon: <FileText className="size-4" /> },
+    { label: "Datenblatt je Akte", wert: e.dokumente, sub: "mit allen Originalwerten des Altsystems", icon: <FileText className="size-4" /> },
   ];
   return (
     <div className="flex flex-col gap-6">
@@ -846,7 +846,11 @@ export function SchrittFertig({
         <div className="min-w-0 flex-1">
           <div className="text-[13.5px] font-semibold">{ansprechpartner.name} prüft mit Ihnen die ersten Akten</div>
           <div className="text-[12.5px] text-fg-3">
-            {festeAnsprechperson(ansprechpartner)} · <span className="select-all">{ansprechpartner.telefon}</span> · {ansprechpartner.verfuegbar}
+            {festeAnsprechBezeichnung(ansprechpartner)} ·{" "}
+            <a href={`tel:${ansprechpartner.telefon.replace(/[^\d+]/g, "")}`} className="inline-flex min-h-6 select-all items-center font-medium text-ink hover:underline pointer-coarse:min-h-11" aria-label={`${ansprechpartner.name} anrufen: ${ansprechpartner.telefon}`}>
+              {ansprechpartner.telefon}
+            </a>{" "}
+            · {ansprechpartner.verfuegbar}
           </div>
         </div>
         <Button size="sm" onClick={onTermin}>

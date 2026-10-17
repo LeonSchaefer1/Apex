@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { Bell, Search, Sun, Moon, MonitorSmartphone, LogOut, Settings, LifeBuoy, Building2, Sparkles, Zap, User as UserIcon, Keyboard, ShieldAlert } from "lucide-react";
-import { navFor } from "@/app/nav";
+import { Bell, Search, Sun, Moon, MonitorSmartphone, LogOut, Settings, LifeBuoy, Building2, Sparkles, Zap, User as UserIcon, Keyboard, ShieldAlert, RadioTower } from "lucide-react";
+import { navFor, SYSTEMSTATUS } from "@/app/nav";
 import { useUI, type ThemeWahl } from "@/store/ui";
 import { useKanzlei, useSession } from "@/store/session";
 import { useData } from "@/store/data";
@@ -15,7 +15,7 @@ import { rollenLabel } from "@/lib/rollen";
 import { darfVerwalten } from "@/lib/backend";
 
 /** Im Prototyp sind beA, E-Mail und Bank simuliert – einheitlicher Wortlaut mit Posteingang, Bankabgleich und Systemstatus. */
-import { SIMULIERT_STATUS } from "@/lib/betriebsstatus";
+import { SIMULIERT_STATUS, SYSTEMSTATUS_NAME } from "@/lib/betriebsstatus";
 export { SIMULIERT_STATUS };
 
 /** Kopfleiste wird deckend, sobald Inhalt darunter durchläuft (kein Text schimmert durch). */
@@ -77,12 +77,12 @@ export function TopBar() {
   };
 
   return (
-    <header className={cn("kopfleiste sticky top-0 z-40 px-3 pt-[max(12px,env(safe-area-inset-top))] md:px-5", gescrollt && "kopfleiste-gescrollt")}>
-      <div className={cn("glass flex h-14 items-center gap-2 rounded-[22px] pl-3 pr-2 md:pl-4", gescrollt && "glass-deckend")}>
+    <header className={cn("kopfleiste relative z-40 shrink-0 px-3 pt-[max(12px,env(safe-area-inset-top))] md:px-5", gescrollt && "kopfleiste-gescrollt")}>
+      <div className={cn("glass flex h-14 items-center gap-1 rounded-[22px] pl-3 pr-2 sm:gap-2 md:pl-4", gescrollt && "glass-deckend")}>
         {/* Mobil: App-Icon + Seitentitel */}
-        <div className="flex min-w-0 items-center gap-2.5 md:hidden">
-          <AppIcon size={30} />
-          <span className="truncate text-[15px] font-semibold tracking-[-0.02em]">{item?.label ?? "AnwaltApex"}</span>
+        <div className="flex min-w-0 flex-1 items-center gap-2 md:hidden">
+          <AppIcon size={28} />
+          <span className="truncate text-[15px] font-semibold tracking-[-0.02em] max-[379px]:text-[14px] max-[379px]:tracking-[-0.03em]">{item?.label ?? "AnwaltApex"}</span>
         </div>
 
         <button
@@ -100,13 +100,25 @@ export function TopBar() {
           <span className="kbd -ml-1.5 hidden xl:inline-grid">K</span>
         </button>
 
-        <div className="flex min-w-0 flex-1 justify-center md:max-lg:grow-[0.25]">
+        <div className="hidden min-w-0 flex-1 justify-center md:flex md:max-lg:grow-[0.25]">
           <ApexIsland />
         </div>
 
         {/* Mobil (< 640 px): Bedienflächen der Kopfleiste mindestens 44 × 44 px (Daumen, WCAG 2.5.5) */}
         <button type="button" className="icon-btn md:hidden max-sm:!size-11" aria-label="Suchen" onClick={() => setPalette(true)}>
           <Search className="size-[18px]" />
+        </button>
+
+        {/* Mobil: Systemstatus in 1 Tippen (I3-T12-02) – Symbol + Farbpunkt, Name für Screenreader; Desktop nutzt die Textanzeige rechts */}
+        <button
+          type="button"
+          onClick={() => nav(SYSTEMSTATUS.to)}
+          className="icon-btn relative md:hidden max-sm:!size-11"
+          aria-label={SYSTEMSTATUS_NAME}
+          title={`Systemstatus öffnen – ${SIMULIERT_STATUS}`}
+        >
+          <RadioTower className="size-[18px]" aria-hidden />
+          <span className="absolute right-2 top-2 size-2 rounded-full bg-[var(--amber)] ring-2 ring-[var(--glass-strong)] max-sm:right-2.5 max-sm:top-2.5" aria-hidden />
         </button>
 
         <button

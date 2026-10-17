@@ -17,6 +17,17 @@ export function today(): ISODate {
   return local.toISOString().slice(0, 10);
 }
 
+/**
+ * Kalendertag in deutscher Ortszeit (Europe/Berlin) – unabhängig von der Zeitzone des Rechners (z. B. Server in UTC).
+ * Um 01:05 Uhr Ortszeit ist das schon der neue Tag, obwohl UTC noch den Vortag zeigt.
+ */
+export function heuteBerlin(d: Date = new Date()): ISODate {
+  const teile = Object.fromEntries(
+    new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d).map((p) => [p.type, p.value]),
+  );
+  return `${teile.year}-${teile.month}-${teile.day}`;
+}
+
 export function addDays(iso: ISODate, days: number): ISODate {
   const d = fromISO(iso);
   d.setUTCDate(d.getUTCDate() + days);

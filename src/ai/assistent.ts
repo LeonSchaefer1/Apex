@@ -6,13 +6,13 @@ import { WERT_PRO_STUNDE } from "@/core/automationen";
 import { berechneRvg, VV_KATALOG } from "@/core/rvg";
 import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
 import { search, normalize, tokenize } from "@/core/search";
-import { addDays, fmtDate, fmtDateWd, fmtEUR, fmtNum, nowLocal, relDays, today, uid } from "@/core/dates";
+import { addDays, fmtDate, fmtDateWd, fmtEUR, fmtNum, nowLocal, relDays, today, uid, weekday } from "@/core/dates";
 import { istWerktag } from "@/core/feiertage";
-import { RUECKRUF_SIMULIERT, inServicezeit, naechsteServicezeit, rueckrufNachFristende, rueckrufZusage } from "@/core/rueckruf";
-import { WIKI, artikel, type WikiArtikel } from "@/content/wiki";
+import { RUECKRUF_SIMULIERT, inServicezeit, naechsteServicezeit, rueckrufNachFristende, rueckrufRegel, rueckrufZusage } from "@/core/rueckruf";
+import { artikel, wikiFuer, type WikiArtikel } from "@/content/wiki";
 import { NAV } from "@/app/nav";
 import { useData } from "@/store/data";
-import { ansprechBezeichnung, festeAnsprechperson, foermlicherName, gruss } from "@/lib/rollen";
+import { ansprechBezeichnung, ansprechText, festeAnsprechBezeichnung, foermlicherName, gruss } from "@/lib/rollen";
 import type { Akte, Ansprechpartner, Bundesland, Frist, ISODate, Notiz, SessionInfo, FristTyp, TenantData } from "@/core/types";
 import { DemoModus, llmAgent, verstaendlicheMeldung, type AgentTool, type LlmMessage } from "./llm";
 import { bewertePraezedenz, findePraezedenzfaelle } from "./kontext";
@@ -75,7 +75,7 @@ export const WERKZEUG_LABEL: Record<string, string> = {
   entscheidung_erlaeutern: "Entscheidung erläutert",
   navigiere: "Bereich geöffnet",
   hilfe_artikel: "Wiki durchsucht",
-  ansprechpartner: "Ansprechperson abgerufen",
+  ansprechpartner: "Ansprechpartner abgerufen",
   rueckruf_anfordern: "Rückruf angefordert",
   posteingang_status: "Posteingang geprüft",
   finanzen_status: "Finanzen geprüft",
@@ -84,6 +84,12 @@ export const WERKZEUG_LABEL: Record<string, string> = {
   tagesbriefing: "Tag zusammengefasst",
 };
 
+/** Chip-Text eines Werkzeugs – „Ansprechpartnerin abgerufen“ bzw. „Ansprechpartner abgerufen“ nach den Kanzleidaten. */
+export function werkzeugLabel(name: string, ap?: Ansprechpartner): string {
+  if (name === "ansprechpartner" && ap) return `${ansprechBezeichnung(ap)} abgerufen`;
+  return WERKZEUG_LABEL[name] ?? name;
+}
+
 interface Kontext {
   sitzung: SessionInfo;
   nav: (to: string) => void;
@@ -91,6 +97,8 @@ interface Kontext {
   werkzeuge: string[];
   auswahl?: AuswahlKnopf[];
   vorschlag?: SchreibVorschlag;
+  /** Ursprünglicher Wortlaut, wenn eine Kurzform („wv 137 …“) intern ausformuliert wurde – für das Protokoll („Ihr Auftrag“). */
+  originalFrage?: string;
 }
 
 function daten() {
@@ -124,6 +132,11 @@ const KANDIDAT_STOP = new Set(tokenize(
 export function akteKandidaten(text: string): Akte[] {
   const az = azAus(text);
   if (az) {
+    // Nur Ziffern („137“): mehrere Jahrgänge (137/25, 137/26) sind mehrdeutig – dann Rückfrage mit Karten
+    if (!az.includes("/")) {
+      const alle = daten().akten.filter((a) => a.status !== "abgeschlossen" && a.aktenzeichen.split("/")[0] === az);
+      if (alle.length > 1) return alle;
+    }
     const a = findeAkteNachAz(az);
     if (a) return [a];
   }
@@ -330,10 +343,16 @@ export function fristenListe(d: TenantData, zeitraum: Zeitraum, heute: string, n
   };
 }
 
-/** Link-Vertrag zum Fristenrechner: /fristen?rechner=1&regel=<regelKey>&ereignis=<YYYY-MM-DD>&akte=<akteId> */
-export function fristenrechnerLink(regelKey: string, ereignis: string, akteId?: string): string {
-  const p = new URLSearchParams({ rechner: "1", regel: regelKey, ereignis });
+/**
+ * Link-Vertrag zum Fristenrechner: /fristen?rechner=1&regel=<regelKey>&ereignis=<YYYY-MM-DD>&akte=<akteId>&herkunft=<Text>.
+ * `ereignis` leer → der Rechner fragt das Datum ab (nie still „heute“, I3-T18-02). `herkunft` im Dativ („der Frage an den
+ * Apex Assistenten“) – der Rechenweg nennt dann „Ereignisdatum aus der Frage an den Apex Assistenten übernommen“.
+ */
+export function fristenrechnerLink(regelKey: string, ereignis?: string, akteId?: string, herkunft?: string): string {
+  const p = new URLSearchParams({ rechner: "1", regel: regelKey });
+  if (ereignis) p.set("ereignis", ereignis);
   if (akteId) p.set("akte", akteId);
+  if (ereignis && herkunft) p.set("herkunft", herkunft);
   return `/fristen?${p.toString()}`;
 }
 
@@ -533,7 +552,7 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
           feiertagsOrt: gerichtsort ? `${gerichtsort.gericht} – laut Akte` : "Kanzleisitz",
           kanzleiLand: land,
         });
-        ctx.links.push({ label: "Im Fristenrechner öffnen", to: fristenrechnerLink(r.regel.key, ereignis, akte?.id) });
+        ctx.links.push({ label: "Im Fristenrechner öffnen", to: fristenrechnerLink(r.regel.key, ereignis, akte?.id, "der Frage an den Apex Assistenten") });
         return { frist: r.regel.titel, grundlage: r.regel.grundlage, fristende: fmtDateWd(r.ende), vorfrist: fmtDateWd(r.vorfrist), verschoben: r.verschoben, feiertageNach: r.feiertagsOrt, rechenweg: r.rechenweg, hinweise: r.warnungen, akte: akte ? `${akte.aktenzeichen} ${akte.titel}` : null };
       },
     },
@@ -660,7 +679,7 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
         if (b) {
           t("navigiere");
           ctx.nav(b.to);
-          return { geoeffnet: b.label, beschreibung: b.beschreibung };
+          return { geoeffnet: b.label, beschreibung: ansprechText(b.beschreibung, ctx.sitzung.tenant.ansprechpartner) };
         }
         const name = ziel.replace(/^(die\s+)?akte\s+/i, "");
         const kandidaten = akteKandidaten(name);
@@ -685,7 +704,7 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
       inputSchema: { type: "object", properties: { frage: { type: "string" } }, required: ["frage"] },
       execute: (i) => {
         t("hilfe_artikel");
-        const list = wikiSuche(String(i.frage ?? "")).map((x) => x.w);
+        const list = wikiSuche(String(i.frage ?? ""), ctx.sitzung.tenant.ansprechpartner).map((x) => x.w);
         list.slice(0, 1).forEach((w) => w.pfad && ctx.links.push({ label: `Zu „${w.titel}“`, to: w.pfad }));
         return list.map((w) => ({ titel: w.titel, kurz: w.kurz, schritte: w.schritte.map((s) => `${s.titel}: ${s.text}`), tipps: w.tipps ?? [] }));
       },
@@ -703,7 +722,7 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
         return {
           ...ap,
           bezeichnung: ansprechBezeichnung(ap),
-          anrede: festeAnsprechperson(ap),
+          anrede: festeAnsprechBezeichnung(ap),
           erreichbar,
           wiederErreichbar: erreichbar ? undefined : naechsteServicezeit(jetzt, ap.verfuegbar, ctx.sitzung.tenant.bundesland).text,
           hinweis: erreichbar ? undefined : "Außerhalb der Servicezeit nicht erreichbar – nie „direkt erreichbar“ sagen. Bei einer heute ablaufenden Frist auf die Ersatzeinreichung (§ 130d S. 2, 3 ZPO; § 46g S. 3, 4 ArbGG) und die Wissenskarte „beA-Störung – was tun?“ verweisen.",
@@ -724,7 +743,9 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
         return {
           ok: true,
           ansprechpartner: ap.name,
+          durchwahl: ap.telefon,
           zusage: z.text,
+          regel: z.ausserhalb ? rueckrufRegel(ap.verfuegbar) : undefined,
           erstNachHeute: spaeter,
           hinweis: `Im Prototyp simuliert – es ruft niemand an. Bitte immer „${RUECKRUF_SIMULIERT}“ dazusagen.${spaeter ? " Der Rückruf kommt erst nach heute 24 Uhr: Läuft heute eine Frist ab, auf die Ersatzeinreichung und die Wissenskarte „beA-Störung – was tun?“ verweisen." : ""}`,
         };
@@ -812,7 +833,8 @@ export interface WikiTreffer {
  * aussagekräftigen Suchwörter vorkommen und mindestens ein Treffer in Titel oder Stichworten liegt bzw. mehrere im Kurztext.
  * Ohne sicheren Treffer: leere Liste – der Assistent fragt dann ehrlich nach, statt einen fachfremden Artikel zu zeigen.
  */
-export function wikiSuche(frage: string): WikiTreffer[] {
+export function wikiSuche(frage: string, ap?: Ansprechpartner): WikiTreffer[] {
+  const WIKI = wikiFuer(ap);
   const toks = [...new Set(tokenize(frage).filter((t) => !WIKI_STOP.has(t) && t.length >= 2))];
   if (!toks.length) return [];
   const passt = (t: string, woerter: Set<string>) => {
@@ -856,17 +878,18 @@ Regeln:
 - Passen mehrere Akten (Werkzeug meldet „mehrdeutig“), öffne oder bearbeite keine davon: Sag, wie viele passen, und bitte um Auswahl – die Knöpfe erscheinen unter deiner Antwort.
 - Kurze Antworten wie „Ja“, „Gerne“ oder „Nein“ beziehen sich auf deine letzte Rückfrage – führe dann genau das Angebotene aus.
 - Findest du keine sichere Antwort (z. B. leere Wiki-Treffer), sag das ehrlich und frag nach, was genau gemeint ist.
-- Wenn du nicht weiterkommst oder der Nutzer einen Menschen möchte: biete die feste Ansprechperson an und nutze rueckruf_anfordern. Formuliere ohne Pronomen für die Ansprechperson: „${festeAnsprechperson(ap)}: ${ap.name}“ und wiederhole bei Bedarf den Namen.
+- Wenn du nicht weiterkommst oder der Nutzer einen Menschen möchte: biete die feste Ansprechperson an und nutze rueckruf_anfordern. Formuliere ohne Pronomen für die Ansprechperson: „${festeAnsprechBezeichnung(ap)}: ${ap.name}“ und wiederhole bei Bedarf den Namen.
 - Wenn der Nutzer einen Bereich sehen möchte, nutze navigiere.
 - Rückrufe sind im Prototyp simuliert: nenne die Zusage mit Uhrzeit aus rueckruf_anfordern und immer den Zusatz „${RUECKRUF_SIMULIERT}“.
+- Nenne bei Fragen nach der Ansprechperson und bei Rückruf- oder Störungsantworten immer die Durchwahl (Feld „telefon“ bzw. „durchwahl“), auch außerhalb der Servicezeit; bei einer Zusage außerhalb der Servicezeit auch die „regel“.
 - Meldet ansprechpartner „erreichbar: false“, sag ehrlich, dass die Ansprechperson jetzt nicht erreichbar ist, und nenne „wiederErreichbar“. Läuft heute eine Frist ab, verweise auf die Ersatzeinreichung (§ 130d S. 2, 3 ZPO; § 46g S. 3, 4 ArbGG) und die Wissenskarte „beA-Störung – was tun?“ – erfinde keine Notfallnummer.
 - Notfallwissen beA-Störung (verbindlich, bei Fragen nach gestörtem beA, Ersatzeinreichung oder technischer Unmöglichkeit – vor jeder Posteingangsabfrage):
-${beaWissen()}`;
+${beaWissen(ap)}`;
 }
 
 /** Wissenskarte „beA-Störung – was tun?“ als Kontext für die Live-KI. */
-function beaWissen(): string {
-  const w = artikel("bea-stoerung");
+function beaWissen(ap?: Ansprechpartner): string {
+  const w = artikel("bea-stoerung", ap);
   if (!w) return "";
   return [`  ${w.kurz}`, ...w.schritte.map((x) => `  • ${x.titel}: ${x.text}`)].join("\n");
 }
@@ -941,7 +964,7 @@ export function beaStoerungAntwort(g: Gerichtsbarkeit | undefined, ap: Ansprechp
       "Dokumentation: Störung sofort dokumentieren – Screenshot mit Uhrzeit, Fehlermeldung, Störungsmeldung der BRAK bzw. beA-Status, Uhrzeiten Ihrer Versuche.",
       "Auf Anforderung des Gerichts das elektronische Dokument nachreichen.",
       "Die Frist erst nach Sendebericht bzw. Eingangsbestätigung als erledigt markieren (Ausgangskontrolle).",
-      `${festeAnsprechperson(ap)} ${ap.name} anrufen: ${ap.telefon} (${ap.verfuegbar}) – prüft mit Ihnen den beA-Status.`,
+      `${festeAnsprechBezeichnung(ap)} ${ap.name} anrufen: ${ap.telefon} (${ap.verfuegbar}) – prüft mit Ihnen den beA-Status.`,
     ]),
     `${andere}; entsprechend § 55d VwGO, § 65d SGG, § 52d FGO, § 32d StPO. Bitte im Einzelfall am Gesetzestext prüfen.`,
   ].join("\n");
@@ -1024,6 +1047,60 @@ export function auftragAusNachsatz(text: string): string | undefined {
   return rest.charAt(0).toUpperCase() + rest.slice(1);
 }
 
+// ───────────── Kanzleikürzel und Kurzformen (I3-T20-01, I3-T20-02) ─────────────
+
+/**
+ * Kanzleikürzel ausschreiben, damit die Absichtserkennung sie versteht: „WV“, „Wv.“, „Wiedervorl.“ → „Wiedervorlage“,
+ * „Az. 137“ → „Akte 137“, „Fr. 142 …“ (am Anfang, vor einer Nummer) → „Frist 142 …“, „eeb“ → „eEB“, „kschg“ → „KSchG“.
+ * „Fr.“ mitten im Satz bleibt unangetastet (Frau, Freitag).
+ */
+export function kuerzelNormal(text: string): string {
+  return text
+    .trim()
+    .replace(/(^|[\s(„"])(?:wv|wiedervorl)\.?(?=[\s,:;)“"]|$)/gi, "$1Wiedervorlage")
+    .replace(/(^|[\s(])az\.?\s*(?=\d)/gi, "$1Akte ")
+    .replace(/^fr\.?\s+(?=\d)/i, "Frist ")
+    .replace(/\beebs?\b/gi, (m) => (m.toLowerCase() === "eebs" ? "eEBs" : "eEB"))
+    .replace(/\bkschg\b/gi, "KSchG")
+    .replace(/\s+/g, " ");
+}
+
+const KURZ_DATUM = /(?<![a-zäöüß\d])(?:(?:am|zum|bis)\s+)?(?:in\s+(?:\d+|einer|einem|zwei|drei|vier|fünf|fuenf|sechs|sieben|acht|neun|zehn|vierzehn)\s+(?:tagen|tag|wochen|woche)|übermorgen|uebermorgen|morgen|heute|(?:nächste|naechste|kommende)n?\s+woche|\d{1,2}\.\s?\d{1,2}\.(?:\s?\d{2,4})?)(?![a-zäöüß\d])\.?/i;
+
+/**
+ * Kurzbefehl im Stil einer Kanzlei-Notiz („Wiedervorlage 137 in 3 tagen zeugenliste prüfen“, „Frist 142 morgen …“) in die
+ * ausgeschriebene Bitte übersetzen („Lege eine Wiedervorlage für Akte 137 in 3 tagen an: Zeugenliste prüfen“). Nur mit
+ * Aktenbezug – „Wiedervorlagen heute“ bleibt eine Abfrage. Eingetragen wird weiter erst nach „Eintragen“.
+ */
+export function kurzbefehlAlsBitte(text: string): string | undefined {
+  const t = kuerzelNormal(text).replace(/[.!]+$/, "");
+  const m = t.match(/^(wiedervorlage|notfrist|frist|termin)\b[\s:,-]*(?:für\s+|fuer\s+)?(.*)$/i);
+  if (!m || /\?$/.test(t)) return undefined;
+  let rest = m[2];
+  const az = azAus(rest);
+  if (!az) return undefined;
+  // Aktenbezug („Akte 137“, „137/26“, „137“) und Datumsangabe aus dem Rest lösen – was übrig bleibt, ist der Auftrag
+  rest = rest.replace(new RegExp(`(?:\\bakte\\s+)?\\b${az.replace("/", "\\s?/\\s?")}(?:\\s?/\\s?\\d{2})?\\b`, "i"), " ");
+  const datum = rest.match(KURZ_DATUM)?.[0];
+  if (datum) rest = rest.replace(datum, " ");
+  let auftrag = rest.replace(/^[\s,:;–-]+|[\s,:;–-]+$/g, "").replace(/\s+/g, " ");
+  // In Großbuchstaben getippt („ZEUGEN LADEN“): als normaler Titel übernehmen
+  if (auftrag.length > 3 && auftrag === auftrag.toUpperCase() && /[A-ZÄÖÜ]/.test(auftrag)) auftrag = auftrag.toLowerCase();
+  const art = m[1].toLowerCase();
+  const name = art === "wiedervorlage" ? "eine Wiedervorlage" : art === "notfrist" ? "eine Notfrist" : art === "frist" ? "eine Frist" : "einen Termin";
+  const titel = auftrag ? `: ${auftrag.charAt(0).toUpperCase()}${auftrag.slice(1)}` : "";
+  return `Lege ${name} für Akte ${az}${datum ? ` ${datum.trim()}` : ""} an${titel}`;
+}
+
+/** Kurzform einer Aktensuche: „akte müller“, „Az. Weber“ oder nur ein Name („müller“) – ohne Verb und ohne Zahl. */
+function aktenKurzform(text: string): string | undefined {
+  const k = kurzform(kuerzelNormal(text));
+  const mitAkte = k.match(/^akte\s+([a-zäöüß][a-zäöüß .'-]{1,60})$/)?.[1];
+  if (mitAkte) return mitAkte.trim();
+  if (/^[a-zäöüß][a-zäöüß'-]{2,30}( [a-zäöüß][a-zäöüß'-]{2,30})?$/.test(k) && akteKandidaten(k).length > 0) return k;
+  return undefined;
+}
+
 // ───────────── Offline-Assistent (Demo-Modus) ─────────────
 
 const MONATE: Record<string, number> = { januar: 1, februar: 2, märz: 3, maerz: 3, april: 4, mai: 5, juni: 6, juli: 7, august: 8, september: 9, oktober: 10, november: 11, dezember: 12 };
@@ -1033,8 +1110,14 @@ function datumAus(text: string): string | undefined {
   if (/\bheute\b/.test(t)) return today();
   if (/\bvorgestern\b/.test(t)) return addDays(today(), -2);
   if (/\bgestern\b/.test(t)) return addDays(today(), -1);
-  if (/\bübermorgen\b|\buebermorgen\b/.test(t)) return addDays(today(), 2);
-  if (/\bmorgen\b/.test(t)) return addDays(today(), 1);
+  // \b kennt ohne u-Flag keine Umlaute („übermorgen“ am Satzanfang oder nach einer Zahl) – daher eigene Wortgrenzen
+  if (/(?<![a-zäöüß])(übermorgen|uebermorgen)(?![a-zäöüß])/.test(t)) return addDays(today(), 2);
+  if (/(?<![a-zäöüß])morgen(?![a-zäöüß])/.test(t)) return addDays(today(), 1);
+  // „nächste Woche“ / „kommende Woche“: Montag der nächsten Woche (Werktagsprüfung folgt in der Bestätigungskarte)
+  if (/\b(nächste|naechste|kommende)n? woche\b/.test(t)) {
+    const wd = weekday(today());
+    return addDays(today(), wd === 0 ? 1 : 8 - wd);
+  }
   const inTagen = t.match(/in (\d+|einer|einem|zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn|vierzehn) (tag|tagen|woche|wochen)/);
   if (inTagen) {
     const z: Record<string, number> = { einer: 1, einem: 1, zwei: 2, drei: 3, vier: 4, fünf: 5, sechs: 6, sieben: 7, acht: 8, neun: 9, zehn: 10, vierzehn: 14 };
@@ -1341,8 +1424,9 @@ function fristHeuteSatz(ctx: Kontext, q: string, nurVerweis = false): string {
 
 /** Nachsatz zur Erreichbarkeit nach einer Rückrufanforderung – ehrlich außerhalb der Servicezeit. */
 function erreichbarSatz(ctx: Kontext, ap: Ansprechpartner, erstNachHeute: boolean, q = ""): string {
-  if (inServicezeit(new Date(), ap.verfuegbar, ctx.sitzung.tenant.bundesland)) return ` Direkt erreichbar unter ${ap.telefon}.`;
-  return ` ${ap.name} ist jetzt nicht erreichbar.${erstNachHeute ? fristHeuteSatz(ctx, q) : ""}`;
+  if (inServicezeit(new Date(), ap.verfuegbar, ctx.sitzung.tenant.bundesland)) return ` Direkt erreichbar unter der Durchwahl ${ap.telefon}.`;
+  // Auch außerhalb der Servicezeit immer die Durchwahl nennen (I3-T20-03) – und die Rückrufregel, die die Zusage erklärt (I3-T12-04)
+  return ` ${ap.name} ist jetzt nicht erreichbar – Durchwahl ${ap.telefon}, wieder erreichbar ${naechsteServicezeit(new Date(), ap.verfuegbar, ctx.sitzung.tenant.bundesland).text}. ${rueckrufRegel(ap.verfuegbar)}${erstNachHeute ? fristHeuteSatz(ctx, q) : ""}`;
 }
 
 async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = []): Promise<string> {
@@ -1350,7 +1434,14 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
   const run = async (name: string, input: Record<string, unknown> = {}) => tools[name].execute(input) as Promise<never> | never;
   await new Promise((r) => setTimeout(r, 450 + Math.random() * 400));
   const ap = ctx.sitzung.tenant.ansprechpartner;
-  const apText = `${festeAnsprechperson(ap)}: ${ap.name}`;
+  const apText = `${festeAnsprechBezeichnung(ap)}: ${ap.name}`;
+
+  // ── Kanzleikürzel: „wv 137 in 3 tagen zeugenliste prüfen“ → ausgeschriebene Bitte (Bestätigungskarte wie gewohnt) ──
+  const bitte = kurzbefehlAlsBitte(frage);
+  if (bitte) {
+    ctx.originalFrage ??= frage;
+    return demoAntwort(bitte, ctx, []);
+  }
 
   // ── Gesprächskontext ──
   const vorher = verlauf.length >= 2 && verlauf[verlauf.length - 2].role === "assistant" ? verlauf[verlauf.length - 2].content : undefined;
@@ -1365,8 +1456,8 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
   }
   if (offeneRueckfrage === "rueckruf" && (ABLEHNUNG.test(kurz) || /^(nein|nee|lieber nicht)\b/.test(kurz))) {
     return inServicezeit(new Date(), ap.verfuegbar, ctx.sitzung.tenant.bundesland)
-      ? `Alles klar, kein Rückruf. ${ap.name} ist in der Servicezeit direkt erreichbar unter ${ap.telefon} oder ${ap.email} (${ap.verfuegbar}).`
-      : `Alles klar, kein Rückruf. ${ap.name} ist wieder erreichbar ${naechsteServicezeit(new Date(), ap.verfuegbar, ctx.sitzung.tenant.bundesland).text} unter ${ap.telefon} oder ${ap.email}.`;
+      ? `Alles klar, kein Rückruf. ${ap.name} ist in der Servicezeit direkt erreichbar unter der Durchwahl ${ap.telefon} oder ${ap.email} (${ap.verfuegbar}).`
+      : `Alles klar, kein Rückruf. ${ap.name} ist wieder erreichbar ${naechsteServicezeit(new Date(), ap.verfuegbar, ctx.sitzung.tenant.bundesland).text} unter der Durchwahl ${ap.telefon} oder ${ap.email}.`;
   }
   // Antwort auf „Für welche Akte …?“ bzw. „Zu welchem Datum?“ – nur, wenn sie die erfragte Angabe auch enthält
   const vollstaendig = zusammengefuehrt(verlauf);
@@ -1417,9 +1508,16 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
       return `Erledigt: Ich habe einen Rückruf bei ${a.name} angefordert – ${r.zusage} (${a.verfuegbar}). ${RUECKRUF_SIMULIERT}${erreichbarSatz(ctx, ap, r.erstNachHeute, q)}`;
     }
     if (!a.erreichbar) {
-      return `${apText}. ${a.name} ist jetzt nicht erreichbar – Rückruf frühestens ${a.wiederErreichbar} (Servicezeit ${a.verfuegbar}).${fristHeuteSatz(ctx, q)} Soll ich einen Rückruf für dann anfordern?`;
+      return `${apText} (Durchwahl ${a.telefon}). ${a.name} ist jetzt nicht erreichbar – Rückruf frühestens ${a.wiederErreichbar} (Servicezeit ${a.verfuegbar}). ${rueckrufRegel(a.verfuegbar)}${fristHeuteSatz(ctx, q)} Soll ich einen Rückruf für dann anfordern?`;
     }
-    return `${apText} – direkt erreichbar unter ${a.telefon} oder ${a.email} (${a.verfuegbar}), ohne Warteschleife.${fristHeuteSatz(ctx, q, true)} Soll ich einen Rückruf anfordern?`;
+    return `${apText} – direkt erreichbar unter der Durchwahl ${a.telefon} oder ${a.email} (${a.verfuegbar}), ohne Warteschleife.${fristHeuteSatz(ctx, q, true)} Soll ich einen Rückruf anfordern?`;
+  }
+
+  // ── Kurzform einer Aktensuche („akte müller“, „müller“): dieselbe Suche mit Mehrdeutigkeitsprüfung wie „Öffne die Akte …“ ──
+  const kurzName = aktenKurzform(frage);
+  if (kurzName) {
+    const original = frage.trim().replace(/^(akte|az\.?)\s+/i, "").replace(/[?.!]+$/, "");
+    return demoAntwort(`Öffne die Akte ${original || kurzName}`, ctx, []);
   }
 
   // ── Tagesbriefing (dieselben Sätze wie im Cockpit) ──
@@ -1452,7 +1550,7 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
   const bereich = findeBereich(frage);
   if (bereich && /\bwo (finde|ist|sind|kann|stelle|richte)|\bwo\b.*\b(finden|einstellen)\b/.test(q)) {
     ctx.links.push({ label: `Zu „${bereich.label}“`, to: bereich.to });
-    return `„${bereich.label}“ finden Sie ${bereich.ort}. ${bereich.beschreibung}`;
+    return `„${bereich.label}“ finden Sie ${bereich.ort}. ${ansprechText(bereich.beschreibung, ctx.sitzung.tenant.ansprechpartner)}`;
   }
 
   // ── Navigation mit Verb („Öffne den Bankabgleich“) ──
@@ -1488,7 +1586,7 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
   // ── Berufung zum OLG bzw. LAG ohne Vorfrage („Und bei einer Berufung zum Oberlandesgericht?“): Berufungsfrist statt Ratlosigkeit ──
   if (/berufung/.test(q) && /oberlandesgericht|\bolg\b|kammergericht|landesarbeitsgericht|\blag\b/.test(q) && !/(lege|leg |trag|erstelle|notiz)/.test(q)) {
     const arbeit = /landesarbeitsgericht|\blag\b/.test(q);
-    ctx.links.push({ label: "Berufungsfrist berechnen", to: fristenrechnerLink(arbeit ? "berufung_arbg" : "berufung", today()) }, { label: "Wissenskarte beA-Störung", to: "/hilfe?wiki=bea-stoerung" });
+    ctx.links.push({ label: "Berufungsfrist berechnen", to: fristenrechnerLink(arbeit ? "berufung_arbg" : "berufung") }, { label: "Wissenskarte beA-Störung", to: "/hilfe?wiki=bea-stoerung" });
     return arbeit
       ? "**Berufung zum Landesarbeitsgericht:** Die Berufungsfrist beträgt einen Monat, die Begründungsfrist zwei Monate (§ 66 Abs. 1 S. 1 ArbGG). Beide beginnen mit der Zustellung des vollständig abgefassten Urteils, spätestens fünf Monate nach der Verkündung (§ 66 Abs. 1 S. 2 ArbGG). Den Fristablauf mit den Feiertagen am Gerichtsort berechnet der Fristenrechner. Ist das beA gestört: Ersatzeinreichung nach § 46g S. 3, 4 ArbGG – siehe Wissenskarte „beA-Störung – was tun?“."
       : "**Berufung zum Oberlandesgericht:** Die Berufungsfrist ist eine Notfrist von einem Monat ab Zustellung des vollständig abgefassten Urteils, spätestens fünf Monate nach der Verkündung (§ 517 ZPO). Eingelegt wird beim Berufungsgericht (§ 519 Abs. 1 ZPO) – gegen Urteile des Landgerichts beim Oberlandesgericht, in Berlin beim Kammergericht. Begründet wird binnen zwei Monaten ab Zustellung (§ 520 Abs. 2 S. 1 ZPO). Den Fristablauf mit den Feiertagen am Gerichtsort berechnet der Fristenrechner. Ist das beA gestört: Ersatzeinreichung nach § 130d S. 2, 3 ZPO – siehe Wissenskarte „beA-Störung – was tun?“.";
@@ -1536,7 +1634,7 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
       return `Worum geht es bei der ${ART_NAME[typ]} für ${akte.aktenzeichen} am ${fmtDateWd(datum)}? Nennen Sie mir den Auftrag, z. B. „Zeugen Seifert benennen“ – er wird zum Titel. Oder sagen Sie „ohne Titel“.`;
     }
     const titel = auftrag ?? (typ === "termin" ? "Termin" : typ === "frist" ? "Frist (manuell)" : typ === "notfrist" ? "Notfrist (manuell)" : "Wiedervorlage");
-    const r = (await run("frist_anlegen", { aktenzeichen: akte.aktenzeichen, titel, datum, typ, auftrag: frage.trim() })) as { akte: string; datum: string; werktag: boolean; vorschlagNaechsterWerktag: string | null };
+    const r = (await run("frist_anlegen", { aktenzeichen: akte.aktenzeichen, titel, datum, typ, auftrag: (ctx.originalFrage ?? frage).trim() })) as { akte: string; datum: string; werktag: boolean; vorschlagNaechsterWerktag: string | null };
     const hinweis = !r.werktag && r.vorschlagNaechsterWerktag ? ` Achtung: ${r.datum} ist kein Werktag – Vorschlag: ${r.vorschlagNaechsterWerktag}.` : "";
     return `Bitte bestätigen Sie: ${ART_NAME[typ]} „${titel}“ für ${r.akte} am ${r.datum}.${hinweis} Eingetragen wird erst nach „Eintragen“ – danach können Sie es rückgängig machen.`;
   }
@@ -1612,14 +1710,14 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
       const oeffnen = { label: `${ziel.label} öffnen`, to: ziel.to };
       if (i >= 0) ctx.links[i] = oeffnen;
       else ctx.links.unshift(oeffnen);
-      const w = WIKI.find((x) => x.titel === h.titel);
+      const w = wikiFuer(ap).find((x) => x.titel === h.titel);
       if (w) ctx.links.push({ label: `Schnellhilfe „${w.titel}“`, to: `/hilfe?wiki=${w.key}` });
     }
     return `**${h.titel}:** ${h.kurz}\n${liste(h.schritte.slice(0, 3))}`;
   }
   if (bereich) {
     ctx.links.push({ label: `Zu „${bereich.label}“`, to: bereich.to });
-    return `„${bereich.label}“ finden Sie ${bereich.ort}. ${bereich.beschreibung}`;
+    return `„${bereich.label}“ finden Sie ${bereich.ort}. ${ansprechText(bereich.beschreibung, ctx.sitzung.tenant.ansprechpartner)}`;
   }
 
   // ── Aktensuche als Rückfall (nur aussagekräftige Wörter ab drei Zeichen, nicht bei Bedienfragen) ──
@@ -1633,7 +1731,7 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
 
   // ── ehrlich nachfragen statt raten ──
   if (bedienFrage || /\?$/.test(frage.trim())) {
-    return `Dazu habe ich im Wiki keine sichere Antwort gefunden. Meinen Sie einen bestimmten Bereich – etwa Fristen, Posteingang, Abrechnung oder den 38h-Motor? Formulieren Sie die Frage gern genauer, z. B. „Wie funktioniert der Bankabgleich?“. Persönlich hilft auch ${ap.name} weiter (${festeAnsprechperson(ap)}). Soll ich einen Rückruf anfordern?`;
+    return `Dazu habe ich im Wiki keine sichere Antwort gefunden. Meinen Sie einen bestimmten Bereich – etwa Fristen, Posteingang, Abrechnung oder den 38h-Motor? Formulieren Sie die Frage gern genauer, z. B. „Wie funktioniert der Bankabgleich?“. Persönlich hilft auch ${ap.name} weiter (${festeAnsprechBezeichnung(ap)}). Soll ich einen Rückruf anfordern?`;
   }
   return `Das kann ich im Demo-Modus noch nicht beantworten. Ich helfe Ihnen gern bei Fristen („Welche Fristen laufen diese Woche ab?“), Akten („Öffne die Akte ${beispielAz()}“), Zahlen („Wie hoch sind die offenen Forderungen?“), RVG („RVG für 10.000 € außergerichtlich“), Rechtsprechung („Urteile zu Schönheitsreparaturen“) oder der Bedienung. Oder ich verbinde Sie mit ${ap.name}.`;
 }
@@ -1656,10 +1754,10 @@ export async function frageAssistent(opts: {
       messages: opts.verlauf.slice(-12),
       tools: werkzeuge(ctx),
       onText: opts.onText,
-      onTool: (name) => opts.onTool?.(WERKZEUG_LABEL[name] ?? name),
+      onTool: (name) => opts.onTool?.(werkzeugLabel(name, opts.sitzung.tenant.ansprechpartner)),
       signal: opts.signal,
     });
-    return { text: text.trim() || "Erledigt.", links: dedupe(ctx.links), werkzeuge: ctx.werkzeuge.map((w) => WERKZEUG_LABEL[w] ?? w), auswahl: ctx.auswahl, vorschlag: ctx.vorschlag };
+    return { text: text.trim() || "Erledigt.", links: dedupe(ctx.links), werkzeuge: ctx.werkzeuge.map((w) => werkzeugLabel(w, ctx.sitzung.tenant.ansprechpartner)), auswahl: ctx.auswahl, vorschlag: ctx.vorschlag };
   } catch (e) {
     if (!(e instanceof DemoModus)) {
       if (opts.signal?.aborted) throw e;
@@ -1672,8 +1770,8 @@ export async function frageAssistent(opts: {
     } catch (err) {
       text = `Das hat leider nicht geklappt: ${verstaendlicheMeldung(err)} Versuchen Sie es bitte noch einmal – oder ich verbinde Sie mit ${opts.sitzung.tenant.ansprechpartner.name}.`;
     }
-    ctx.werkzeuge.forEach((w) => opts.onTool?.(WERKZEUG_LABEL[w] ?? w));
-    return { text, links: dedupe(ctx.links), werkzeuge: ctx.werkzeuge.map((w) => WERKZEUG_LABEL[w] ?? w), auswahl: ctx.auswahl, vorschlag: ctx.vorschlag };
+    ctx.werkzeuge.forEach((w) => opts.onTool?.(werkzeugLabel(w, ctx.sitzung.tenant.ansprechpartner)));
+    return { text, links: dedupe(ctx.links), werkzeuge: ctx.werkzeuge.map((w) => werkzeugLabel(w, ctx.sitzung.tenant.ansprechpartner)), auswahl: ctx.auswahl, vorschlag: ctx.vorschlag };
   }
 }
 

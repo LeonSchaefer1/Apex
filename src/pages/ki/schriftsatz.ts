@@ -58,6 +58,30 @@ export function artenFuer(akte: Akte | undefined, data: TenantData) {
 }
 
 /** Titel einer Entscheidung in Klammern – ohne doppelte Anführungszeichen („„Emmely“ – …“). */
+/**
+ * Gegenstandswert einer Kündigungsschutz-Akte wie im Klageentwurf (I3-T19-01): Kündigungsschutzantrag = drei
+ * Bruttomonatsentgelte (§ 42 Abs. 2 S. 1 GKG) + Weiterbeschäftigungsantrag = ein Bruttomonatsentgelt. Das Monatsentgelt
+ * ergibt sich aus dem Gegenstandswert der Akte ÷ 3 – keine zweite Rechenquelle; der Wert der Akte bleibt unverändert.
+ */
+export function kschGegenstandswert(gegenstandswert: number): { monat: number; bestand: number; weiterbeschaeftigung: number; gesamt: number; text: string; hinweisAkte: string } {
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const monat = r2(gegenstandswert / 3);
+  const bestand = r2(monat * 3);
+  const gesamt = r2(bestand + monat);
+  const ganz = (n: number) => fmtEUR(n, { cents: !Number.isInteger(n) });
+  return {
+    monat,
+    bestand,
+    weiterbeschaeftigung: monat,
+    gesamt,
+    text: `Kündigungsschutzantrag ${fmtEUR(bestand)} (drei Bruttomonatsentgelte à ${ganz(monat)}, § 42 Abs. 2 S. 1 GKG) + Weiterbeschäftigungsantrag ${fmtEUR(monat)} (ein Bruttomonatsentgelt) = ${fmtEUR(gesamt)}`,
+    hinweisAkte: `Gegenstandswert der Akte (${ganz(gegenstandswert)}) ohne Weiterbeschäftigungsantrag – bei Klageerhebung anpassen`,
+  };
+}
+
+/** Kündigungsschutz-Akte (Arbeitsrecht, Kündigung im Titel oder Sachverhalt). */
+export const istKuendigungsschutz = (akte: Pick<Akte, "sachgebiet" | "titel" | "beschreibung">) => akte.sachgebiet === "Arbeitsrecht" && /kündigung/i.test(`${akte.titel} ${akte.beschreibung}`);
+
 export function titelInKlammern(titel: string): string {
   return titel.includes("„") ? `(${titel})` : `(„${titel}“)`;
 }
@@ -208,14 +232,18 @@ export function entwurfOffline(art: SchriftsatzArt, ton: Ton, hinweise: string, 
 
     case "deckung": {
       const rsv = akte.rsv;
-      const kuendigung = /kündigung/i.test(`${akte.titel} ${akte.beschreibung}`);
+      const kschAkte = istKuendigungsschutz(akte);
       const massnahme =
-        akte.sachgebiet === "Arbeitsrecht" && kuendigung
+        kschAkte
           ? `Erhebung einer Kündigungsschutzklage${gericht ? ` vor dem ${gericht.name}` : ""} und außergerichtliche Interessenwahrnehmung`
           : akte.phase === "Gerichtlich" || akte.phase === "Beweisaufnahme"
             ? `Vertretung im gerichtlichen Verfahren${gericht ? ` vor dem ${gericht.name}` : ""}${akte.gerichtsAz ? ` (Az. ${akte.gerichtsAz})` : ""}`
             : "außergerichtliche Interessenwahrnehmung und, falls erforderlich, gerichtliche Geltendmachung in erster Instanz";
       const eilig = fristen.find((f) => f.typ === "notfrist" || f.typ === "frist");
+      // Herkunft der Schadennummer (I3-T07-06): Vergibt der Versicherer sie vor unserer Anfrage, stammt sie aus der Schadenmeldung der Mandantschaft
+      const vnDativ = mandant?.typ === "organisation" || mandant?.anrede === "Frau" ? "Ihre Versicherungsnehmerin" : "Ihren Versicherungsnehmer";
+      const schadenHerkunft =
+        rsv?.schadennummer && (rsv.deckung === "offen" || data.notizen.some((n) => n.akteId === akte.id && /schadenmeldung durch/i.test(n.text))) ? `Schadenmeldung durch ${vnDativ}` : undefined;
       return [
         rsv ? `${rsv.versicherung}\n[Anschrift der Versicherung]` : "[Rechtsschutzversicherung]\n[Anschrift]",
         "",
@@ -224,7 +252,7 @@ export function entwurfOffline(art: SchriftsatzArt, ton: Ton, hinweise: string, 
         "",
         `${mandant?.typ === "organisation" || mandant?.anrede === "Frau" ? "Versicherungsnehmerin" : "Versicherungsnehmer"}: ${mandant?.name ?? "[Name]"}`,
         `Versicherungsnummer: ${rsv?.versicherungsnummer ?? "[Versicherungsnummer]"}`,
-        `Schadennummer: ${rsv?.schadennummer ?? "[falls bereits vergeben]"}`,
+        `Schadennummer: ${rsv?.schadennummer ? `${rsv.schadennummer}${schadenHerkunft ? ` (${schadenHerkunft})` : ""}` : "[falls bereits vergeben]"}`,
         "",
         `**Deckungsanfrage – ${akte.titel}**`,
         "",
@@ -238,7 +266,10 @@ export function entwurfOffline(art: SchriftsatzArt, ton: Ton, hinweise: string, 
         "**Beabsichtigte Maßnahmen**",
         `${massnahme}.`,
         "",
-        `Gegenstandswert: ${akte.gegenstandswert ? fmtEUR(akte.gegenstandswert) : "[Gegenstandswert]"} [Berechnung prüfen]`,
+        // Kündigungsschutz: dieselben Antragsbestandteile wie der Klageentwurf (I3-T19-01)
+        kschAkte && akte.gegenstandswert
+          ? `Gegenstandswert: ${kschGegenstandswert(akte.gegenstandswert).text} [Berechnung prüfen]\n${kschGegenstandswert(akte.gegenstandswert).hinweisAkte}.`
+          : `Gegenstandswert: ${akte.gegenstandswert ? fmtEUR(akte.gegenstandswert) : "[Gegenstandswert]"} [Berechnung prüfen]`,
         "",
         `Wir bitten um Erteilung der Deckungszusage für die außergerichtliche und die erstinstanzliche gerichtliche Tätigkeit.${eilig ? ` Wegen der laufenden Frist (${eilig.titel} bis ${fmtDate(eilig.datum)}) bitten wir um kurzfristige Bearbeitung.` : ""}`,
         "",
@@ -480,6 +511,10 @@ export function entwurfPrompt(art: SchriftsatzArt, ton: Ton, hinweise: string, k
       ? `Parteirolle der Mandantschaft: ${rolle === "klaeger" ? "Klagepartei" : rolle === "beklagter" ? "Beklagtenpartei" : "geht aus der Akte nicht hervor – Parteibezeichnungen als [Platzhalter]"}.`
       : "",
     `Tonalität: ${ton === "sachlich" ? "sachlich, präzise und knapp" : "verbindlich, freundlich-zugewandt, aber juristisch präzise"}.`,
+    // Deckungsanfrage im Kündigungsschutz: Wert wie im Klageentwurf, nicht neu rechnen (I3-T19-01)
+    art === "deckung" && istKuendigungsschutz(akte) && akte.gegenstandswert
+      ? `Gegenstandswert genau so übernehmen (wie im Klageentwurf): ${kschGegenstandswert(akte.gegenstandswert).text} [Berechnung prüfen]. ${kschGegenstandswert(akte.gegenstandswert).hinweisAkte}.`
+      : "",
     hinweise.trim() ? `Zusätzliche Anweisungen der Anwältin/des Anwalts: ${hinweise.trim()}` : "",
     "",
     `Kanzlei: ${tenant.name}, ${tenant.adresse}`,

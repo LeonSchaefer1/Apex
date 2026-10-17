@@ -350,6 +350,51 @@ export const korrekturText = (nummer: string) => `Korrektur zu ${nummer}`;
 /** Aus einem Umzug übernommen und Abrechnungsstand noch nicht geprüft – in der Sammelabrechnung nicht vorausgewählt. */
 export const abrechnungUngeprueft = (akte: Pick<Akte, "umzugLaufId" | "abrechnungGeprueft">) => !!akte.umzugLaufId && !akte.abrechnungGeprueft;
 
+// ───────────── Sammelabrechnung: Auswahl und Filter (I3-T07-01) ─────────────
+
+/** Filter „RSV“ der Sammelabrechnung. */
+export type RsvFilter = "alle" | RsvStand;
+export const RSV_FILTER_LABEL: Record<RsvFilter, string> = { alle: "Alle", erteilt: "Deckung erteilt", angefragt: "Deckung angefragt", keine: "keine RSV" };
+type SammelZeile = { akte: Pick<Akte, "id" | "rsv" | "umzugLaufId" | "abrechnungGeprueft"> };
+
+/** Vorschläge, die der aktuelle Filter zeigt. */
+export function sichtbareVorschlaege<V extends SammelZeile>(vorschlaege: V[], filter: RsvFilter): V[] {
+  return filter === "alle" ? vorschlaege : vorschlaege.filter((v) => rsvStand(v.akte) === filter);
+}
+
+/**
+ * Was abgerechnet, gezählt und summiert wird: Auswahl ∩ sichtbar. Ausgeblendete Akten werden nie abgerechnet –
+ * auch wenn sie (etwa vor einem Filterwechsel) ausgewählt waren.
+ */
+export function auswahlFuerAbrechnung<V extends SammelZeile>(vorschlaege: V[], auswahl: ReadonlySet<string>, filter: RsvFilter): V[] {
+  return sichtbareVorschlaege(vorschlaege, filter).filter((v) => auswahl.has(v.akte.id));
+}
+
+/** Auswahl nach einem Filterwechsel: alle sichtbaren Akten – ohne Umzugsakten mit ungeprüftem Abrechnungsstand. */
+export function auswahlFuerFilter<V extends SammelZeile>(vorschlaege: V[], filter: RsvFilter): Set<string> {
+  return new Set(sichtbareVorschlaege(vorschlaege, filter).filter((v) => !abrechnungUngeprueft(v.akte)).map((v) => v.akte.id));
+}
+
+/**
+ * Kopf-Häkchen: Zustand nur nach den sichtbaren Akten. „an“, wenn jede wählbare sichtbare Akte gewählt ist
+ * (Umzugsakten mit ungeprüftem Abrechnungsstand zählen nur, wenn sie von Hand gewählt wurden).
+ */
+export function kopfZustand<V extends SammelZeile>(vorschlaege: V[], auswahl: ReadonlySet<string>, filter: RsvFilter): "an" | "teilweise" | "aus" {
+  const sichtbar = sichtbareVorschlaege(vorschlaege, filter);
+  const gewaehlt = sichtbar.filter((v) => auswahl.has(v.akte.id)).length;
+  const waehlbar = sichtbar.filter((v) => auswahl.has(v.akte.id) || !abrechnungUngeprueft(v.akte)).length;
+  if (gewaehlt === 0) return "aus";
+  return gewaehlt >= waehlbar ? "an" : "teilweise";
+}
+
+/** Klick aufs Kopf-Häkchen: wählt bzw. abwählt nur sichtbare Akten; ausgeblendete Auswahl wird verworfen. */
+export function kopfUmschalten<V extends SammelZeile>(vorschlaege: V[], auswahl: ReadonlySet<string>, filter: RsvFilter): Set<string> {
+  if (kopfZustand(vorschlaege, auswahl, filter) === "an") return new Set();
+  const n = new Set(auswahlFuerAbrechnung(vorschlaege, auswahl, filter).map((v) => v.akte.id));
+  for (const id of auswahlFuerFilter(vorschlaege, filter)) n.add(id);
+  return n;
+}
+
 /**
  * Leistungszeitraum einer Rechnung (§ 14 Abs. 4 S. 1 Nr. 6 UStG): bei einer Zeitrechnung vom ersten bis zum letzten
  * abgerechneten Eintrag, sonst vom Auftrag bis zum Rechnungsdatum.
@@ -364,3 +409,52 @@ export function leistungszeitraum(akte: Akte | undefined, r: Rechnung, zeiten: P
 /** Reine Zeitrechnung: nur Positionen nach Zeitaufwand (und ggf. Auslagen), keine Wertgebühr – dann kein Gegenstandswert im Kopf. */
 export const istReineZeitrechnung = (r: Pick<Rechnung, "positionen">) =>
   r.positionen.some((p) => p.vv === "Std") && !r.positionen.some((p) => p.vv !== "Std" && (!!p.gegenstandswert || (/^\d{4}$/.test(p.vv) && !/^700\d$/.test(p.vv))));
+
+// ───────────── Forderungskonto: Grund eines neuen Zinsabschnitts (I3-T09-01) ─────────────
+
+/**
+ * Warum beginnt hier ein neuer Zinsabschnitt? Erster Abschnitt: Verzugsbeginn; sonst Wechsel des Basiszinssatzes, Änderung des
+ * Kapitals oder – bei gleichem Kapital und Satz – eine Buchung an diesem Tag (z. B. Kostenbuchung), die den Lauf teilt.
+ * Die Summen bleiben unverändert; der Grund erklärt nur die Teilung.
+ */
+export function zinsAbschnittGrund(
+  z: { von: ISODate; kapital: number; zinssatz: number },
+  vorher: { kapital: number; zinssatz: number } | undefined,
+  verlauf: { datum: ISODate; art: string }[],
+): string {
+  const am = fmtDate(z.von);
+  if (!vorher) return `Verzugsbeginn ${am}`;
+  if (Math.abs(vorher.zinssatz - z.zinssatz) > 1e-9) return `Basiszinssatz geändert zum ${am}`;
+  const buchung = verlauf.filter((v) => v.datum === z.von && v.art !== "zinsen");
+  if (Math.abs(vorher.kapital - z.kapital) > 0.004) return buchung.some((v) => v.art === "zahlung") ? `Teilzahlung ${am} (Kapital geändert)` : `Kapital geändert ${am}`;
+  if (buchung.some((v) => v.art === "kosten")) return `Kostenbuchung ${am}`;
+  if (buchung.some((v) => v.art === "zahlung")) return `Zahlung ${am} (auf Kosten/Zinsen verrechnet)`;
+  if (buchung.some((v) => v.art === "hauptforderung")) return `Buchung ${am}`;
+  return `Neuer Abschnitt ${am}`;
+}
+
+// ───────────── Rückfrage „Rechnung stellen“ (I3-T07-03) ─────────────
+
+/** Titel der Rückfrage: „RE-2026-0026 stellen?“ bzw. „3 Rechnungen stellen?“ – den Nummernbereich nennt der Text darunter. */
+export function stellenTitel(nummern: string[]): string {
+  if (nummern.length <= 1) return `${nummern[0] ?? "Rechnung"} stellen?`;
+  return `${nummern.length} Rechnungen stellen?`;
+}
+
+/**
+ * Zeile im Warnkasten der Rückfrage: Pflichtangaben nach § 14 Abs. 4 UStG (Einträge mit Paragraph) einmal mit Fundstelle,
+ * die Bankverbindung als Angabe für den Zahlungsweg – sie ist keine Pflichtangabe nach § 14 UStG.
+ * z. B. „Pflichtangaben fehlen: Steuernummer oder USt-IdNr. (§ 14 Abs. 4 UStG) · Bankverbindung (IBAN) für den Zahlungsweg“
+ */
+export function fehlendKurz(fehlend: string[]): string {
+  const ustg = fehlend.filter((f) => f.includes("§")).map((f) => f.replace(/\s*\(§[^)]*\)/g, "").trim());
+  const sonst = fehlend.filter((f) => !f.includes("§"));
+  const teile = [...(ustg.length ? [`${ustg.join(" · ")} (§ 14 Abs. 4 UStG)`] : []), ...(sonst.length ? [`${sonst.join(" · ")} für den Zahlungsweg`] : [])];
+  return `${ustg.length ? "Pflichtangaben fehlen" : "Rechnungsangaben fehlen"}: ${teile.join(" · ")}`;
+}
+
+/** Darf gestellt werden? Fehlen Pflichtangaben: in Präsentationskanzleien nur mit Häkchen, sonst gesperrt. */
+export function stellenErlaubt(fehlend: string[], praesentation: boolean, haekchen: boolean): boolean {
+  if (!fehlend.length) return true;
+  return praesentation && haekchen;
+}

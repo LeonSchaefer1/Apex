@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DEMO_TENANTS, publicUser } from "../core/seed/tenants";
 import { generateTenantData } from "../core/seed/generate";
-import { addDays, today } from "../core/dates";
+import { addDays, today, weekday } from "../core/dates";
 import type { Akte, Kontakt } from "../core/types";
 import type { LlmMessage } from "./llm";
 
@@ -178,7 +178,9 @@ test("Ansprechpartnerin außerhalb der Servicezeit: „nicht erreichbar“, Rüc
   mock.timers.enable({ apis: ["Date"], now: new Date(2026, 9, 16, 21, 0) });
   try {
     const r = await frag([{ role: "user", content: "Ich brauche meine Ansprechpartnerin – meine Frist läuft heute ab" }]);
-    assert.match(r.text, /^Ihre feste Ansprechpartnerin: Lena Vogt\. Lena Vogt ist jetzt nicht erreichbar – Rückruf frühestens Mo, 19\.10\.2026 ab 7:30 Uhr/);
+    // Durchwahl immer genannt (I3-T20-03), Rückrufregel erklärt die Zusage (I3-T12-04)
+    assert.match(r.text, /^Ihre feste Ansprechpartnerin: Lena Vogt \(Durchwahl \+49 30 555 018 42\)\. Lena Vogt ist jetzt nicht erreichbar – Rückruf frühestens Mo, 19\.10\.2026 ab 7:30 Uhr/);
+    assert.match(r.text, /in der ersten Stunde nach Beginn zurück \(bis 8:30 Uhr\); in der Servicezeit innerhalb von 30 Minuten/);
     assert.match(r.text, /§ 130d S\. 2, 3 ZPO/);
     assert.match(r.text, /§ 46g S\. 3, 4 ArbGG/);
     assert.ok(r.links.some((l) => l.to === "/hilfe?wiki=bea-stoerung"));
@@ -190,8 +192,67 @@ test("Ansprechpartnerin außerhalb der Servicezeit: „nicht erreichbar“, Rüc
   mock.timers.enable({ apis: ["Date"], now: new Date(2026, 9, 20, 10, 0) });
   try {
     const r = await frag([{ role: "user", content: "Ich brauche meine Ansprechpartnerin" }]);
-    assert.match(r.text, /direkt erreichbar/);
+    assert.match(r.text, /direkt erreichbar unter der Durchwahl \+49 30 555 018 42/);
   } finally {
     mock.timers.reset();
   }
+}));
+
+test("Kanzleikürzel: „wv 137 in 3 tagen zeugenliste prüfen“ → Bestätigungskarte mit Akte, Termin und Titel (I3-T20-01)", still(async () => {
+  const useData = await vorbereiten();
+  const { kuerzelNormal, kurzbefehlAlsBitte } = await import("./assistent");
+  assert.equal(kuerzelNormal("wv 137"), "Wiedervorlage 137");
+  assert.equal(kuerzelNormal("Wv. 137"), "Wiedervorlage 137");
+  assert.equal(kuerzelNormal("Wiedervorl. 142"), "Wiedervorlage 142");
+  assert.equal(kuerzelNormal("Az. 137"), "Akte 137");
+  assert.equal(kuerzelNormal("Fr. 142 morgen"), "Frist 142 morgen");
+  assert.equal(kuerzelNormal("Termin mit Fr. Weber"), "Termin mit Fr. Weber", "„Fr.“ mitten im Satz bleibt");
+  assert.equal(kurzbefehlAlsBitte("wiedervorlagen heute"), undefined, "Abfrage ohne Aktenbezug bleibt eine Abfrage");
+  const vorher = useData.getState().data.fristen.length;
+  const faelle: [string, string, string, string][] = [
+    ["wv 137 in 3 tagen zeugenliste prüfen", "137/26", "Zeugenliste prüfen", addDays(today(), 3)],
+    ["WV 142 morgen Deckung nachfassen", "142/26", "Deckung nachfassen", addDays(today(), 1)],
+    ["Wv. 137 übermorgen Zeugen laden", "137/26", "Zeugen laden", addDays(today(), 2)],
+    ["wiedervorl 142 30.10. Fristverlängerung prüfen", "142/26", "Fristverlängerung prüfen", `${today().slice(0, 4)}-10-30`],
+    ["WIEDERVORL. 142 MORGEN ZEUGEN LADEN", "142/26", "Zeugen laden", addDays(today(), 1)],
+  ];
+  for (const [eingabe, az, titel, datum] of faelle) {
+    const r = await frag([{ role: "user", content: eingabe }]);
+    assert.ok(r.vorschlag, `Bestätigungskarte für „${eingabe}“`);
+    assert.equal(r.vorschlag!.art, "wiedervorlage", eingabe);
+    assert.equal(r.vorschlag!.aktenzeichen, az, eingabe);
+    assert.equal(r.vorschlag!.titel, titel, eingabe);
+    assert.equal(r.vorschlag!.datum, datum, eingabe);
+    assert.match(r.text, /Bitte bestätigen/);
+    assert.ok(!/im Demo-Modus noch nicht/.test(r.text), eingabe);
+  }
+  // „nächste Woche“: Montag der nächsten Woche
+  const r = await frag([{ role: "user", content: "Wiedervorl. 142 nächste woche Akte prüfen" }]);
+  const wd = weekday(today());
+  assert.equal(r.vorschlag?.datum, addDays(today(), wd === 0 ? 1 : 8 - wd));
+  assert.equal(weekday(r.vorschlag!.datum), 1, "Montag");
+  assert.equal(r.vorschlag?.titel, "Akte prüfen");
+  assert.equal(useData.getState().data.fristen.length, vorher, "eingetragen wird erst nach „Eintragen“");
+  // Ziffern mit mehreren Jahrgängen → Rückfrage mit Karten
+  const st = useData.getState();
+  const basis = st.data.akten[0];
+  useData.setState({ data: { ...st.data, akten: [...st.data.akten, { ...basis, id: "a-555-25", aktenzeichen: "555/25", titel: "Alt ./. Neu", status: "offen" }, { ...basis, id: "a-555-26", aktenzeichen: "555/26", titel: "Neu ./. Alt", status: "offen" }] } });
+  const r2 = await frag([{ role: "user", content: "wv 555 morgen Unterlagen anfordern" }]);
+  assert.equal(r2.vorschlag, undefined);
+  assert.equal(r2.auswahl?.length, 2);
+  assert.match(r2.text, /2 Akten/);
+}));
+
+test("Kurzformen der Aktensuche: „akte müller“, „müller“, „akte 12“ – dieselbe Mehrdeutigkeitsprüfung wie „Öffne die Akte …“ (I3-T20-02)", still(async () => {
+  await vorbereiten();
+  for (const eingabe of ["akte müller", "müller", "Akte Müller", "MÜLLER"]) {
+    const r = await frag([{ role: "user", content: eingabe }]);
+    assert.equal(r.geoeffnet.length, 0, `keine Akte still geöffnet bei „${eingabe}“`);
+    assert.equal(r.auswahl?.length, 3, eingabe);
+    assert.match(r.text, /3 Akten/, eingabe);
+    assert.ok(!/im Demo-Modus noch nicht/.test(r.text), eingabe);
+  }
+  const r = await frag([{ role: "user", content: "akte 12" }]);
+  assert.match(r.text, /12\/26/);
+  assert.match(r.text, /Müller \.\/\. Stadtwerke Nord/);
 }));

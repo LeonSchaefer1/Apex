@@ -2,8 +2,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowRight, Building2, Check, CheckCircle2, Clock, HandCoins, Landmark, Link2, ShieldCheck, Sparkles, Unlink, Upload, X } from "lucide-react";
-import { AnimatedNumber, Button, Card, CardHeader, Chip, ProgressRing, Segmented, Select, Stat, confirmDialog } from "@/components/ui";
+import { AlertTriangle, ArrowRight, Building2, Check, CheckCircle2, ChevronDown, Clock, FilePenLine, HandCoins, Landmark, Link2, Send, ShieldCheck, Sparkles, Unlink, Upload, Wallet, X } from "lucide-react";
+import { AnimatedNumber, Button, Card, Chip, ProgressRing, Segmented, Select, confirmDialog } from "@/components/ui";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
@@ -11,8 +11,28 @@ import { fmtDate, fmtDateShort, fmtEUR, fmtTime, nowLocal, round2 } from "@/core
 import { automationDef, ersparnisMinuten } from "@/core/automationen";
 import type { Transaktion } from "@/core/types";
 import { cn } from "@/lib/cn";
-import { AUTO_SCHWELLE, bucheTreffer, gleicheAb, lehneVorschlagAb, loeseZuordnung, REGELN, speichereVorschlag, trefferAusVorschlag, zuordnungsProtokoll, type Treffer } from "./abgleich";
+import {
+  AKTEN_BUCHUNGSART,
+  AKTEN_BUCHUNGSART_KURZ,
+  AUTO_SCHWELLE,
+  bucheTreffer,
+  buchungsartVorschlag,
+  gleicheAb,
+  lehneVorschlagAb,
+  loeseZuordnung,
+  mandantenIbans,
+  REGELN,
+  speichereVorschlag,
+  stornierteRechnungImZweck,
+  trefferAusVorschlag,
+  zuordnungsProtokoll,
+  type AktenBuchungsart,
+  type Treffer,
+} from "./abgleich";
+import { belegArt, stelleRechnung } from "./aktionen";
 import { istOffen, offenerBetrag } from "./lib";
+import { StellenDialog } from "./StellenDialog";
+import { useAbrechnungUI } from "./store";
 import { AkteLabel, TabKopf, useLookups } from "./ui";
 
 type Zustand = "gebucht" | "vorschlag" | "kosten" | "keine" | "bestaetigt" | "abgelehnt" | "manuell";
@@ -50,6 +70,32 @@ function speichereLauf(tenantId: string, l: LaufStand) {
 }
 /** Minuten manuelle Zuordnung je automatisch zugeordnetem Umsatz – aus der Automatik-Definition (je Vorgang gezählt). */
 const MIN_JE_UMSATZ = automationDef("bankabgleich")?.minutenProLauf ?? 3;
+
+/** Erklärkarte „Wie sicher ist die Zuordnung?“ – auf-/zugeklappt je Gerät; ohne eigene Wahl nach dem ersten Abgleich eingeklappt (I3-T08-03). */
+const ERKLAER_KEY = "apex.bankabgleich.erklaerung";
+function ladeErklaerung(): "auf" | "zu" | null {
+  try {
+    const v = localStorage.getItem(ERKLAER_KEY);
+    return v === "auf" || v === "zu" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Ersparnis als Schätzung gekennzeichnet – wie in der Sammelabrechnung (I3-T08-04, I3-T22-02). */
+function GespartSchaetzung({ minuten }: { minuten: number }) {
+  return (
+    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+      <Chip tone="green" icon={<Clock className="size-3.5" />} title={`Schätzung: ${MIN_JE_UMSATZ} Min. manuelle Zuordnung je automatisch zugeordnetem Umsatz`}>
+        ≈ {minuten} Min. gespart
+      </Chip>
+      <Chip tone="amber" className="!h-5 !px-1.5 !text-[11px]">
+        Schätzung
+      </Chip>
+      <span className="text-[12.5px] text-fg-3">Annahme: {MIN_JE_UMSATZ} Min. je zugeordnetem Umsatz</span>
+    </span>
+  );
+}
 const plural = (n: number, eins: string, mehr: string) => `${n} ${n === 1 ? eins : mehr}`;
 
 function tonVon(z: Zustand | undefined): "green" | "amber" | "neutral" | "seal" {
@@ -160,7 +206,23 @@ export function BankabgleichTab() {
   const [aktuell, setAktuell] = useState(-1);
   const [ergebnisse, setErgebnisse] = useState<Record<string, Ergebnis>>({});
   const [manuell, setManuell] = useState<Record<string, string>>({});
+  // Handzuordnung zu einer Akte: Buchungsart (Pflichtauswahl, vorbelegt nach Zahler) und Bestätigung „Fremdgeld trotz Mandant“ (I3-T08-01)
+  const [artWahl, setArtWahl] = useState<Record<string, AktenBuchungsart>>({});
+  const [fremdOk, setFremdOk] = useState<Record<string, boolean>>({});
+  // „Korrekturrechnung stellen und Zahlung zuordnen“ (I3-T08-02) – Rückfrage wie beim Stellen
+  const [korrekturStellen, setKorrekturStellen] = useState<{ t: Transaktion; entwurfId: string } | null>(null);
   const [letzterLauf, setLetzterLauf] = useState<LaufStand | null>(() => ladeLauf(tenant.id));
+  const [erklaerungWahl, setErklaerungWahl] = useState<"auf" | "zu" | null>(ladeErklaerung);
+  const erklaerungOffen = erklaerungWahl ? erklaerungWahl === "auf" : !letzterLauf;
+  const erklaerungUmschalten = () => {
+    const neu = erklaerungOffen ? "zu" : "auf";
+    setErklaerungWahl(neu);
+    try {
+      localStorage.setItem(ERKLAER_KEY, neu);
+    } catch {
+      /* ohne Speicher: Zustand nur bis zum Neuladen */
+    }
+  };
   const alive = useRef(true);
   const fileRef = useRef<HTMLInputElement>(null);
   const zeilenRef = useRef<Record<string, HTMLLIElement | null>>({});
@@ -329,16 +391,56 @@ export function BankabgleichTab() {
     toast("Zuordnung gelöst", { text, ton: "info" });
   };
 
-  /** Handzuordnung – ohne Lauf: Rechnung (Zahlungseingang), Akte (Fremdgeld) oder Kanzleikosten (Ausgang). */
+  /** Vorbelegung der Buchungsart nach Zahler (Mandant → Honorar/Vorschuss, Dritter → Fremdgeld). */
+  const artVorschlag = (t: Transaktion, a: NonNullable<ReturnType<typeof akten.get>>) =>
+    buchungsartVorschlag(t, a, kontakte, mandantenIbans(a.mandantId, transaktionen, rechnungen, [...akten.values()]));
+
+  /** Verwendungszweck nennt eine stornierte Rechnung? (I3-T08-02) */
+  const stornoInfo = (t: Transaktion) => stornierteRechnungImZweck(t, rechnungen);
+
+  /** Vorbelegte Wahl im Feld „Zuordnen zu …“: gestellte Korrektur → diese Rechnung; stornierte Rechnung ohne gestellte
+   *  Korrektur (keine oder nur ein Entwurf) → Akte der Rechnung mit Buchungsart Honorar/Vorschuss (I3-T08-02). */
+  const vorbelegteWahl = (t: Transaktion): string => {
+    const s0 = stornoInfo(t);
+    if (!s0 || t.betrag <= 0) return "";
+    if (s0.korrektur && istOffen(s0.korrektur)) return s0.korrektur.id;
+    if (!s0.korrektur || s0.korrektur.status === "entwurf") return `akte:${s0.storniert.akteId}`;
+    return "";
+  };
+
+  /** Korrekturentwurf stellen (nach Rückfrage) und den Umsatz der neuen Rechnung zuordnen. */
+  const korrekturStellenUndZuordnen = (t: Transaktion, entwurfId: string) => {
+    const entwurf = rById.get(entwurfId);
+    if (!entwurf || entwurf.status !== "entwurf") return;
+    const g = stelleRechnung(entwurf, user.id);
+    const a = akten.get(g.akteId);
+    useData.getState().log({ akteur: "nutzer", userId: user.id, akteId: g.akteId, text: `${belegArt(g)} ${g.nummer} gestellt (Korrektur aus dem Bankabgleich) – ${a?.aktenzeichen ?? ""}`.trim() });
+    const ueber = round2(t.betrag - g.brutto);
+    const tr: Treffer = { transaktionId: t.id, art: "rechnung", regel: "keine", sicherheit: 1, grund: `Manuell zugeordnet – Korrekturrechnung ${g.nummer} gestellt`, rechnungId: g.id, akteId: g.akteId, ...(ueber > 0.004 ? { ueberzahlung: ueber } : {}) };
+    const erg = bucheTreffer(t, tr, "manuell", user.id);
+    setErgebnisse((e) => ({ ...e, [t.id]: { ...tr, zustand: "manuell" } }));
+    zahlungsToast(`${g.nummer} gestellt und Zahlung zugeordnet`, t, g.nummer, erg);
+  };
+
+  /** Handzuordnung – ohne Lauf: Rechnung (Zahlungseingang), Akte (Honorar/Vorschuss oder Fremdgeld) oder Kanzleikosten (Ausgang). */
   const zuordnen = (t: Transaktion) => {
-    const wahl = manuell[t.id] ?? "";
+    const wahl = manuell[t.id] ?? vorbelegteWahl(t);
     if (wahl.startsWith("akte:")) {
       const akteId = wahl.slice(5);
       const a = akten.get(akteId);
-      const tr: Treffer = { transaktionId: t.id, art: "fremdgeld", regel: "fremdgeld", sicherheit: 1, grund: "Manuell als Fremdgeld zugeordnet", akteId };
+      if (!a) return;
+      const vorschlag = artVorschlag(t, a);
+      const art = artWahl[t.id] ?? vorschlag.art;
+      // Fremdgeld trotz Zahlung des Mandanten selbst nur mit Bestätigung
+      if (art === "fremdgeld" && vorschlag.zahlerIstMandant && !fremdOk[t.id]) return;
+      const tr: Treffer =
+        art === "vorschuss"
+          ? { transaktionId: t.id, art: "vorschuss", regel: "keine", sicherheit: 1, grund: `Manuell zugeordnet: ${AKTEN_BUCHUNGSART.vorschuss}`, akteId }
+          : { transaktionId: t.id, art: "fremdgeld", regel: "fremdgeld", sicherheit: 1, grund: `Manuell als Fremdgeld zugeordnet${vorschlag.zahlerIstMandant ? " – Zahlung des Mandanten selbst, bewusst bestätigt" : ""}`, akteId };
       bucheTreffer(t, tr, "manuell", user.id);
       setErgebnisse((e) => ({ ...e, [t.id]: { ...tr, zustand: "bestaetigt" } }));
-      toast("Als Fremdgeld gebucht", { text: `${fmtEUR(t.betrag)}${a ? ` · ${a.aktenzeichen}` : ""} – bitte unverzüglich weiterleiten (§ 43a Abs. 7 BRAO)`, ton: "warnung" });
+      if (art === "vorschuss") toast(`Als ${AKTEN_BUCHUNGSART_KURZ.vorschuss} gebucht`, { text: `${fmtEUR(t.betrag)} · ${a.aktenzeichen} – Guthaben im Aktenkonto, kein Fremdgeld`, ton: "erfolg" });
+      else toast("Als Fremdgeld gebucht", { text: `${fmtEUR(t.betrag)} · ${a.aktenzeichen} – bitte unverzüglich weiterleiten (§ 43a Abs. 7 BRAO)`, ton: "warnung", aktion: { label: "Fremdgeld-Wächter", onClick: zumWaechter } });
       return;
     }
     if (wahl === "kosten") {
@@ -416,6 +518,25 @@ export function BankabgleichTab() {
           </div>
         </Ziel>
       );
+    if (e.art === "vorschuss") {
+      const va = e.akteId ? akten.get(e.akteId) : undefined;
+      return (
+        <Ziel ton="green">
+          <span className="grid size-11 shrink-0 place-items-center rounded-full bg-green-soft text-green">
+            <Wallet className="size-5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <Chip tone="green" icon={<Check className="size-3" />}>
+                {AKTEN_BUCHUNGSART_KURZ.vorschuss} – {user.name}
+              </Chip>
+            </div>
+            <AkteLabel akte={va} className="mt-0.5 text-[12.5px]" />
+            <div className="mt-0.5 break-words text-[12.5px] text-fg-3">Guthaben der Mandantschaft im Aktenkonto – kein Fremdgeld, keine Weiterleitung.</div>
+          </div>
+        </Ziel>
+      );
+    }
     if (e.art === "fremdgeld" && e.zustand !== "abgelehnt") {
       const fa = e.akteId ? akten.get(e.akteId) : undefined;
       const gebucht = e.zustand === "bestaetigt";
@@ -506,15 +627,52 @@ export function BankabgleichTab() {
     return handZiel(t, e.zustand === "abgelehnt" ? "Vorschlag abgelehnt – von Hand zuordnen" : "Keine passende Rechnung – von Hand zuordnen");
   };
 
-  /** Handzuordnung: Rechnung (Eingang), Akte als Fremdgeld (Eingang) oder Kanzleikosten (Ausgang) – in zwei Schritten. */
+  /** Handzuordnung: Rechnung (Eingang), Akte mit Buchungsart (Eingang) oder Kanzleikosten (Ausgang) – in zwei Schritten. */
   const handZiel = (t: Transaktion, titel: string) => {
-    const wahl = manuell[t.id] ?? "";
+    const wahl = manuell[t.id] ?? vorbelegteWahl(t);
     const gewaehlt = wahl && !wahl.startsWith("akte:") && wahl !== "kosten" ? rById.get(wahl) : undefined;
     const mehr = gewaehlt ? round2(t.betrag - offenerBetrag(gewaehlt)) : 0;
     const selId = `zuordnen-${t.id}`;
+    const zielAkte = wahl.startsWith("akte:") ? akten.get(wahl.slice(5)) : undefined;
+    const vorschlag = zielAkte ? artVorschlag(t, zielAkte) : undefined;
+    const art = zielAkte ? (artWahl[t.id] ?? vorschlag!.art) : undefined;
+    const fremdTrotzMandant = art === "fremdgeld" && !!vorschlag?.zahlerIstMandant;
+    const gesperrt = !wahl || (fremdTrotzMandant && !fremdOk[t.id]);
+    const storno = stornoInfo(t);
     return (
       <Ziel gestrichelt>
         <div className="min-w-0 flex-1">
+          {storno && (
+            <div role="note" className="mb-2 rounded-[12px] bg-amber-soft px-3 py-2 text-[12.5px] leading-snug text-fg-2">
+              <div className="flex items-start gap-1.5">
+                <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber" aria-hidden />
+                <span>
+                  <span className="mono font-semibold text-fg">{storno.storniert.nummer}</span> ist storniert
+                  {storno.storniert.stornoNummer ? (
+                    <>
+                      {" "}
+                      (Storno <span className="mono">{storno.storniert.stornoNummer}</span>)
+                    </>
+                  ) : null}
+                  {storno.korrektur
+                    ? storno.korrektur.status === "entwurf"
+                      ? ` – Korrekturentwurf ${storno.korrektur.nummer} offen`
+                      : ` – Korrekturrechnung ${storno.korrektur.nummer}`
+                    : ` – kein Korrekturentwurf; vorbelegt: ${AKTEN_BUCHUNGSART_KURZ.vorschuss} auf Akte ${akten.get(storno.storniert.akteId)?.aktenzeichen ?? ""}`}
+                </span>
+              </div>
+              {storno.korrektur?.status === "entwurf" && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button size="sm" variant="primary" icon={<Send className="size-4" />} onClick={() => setKorrekturStellen({ t, entwurfId: storno.korrektur!.id })}>
+                    Korrekturrechnung stellen und Zahlung zuordnen
+                  </Button>
+                  <Button size="sm" variant="ghost" icon={<FilePenLine className="size-4" />} onClick={() => useAbrechnungUI.getState().oeffneRechnung(storno.korrektur!.id)}>
+                    Entwurf öffnen
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
           <label htmlFor={selId} className="text-[13px] font-medium">
             {titel}
           </label>
@@ -524,7 +682,22 @@ export function BankabgleichTab() {
             </p>
           )}
           <div className="mt-2 flex flex-wrap gap-2">
-            <Select id={selId} value={wahl} onChange={(ev) => setManuell((m) => ({ ...m, [t.id]: ev.target.value }))} className="!h-9 min-w-0 flex-1 !rounded-[10px] !text-[12.5px]">
+            <Select
+              id={selId}
+              value={wahl}
+              onChange={(ev) => {
+                const v = ev.target.value;
+                setManuell((m) => ({ ...m, [t.id]: v }));
+                // Neue Akte → Buchungsart wieder nach Zahler vorbelegen
+                setArtWahl((x) => {
+                  const n = { ...x };
+                  delete n[t.id];
+                  return n;
+                });
+                setFremdOk((x) => ({ ...x, [t.id]: false }));
+              }}
+              className="!h-9 min-w-0 flex-1 !rounded-[10px] !text-[12.5px]"
+            >
               <option value="">Zuordnen zu …</option>
               {t.betrag > 0 && (
                 <optgroup label="Offene Rechnungen">
@@ -536,7 +709,7 @@ export function BankabgleichTab() {
                 </optgroup>
               )}
               {t.betrag > 0 && (
-                <optgroup label="Fremdgeld für Akte (§ 43a Abs. 7 BRAO)">
+                <optgroup label="Akte (Buchungsart wählen)">
                   {[...akten.values()]
                     .filter((a) => a.status === "offen")
                     .sort((a, b) => b.aktenzeichen.localeCompare(a.aktenzeichen, "de", { numeric: true }))
@@ -549,10 +722,46 @@ export function BankabgleichTab() {
               )}
               {t.betrag < 0 && <option value="kosten">Kanzleikosten (ohne Rechnung)</option>}
             </Select>
-            <Button size="sm" variant="secondary" className="!h-9" disabled={!wahl} onClick={() => zuordnen(t)}>
+            <Button size="sm" variant="secondary" className="!h-9" disabled={gesperrt} onClick={() => zuordnen(t)}>
               Zuordnen
             </Button>
           </div>
+          {zielAkte && vorschlag && art && (
+            <fieldset className="mt-2.5 grid gap-1">
+              <legend className="mb-1 text-[12.5px] font-semibold text-fg-2">Buchungsart (Pflicht)</legend>
+              {(["vorschuss", "fremdgeld"] as const).map((k) => (
+                <label key={k} className="flex min-h-9 cursor-pointer items-start gap-2 text-[12.5px] leading-snug">
+                  <input
+                    type="radio"
+                    name={`buchungsart-${t.id}`}
+                    className="mt-0.5 size-4 shrink-0 accent-[var(--ink)]"
+                    checked={art === k}
+                    onChange={() => {
+                      setArtWahl((x) => ({ ...x, [t.id]: k }));
+                      setFremdOk((x) => ({ ...x, [t.id]: false }));
+                    }}
+                  />
+                  <span>
+                    {AKTEN_BUCHUNGSART[k]}
+                    {vorschlag.art === k && <span className="text-fg-3"> · vorgeschlagen</span>}
+                  </span>
+                </label>
+              ))}
+              <p className="text-[12px] text-fg-3">{vorschlag.grund}.</p>
+              {fremdTrotzMandant && (
+                <div role="alert" className="mt-1 rounded-[12px] bg-amber-soft px-3 py-2 text-[12.5px] leading-snug text-fg-2">
+                  <div className="flex items-start gap-1.5 font-semibold text-fg">
+                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber" aria-hidden />
+                    Zahlung des Mandanten selbst – in der Regel kein Fremdgeld
+                  </div>
+                  <label className="mt-1.5 flex min-h-9 items-start gap-2">
+                    <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[var(--amber)]" checked={!!fremdOk[t.id]} onChange={(ev) => setFremdOk((x) => ({ ...x, [t.id]: ev.target.checked }))} />
+                    <span>Trotzdem als Fremdgeld buchen – das Geld ist für die Mandantschaft bestimmt und wird weitergeleitet</span>
+                  </label>
+                </div>
+              )}
+            </fieldset>
+          )}
         </div>
       </Ziel>
     );
@@ -569,13 +778,26 @@ export function BankabgleichTab() {
     const vonId = z?.am ? z.von : log?.userId;
     const automatisch = z?.am ? z.durch === "auto" : log?.akteur === "automation";
     const wer = zeit ? (vonId ? users.get(vonId)?.name ?? "Nutzer" : automatisch ? "38h-Motor (automatisch)" : "System") : undefined;
-    const fremd = !r && t.status === "zugeordnet";
+    const art = z?.art ?? (r ? "rechnung" : t.status === "ignoriert" ? "kosten" : "fremdgeld");
+    const fremd = !r && t.status === "zugeordnet" && art === "fremdgeld";
+    const vorschussArt = !r && art === "vorschuss";
     return (
       <div className="flex min-h-[64px] min-w-0 items-start gap-3 rounded-[18px] border border-[var(--line)] bg-[var(--surface)] px-3.5 py-2.5">
-        {t.status === "ignoriert" ? <Building2 className="mt-0.5 size-4 shrink-0 text-fg-3" /> : fremd ? <HandCoins className="mt-0.5 size-4 shrink-0 text-amber" /> : <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-green" />}
+        {t.status === "ignoriert" ? (
+          <Building2 className="mt-0.5 size-4 shrink-0 text-fg-3" />
+        ) : fremd ? (
+          <HandCoins className="mt-0.5 size-4 shrink-0 text-amber" />
+        ) : vorschussArt ? (
+          <Wallet className="mt-0.5 size-4 shrink-0 text-green" />
+        ) : (
+          <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-green" />
+        )}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[13px] font-medium">{t.status === "ignoriert" ? "Kanzleikosten" : fremd ? "Fremdgeld" : <span className="mono">{r?.nummer ?? "Rechnung"}</span>}</span>
+            <span className="text-[13px] font-medium">
+              {t.status === "ignoriert" ? "Kanzleikosten" : fremd ? AKTEN_BUCHUNGSART_KURZ.fremdgeld : vorschussArt ? `${AKTEN_BUCHUNGSART_KURZ.vorschuss} (Aktenkonto)` : <span className="mono">{r?.nummer ?? "Rechnung"}</span>}
+            </span>
+            {r && <Chip tone="outline">Rechnungszahlung</Chip>}
             {z &&
               (z.durch === "auto" ? (
                 <Chip tone="ink">{Math.round(z.sicherheit * 100)} % · automatisch</Chip>
@@ -646,31 +868,42 @@ export function BankabgleichTab() {
       />
 
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="grid grid-cols-1 min-w-0 gap-4">
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 [&>*:last-child]:col-span-2 md:[&>*:last-child]:col-span-1">
-            <Stat label="Offene Umsätze" icon={<Clock className="size-4" />} tone="amber" value={<AnimatedNumber value={offen.length} />} sub="warten auf Zuordnung" />
-            <Stat
-              label="Offene Eingänge"
-              icon={<Landmark className="size-4" />}
-              tone="ink"
-              value={<AnimatedNumber value={eingaengeOffen} format={(n) => fmtEUR(n, { cents: false })} className="text-[20px] sm:text-[28px]" />}
-              sub="Zahlungseingänge"
-            />
-            <Stat label="Automatisch zugeordnet" icon={<Link2 className="size-4" />} tone="green" value={<AnimatedNumber value={autoGesamt} />} sub="Umsätze insgesamt" />
+        <div className="grid grid-cols-1 min-w-0 gap-3">
+          {/* Kennzahlen kompakt in einer Zeile – die offenen Umsätze stehen im ersten Bildschirm (I3-T08-03) */}
+          <div className="sheet grid grid-cols-3 gap-x-3 gap-y-2 rounded-[18px] px-4 py-2.5 min-[480px]:gap-x-4" role="group" aria-label="Kennzahlen Bankabgleich">
+            {[
+              { icon: <Clock className="size-4" />, cls: "bg-amber-soft text-amber", wert: <AnimatedNumber value={offen.length} />, label: "offene Umsätze", sub: "warten auf Zuordnung" },
+              { icon: <Landmark className="size-4" />, cls: "bg-ink-soft text-ink", wert: <AnimatedNumber value={eingaengeOffen} format={(n) => fmtEUR(n, { cents: false })} />, label: "offene Eingänge", sub: "Zahlungseingänge" },
+              { icon: <Link2 className="size-4" />, cls: "bg-green-soft text-green", wert: <AnimatedNumber value={autoGesamt} />, label: "automatisch zugeordnet", sub: "Umsätze insgesamt" },
+            ].map((k) => (
+              <div key={k.label} className="flex min-w-0 items-center gap-2.5" title={k.sub}>
+                {/* Handy: drei schmale Spalten ohne Symbol – die Kennzahlen kosten nur eine Zeile */}
+                <span className={cn("hidden size-8 shrink-0 place-items-center rounded-[10px] min-[480px]:grid", k.cls)}>{k.icon}</span>
+                <span className="min-w-0">
+                  <span className="num block text-[18px] font-semibold leading-tight tracking-[-0.02em]">{k.wert}</span>
+                  <span className="block text-[12px] leading-tight text-fg-3 min-[480px]:text-[12.5px]">{k.label}</span>
+                </span>
+              </div>
+            ))}
           </div>
 
           {phase === "bereit" && letzterLauf && (
-            <div role="status" className="flex flex-wrap items-start gap-2.5 rounded-[16px] bg-ink-softer px-4 py-3 text-[12.5px] leading-relaxed text-fg-2 ring-1 ring-inset ring-[var(--line)]">
+            <div role="status" className="flex flex-wrap items-start gap-2.5 rounded-[16px] bg-ink-softer px-4 py-2.5 text-[12.5px] leading-relaxed text-fg-2 ring-1 ring-inset ring-[var(--line)]">
               <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-green" aria-hidden />
               <span className="min-w-0 flex-1">
                 <strong className="font-semibold text-fg">
                   Letzter Abgleich {fmtDate(letzterLauf.am.slice(0, 10))}, {fmtTime(letzterLauf.am)} Uhr:
                 </strong>{" "}
                 {letzterLauf.gebucht} gebucht · {plural(letzterLauf.vorschlaege, "Vorschlag", "Vorschläge")} · {letzterLauf.kosten} Kanzleikosten
-                {letzterLauf.fremd ? ` · ${letzterLauf.fremd} Fremdgeld` : ""} · ≈ {letzterLauf.gespart} Min. gespart.{" "}
+                {letzterLauf.fremd ? ` · ${letzterLauf.fremd} Fremdgeld` : ""}.{" "}
                 {letzterLauf.angezeigt
                   ? "Offene Vorschläge stehen unten bis zu Ihrer Entscheidung."
                   : "Die Anzeige wurde unterbrochen – Buchungen und Vorschläge sind trotzdem vollständig gespeichert."}
+                {letzterLauf.gespart > 0 && (
+                  <span className="mt-1 block">
+                    <GespartSchaetzung minuten={letzterLauf.gespart} />
+                  </span>
+                )}
               </span>
             </div>
           )}
@@ -678,68 +911,48 @@ export function BankabgleichTab() {
           <AnimatePresence>
             {phase === "fertig" && (
               <motion.div initial={{ opacity: 0, y: -8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0 }} transition={{ type: "spring", stiffness: 420, damping: 32 }}>
-                <Card>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <motion.div
-                      initial={{ scale: 0.4 }}
-                      animate={{ scale: 1 }}
-                      transition={{ type: "spring", stiffness: 520, damping: 18 }}
-                      className="grid size-11 shrink-0 place-items-center rounded-full bg-green-soft text-green"
-                    >
-                      <CheckCircle2 className="size-6" />
-                    </motion.div>
-                    <div className="min-w-0 flex-1">
-                      <div className="title-md">Abgleich abgeschlossen</div>
-                      <div className="text-[12.5px] text-fg-3">
-                        {plural(anz.gebucht, "Zahlung", "Zahlungen")} automatisch gebucht · {plural(anz.vorschlag, "Vorschlag", "Vorschläge")} · {anz.kosten} Kanzleikosten
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <Chip tone="green" icon={<Clock className="size-3.5" />}>
-                        ≈ {gespartLauf} Min. gespart
-                      </Chip>
-                      <div className="mt-1 max-w-[260px] text-[12.5px] text-fg-3">je automatisch zugeordnetem Umsatz ca. {MIN_JE_UMSATZ} Min. manuelle Zuordnung</div>
+                <div role="status" className="sheet flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[18px] px-4 py-3">
+                  <motion.div
+                    initial={{ scale: 0.4 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: "spring", stiffness: 520, damping: 18 }}
+                    className="grid size-9 shrink-0 place-items-center rounded-full bg-green-soft text-green"
+                  >
+                    <CheckCircle2 className="size-5" />
+                  </motion.div>
+                  <div className="min-w-0 flex-1 basis-[260px]">
+                    <div className="text-[14px] font-semibold">Abgleich abgeschlossen</div>
+                    <div className="text-[12.5px] text-fg-2">
+                      <span className="font-semibold text-green">{anz.gebucht + anz.bestaetigt} gebucht</span>
+                      {anz.bestaetigt ? ` (davon ${anz.bestaetigt} bestätigt)` : " automatisch"} · <span className="font-semibold text-amber">{plural(anz.vorschlag, "Vorschlag", "Vorschläge")}</span> warten auf Sie ·{" "}
+                      {anz.kosten} Kanzleikosten
+                      {anz.keine > 0 ? (
+                        <>
+                          {" "}
+                          · <span className="font-semibold text-seal">{anz.keine} ohne Zuordnung</span>
+                        </>
+                      ) : null}
                     </div>
                   </div>
-                  <div className={cn("mt-4 grid grid-cols-2 gap-2", anz.keine > 0 ? "sm:grid-cols-4" : "sm:grid-cols-3")}>
-                    {[
-                      { n: anz.gebucht + anz.bestaetigt, label: "gebucht", sub: anz.bestaetigt ? `davon ${anz.bestaetigt} bestätigt` : "automatisch", cls: "text-green" },
-                      { n: anz.vorschlag, label: anz.vorschlag === 1 ? "Vorschlag" : "Vorschläge", sub: "warten auf Sie", cls: "text-amber" },
-                      { n: anz.kosten, label: "Kanzleikosten", sub: "ohne Rechnung", cls: "text-fg" },
-                      ...(anz.keine > 0 ? [{ n: anz.keine, label: "ohne Zuordnung", sub: "manuell zuordnen", cls: "text-seal" }] : []),
-                    ].map((x, i) => (
-                      <motion.div
-                        key={x.label}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.1 + i * 0.06, type: "spring", stiffness: 460, damping: 32 }}
-                        className="rounded-[16px] bg-[var(--ink-softer)] px-4 py-3"
-                      >
-                        <AnimatedNumber value={x.n} className={cn("text-[26px] font-semibold leading-none tracking-[-0.03em]", x.cls)} />
-                        <div className="mt-1.5 text-[12.5px] font-medium">{x.label}</div>
-                        <div className="text-[12.5px] text-fg-3">{x.sub}</div>
-                      </motion.div>
-                    ))}
-                  </div>
-                </Card>
+                  <GespartSchaetzung minuten={gespartLauf} />
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
 
-          <Segmented
-            value={ansicht}
-            onChange={setAnsicht}
-            options={[
-              { value: "offen", label: "Offen", count: offen.length },
-              { value: "gebucht", label: "Gebucht", count: gebuchtListe.length },
-            ]}
-          />
-
           {ansicht === "gebucht" ? (
             <Card padded={false} className="overflow-hidden">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] px-4 py-3">
-                <div className="text-[13px] font-semibold">Gebuchte Umsätze</div>
-                <div className="text-[12.5px] text-fg-3">mit Grund, Sicherheit, wer und wann – jede Zuordnung lässt sich lösen</div>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] px-4 py-2.5">
+                <Segmented
+                  size="sm"
+                  value={ansicht}
+                  onChange={setAnsicht}
+                  options={[
+                    { value: "offen", label: "Offen", count: offen.length },
+                    { value: "gebucht", label: "Gebucht", count: gebuchtListe.length },
+                  ]}
+                />
+                <div className="text-[12.5px] text-fg-3">Gebuchte Umsätze mit Grund, Art, wer und wann – jede Zuordnung lässt sich lösen</div>
               </div>
               {gebuchtListe.length === 0 ? (
                 <p className="px-4 py-10 text-center text-[13px] text-fg-3">Noch keine zugeordneten Umsätze.</p>
@@ -757,9 +970,17 @@ export function BankabgleichTab() {
             </Card>
           ) : (
           <Card padded={false} className="overflow-hidden">
-            <div className="flex items-center justify-between gap-3 border-b border-[var(--line)] px-4 py-3">
-              <div className="text-[13px] font-semibold">{phase === "bereit" ? "Offene Kontoumsätze" : "Ergebnis des Abgleichs"}</div>
-              <div className="hidden text-[12.5px] text-fg-3 md:block">Umsatz → zugeordnete Rechnung</div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] px-4 py-2.5">
+              <Segmented
+                  size="sm"
+                  value={ansicht}
+                  onChange={setAnsicht}
+                  options={[
+                    { value: "offen", label: "Offen", count: offen.length },
+                    { value: "gebucht", label: "Gebucht", count: gebuchtListe.length },
+                  ]}
+                />
+              <div className="text-[12.5px] text-fg-3">{phase === "bereit" ? "Offene Kontoumsätze" : "Ergebnis des Abgleichs"}<span className="hidden md:inline"> · Umsatz → zugeordnete Rechnung</span></div>
             </div>
             {liste.length === 0 ? (
               <div className="flex flex-col items-center px-6 py-12 text-center">
@@ -802,13 +1023,20 @@ export function BankabgleichTab() {
           )}
         </div>
 
-        <div className="grid grid-cols-1 gap-4 xl:sticky xl:top-24">
+        <div className="grid grid-cols-1 gap-4 xl:sticky xl:top-7">
           <Card>
-            <CardHeader
-              icon={<ShieldCheck className="size-4" />}
-              title="Wie sicher ist die Zuordnung?"
-              subtitle={`Ab ${Math.round(AUTO_SCHWELLE * 100)} % bucht AnwaltApex selbst – darunter entscheiden Sie.`}
-            />
+            <button type="button" onClick={erklaerungUmschalten} aria-expanded={erklaerungOffen} aria-controls="bank-erklaerung" className="-m-1 flex w-[calc(100%+8px)] items-start gap-3 rounded-[16px] p-1 text-left">
+              <span className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">
+                <ShieldCheck className="size-4" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="title-md block">Wie sicher ist die Zuordnung?</span>
+                <span className="mt-0.5 block text-[12.5px] text-fg-3">Ab {Math.round(AUTO_SCHWELLE * 100)} % bucht AnwaltApex selbst – darunter entscheiden Sie.</span>
+              </span>
+              <ChevronDown className={cn("mt-2 size-4 shrink-0 text-fg-3 transition-transform duration-300", erklaerungOffen && "rotate-180")} aria-hidden />
+            </button>
+            {erklaerungOffen && (
+            <div id="bank-erklaerung" className="mt-4">
             <ul className="grid grid-cols-1 gap-3">
               {REGELN.map((r) => (
                 <li key={r.regel} className="flex items-start gap-3">
@@ -833,9 +1061,30 @@ export function BankabgleichTab() {
               <Chip>Kanzleikosten</Chip>
               <Chip tone="amber">Fremdgeld</Chip>
             </div>
+            </div>
+            )}
           </Card>
+          <StellenDialog
+            open={!!korrekturStellen}
+            anzahl={1}
+            onClose={() => setKorrekturStellen(null)}
+            onStellen={() => {
+              const k = korrekturStellen;
+              setKorrekturStellen(null);
+              if (k) korrekturStellenUndZuordnen(k.t, k.entwurfId);
+            }}
+            zusatz={korrekturStellen ? `Danach wird der Umsatz ${fmtEUR(korrekturStellen.t.betrag)} (${korrekturStellen.t.gegenpartei}) der neuen Rechnung zugeordnet.` : undefined}
+          />
           <Card>
-            <CardHeader icon={<Upload className="size-4" />} title="Kontoauszüge" subtitle="Import im Format CAMT.053 (XML), MT940 (.sta) oder CSV." />
+            <div className="mb-3 flex items-start gap-3">
+              <span className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">
+                <Upload className="size-4" />
+              </span>
+              <span className="min-w-0">
+                <span className="title-md block">Kontoauszüge</span>
+                <span className="mt-0.5 block text-[12.5px] text-fg-3">Import im Format CAMT.053 (XML), MT940 (.sta) oder CSV.</span>
+              </span>
+            </div>
             <p className="text-[12.5px] leading-relaxed text-fg-3">
               Jeder Umsatz wird gegen offene Rechnungen und Aktenkonten geprüft. Jede Zuordnung bleibt nachvollziehbar – mit Regel, Sicherheit und wer gebucht hat – und lässt sich unter „Gebucht“ lösen. In
               dieser Demo werden Beispielumsätze (simuliert) verwendet; es ist kein Bankkonto angebunden.

@@ -1,4 +1,4 @@
-// Verbindliche Rückrufzusage der festen Ansprechperson: jetzt + 30 Minuten innerhalb der Servicezeit, sonst nächster Werktag 8:30 Uhr.
+// Verbindliche Rückrufzusage der festen Ansprechpartnerin bzw. des festen Ansprechpartners: jetzt + 30 Minuten innerhalb der Servicezeit, sonst nächster Werktag 8:30 Uhr.
 import { addDays, fmtDateWd, weekday } from "./dates";
 import { istWerktag } from "./feiertage";
 import type { Bundesland, ISODate } from "./types";
@@ -23,6 +23,21 @@ export interface RueckrufZusage {
   heute: boolean;
   /** „Rückruf bis spätestens 17:20 Uhr“ bzw. „Rückruf am Mo, 19.10.2026 bis spätestens 8:30 Uhr“ */
   text: string;
+  /** Anfrage außerhalb der Servicezeit: Zusage gilt ab Beginn der Servicezeit – die Regel dazu (`rueckrufRegel`). */
+  ausserhalb: boolean;
+}
+
+/**
+ * Die Rückrufregel in einem Satz – eine Quelle für Rückruf-Dialog, Hilfe und Assistent (I3-T12-04), keine neue Zusage:
+ * „Anfragen von außerhalb der Servicezeit rufen wir in der ersten Stunde nach Beginn zurück (bis 8:30 Uhr); in der Servicezeit
+ * innerhalb von 30 Minuten.“
+ */
+export function rueckrufRegel(verfuegbar: string): string {
+  const { von } = servicezeit(verfuegbar);
+  const morgens = Math.max(von + RUECKRUF_MINUTEN, 8 * 60 + 30);
+  const spanne = morgens - von;
+  const erste = spanne === 60 ? "in der ersten Stunde" : spanne === 30 ? "in der ersten halben Stunde" : `in den ersten ${spanne} Minuten`;
+  return `Anfragen von außerhalb der Servicezeit rufen wir ${erste} nach Beginn zurück (bis ${hhmm(morgens)} Uhr); in der Servicezeit innerhalb von ${RUECKRUF_MINUTEN} Minuten.`;
 }
 
 /**
@@ -35,13 +50,13 @@ export function rueckrufZusage(jetzt: Date, verfuegbar: string, land: Bundesland
   const min = jetzt.getHours() * 60 + jetzt.getMinutes();
   const werktag = (d: ISODate) => weekday(d) >= 1 && weekday(d) <= 5 && istWerktag(d, land);
   const ziel = min + RUECKRUF_MINUTEN;
-  if (werktag(tag) && min >= von && ziel <= bis) return { datum: tag, uhrzeit: ziel, heute: true, text: `Rückruf bis spätestens ${hhmm(ziel)} Uhr` };
+  if (werktag(tag) && min >= von && ziel <= bis) return { datum: tag, uhrzeit: ziel, heute: true, text: `Rückruf bis spätestens ${hhmm(ziel)} Uhr`, ausserhalb: false };
   // vor Beginn der Servicezeit an einem Werktag: Beginn + 30 Min., frühestens 8:30 Uhr
   const morgens = Math.max(von + RUECKRUF_MINUTEN, 8 * 60 + 30);
-  if (werktag(tag) && min < von) return { datum: tag, uhrzeit: morgens, heute: true, text: `Rückruf bis spätestens ${hhmm(morgens)} Uhr` };
+  if (werktag(tag) && min < von) return { datum: tag, uhrzeit: morgens, heute: true, text: `Rückruf bis spätestens ${hhmm(morgens)} Uhr`, ausserhalb: true };
   let d = addDays(tag, 1);
   for (let i = 0; i < 10 && !werktag(d); i++) d = addDays(d, 1);
-  return { datum: d, uhrzeit: morgens, heute: false, text: `Rückruf am ${fmtDateWd(d)} bis spätestens ${hhmm(morgens)} Uhr` };
+  return { datum: d, uhrzeit: morgens, heute: false, text: `Rückruf am ${fmtDateWd(d)} bis spätestens ${hhmm(morgens)} Uhr`, ausserhalb: true };
 }
 
 const tagVon = (d: Date): ISODate => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -76,4 +91,13 @@ export function naechsteServicezeit(jetzt: Date, verfuegbar: string, land: Bunde
     for (let i = 0; i < 10 && !werktag(d); i++) d = addDays(d, 1);
   }
   return { datum: d, ab: von, text: `${d === tag ? "heute" : fmtDateWd(d)} ab ${hhmm(von)} Uhr` };
+}
+
+/**
+ * „Letzte Sicherung“ der nächtlichen Sicherung um 03:00 Uhr relativ zur Uhrzeit: vor 03:00 Uhr war es gestern, danach heute –
+ * nie eine Zeit in der Zukunft (I3-T12-05).
+ */
+export function letzteSicherung(jetzt: Date, stunde = 3): { heute: boolean; text: string } {
+  const heute = jetzt.getHours() >= stunde;
+  return { heute, text: `${heute ? "heute" : "gestern"}, ${String(stunde).padStart(2, "0")}:00 Uhr` };
 }

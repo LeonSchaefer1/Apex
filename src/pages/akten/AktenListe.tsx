@@ -13,12 +13,14 @@ import { toast } from "@/store/ui";
 import { AnimatedNumber, Avatar, Button, Chip, DataTable, Empty, Modal, PageHeader, SearchField, Segmented, Select, type ColumnDef } from "@/components/ui";
 import { Highlight } from "@/components/Highlight";
 import { cn } from "@/lib/cn";
+import { useMedia } from "@/lib/useMedia";
 import {
   FRIST_TYP_LABEL, FristChip, PhasenBalken, SACHGEBIETE, STATUS_INFO, SachgebietChip, azSortKey, gerichtKurz, listenKontext, wertKurz,
   useKontaktMap, useNaechsteFristen, useTeam,
 } from "./helfer";
 import { Mandatsaufnahme, ladeMandatsEntwurf } from "./Mandatsaufnahme";
 import { offeneEintraege, offeneEintraegeText, schliesseAkteAb } from "./AkteKopf";
+import { sperrePortal } from "./Mandantenportal";
 
 type StatusFilter = "offen" | "ruhend" | "abgeschlossen" | "alle";
 
@@ -205,6 +207,10 @@ export default function AktenListe() {
           const a = row.original;
           // Gerichtliches Az. steht in der Spalte „Gericht“, wenn sie eingeblendet ist – sonst hier unter dem Mandanten
           const mitGericht = table.getColumn("Gericht")?.getIsVisible();
+          // Schmale Ansicht (Tablet): „Bearbeitung“ als Kürzel unter der Aktenbezeichnung, wenn die Spalte ausgeblendet ist (I3-T23-01)
+          const ohneBearbeitung = table.getColumn("Bearbeitung")?.getIsVisible() === false;
+          const ra = ohneBearbeitung ? byId.get(a.bearbeiterId) : undefined;
+          const sb = ohneBearbeitung && a.sachbearbeiterId ? byId.get(a.sachbearbeiterId) : undefined;
           return (
             <div className="min-w-0">
               <div className="flex items-start gap-1.5">
@@ -220,6 +226,13 @@ export default function AktenListe() {
               <div className="whitespace-normal break-words text-[12.5px] text-fg-3">
                 <Highlight text={kontakte.get(a.mandantId)?.name ?? "–"} q={q} />
                 {a.gerichtsAz && !mitGericht && <span className="mono text-fg-3"> · {a.gerichtsAz}</span>}
+                {ra && (
+                  <span className="text-fg-2" title={`Bearbeitung: ${ra.name}${sb ? ` · Sachbearbeitung: ${sb.name}` : ""}`}>
+                    {" "}
+                    · <span className="font-semibold">{ra.initialen}</span>
+                    {sb ? <span className="text-fg-3">/{sb.initialen}</span> : null}
+                  </span>
+                )}
               </div>
             </div>
           );
@@ -329,9 +342,15 @@ export default function AktenListe() {
     const betroffen = bulk.rows.filter((r) => r.status !== s);
     const st = useData.getState();
     let jahr = 0;
+    let portaleGesperrt = 0;
     for (const r of betroffen) {
       if (s === "abgeschlossen") {
         jahr = schliesseAkteAb(r, user.id);
+        // Sammelabschluss: aktives Mandantenportal wie beim Einzelabschluss standardmäßig sperren (I3-T23-03)
+        if (r.mandantenportal) {
+          sperrePortal(r, user.id, "beim Abschluss der Akte");
+          portaleGesperrt++;
+        }
         continue;
       }
       st.patch("akten", r.id, { status: s, phase: r.phase === "Abgeschlossen" ? "Außergerichtlich" : r.phase, abgeschlossenAm: undefined, updatedAt: nowLocal() });
@@ -342,7 +361,7 @@ export default function AktenListe() {
     else
       toast(s === "abgeschlossen" ? (betroffen.length === 1 ? "Akte abgeschlossen" : `${betroffen.length} Akten abgeschlossen`) : "Status geändert", {
         ton: "erfolg",
-        text: s === "abgeschlossen" ? `Aufbewahrung bis 31.12.${jahr} vorgemerkt (§ 50 BRAO)` : `${n(betroffen.length)}: ${STATUS_INFO[s].label}${betroffen.length < bulk.rows.length ? ` · ${bulk.rows.length - betroffen.length} unverändert` : ""}`,
+        text: s === "abgeschlossen" ? `Aufbewahrung bis 31.12.${jahr} vorgemerkt (§ 50 BRAO)${portaleGesperrt ? ` · Mandantenportal gesperrt (${portaleGesperrt === 1 ? "1 Akte" : `${portaleGesperrt} Akten`})` : ""}` : `${n(betroffen.length)}: ${STATUS_INFO[s].label}${betroffen.length < bulk.rows.length ? ` · ${bulk.rows.length - betroffen.length} unverändert` : ""}`,
       });
     bulk.clear();
     setBulk(null);
@@ -421,13 +440,20 @@ export default function AktenListe() {
   const onErstellt = useCallback((id: string) => nav(`/akten/${id}`, { replace: ausUrl }), [nav, ausUrl]);
 
   const filterAktiv = !!(q || filter.sg || filter.ra || filter.prio || filter.frist || filter.seit || filter.status !== "offen");
+  // Tablet (768–1099 px, z. B. iPad quer): Spalten und Kennzahlen kompakt – keine verdeckten Pflichtspalten, erste Zeile
+  // im ersten Bildschirm (I3-T23-01). Eigene Spaltenwahl wird je Ansicht gespeichert; Laptop und Desktop bleiben unverändert.
+  const tablet = useMedia("(min-width: 768px) and (max-width: 1099px)");
 
   return (
     <div>
       <PageHeader
         title="Akten"
         hilfe="akten"
-        subtitle="Alle Mandate Ihrer Kanzlei an einem Ort – suchen, filtern und mit einem Klick in die E-Akte mit Dokumenten, Fristen, Beteiligten und Aktenkonto springen."
+        subtitle={
+          tablet
+            ? "Alle Mandate an einem Ort – suchen, filtern, mit einem Klick in die E-Akte."
+            : "Alle Mandate Ihrer Kanzlei an einem Ort – suchen, filtern und mit einem Klick in die E-Akte mit Dokumenten, Fristen, Beteiligten und Aktenkonto springen."
+        }
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {offenerEntwurf && (
@@ -442,8 +468,8 @@ export default function AktenListe() {
         }
       />
 
-      {/* Kennzahlen */}
-      <div className="no-scrollbar -mx-4 mb-5 flex snap-x gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0">
+      {/* Kennzahlen – auf dem Tablet kompakt in einer Zeile, ohne Abbruch mitten im Wort */}
+      <div className={cn("no-scrollbar -mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0", tablet ? "mb-3 !gap-2" : "mb-5")}>
         {[
           { label: "Offene Akten", value: kpi.offen, sub: `davon ${kpi.hoch} mit hoher Priorität`, icon: <FolderOpen className="size-4" />, tone: "ink" as const, on: () => setze({ status: "offen", sg: "", ra: "", prio: "", frist: "", seit: "" }) },
           { label: "Neu diese Woche", value: kpi.neu, sub: `seit Montag, ${fmtDate(kpi.montag)}`, icon: <Sparkle className="size-4" />, tone: "green" as const, on: () => setze({ status: "alle", sg: "", ra: "", prio: "", frist: "", seit: "woche" }) },
@@ -456,16 +482,29 @@ export default function AktenListe() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.05 + i * 0.05, type: "spring", stiffness: 420, damping: 34 }}
-            className="sheet glow relative flex min-w-[230px] snap-start items-center gap-3.5 rounded-[22px] p-4 text-left transition-transform duration-300 ease-[var(--spring)] hover:-translate-y-0.5 active:scale-[0.98] sm:min-w-0"
+            className={cn(
+              "sheet glow relative flex min-w-[230px] snap-start items-center text-left transition-transform duration-300 ease-[var(--spring)] hover:-translate-y-0.5 active:scale-[0.98] sm:min-w-0",
+              tablet ? "gap-2.5 rounded-[18px] px-3 py-2" : "gap-3.5 rounded-[22px] p-4",
+            )}
           >
-            <span className={cn("grid size-10 shrink-0 place-items-center rounded-[12px]", { ink: "bg-ink-soft text-ink", green: "bg-green-soft text-green", seal: "bg-seal-soft text-seal", amber: "bg-amber-soft text-amber" }[k.tone])}>{k.icon}</span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[12.5px] font-medium text-fg-3">{k.label}</span>
-              <span className="block text-[26px] font-semibold leading-tight tracking-[-0.03em]">
-                <AnimatedNumber value={k.value} />
+            <span className={cn("grid shrink-0 place-items-center rounded-[12px]", tablet ? "size-8" : "size-10", { ink: "bg-ink-soft text-ink", green: "bg-green-soft text-green", seal: "bg-seal-soft text-seal", amber: "bg-amber-soft text-amber" }[k.tone])}>{k.icon}</span>
+            {tablet ? (
+              <span className="min-w-0 flex-1">
+                <span className="flex items-baseline gap-1.5">
+                  <AnimatedNumber value={k.value} className="text-[20px] font-semibold leading-tight tracking-[-0.03em]" />
+                  <span className="min-w-0 text-[12.5px] font-medium leading-snug text-fg-2">{k.label}</span>
+                </span>
+                <span className="block text-[12px] leading-snug text-fg-3">{k.sub}</span>
               </span>
-              <span className="block truncate text-[12.5px] text-fg-3">{k.sub}</span>
-            </span>
+            ) : (
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[12.5px] font-medium text-fg-3">{k.label}</span>
+                <span className="block text-[26px] font-semibold leading-tight tracking-[-0.03em]">
+                  <AnimatedNumber value={k.value} />
+                </span>
+                <span className="block truncate text-[12.5px] text-fg-3">{k.sub}</span>
+              </span>
+            )}
           </motion.button>
         ))}
       </div>
@@ -502,13 +541,15 @@ export default function AktenListe() {
       </div>
 
       <DataTable<Akte>
-        id="akten"
+        key={tablet ? "tablet" : "voll"}
+        id={tablet ? "akten-tablet" : "akten"}
         data={liste}
         columns={columns}
         getRowId={(a) => a.id}
         initialSort={[{ id: "aktenzeichen", desc: true }]}
         // Spalte „Gericht“ (Kurzform + gerichtliches Az.) ist unter „Spalten wählen“ zuschaltbar; auch mit ihr passt die Tabelle auf 1366 px.
-        defaultHidden={["Gericht"]}
+        // Tablet: „Bearbeitung“ als Kürzel unter der Akte, „Geändert“ ausgeblendet – so passt die Tabelle ohne Querscrollen
+        defaultHidden={tablet ? ["Gericht", "Bearbeitung", "Letzte Änderung"] : ["Gericht"]}
         onRowClick={(a) => nav(`/akten/${a.id}`)}
         selectable
         toolbar={

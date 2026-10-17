@@ -21,3 +21,11 @@ export function letzteAbfrageText(ms = Date.now()): string {
 export function letzterAbrufMs(ms = Date.now()): number {
   return ms - (ms % (ABRUF_MINUTEN * 60_000));
 }
+
+/** Uhrzeit des letzten (simulierten) Abrufs: „01:20 Uhr“. */
+export function letzteAbfrageUhrzeit(ms = Date.now()): string {
+  return `${new Date(letzterAbrufMs(ms)).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr`;
+}
+
+/** Name des Statuspunkts für Screenreader (mobile Kopfleiste). */
+export const SYSTEMSTATUS_NAME = "Systemstatus: beA und E-Mail simuliert verbunden – öffnen";

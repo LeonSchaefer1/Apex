@@ -4,7 +4,7 @@ import { addDays, fmtDate, fmtDateLong, round2 } from "../dates";
 import { berechneNachRegel } from "../fristen";
 import { berechneRvg, fassungFuerAuftrag } from "../rvg";
 import type { Akte, Aktivitaet, Dokument, Frist, Kontakt } from "../types";
-import { addDok, addFrist, addMsg, addRechnung, addRegelFrist, nextAz, type Ctx } from "./generate";
+import { addDok, addFrist, addMsg, addRechnung, addRegelFrist, fristVerantwortung, nextAz, type Ctx } from "./generate";
 import { STAEDTE } from "./pools";
 
 function akte(ctx: Ctx, a: Omit<Akte, "id" | "updatedAt"> & { updatedAt?: string }): Akte {
@@ -81,11 +81,17 @@ export function heroesBerlin(ctx: Ctx) {
   addDok(ctx, {
     // Brief an die Versicherung (kein Schriftsatz an ein Gericht) – Entwurf des 38h-Motors, Versand erst nach Freigabe
     akteId: a1.id, name: "Deckungsanfrage Nordlicht Rechtsschutz AG", art: "brief", status: "entwurf", ordner: "Korrespondenz", quelle: "generiert", format: "docx", createdAt: dt(-2, 11, 34),
-    inhalt: "Automatisch erstellte Deckungsanfrage für Versicherungsnehmer Thomas Weber (RS-4471209): Kündigungsschutzklage gegen die fristlose Kündigung der Kröger Logistik GmbH, Gegenstandswert 10.200 € (Vierteljahresentgelt, § 42 Abs. 2 GKG). Sachverhaltsschilderung und Kündigungsschreiben anbei.",
+    // Gegenstandswert mit denselben Antragsbestandteilen wie der KI-Klageentwurf (src/ai/fallanalyse.ts); der Aktenwert bleibt 10.200 € (I3-T19-01)
+    inhalt: `Automatisch erstellte Deckungsanfrage für Versicherungsnehmer Thomas Weber (RS-4471209), Schaden-Nr. S${ctx.yy}-88412 (Schadenmeldung durch Ihren Versicherungsnehmer): Kündigungsschutzklage gegen die fristlose Kündigung der Kröger Logistik GmbH. Gegenstandswert: Kündigungsschutzantrag 10.200,00 € (drei Bruttomonatsentgelte à 3.400 €, § 42 Abs. 2 S. 1 GKG) + Weiterbeschäftigungsantrag 3.400,00 € = 13.600,00 €. Sachverhaltsschilderung und Kündigungsschreiben anbei.`,
   });
   addRegelFrist(ctx, a1, "kschg_klage", zugang, { quelle: "ki", kontrolliertVon: mia?.id, notiz: "Von der KI aus dem Kündigungsschreiben erkannt (Zugang per Bote)." });
   addFrist(ctx, { akteId: a1.id, titel: "Wiedervorlage: Deckungszusage Nordlicht", typ: "wiedervorlage", datum: ctx.werktag(3), verantwortlichId: mia?.id ?? julia.id, quelle: "automatisch" });
   data.notizen.push({ id: ctx.id("no"), akteId: a1.id, userId: julia.id, text: "Emmely-Rechtsprechung (BAG 2 AZR 541/09) passt sehr gut: lange ungestörte Betriebszugehörigkeit, geringer Wert. Duldung durch Schichtleiter klären – Zeugen benennen lassen.", zeit: dt(-2, 11, 12) });
+  // Herkunft der Schadennummer (I3-T07-06): Der Versicherer vergibt sie mit der Schadenmeldung – hier durch den Mandanten selbst,
+  // vor der Deckungsanfrage der Kanzlei. Feste IDs und Uhrzeiten, damit der übrige Bestand (Zähler, Zufallsfolge) unverändert bleibt.
+  const schadenmeldung = `Schadenmeldung durch Herrn Weber telefonisch bei der Nordlicht Rechtsschutz AG am ${fmtDate(d(-3))} – Schaden-Nr. S${ctx.yy}-88412; Deckungsanfrage der Kanzlei noch nicht versandt`;
+  data.notizen.push({ id: "hero-no-schadenmeldung", akteId: a1.id, userId: julia.id, text: `${schadenmeldung}. (Angabe des Mandanten in der Erstberatung)`, zeit: dt(-2, 11, 6) });
+  data.aktivitaeten.push({ id: "hero-ak-schadenmeldung", zeit: dt(-2, 11, 7), akteur: "nutzer", userId: julia.id, akteId: a1.id, text: `Rechtsschutz erfasst – ${schadenmeldung} – ${a1.aktenzeichen}` });
 
   // 2) Mietrecht Schneider – Gerichtstermin
   const schneider = ctx.person(["mandant"], { vorname: "Katharina", nachname: "Schneider", weiblich: true });
@@ -123,7 +129,8 @@ export function heroesBerlin(ctx: Ctx) {
   addDok(ctx, { akteId: a3.id, name: "Gutachten Kfz-Sachverständiger", art: "gutachten", ordner: "Anlagen", quelle: "email", seiten: 18, createdAt: dt(-20), inhalt: "Reparaturkosten netto 5.874,50 € (Stundenverrechnungssätze Markenwerkstatt), merkantiler Minderwert 650 €, Nutzungsausfall 12 Tage à 59 € = 708 €, Gutachterkosten 1.130 €." });
   addDok(ctx, { akteId: a3.id, name: "Abrechnung Elbtal Versicherung", art: "brief", ordner: "Korrespondenz", quelle: "email", createdAt: dt(-1), inhalt: "Schadennummer EV-2026-448812: Wir haben 6.120 € auf Ihr Anderkonto überwiesen. Eine weitere Zahlung lehnen wir ab, da die Reparatur in der gleichwertigen freien Fachwerkstatt Autoservice Ring GmbH um 1.284,50 € günstiger möglich ist." });
   ctx.data.buchungen.push({ id: ctx.id("b"), akteId: a3.id, datum: d(-4), art: "fremdgeld", betrag: 6120, text: "Zahlung Elbtal Versicherung (Fremdgeld) – an Mandantin weiterzuleiten", fremdgeld: true });
-  addFrist(ctx, { akteId: a3.id, titel: "Fremdgeld an Mandantin weiterleiten (§ 43a Abs. 7 BRAO)", typ: "frist", datum: ctx.today, verantwortlichId: mia?.id ?? jonas.id, quelle: "automatisch" });
+  // Büroaufgabe der Fachangestellten → Wiedervorlage (Vorgabe der Projektleitung, SEED_VERSION 11); echte Fristen tragen Berufsträger
+  addFrist(ctx, { akteId: a3.id, titel: "Fremdgeld an Mandantin weiterleiten (§ 43a Abs. 7 BRAO)", typ: "wiedervorlage", datum: ctx.today, verantwortlichId: mia?.id ?? jonas.id, quelle: "automatisch" });
   addFrist(ctx, { akteId: a3.id, titel: "Wiedervorlage: Nachforderung Reparaturkosten", typ: "wiedervorlage", datum: ctx.werktag(14), verantwortlichId: jonas.id, quelle: "ki" });
 
   // 4) Kaufrecht Neumann – Urteil kommt heute per beA
@@ -495,6 +502,7 @@ export function zusatzBerlin(ctx: Ctx) {
     id: "hero-guete-f2", akteId: ost.id, titel: "Gütetermin", typ: "termin", datum: guete, uhrzeit: "09:00", ort: "Arbeitsgericht Berlin, Magdeburger Platz 1, Saal 3",
     status: "offen", verantwortlichId: julia.id, quelle: "ki", createdAt: dt(-8, 14, 13), notiz: "Persönliches Erscheinen der Mandantin angeordnet (§ 51 Abs. 1 ArbGG).",
   };
+  klagefrist.verantwortlichId = fristVerantwortung(ctx, klagefrist);
   data.fristen.push(klagefrist, termin);
   const zeitpunkte: [string, Aktivitaet["akteur"], string, string?, string?][] = [
     [dt(-24, 10, 1), "automation", `Mandatsaufnahme-Paket (Vollmacht, Mandatsbestätigung, Datenschutz) erstellt und zur Freigabe vorgelegt – ${ost.aktenzeichen}`, "mandatsaufnahme"],

@@ -115,12 +115,21 @@ export default function FallDatenbank() {
               { value: "ki", label: modus === "ki" ? <span className="ai-text">KI-Recherche</span> : "KI-Recherche", icon: <Sparkles className={cn("size-3.5", modus === "ki" && "text-violet")} /> },
             ]}
           />
-          <div className="flex items-center gap-2 text-[12px] text-fg-3">
-            <Database className="size-3.5" />
-            <span className="num">{ENTSCHEIDUNGEN.length} Leitentscheidungen</span>
+          {/* Abdeckung oben in normaler Textfarbe (I3-T06-06) – nicht erst am Seitenende */}
+          <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12.5px] text-fg-2">
+            <Database className="size-3.5 shrink-0 text-fg-3" aria-hidden />
+            <span className="num font-medium text-fg">{ENTSCHEIDUNGEN.length} Leitentscheidungen</span>
             <span aria-hidden>·</span>
             <span>Demo-Auszug</span>
-          </div>
+            <span aria-hidden>·</span>
+            <span className="num">jüngste vom {fmtDate(JUENGSTE_ENTSCHEIDUNG)}</span>
+            {EBENEN_SPAETER.length > 0 && (
+              <>
+                <span aria-hidden>·</span>
+                <span>+ {EBENEN_SPAETER_TEXT} in der Produktivversion</span>
+              </>
+            )}
+          </p>
         </div>
 
         <div className="relative z-[2]">
@@ -441,7 +450,7 @@ function Uebersicht({ onOpen, onGebiet }: { onOpen: (id: string) => void; onGebi
         </section>
 
         <aside className="min-w-0">
-          <div className="xl:sticky xl:top-24">
+          <div className="xl:sticky xl:top-7">
             <QuellenKarte />
           </div>
         </aside>

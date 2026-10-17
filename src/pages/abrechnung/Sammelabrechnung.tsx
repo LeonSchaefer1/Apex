@@ -2,15 +2,39 @@
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, Check, ChevronDown, Clock, History, Layers, ShieldCheck, Sparkles, Zap } from "lucide-react";
-import { AnimatedNumber, Button, Checkbox, Chip, Modal, Segmented, confirmDialog } from "@/components/ui";
+import { AnimatedNumber, Button, Checkbox, Chip, Modal, Segmented } from "@/components/ui";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { addDays, fmtEUR, nowLocal, round2, today } from "@/core/dates";
 import type { Rechnung } from "@/core/types";
 import { cn } from "@/lib/cn";
 import { erstelleRechnungen } from "./aktionen";
-import { abrechnungUngeprueft, ERECHNUNG_PFLICHT, FASSUNG_LABEL, fmtSatz, formatVorbelegung, istVorschlag, MINUTEN_JE_EINZELRECHNUNG, rsvAufteilung, rsvStand, RSV_STAND_LABEL, STANDARD_STUNDENSATZ, vorschlagFuerAkte, type Ausschluss, type RsvStand, type Vorschlag } from "./lib";
+import {
+  abrechnungUngeprueft,
+  auswahlFuerAbrechnung,
+  auswahlFuerFilter,
+  ERECHNUNG_PFLICHT,
+  FASSUNG_LABEL,
+  fmtSatz,
+  formatVorbelegung,
+  istVorschlag,
+  kopfUmschalten,
+  kopfZustand,
+  MINUTEN_JE_EINZELRECHNUNG,
+  rsvAufteilung,
+  rsvStand,
+  RSV_FILTER_LABEL,
+  RSV_STAND_LABEL,
+  sichtbareVorschlaege,
+  STANDARD_STUNDENSATZ,
+  vorschlagFuerAkte,
+  type Ausschluss,
+  type RsvFilter,
+  type RsvStand,
+  type Vorschlag,
+} from "./lib";
 import { FORMAT_INFO, useLookups } from "./ui";
+import { StellenDialog } from "./StellenDialog";
 
 /** Akten, die abgerechnet werden können (offen, in den letzten 30 Tagen nicht abgerechnet, mit offenen Gebühren). */
 export function useSammelKandidaten() {
@@ -66,7 +90,6 @@ export function useSammelKandidaten() {
 type FormatWahl = Rechnung["format"] | "auto";
 const FORMATE: FormatWahl[] = ["auto", "PDF", "XRechnung", "ZUGFeRD"];
 const FORMAT_LABEL: Record<FormatWahl, string> = { auto: "Automatisch", PDF: "PDF", XRechnung: "XRechnung", ZUGFeRD: "ZUGFeRD" };
-type RsvFilter = "alle" | RsvStand;
 
 export function Sammelabrechnung({ open, onClose, onAnsehen }: { open: boolean; onClose: () => void; onAnsehen: (rechnungId?: string) => void }) {
   const { vorschlaege, ausgeschlossen } = useSammelKandidaten();
@@ -80,6 +103,9 @@ export function Sammelabrechnung({ open, onClose, onAnsehen }: { open: boolean; 
   // Standard: Entwürfe wie bei der Einzelrechnung – „sofort stellen“ nur auf Wunsch und mit Rückfrage
   const [sofortStellen, setSofortStellen] = useState(false);
   const [rsvFilter, setRsvFilter] = useState<RsvFilter>("alle");
+  const [filterHinweis, setFilterHinweis] = useState<string | null>(null);
+  // Rückfrage vor „Sofort stellen“: Anzahl, Filter, nächste Nummern und Pflichtangaben (I3-T07-01, I3-T07-03)
+  const [stellenFrage, setStellenFrage] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -88,16 +114,33 @@ export function Sammelabrechnung({ open, onClose, onAnsehen }: { open: boolean; 
     setZeigeAusgeschlossen(false);
     setSofortStellen(false);
     setRsvFilter("alle");
+    setFilterHinweis(null);
     // Akten aus dem Umzug mit unbekanntem Abrechnungsstand nicht vorauswählen
-    setAuswahl(new Set(vorschlaege.filter((v) => !abrechnungUngeprueft(v.akte)).map((v) => v.akte.id)));
+    setAuswahl(auswahlFuerFilter(vorschlaege, "alle"));
     // nur beim Öffnen vorbelegen
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const sichtbar = vorschlaege.filter((v) => rsvFilter === "alle" || rsvStand(v.akte) === rsvFilter);
-  const gewaehlt = vorschlaege.filter((v) => auswahl.has(v.akte.id));
+  // Abgerechnet, gezählt und summiert wird nur Auswahl ∩ sichtbar (I3-T07-01) – Ausgeblendetes nie.
+  const sichtbar = sichtbareVorschlaege(vorschlaege, rsvFilter);
+  const gewaehlt = auswahlFuerAbrechnung(vorschlaege, auswahl, rsvFilter);
   const summe = round2(gewaehlt.reduce((s, v) => s + v.summen.brutto, 0));
-  const alle = sichtbar.length > 0 && sichtbar.every((v) => auswahl.has(v.akte.id));
+  const kopf = kopfZustand(vorschlaege, auswahl, rsvFilter);
   const rsvZahl = (f: RsvStand) => vorschlaege.filter((v) => rsvStand(v.akte) === f).length;
+  const gefiltert = rsvFilter !== "alle";
+  const filterName = RSV_FILTER_LABEL[rsvFilter];
+
+  /** Filterwechsel: Auswahl = sichtbare Akten des neuen Filters (ohne Umzugsakten mit ungeprüftem Abrechnungsstand). */
+  const filterWechsel = (f: RsvFilter) => {
+    if (f === rsvFilter) return;
+    setRsvFilter(f);
+    setAuswahl(auswahlFuerFilter(vorschlaege, f));
+    setFilterHinweis(`Auswahl an Filter ‚${RSV_FILTER_LABEL[f]}‘ angepasst`);
+  };
+  useEffect(() => {
+    if (!filterHinweis) return;
+    const t = setTimeout(() => setFilterHinweis(null), 4000);
+    return () => clearTimeout(t);
+  }, [filterHinweis]);
 
   /** „Abrechnungsstand geprüft“ – Akte aus dem Umzug wird wie jede andere vorgeschlagen. */
   const abrechnungGeprueft = (id: string) => {
@@ -114,17 +157,13 @@ export function Sammelabrechnung({ open, onClose, onAnsehen }: { open: boolean; 
       return n;
     });
 
-  const erstellen = async () => {
+  const erstellen = (bestaetigt = false) => {
     if (!gewaehlt.length) return;
-    const n = gewaehlt.length;
-    if (sofortStellen) {
-      const ok = await confirmDialog({
-        titel: `${n} ${n === 1 ? "Rechnung" : "Rechnungen"} jetzt stellen?`,
-        text: `Die ${n === 1 ? "Rechnung erhält" : "Rechnungen erhalten"} sofort endgültige, fortlaufende Nummern, werden im Aktenkonto gebucht und in der E-Akte abgelegt. Korrekturen sind danach nur per Storno möglich.`,
-        bestaetigen: n === 1 ? "Rechnung stellen" : `${n} Rechnungen stellen`,
-      });
-      if (!ok) return;
+    if (sofortStellen && !bestaetigt) {
+      setStellenFrage(true);
+      return;
     }
+    setStellenFrage(false);
     const status = sofortStellen ? "gestellt" : "entwurf";
     setLaeuft(true);
     setTimeout(() => {
@@ -187,15 +226,16 @@ export function Sammelabrechnung({ open, onClose, onAnsehen }: { open: boolean; 
         ) : (
           <>
             <div className="mr-auto min-w-0 text-[12.5px] text-fg-3">
-              Summe der Auswahl <AnimatedNumber value={summe} format={(n) => fmtEUR(n)} className="ml-1 text-[15px] font-semibold text-fg" />
+              Summe der Auswahl{gefiltert ? ` (${filterName})` : ""} <AnimatedNumber value={summe} format={(n) => fmtEUR(n)} className="ml-1 text-[15px] font-semibold text-fg" />
             </div>
             <Button variant="ghost" onClick={onClose}>
               Abbrechen
             </Button>
-            <Button variant="primary" icon={<Zap className="size-4" />} disabled={!gewaehlt.length} loading={laeuft} onClick={() => void erstellen()}>
+            <Button variant="primary" icon={<Zap className="size-4" />} disabled={!gewaehlt.length} loading={laeuft} onClick={() => erstellen()}>
               {sofortStellen
                 ? `${gewaehlt.length} ${gewaehlt.length === 1 ? "Rechnung" : "Rechnungen"} stellen`
                 : `${gewaehlt.length} ${gewaehlt.length === 1 ? "Entwurf" : "Entwürfe"} anlegen`}
+              {gefiltert && gewaehlt.length > 0 && ` – ${filterName}`}
             </Button>
           </>
         )
@@ -307,7 +347,7 @@ export function Sammelabrechnung({ open, onClose, onAnsehen }: { open: boolean; 
                 <Segmented<RsvFilter>
                   size="sm"
                   value={rsvFilter}
-                  onChange={setRsvFilter}
+                  onChange={filterWechsel}
                   options={[
                     { value: "alle", label: "Alle", count: vorschlaege.length },
                     { value: "erteilt", label: "Deckung erteilt", count: rsvZahl("erteilt") },
@@ -315,6 +355,13 @@ export function Sammelabrechnung({ open, onClose, onAnsehen }: { open: boolean; 
                     { value: "keine", label: "keine", count: rsvZahl("keine") },
                   ]}
                 />
+                <span role="status" aria-live="polite" className="text-[12.5px] text-fg-3">
+                  {filterHinweis && (
+                    <span className="inline-flex items-center gap-1">
+                      <Check className="size-3.5 text-green" /> {filterHinweis}
+                    </span>
+                  )}
+                </span>
               </div>
             )}
 
@@ -327,22 +374,14 @@ export function Sammelabrechnung({ open, onClose, onAnsehen }: { open: boolean; 
               <div className="mt-5 overflow-hidden rounded-[18px] border border-[var(--line)]">
                 <div className="flex items-center gap-3 border-b border-[var(--line)] bg-[var(--surface-2)] px-4 py-2.5 text-[12px] font-semibold text-fg-3">
                   <Checkbox
-                    checked={alle}
-                    indeterminate={!alle && sichtbar.some((v) => auswahl.has(v.akte.id))}
-                    onChange={() =>
-                      setAuswahl((s0) => {
-                        const n = new Set(s0);
-                        for (const v of sichtbar) {
-                          if (alle) n.delete(v.akte.id);
-                          else if (!abrechnungUngeprueft(v.akte)) n.add(v.akte.id);
-                        }
-                        return n;
-                      })
-                    }
-                    label="Alle auswählen"
+                    checked={kopf === "an"}
+                    indeterminate={kopf === "teilweise"}
+                    onChange={() => setAuswahl((s0) => kopfUmschalten(vorschlaege, s0, rsvFilter))}
+                    label={gefiltert ? `Alle sichtbaren Akten (${filterName}) auswählen` : "Alle auswählen"}
                   />
                   <span className="flex-1">
-                    {gewaehlt.length} von {vorschlaege.length} {vorschlaege.length === 1 ? "Akte" : "Akten"} ausgewählt
+                    {gewaehlt.length} von {sichtbar.length} {gefiltert ? "sichtbaren " : ""}
+                    {sichtbar.length === 1 ? "Akte" : "Akten"} ausgewählt
                   </span>
                   <span className="hidden w-[132px] sm:inline">RSV</span>
                   <span className="hidden w-[96px] text-right sm:inline">Vorschau brutto</span>
@@ -456,6 +495,19 @@ export function Sammelabrechnung({ open, onClose, onAnsehen }: { open: boolean; 
           </motion.div>
         )}
       </AnimatePresence>
+      <StellenDialog
+        open={stellenFrage}
+        anzahl={gewaehlt.length}
+        onClose={() => setStellenFrage(false)}
+        onStellen={() => erstellen(true)}
+        zusatz={
+          <>
+            {gefiltert ? `Filter „${filterName}“: ` : ""}
+            {gewaehlt.length} von {sichtbar.length} {gefiltert ? "sichtbaren " : ""}
+            {sichtbar.length === 1 ? "Akte" : "Akten"} ausgewählt · Summe {fmtEUR(summe)}.
+          </>
+        }
+      />
     </Modal>
   );
 }

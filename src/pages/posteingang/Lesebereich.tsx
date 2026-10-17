@@ -32,7 +32,7 @@ function springeZurKiKarte(nurLesebereich = false) {
   const pane = el?.closest("[data-lesescroll]") as HTMLElement | null;
   const sc = pane ?? (nurLesebereich ? null : document.getElementById("haupt-scroll"));
   if (!el || !sc) return;
-  const top = el.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop - (sc.id === "haupt-scroll" ? 88 : 16);
+  const top = el.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop - (sc.id === "haupt-scroll" ? 20 : 16);
   const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   sc.scrollTo({ top, behavior: reduce ? "auto" : "smooth" });
 }

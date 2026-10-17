@@ -6,8 +6,9 @@ import { useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast, useUI } from "@/store/ui";
 import { Avatar, Button, Card, Chip, Field, Input, Modal, Select, Textarea } from "@/components/ui";
-import { festeAnsprechperson } from "@/lib/rollen";
-import { RUECKRUF_SIMULIERT, inServicezeit, naechsteServicezeit, rueckrufNachFristende, rueckrufZusage } from "@/core/rueckruf";
+import { festeAnsprechBezeichnung } from "@/lib/rollen";
+import { RUECKRUF_SIMULIERT, inServicezeit, naechsteServicezeit, rueckrufNachFristende, rueckrufRegel, rueckrufZusage } from "@/core/rueckruf";
+import { telHref } from "@/lib/telefon";
 import { fmtDateWd } from "@/core/dates";
 import { cn } from "@/lib/cn";
 import { CopyButton } from "./kopieren";
@@ -43,26 +44,30 @@ export function AnsprechpartnerKarte({ ap, className }: { ap: Ansprechpartner; c
           <div className="min-w-0 flex-1 basis-[220px]">
             <div className="eyebrow">Ihr direkter Draht</div>
             <h2 className="title-lg mt-1">{ap.name}</h2>
-            <div className="text-[13px] text-fg-3">{festeAnsprechperson(ap)}</div>
+            <div className="text-[13px] text-fg-3">{festeAnsprechBezeichnung(ap)}</div>
             <div className="mt-2.5 flex flex-wrap gap-1.5">
               {erreichbar ? (
                 <Chip tone="green" dot>
                   Erreichbar · {ap.verfuegbar}
                 </Chip>
               ) : (
-                <Chip tone="amber" icon={<Clock className="size-3" />} title={`Servicezeit ${ap.verfuegbar}`}>
+                // bricht am Smartphone um statt abgeschnitten zu werden (I3-T12-03)
+                <Chip tone="amber" icon={<Clock className="size-3 shrink-0" />} title={`Servicezeit ${ap.verfuegbar}`} className="!h-auto max-w-full !whitespace-normal py-1 text-left leading-snug">
                   Jetzt nicht erreichbar · wieder {naechste.text}
                 </Chip>
               )}
-              <Chip tone="ink" icon={<Timer className="size-3" />} title="Beispielwert – im Prototyp simuliert">
-                Ø Antwortzeit heute: 4 Min. (Beispiel)
-              </Chip>
+              {/* Antwortzeit nur in der Servicezeit – nachts oder am Wochenende gibt es „heute“ keine (I3-T12-05) */}
+              {erreichbar && (
+                <Chip tone="ink" icon={<Timer className="size-3" />} title="Beispielwert – im Prototyp simuliert">
+                  Ø Antwortzeit heute: 4 Min. (Beispiel)
+                </Chip>
+              )}
             </div>
           </div>
         </div>
 
         <div className="relative mt-5 grid gap-2 sm:grid-cols-2">
-          <KontaktZeile icon={<Phone className="size-4" />} label="Telefon" wert={ap.telefon} />
+          <KontaktZeile icon={<Phone className="size-4" />} label="Telefon (Durchwahl)" wert={ap.telefon} href={telHref(ap.telefon)} />
           <KontaktZeile icon={<Mail className="size-4" />} label="E-Mail" wert={ap.email} />
         </div>
 
@@ -78,8 +83,8 @@ export function AnsprechpartnerKarte({ ap, className }: { ap: Ansprechpartner; c
         <div className="relative mt-6 rounded-[18px] bg-[var(--surface-2)] p-4 ring-1 ring-[var(--line)]">
           <div className="mb-3 text-[12.5px] font-semibold">Statt Warteschleife und Ticket-Sackgasse: {vorname} kennt Ihre Kanzlei.</div>
           <Vergleich label="Telefon-Warteschleife klassischer Kanzleisoftware" wert="45–60 Min." anteil={1} ton="neutral" />
-          <Vergleich label={`${ap.name} (Ø heute)`} wert="4 Min." anteil={4 / 60} ton="green" />
-          <p className="mt-2.5 text-[12.5px] leading-snug text-fg-3">Wartezeiten klassischer Telefon-Warteschleifen laut Bewertungen von Kanzleien; die Antwortzeit hier ist ein Beispielwert. Unsere Zusage: Rückruf innerhalb von 30 Minuten in der Servicezeit ({ap.verfuegbar}).</p>
+          <Vergleich label={`${ap.name} (Ø in der Servicezeit)`} wert="4 Min." anteil={4 / 60} ton="green" />
+          <p className="mt-2.5 text-[12.5px] leading-snug text-fg-3">Wartezeiten klassischer Telefon-Warteschleifen laut Bewertungen von Kanzleien; die Antwortzeit hier ist ein Beispielwert. Servicezeit {ap.verfuegbar}. {rueckrufRegel(ap.verfuegbar)}</p>
         </div>
       </div>
 
@@ -89,13 +94,20 @@ export function AnsprechpartnerKarte({ ap, className }: { ap: Ansprechpartner; c
   );
 }
 
-function KontaktZeile({ icon, label, wert }: { icon: React.ReactNode; label: string; wert: string }) {
+function KontaktZeile({ icon, label, wert, href }: { icon: React.ReactNode; label: string; wert: string; href?: string }) {
   return (
     <div className="flex min-w-0 items-center gap-3 rounded-[14px] bg-[var(--ink-softer)] py-2 pl-3 pr-1.5">
       <span className="text-ink">{icon}</span>
       <span className="min-w-0 flex-1">
         <span className="block text-[12.5px] text-fg-3">{label}</span>
-        <span className="block select-all truncate text-[13.5px] font-medium">{wert}</span>
+        {href ? (
+          // Am Smartphone antippen = anrufen (tel:), „Kopieren“ bleibt daneben (I3-T12-01)
+          <a href={href} className="inline-flex min-h-[32px] max-w-full items-center truncate pointer-coarse:min-h-11 text-[13.5px] font-semibold text-ink underline decoration-[var(--ink-soft)] underline-offset-2 hover:decoration-ink" aria-label={`${wert} anrufen`}>
+            {wert}
+          </a>
+        ) : (
+          <span className="block select-all truncate text-[13.5px] font-medium">{wert}</span>
+        )}
       </span>
       <CopyButton text={wert} label={`${label} kopieren`} />
     </div>
@@ -227,6 +239,7 @@ function RueckrufModal({ open, onClose, ap }: { open: boolean; onClose: () => vo
             <Clock className="mt-0.5 size-4 shrink-0 text-green" />
             <span>
               <strong className="text-fg">Zusage: {jetztZusage}</strong>
+              {zusageJetzt.ausserhalb && <span className="block text-[12.5px] text-fg-2">{rueckrufRegel(ap.verfuegbar)}</span>}
               <span className="block text-[12.5px] text-fg-3">{RUECKRUF_SIMULIERT}</span>
             </span>
           </div>

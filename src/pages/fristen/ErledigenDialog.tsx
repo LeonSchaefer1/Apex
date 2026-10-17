@@ -10,7 +10,7 @@ import { useCol } from "@/store/data";
 import { toast } from "@/store/ui";
 import { Button, Field, Input, Modal, Select, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { NACHWEIS_ART, TYP_META, brauchtKontrolle, erledigeFrist, istVersandArt, nachweisArtenFuer, oeffneFristWieder, streicheFrist, type Nachweis } from "./logik";
+import { NACHWEIS_ART, TYP_META, brauchtKontrolle, erledigeFrist, fremdHinweis, istVersandArt, nachweisArtenFuer, nachweisUmsaetze, oeffneFristWieder, streicheFrist, type Nachweis } from "./logik";
 
 type Art = Nachweis["art"];
 const zweistellig = (n: number) => String(n).padStart(2, "0");
@@ -21,6 +21,8 @@ const zweistellig = (n: number) => String(n).padStart(2, "0");
 export function ErledigenDialog({ f, user, open, onClose, modus = "erledigen", onFertig }: { f: Frist; user: User; open: boolean; onClose: () => void; modus?: "erledigen" | "streichen"; onFertig?: () => void }) {
   const nachrichten = useCol("nachrichten");
   const transaktionen = useCol("transaktionen");
+  const buchungen = useCol("buchungen");
+  const akten = useCol("akten");
   const heute = today();
   const arten = useMemo(() => nachweisArtenFuer(f), [f]);
   // Ausgehende beA-Nachrichten der Akte der letzten Tage (Versandnachweis mit Zeitstempel)
@@ -28,19 +30,15 @@ export function ErledigenDialog({ f, user, open, onClose, modus = "erledigen", o
     () => nachrichten.filter((n) => n.akteId === f.akteId && n.richtung === "aus" && n.kanal === "bea" && n.eingang.slice(0, 10) >= addDays(heute, -3)).sort((a, b) => b.eingang.localeCompare(a.eingang)),
     [nachrichten, f.akteId, heute],
   );
-  // Gebuchte Umsätze des Bankabgleichs – zuerst die dieser Akte, Ausgänge vor Eingängen
-  const umsaetze = useMemo(
-    () =>
-      transaktionen
-        .filter((t) => t.status !== "offen")
-        .sort((a, b) => Number(b.zuordnung?.akteId === f.akteId) - Number(a.zuordnung?.akteId === f.akteId) || Number(a.betrag >= 0) - Number(b.betrag >= 0) || b.datum.localeCompare(a.datum))
-        .slice(0, 40),
-    [transaktionen, f.akteId],
-  );
+  // Überweisungsnachweis (I3-T15-01): nur Ausgänge – zuerst Fremdgeld-Weiterleitungen und Ausgänge dieser Akte; Gutschriften nie
+  const quellen = useMemo(() => nachweisUmsaetze(f, transaktionen, buchungen, akten), [f, transaktionen, buchungen, akten]);
+  const aktenzeichen = akten.find((a) => a.id === f.akteId)?.aktenzeichen;
   const startArt = (): Art => (modus === "streichen" ? "gestrichen" : arten[0]);
   const [art, setArt] = useState<Art>(startArt);
   const [nachrichtId, setNachrichtId] = useState("");
-  const [transaktionId, setTransaktionId] = useState("");
+  const [quelleId, setQuelleId] = useState("");
+  const [andererUmsatz, setAndererUmsatz] = useState(false);
+  const [begruendung, setBegruendung] = useState("");
   const [text, setText] = useState("");
   const [versandDatum, setVersandDatum] = useState(heute);
   const [versandZeit, setVersandZeit] = useState("");
@@ -57,7 +55,9 @@ export function ErledigenDialog({ f, user, open, onClose, modus = "erledigen", o
     setArt(startArt());
     const n = beaNachrichten[0];
     setNachrichtId(n?.id ?? "");
-    setTransaktionId("");
+    setQuelleId(quellen.passend[0]?.id ?? "");
+    setAndererUmsatz(false);
+    setBegruendung("");
     setText("");
     setVersandDatum(heute);
     setVersandZeit("");
@@ -71,6 +71,10 @@ export function ErledigenDialog({ f, user, open, onClose, modus = "erledigen", o
   const versandAm = /^\d{4}-\d{2}-\d{2}$/.test(versandDatum) && /^\d{2}:\d{2}$/.test(versandZeit) ? `${versandDatum}T${versandZeit}:00` : "";
   const inZukunft = !!versandAm && versandAm > nowLocal();
   const kontrolleOffen = brauchtKontrolle(f) && art !== "gestrichen";
+  const quelle = (andererUmsatz ? quellen.fremd : quellen.passend).find((q) => q.id === quelleId);
+  const quelleFremd = !!quelle && quelle.akteId !== f.akteId;
+  const betragAbweichend = !!quelle && quellen.erwartet !== undefined && Math.abs(-quelle.betrag - quellen.erwartet) > 0.005;
+  const keinAusgang = art === "ueberweisung" && !quellen.passend.length && !andererUmsatz;
   const textPflicht = art === "gestrichen" || (art === "bea" && !nachrichtId);
   const fehlt =
     art === "gestrichen" && !text.trim()
@@ -81,21 +85,35 @@ export function ErledigenDialog({ f, user, open, onClose, modus = "erledigen", o
           ? "Die Versandzeit liegt in der Zukunft – bitte prüfen."
           : textPflicht && !text.trim()
             ? "Bitte den Versand kurz beschreiben (z. B. Nachrichten-ID bzw. Sendebericht)."
-            : art === "ueberweisung" && !transaktionId
-              ? "Bitte den Kontoumsatz der Überweisung wählen."
-              : kontrolleOffen && !trotzdem
+            : keinAusgang
+              ? "Noch keine Überweisung gebucht – die Frist bleibt offen."
+              : art === "ueberweisung" && !quelle
+                ? "Bitte den Nachweis der Überweisung wählen (Weiterleitung oder Kontoumsatz)."
+                : art === "ueberweisung" && quelleFremd && !begruendung.trim()
+                  ? "Der Umsatz gehört nicht zu dieser Akte – bitte begründen, warum er die Zahlung nachweist."
+                  : kontrolleOffen && !trotzdem
                 ? "Die Vier-Augen-Kontrolle steht noch aus – bitte bestätigen."
                 : undefined;
 
   const abschliessen = () => {
     if (fehlt) return;
-    const t = transaktionen.find((x) => x.id === transaktionId);
+    const q = art === "ueberweisung" ? quelle : undefined;
+    const t = q?.transaktionId ? transaktionen.find((x) => x.id === q.transaktionId) : undefined;
+    // Nachweistext: Weiterleitung beim Namen, abweichender Umsatz mit Begründung (steht im Nachweis und im Protokoll)
+    const nachweisText = [
+      q?.art === "weiterleitung" ? q.label : "",
+      q && quelleFremd ? `${fremdHinweis(q, aktenzeichen)} – Begründung: ${begruendung.trim()}` : "",
+      text.trim(),
+    ]
+      .filter(Boolean)
+      .join(" · ");
     const n: Nachweis = {
       art,
-      ...(text.trim() ? { text: text.trim() } : {}),
+      ...(art === "ueberweisung" ? (nachweisText ? { text: nachweisText } : {}) : text.trim() ? { text: text.trim() } : {}),
       ...(mitNachricht ? { nachrichtId } : {}),
       ...(versand && versandAm ? { versandAm } : {}),
       ...(art === "ueberweisung" && t ? { transaktionId: t.id, versandAm: t.datum } : {}),
+      ...(art === "ueberweisung" && q?.art === "weiterleitung" ? { versandAm: q.datum } : {}),
       ...(kontrolleOffen && trotzdem ? { kontrolleOffenBestaetigt: true } : {}),
     };
     if (art === "gestrichen") streicheFrist(f, user.id, text, n.kontrolleOffenBestaetigt);
@@ -106,7 +124,7 @@ export function ErledigenDialog({ f, user, open, onClose, modus = "erledigen", o
       text:
         art === "gestrichen"
           ? `${f.titel} – Grund protokolliert`
-          : `${f.titel} · ${NACHWEIS_ART[art]}${versand && versandAm ? ` am ${fmtDate(versandDatum)} um ${versandZeit} Uhr` : t ? ` am ${fmtDate(t.datum)}` : ""}`,
+          : `${f.titel} · ${NACHWEIS_ART[art]}${versand && versandAm ? ` am ${fmtDate(versandDatum)} um ${versandZeit} Uhr` : q ? ` am ${fmtDate(q.datum)}` : ""}`,
       ton: "erfolg",
       aktion: { label: "Rückgängig", onClick: () => oeffneFristWieder(f, today(), user.id) },
     });
@@ -208,32 +226,112 @@ export function ErledigenDialog({ f, user, open, onClose, modus = "erledigen", o
       )}
       {art === "ueberweisung" && (
         <div className="mt-4 grid gap-3">
-          {umsaetze.length ? (
-            <Field label="Kontoumsatz der Überweisung (Pflicht)" htmlFor="nachweis-umsatz" hint="Gebuchte Umsätze aus dem Bankabgleich – zuerst die dieser Akte.">
-              <Select id="nachweis-umsatz" value={transaktionId} onChange={(e) => setTransaktionId(e.target.value)}>
-                <option value="">Umsatz wählen …</option>
-                {umsaetze.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {fmtDate(t.datum)} · {fmtEUR(t.betrag)} · {t.gegenpartei} · {t.verwendungszweck}
-                  </option>
-                ))}
+          {quellen.passend.length > 0 && !andererUmsatz && (
+            <Field label="Nachweis der Überweisung (Pflicht)" htmlFor="nachweis-umsatz" hint="Nur Ausgänge dieser Akte: Fremdgeld-Weiterleitungen aus dem Aktenkonto und gebuchte Umsätze aus dem Bankabgleich. Gutschriften sind kein Nachweis.">
+              <Select id="nachweis-umsatz" value={quelleId} onChange={(e) => setQuelleId(e.target.value)}>
+                <option value="">Nachweis wählen …</option>
+                {quellen.passend.some((q) => q.art === "weiterleitung") && (
+                  <optgroup label="Fremdgeld-Weiterleitungen dieser Akte">
+                    {quellen.passend
+                      .filter((q) => q.art === "weiterleitung")
+                      .map((q) => (
+                        <option key={q.id} value={q.id}>
+                          {q.label}
+                        </option>
+                      ))}
+                  </optgroup>
+                )}
+                {quellen.passend.some((q) => q.art === "umsatz") && (
+                  <optgroup label="Ausgänge dieser Akte (Bankabgleich)">
+                    {quellen.passend
+                      .filter((q) => q.art === "umsatz")
+                      .map((q) => (
+                        <option key={q.id} value={q.id}>
+                          {q.label}
+                        </option>
+                      ))}
+                  </optgroup>
+                )}
               </Select>
             </Field>
-          ) : (
-            <p className="flex items-start gap-2 rounded-[12px] bg-ink-softer px-3 py-2 text-[12.5px] text-fg-2">
-              <Banknote className="mt-0.5 size-3.5 shrink-0" />
+          )}
+          {keinAusgang && (
+            <div className="flex items-start gap-2 rounded-[12px] bg-ink-softer px-3 py-2.5 text-[13px] text-fg-2" role="status">
+              <Banknote className="mt-0.5 size-4 shrink-0" />
               <span>
-                Noch kein gebuchter Umsatz vorhanden – die Überweisung erscheint nach dem Abgleich im{" "}
-                <Link to="/abrechnung?tab=bank" className="font-medium text-ink underline" onClick={onClose}>
-                  Bankabgleich
+                <span className="font-semibold text-fg">Noch keine Überweisung gebucht – die Frist bleibt offen.</span> Erst eine Weiterleitung oder ein Ausgang dieser Akte weist die Zahlung nach.{" "}
+                <Link to="/abrechnung?fokus=fremdgeld" className="inline-flex min-h-6 items-center font-medium text-ink underline" onClick={onClose}>
+                  Fremdgeld auszahlen
                 </Link>
-                .
+              </span>
+            </div>
+          )}
+          {andererUmsatz ? (
+            <>
+              <Field label="Anderer Kontoumsatz (Ausgang)" htmlFor="nachweis-umsatz-fremd" hint="Ausgänge anderer Akten oder ohne Akte – nur mit Begründung.">
+                <Select id="nachweis-umsatz-fremd" value={quelleId} onChange={(e) => setQuelleId(e.target.value)}>
+                  <option value="">Umsatz wählen …</option>
+                  {quellen.fremd.map((q) => (
+                    <option key={q.id} value={q.id}>
+                      {q.aktenzeichen ? `${q.aktenzeichen} · ` : "ohne Akte · "}
+                      {q.label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              {quelle && quelleFremd && (
+                <div className="rounded-[14px] bg-seal-soft px-3.5 py-3 text-[12.5px] leading-relaxed text-fg-2" role="alert">
+                  <div className="flex items-center gap-1.5 font-semibold text-seal">
+                    <AlertTriangle className="size-4 shrink-0" /> {fremdHinweis(quelle, aktenzeichen)}
+                  </div>
+                  <Field label="Begründung (Pflicht – steht im Nachweis und im Protokoll)" htmlFor="nachweis-begruendung" className="mt-2">
+                    <Textarea id="nachweis-begruendung" rows={2} value={begruendung} onChange={(e) => setBegruendung(e.target.value)} placeholder="z. B. Sammelüberweisung für beide Akten" />
+                  </Field>
+                </div>
+              )}
+              <div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setAndererUmsatz(false);
+                    setQuelleId(quellen.passend[0]?.id ?? "");
+                    setBegruendung("");
+                  }}
+                >
+                  Zurück zu den Ausgängen dieser Akte
+                </Button>
+              </div>
+            </>
+          ) : (
+            quellen.fremd.length > 0 && (
+              <div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setAndererUmsatz(true);
+                    setQuelleId("");
+                  }}
+                >
+                  Anderen Umsatz wählen …
+                </Button>
+              </div>
+            )
+          )}
+          {quelle && betragAbweichend && quellen.erwartet !== undefined && (
+            <p className="flex items-start gap-2 rounded-[12px] bg-amber-soft px-3 py-2 text-[12.5px] text-fg-2" role="status">
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber" />
+              <span>
+                Betrag weicht ab: Nachweis {fmtEUR(-quelle.betrag)}, {/fremdgeld/i.test(f.titel) ? "Fremdgeld" : "Fristbetrag"} {fmtEUR(quellen.erwartet)} – bitte prüfen (Teilzahlung?).
               </span>
             </p>
           )}
-          <Field label="Vermerk (optional)" htmlFor="nachweis-text">
-            <Input id="nachweis-text" value={text} onChange={(e) => setText(e.target.value)} placeholder="z. B. Auszahlung an Mandantin, Verwendungszweck" />
-          </Field>
+          {(quellen.passend.length > 0 || andererUmsatz) && (
+            <Field label="Vermerk (optional)" htmlFor="nachweis-text">
+              <Input id="nachweis-text" value={text} onChange={(e) => setText(e.target.value)} placeholder="z. B. Auszahlung an Mandantin, Verwendungszweck" />
+            </Field>
+          )}
         </div>
       )}
       {art === "gestrichen" && (

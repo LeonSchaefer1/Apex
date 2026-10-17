@@ -145,7 +145,7 @@ export function Navigation({ scrollRef }: { scrollRef: RefObject<HTMLDivElement 
             exit={{ opacity: 0, y: -6, scale: 0.98 }}
             transition={{ type: "spring", stiffness: 480, damping: 34 }}
             style={{ transformOrigin: "top right" }}
-            className="glass-strong absolute inset-x-3 top-full mx-auto mt-2 max-w-[1200px] rounded-[22px] p-2 sm:inset-x-5 lg:hidden"
+            className="glass-strong tabbar-deckend absolute inset-x-3 top-full mx-auto mt-2 max-w-[1200px] rounded-[22px] p-2 sm:inset-x-5 lg:hidden"
           >
             <ul className="grid gap-0.5 sm:grid-cols-2">
               {ANKER.map((a, i) => (

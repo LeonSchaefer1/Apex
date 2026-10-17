@@ -29,3 +29,23 @@ test("UND-Suche, Wortanfänge, Paragraf, Begründung", () => {
   assert.deepEqual(keys("xyz unbekannt"), []);
   assert.equal(keys("").length > 20, true);
 });
+
+test("Nach der Übernahme steht der Name im Feld: jede Fristart findet sich über ihren eigenen Titel (I3-T18-01)", async () => {
+  const { FRIST_REGELN } = await import("@/core/fristen");
+  for (const r of FRIST_REGELN) assert.ok(keys(r.titel).includes(r.key), r.titel);
+  assert.equal(erste("Berufung 517"), "berufung");
+});
+
+test("Fristenrechner ohne Ereignis ohne Ergebnis – „heute“ nur als Schnellwahl, Vorbelegung nur bei Übergabe (I3-T18-02)", async () => {
+  const { ereignisFehlt, ereignisHerkunftText, rechenwegMitHerkunft, startEreignisZustand } = await import("./rechnerEingabe");
+  assert.deepEqual(startEreignisZustand(undefined), { ereignis: "", herkunft: "hand" });
+  assert.deepEqual(startEreignisZustand("kaputt"), { ereignis: "", herkunft: "hand" });
+  assert.deepEqual(startEreignisZustand("2026-10-01"), { ereignis: "2026-10-01", herkunft: "start" });
+  assert.match(ereignisFehlt("", "Zustellung des vollständigen Urteils") ?? "", /Zustellung des vollständigen Urteils – oder „heute“ wählen/);
+  assert.equal(ereignisFehlt("2026-13-45", "Zustellung"), "Bitte ein gültiges Datum eingeben.");
+  assert.equal(ereignisFehlt("2026-10-17", "Zustellung"), undefined);
+  assert.equal(ereignisHerkunftText("heute"), "heute (Schnellwahl)");
+  assert.equal(ereignisHerkunftText("start", "dem Posteingang"), "Ereignisdatum aus dem Posteingang übernommen");
+  assert.equal(ereignisHerkunftText("hand"), undefined);
+  assert.deepEqual(rechenwegMitHerkunft(["Zustellung: Sa, 17.10.2026", "Beginn"], "heute (Schnellwahl)"), ["Zustellung: Sa, 17.10.2026 · heute (Schnellwahl)", "Beginn"]);
+});

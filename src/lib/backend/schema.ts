@@ -2,7 +2,7 @@
 // beschädigte Altbestände, statt die ganze Kanzlei mit einem Fehler zu blockieren. Bewusst nur Pflichtfelder: Die Oberfläche
 // darf neue optionale Felder ergänzen, ohne dass der Server angepasst werden muss. Optionale Felder mit fester Form (Freigabestatus,
 // Portalfreigabe, Fristkorrekturen, Bankvorschläge) werden nur geprüft, wenn sie vorhanden sind – Altbestände ohne sie bleiben gültig.
-import type { CollectionKey } from "@/core/types";
+import type { Bundesland, CollectionKey } from "@/core/types";
 
 type Art = "text" | "zahl" | "wahr" | "liste" | "datum" | "zeit" | "objekt";
 
@@ -24,11 +24,20 @@ const PFLICHT: Record<CollectionKey, [string, Art][]> = {
 
 /** Optionale Felder: fehlen darf, vorhanden muss die Form stimmen (Text-Auswahl als Liste erlaubter Werte). */
 const OPTIONAL: Partial<Record<CollectionKey, [string, Art | readonly string[]][]>> = {
+  akten: [["abschlussdatumUnbekannt", "wahr"]],
   dokumente: [["status", ["entwurf", "freigegeben", "versandt"]], ["portal", "objekt"]],
-  fristen: [["erledigtNachweis", "objekt"], ["korrekturAngefordert", "objekt"], ["korrekturen", "liste"]],
-  transaktionen: [["vorschlag", "objekt"], ["abgelehnt", "liste"]],
+  fristen: [["erledigtNachweis", "objekt"], ["korrekturAngefordert", "objekt"], ["korrekturen", "liste"], ["gerichtsort", "objekt"]],
+  transaktionen: [["vorschlag", "objekt"], ["abgelehnt", "liste"], ["zuordnung", "objekt"]],
+  automationen: [["pausiertAm", "zeit"], ["pausiertVon", "text"]],
   umzugLaeufe: [["abgebrochen", "wahr"]],
 };
+
+/** Bundesländer (Kürzel) – für den Gerichtsort einer Frist. */
+const LAENDER: readonly Bundesland[] = ["BW", "BY", "BE", "BB", "HB", "HH", "HE", "MV", "NI", "NW", "RP", "SL", "SN", "ST", "SH", "TH"];
+/** Herkunft des Gerichtsorts einer Frist (Frist.gerichtsort.quelle). */
+const GERICHTSORT_QUELLEN = ["gericht", "akte", "kanzleisitz", "hand"];
+/** Buchungsart einer Bankzuordnung (Transaktion.zuordnung.art). */
+const ZUORDNUNG_ARTEN = ["rechnung", "vorschuss", "fremdgeld", "kosten"];
 
 /** Erlaubte Nachweisarten der Ausgangskontrolle (Frist.erledigtNachweis.art). */
 const NACHWEIS_ARTEN = ["bea", "fax", "bote", "post", "persoenlich", "ueberweisung", "gestrichen", "sonstiges"];
@@ -72,6 +81,16 @@ export function pruefeDokument(col: CollectionKey, doc: unknown): string | null 
     const n = d.erledigtNachweis as Record<string, unknown>;
     if (n.art !== undefined && (typeof n.art !== "string" || !NACHWEIS_ARTEN.includes(n.art))) return "Feld „erledigtNachweis.art“ hat einen unbekannten Wert.";
     if (n.versandAm !== undefined && !passt(n.versandAm, "zeit")) return "Feld „erledigtNachweis.versandAm“ ist keine Zeitangabe.";
+  }
+  if (col === "fristen" && d.gerichtsort) {
+    const g = d.gerichtsort as Record<string, unknown>;
+    if (typeof g.land !== "string" || !(LAENDER as readonly string[]).includes(g.land)) return "Feld „gerichtsort.land“ braucht ein Bundesland-Kürzel (z. B. NW).";
+    if (g.gericht !== undefined && (typeof g.gericht !== "string" || g.gericht.length > 300)) return "Feld „gerichtsort.gericht“ ist kein gültiger Text.";
+    if (typeof g.quelle !== "string" || !GERICHTSORT_QUELLEN.includes(g.quelle)) return "Feld „gerichtsort.quelle“ hat einen unbekannten Wert.";
+  }
+  if (col === "transaktionen" && d.zuordnung) {
+    const z = d.zuordnung as Record<string, unknown>;
+    if (z.art !== undefined && (typeof z.art !== "string" || !ZUORDNUNG_ARTEN.includes(z.art))) return "Feld „zuordnung.art“ hat einen unbekannten Wert.";
   }
   if (col === "dokumente" && d.portal) {
     const p = d.portal as Record<string, unknown>;

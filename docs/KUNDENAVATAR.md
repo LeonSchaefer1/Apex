@@ -57,12 +57,12 @@ Stand: 16.10.2026 · Finale Fassung für die 5 End-to-End-Testiterationen · Gru
 | Akte | Inhalt | genutzt in |
 |---|---|---|
 | 118/26 Neumann ./. Arslan Autohaus GmbH | Urteil per beA „gegen eEB“, Berufung zum Kammergericht | T02, T03 |
-| 142/26 Weber ./. Kröger Logistik GmbH | Kündigungsschutz (Bagatellkündigung), Arbeitsvertrag mit Ausschlussfrist, Gegenstandswert 10.200 €, RSV Nordlicht Rechtsschutz AG (Vers.-Nr. RS-4471209, Selbstbeteiligung 150 €), Mandantenportal aktiv | T04, T05, T06, T17, T19, T23 |
+| 142/26 Weber ./. Kröger Logistik GmbH | Kündigungsschutz (Bagatellkündigung), Arbeitsvertrag mit Ausschlussfrist, Gegenstandswert 10.200 €, RSV Nordlicht Rechtsschutz AG (Vers.-Nr. RS-4471209, Schaden-Nr. S26-88412 aus der Schadenmeldung des Mandanten, Deckung offen, Selbstbeteiligung 150 €), Mandantenportal aktiv | T04, T05, T06, T17, T19, T23 |
 | 151/26 Ostermann ./. Havelbrück Pflegedienste GmbH | Kündigungsschutz, Arbeitsgericht Berlin (28 Ca 11873/26), Klage per beA eingereicht (Klagefrist erledigt, mit Versandnachweis), Gegenstandswert 11.700 €, RSV Spreebogen Rechtsschutz VVaG (Deckung erteilt), Gegenseite vertreten durch Tanneberg & Sternberg Rechtsanwälte PartG mbB; Gütetermin drei Tage nach „heute“ (auf den nächsten Werktag verschoben) um 9:00 Uhr, Magdeburger Platz 1, Saal 3; Kündigungsschreiben, Klageschrift und Ladung als PDF; Mandantenportal aktiv | T14 |
 | 152/26 Engelke ./. Stadtwerke Spreetal GmbH, 153/26 Rehbein ./. Wohnungsgenossenschaft Marzahn-Ost eG, 154/26 Vossberg ./. Reiseveranstalter Sonnenkap GmbH | außergerichtlich, Deckungszusage der RSV liegt vor – zusammen mit 151/26 vier RSV-Akten für die Sammelabrechnung | T07, T22 |
 | 126/26 Berger Haustechnik GmbH ./. Lenz | Forderungskonto, Vollstreckung | T09 |
 | 137/26 Schneider ./. Lindenhof Hausverwaltung GmbH | Mietrecht, gerichtlich | T20, T23 |
-| 131/26 Yilmaz ./. Elbtal Versicherung AG | Verkehrsunfall, Fremdgeld | T08 |
+| 131/26 Yilmaz ./. Elbtal Versicherung AG | Verkehrsunfall, Fremdgeld; „Fremdgeld an Mandantin weiterleiten“ ist eine heute fällige **Wiedervorlage** von Mia Becker (keine Frist – zählt nicht als „Frist heute“) | T08, T22 |
 
 **Daten relativ zu „heute“:** Die Demodaten werden täglich relativ zum aktuellen Datum erzeugt [62]. Datumsprüfungen an Demodaten erfolgen daher gegen den angezeigten Rechenweg und das Zustellungsdatum im eEB, nicht gegen feste Kalenderdaten. Feste Prüfwerte (T04, T07, T09, T18) gibt die Persona mit den dort genannten Daten selbst ein.
 

@@ -5,7 +5,7 @@
 // Grundsatz von AnwaltApex: Die KI ERKENNT Fristen in Dokumenten, BERECHNET werden sie ausschließlich hier.
 import { addDays, addMonthsBGB, diffDays, fmtDate, fmtDateWd, wochentagName } from "./dates";
 import { bundeslandAusGericht, bundeslandAusOrt, bundeslandName, feiertagAm, istWerktag } from "./feiertage";
-import type { Akte, Bundesland, FristTyp, ISODate, Kontakt } from "./types";
+import type { Akte, Bundesland, Frist, FristGerichtsort, FristTyp, ISODate, Kontakt } from "./types";
 
 export type Einheit = "tage" | "wochen" | "monate" | "jahresende";
 
@@ -617,6 +617,30 @@ export function gerichtsortDerAkte(akte: Pick<Akte, "gerichtId"> | undefined, ko
   if (!k) return undefined;
   const land = bundeslandAusGericht(k.name)?.land ?? (k.ort ? bundeslandAusOrt(k.ort) : undefined);
   return land ? { land, gericht: k.name } : undefined;
+}
+
+/**
+ * Ort, mit dessen Feiertagen eine gespeicherte Frist (neu) berechnet wird – z. B. in der Fristkorrektur (§ 222 Abs. 2 ZPO).
+ * Reihenfolge: an der Frist gespeicherter Gerichtsort (z. B. Berufungsgericht aus dem Posteingang) → Gericht der Akte →
+ * Kanzleisitz. `feiertagsOrt` passt direkt in `RegelOptionen.feiertagsOrt` von `berechneNachRegel` (undefined = Kanzleisitz).
+ */
+export function feiertagsortFuerFrist(
+  frist: Pick<Frist, "gerichtsort">,
+  akte: Pick<Akte, "gerichtId"> | undefined,
+  kontakte: Kontakt[],
+  kanzleiLand: Bundesland,
+): { land: Bundesland; feiertagsOrt?: string; quelle: FristGerichtsort["quelle"] } {
+  const g = frist.gerichtsort;
+  if (g) {
+    const gericht = g.gericht?.trim();
+    if (g.quelle === "kanzleisitz") return { land: g.land, quelle: "kanzleisitz" };
+    // „Kammergericht, Berufungsgericht“ (Posteingang) bzw. „Landgericht Berlin II – laut Akte“; von Hand ohne Gericht: „(von Hand gewählt)“
+    const ort = !gericht ? undefined : g.quelle === "akte" && !/ – laut Akte$/.test(gericht) ? `${gericht} – laut Akte` : gericht;
+    return { land: g.land, feiertagsOrt: ort, quelle: g.quelle };
+  }
+  const ausAkte = gerichtsortDerAkte(akte, kontakte);
+  if (ausAkte) return { land: ausAkte.land, feiertagsOrt: `${ausAkte.gericht} – laut Akte`, quelle: "akte" };
+  return { land: kanzleiLand, quelle: "kanzleisitz" };
 }
 
 /** Ampel für Fristen: rot ≤ 2 Werktage / überfällig, gelb ≤ 7 Tage, sonst ruhig. */

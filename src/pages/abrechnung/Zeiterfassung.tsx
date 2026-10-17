@@ -1,5 +1,6 @@
 // Reiter „Zeiterfassung“: Zeiten je Akte erfassen (Formular oder Stoppuhr) und nach Stundensatz abrechnen.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { AlertTriangle, Clock, FilePlus2, FileSignature, Hourglass, PenLine, Play, Plus, Square, Timer, Wallet } from "lucide-react";
 import { AnimatedNumber, Avatar, Button, Card, CardHeader, Chip, Empty, Field, Input, Segmented, Select, Stat, Switch } from "@/components/ui";
@@ -54,7 +55,6 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
   const [wer, setWer] = useState<"alle" | "meine">("alle");
   const [abrAkte, setAbrAkte] = useState("");
 
-  const satzVon = (userId: string) => users.get(userId)?.stundensatz ?? STANDARD_STUNDENSATZ;
   // Wert einer Zeit: vereinbarter Stundensatz der Akte (§ 3a RVG) vor dem Satz der Person, die die Zeit erfasst hat –
   // dieselbe Funktion wie in der Abrechnungsvorschau, der Rechnung und dem Tätigkeitsnachweis (nie der Satz der angemeldeten Person).
   const wert = (z: Zeiteintrag) => wertEintrag(z, akten.get(z.akteId), users);
@@ -120,30 +120,101 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
   // Abrechnung nach Zeit nur mit Vergütungsvereinbarung in Textform (§ 3a Abs. 1 RVG) – sonst gelten die gesetzlichen Gebühren.
   const abrVereinbarung = abrAkteObj ? hatVerguetungsvereinbarung(abrAkteObj, dokumente) : false;
   // Vergütungsvereinbarung erfassen: Datum und vereinbarter Stundensatz (netto) sind Pflichtangaben
-  const [vvForm, setVvForm] = useState<{ datum: string; satz: string } | null>(null);
-  useEffect(() => setVvForm(null), [abrAkteObj?.id]);
+  // „ort“: Formular in „Aus Zeiten abrechnen“ (abr) oder unter der Aktenauswahl von „Zeit erfassen“ (erf, I3-T07-04)
+  const [vvForm, setVvForm] = useState<{ ort: "abr" | "erf"; akteId: string; datum: string; satz: string } | null>(null);
+  useEffect(() => setVvForm((f) => (f?.ort === "abr" ? null : f)), [abrAkteObj?.id]);
+  useEffect(() => setVvForm((f) => (f?.ort === "erf" ? null : f)), [akteId]);
   const vvSpeichern = () => {
-    if (!abrAkteObj || !vvForm) return;
+    const vvAkte = vvForm ? akten.get(vvForm.akteId) : undefined;
+    if (!vvAkte || !vvForm) return;
     const satz = parseBetrag(vvForm.satz);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(vvForm.datum)) return toast("Bitte das Datum der Vereinbarung angeben", { text: "Pflichtangabe – Textform nach § 3a Abs. 1 RVG.", ton: "warnung" });
     if (!(satz > 0)) return toast("Bitte den vereinbarten Stundensatz angeben", { text: "Netto in Euro, z. B. 240", ton: "warnung" });
-    const vorher = abrAkteObj.verguetungsvereinbarung;
-    useData.getState().patch("akten", abrAkteObj.id, { verguetungsvereinbarung: { datum: vvForm.datum, stundensatz: satz, erfasstVon: user.id } });
+    const vorher = vvAkte.verguetungsvereinbarung;
+    useData.getState().patch("akten", vvAkte.id, { verguetungsvereinbarung: { datum: vvForm.datum, stundensatz: satz, erfasstVon: user.id } });
     useData.getState().log({
       akteur: "nutzer",
       userId: user.id,
-      akteId: abrAkteObj.id,
-      text: `Vergütungsvereinbarung (§ 3a RVG) ${vorher ? "geändert" : "erfasst"}: vom ${fmtDate(vvForm.datum)}, ${fmtEUR(satz)}/Std. netto${vorher?.stundensatz && vorher.stundensatz !== satz ? ` (vorher ${fmtEUR(vorher.stundensatz)}/Std.)` : ""} – ${abrAkteObj.aktenzeichen}`,
+      akteId: vvAkte.id,
+      text: `Vergütungsvereinbarung (§ 3a RVG) ${vorher ? "geändert" : "erfasst"}: vom ${fmtDate(vvForm.datum)}, ${fmtEUR(satz)}/Std. netto${vorher?.stundensatz && vorher.stundensatz !== satz ? ` (vorher ${fmtEUR(vorher.stundensatz)}/Std.)` : ""} – ${vvAkte.aktenzeichen}`,
     });
     setVvForm(null);
-    toast("Vergütungsvereinbarung gespeichert", { text: `${abrAkteObj.aktenzeichen} · ${fmtEUR(satz)}/Std. netto`, ton: "erfolg" });
+    toast("Vergütungsvereinbarung gespeichert", { text: `${vvAkte.aktenzeichen} · ${fmtEUR(satz)}/Std. netto`, ton: "erfolg" });
   };
+  const vvOeffnen = (ort: "abr" | "erf", a: NonNullable<typeof abrAkteObj>) =>
+    setVvForm({ ort, akteId: a.id, datum: a.verguetungsvereinbarung?.datum ?? "", satz: a.verguetungsvereinbarung?.stundensatz ? String(a.verguetungsvereinbarung.stundensatz).replace(".", ",") : "" });
+  /** Felder des Vereinbarungsformulars – dasselbe Formular in „Zeit erfassen“ und „Aus Zeiten abrechnen“. */
+  const vvFelder = (form: NonNullable<typeof vvForm>, mitEntfernen: boolean) => (
+    <div className="mt-3 grid gap-2.5">
+      <div className="grid grid-cols-2 gap-2.5">
+        <Field label="Datum der Vereinbarung" htmlFor={`ze-vv-datum-${form.ort}`}>
+          <Input id={`ze-vv-datum-${form.ort}`} type="date" max={heute} required aria-required="true" value={form.datum} onChange={(e) => setVvForm({ ...form, datum: e.target.value })} />
+        </Field>
+        <Field label="Vereinbarter Stundensatz (netto)" htmlFor={`ze-vv-satz-${form.ort}`}>
+          <Input id={`ze-vv-satz-${form.ort}`} inputMode="decimal" required aria-required="true" placeholder="z. B. 240" value={form.satz} onChange={(e) => setVvForm({ ...form, satz: e.target.value })} className="num" />
+        </Field>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="primary" onClick={vvSpeichern}>
+          Vereinbarung speichern
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setVvForm(null)}>
+          Abbrechen
+        </Button>
+        {mitEntfernen && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto !text-seal"
+            onClick={() => {
+              vvEntfernen();
+              setVvForm(null);
+            }}
+          >
+            Entfernen
+          </Button>
+        )}
+      </div>
+    </div>
+  );
   const vvEntfernen = () => {
     if (!abrAkteObj) return;
     useData.getState().patch("akten", abrAkteObj.id, { verguetungsvereinbarung: undefined });
     useData.getState().log({ akteur: "nutzer", userId: user.id, akteId: abrAkteObj.id, text: `Vergütungsvereinbarung (§ 3a RVG) entfernt – ${abrAkteObj.aktenzeichen}` });
   };
+  // Direktlink aus dem Dialog „Zeit erfassen“ (Z, Strg+K): /abrechnung?tab=zeit&akte=<id> wählt die Akte vor und öffnet –
+  // ohne Vergütungsvereinbarung – gleich das Formular „Vereinbarung erfassen“. Nur Akten dieser Kanzlei (Mandantentrennung).
+  const [params, setParams] = useSearchParams();
+  const linkAkte = params.get("akte");
+  const erfKarte = useRef<HTMLDivElement>(null);
+  const vvNachLink = useRef<string | null>(null);
+  useEffect(() => {
+    if (!linkAkte) return;
+    const a = akten.get(linkAkte);
+    const p = new URLSearchParams(params);
+    p.delete("akte");
+    setParams(p, { replace: true });
+    if (!a) return;
+    if (a.status === "offen") setAkteId(a.id);
+    if (abrechenbareAkten.some((x) => x.akte?.id === a.id)) setAbrAkte(a.id);
+    vvNachLink.current = a.verguetungsvereinbarung || a.status !== "offen" ? null : a.id;
+    // erst nach dem Aufklappen des Formulars scrollen – sonst verschiebt die neue Höhe das Ziel
+    window.setTimeout(() => erfKarte.current?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }), 180);
+  }, [linkAkte]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Nach dem Zurücksetzen des Formulars beim Akten-Wechsel (Effekt oben) – deshalb hier in eigenem Effekt danach
+  useEffect(() => {
+    const id = vvNachLink.current;
+    if (!id || id !== akteId) return;
+    vvNachLink.current = null;
+    const a = akten.get(id);
+    if (!a) return;
+    vvOeffnen("erf", a);
+    // erstes Pflichtfeld fokussieren, sobald das Formular steht (nach dem Rendern)
+    window.setTimeout(() => document.getElementById("ze-vv-datum-erf")?.focus({ preventScroll: true }), 120);
+  }, [akteId]); // eslint-disable-line react-hooks/exhaustive-deps
   const erfassenAkte = akteId ? akten.get(akteId) : undefined;
+  // Satz beim Erfassen – dieselbe Funktion wie Zeitliste, Vorschau und Rechnung (I3-T07-04)
+  const erfSatz = satzFuerEintrag({ userId: user.id }, erfassenAkte, users);
 
   const erfassen = () => {
     const min = Math.round(Number(minuten.replace(",", ".")));
@@ -334,7 +405,7 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
         </div>
 
         <div className="order-1 grid grid-cols-1 gap-4 xl:order-2">
-          <Card className={cn("overflow-hidden", timerStart && "ai-ring")}>
+          <Card ref={erfKarte} className={cn("overflow-hidden scroll-mt-4", timerStart && "ai-ring")}>
             <CardHeader icon={<Plus className="size-4" />} title="Zeit erfassen" subtitle="Dauer eintragen oder die Stoppuhr mitlaufen lassen." />
             <div className="mb-4 flex items-center gap-3 rounded-[18px] bg-ink-softer px-4 py-3">
               <div className="min-w-0 flex-1">
@@ -367,6 +438,29 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                   ))}
                 </Select>
               </Field>
+              {/* Stundensatz dieser Zeit – wie im Dialog „Zeit erfassen“ (I3-T07-04) */}
+              {erfassenAkte && (
+                <div className="-mt-1 rounded-[12px] bg-ink-softer px-3 py-2 text-[12.5px] leading-snug text-fg-2" role="status">
+                  {erfSatz.quelle === "vereinbarung" && erfassenAkte.verguetungsvereinbarung ? (
+                    <span>
+                      <span className="num font-semibold text-fg">{fmtEUR(erfSatz.satz, { cents: !Number.isInteger(erfSatz.satz) })}/Std.</span> lt. Vergütungsvereinbarung vom {fmtDate(erfassenAkte.verguetungsvereinbarung.datum)}
+                    </span>
+                  ) : (
+                    <span>
+                      <span className="num font-semibold text-fg">{fmtEUR(erfSatz.satz, { cents: !Number.isInteger(erfSatz.satz) })}/Std.</span> – Satz von {user.name}, keine Vergütungsvereinbarung (§ 3a RVG)
+                      {vvForm?.ort !== "erf" && (
+                        <>
+                          {" · "}
+                          <button type="button" className="inline-flex min-h-6 items-center font-medium text-ink underline" onClick={() => vvOeffnen("erf", erfassenAkte)}>
+                            Vereinbarung erfassen
+                          </button>
+                        </>
+                      )}
+                    </span>
+                  )}
+                  {vvForm?.ort === "erf" && vvForm.akteId === erfassenAkte.id && vvFelder(vvForm, false)}
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Minuten" htmlFor="ze-min">
                   <Input id="ze-min" inputMode="numeric" value={minuten} onChange={(e) => setMinuten(e.target.value.replace(/[^\d]/g, ""))} className="num" />
@@ -406,8 +500,8 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                 <label htmlFor="ze-abr" className="flex-1 text-[13px]">
                   Abrechenbar{" "}
                   <span className="text-fg-3">
-                    · {fmtEUR(erfassenAkte?.verguetungsvereinbarung?.stundensatz ?? satzVon(user.id), { cents: false })}/Std.
-                    {erfassenAkte?.verguetungsvereinbarung?.stundensatz ? " lt. Vergütungsvereinbarung" : ""}
+                    · {fmtEUR(erfSatz.satz, { cents: false })}/Std.
+                    {erfSatz.quelle === "vereinbarung" ? " lt. Vergütungsvereinbarung" : ""}
                   </span>
                 </label>
                 <Switch id="ze-abr" checked={abrechenbar} onChange={setAbrechenbar} label="Abrechenbar" />
@@ -516,42 +610,13 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                         <div className="text-fg-3">Noch nicht erfasst</div>
                       )}
                     </div>
-                    {!vvForm && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        icon={<PenLine className="size-4" />}
-                        onClick={() => setVvForm({ datum: vv?.datum ?? "", satz: vv?.stundensatz ? String(vv.stundensatz).replace(".", ",") : "" })}
-                      >
+                    {vvForm?.ort !== "abr" && abrAkteObj && (
+                      <Button size="sm" variant="ghost" icon={<PenLine className="size-4" />} onClick={() => vvOeffnen("abr", abrAkteObj)}>
                         {vv ? "Ändern" : "Erfassen"}
                       </Button>
                     )}
                   </div>
-                  {vvForm && (
-                    <div className="mt-3 grid gap-2.5">
-                      <div className="grid grid-cols-2 gap-2.5">
-                        <Field label="Datum der Vereinbarung" htmlFor="ze-vv-datum">
-                          <Input id="ze-vv-datum" type="date" max={heute} required aria-required="true" value={vvForm.datum} onChange={(e) => setVvForm({ ...vvForm, datum: e.target.value })} />
-                        </Field>
-                        <Field label="Vereinbarter Stundensatz (netto)" htmlFor="ze-vv-satz">
-                          <Input id="ze-vv-satz" inputMode="decimal" required aria-required="true" placeholder="z. B. 240" value={vvForm.satz} onChange={(e) => setVvForm({ ...vvForm, satz: e.target.value })} className="num" />
-                        </Field>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Button size="sm" variant="primary" onClick={vvSpeichern}>
-                          Vereinbarung speichern
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => setVvForm(null)}>
-                          Abbrechen
-                        </Button>
-                        {vv && (
-                          <Button size="sm" variant="ghost" className="ml-auto !text-seal" onClick={() => { vvEntfernen(); setVvForm(null); }}>
-                            Entfernen
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  )}
+                  {vvForm?.ort === "abr" && vvFelder(vvForm, !!vv)}
                 </div>
                 {abrVereinbarung && (
                   <Field

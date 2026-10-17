@@ -15,7 +15,7 @@ import { toast, useToasts } from "@/store/ui";
 import { AiChip, Button, Chip, Field, Input, Modal, ProgressRing, Select, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import {
-  EEB_ERKLAERUNG, SCHRITTE, ablegbareAnhaenge, alsErledigt, anhaengeAblegen, anhaengeAbgelegt, darfEebAbgeben, eebAbgeben, eebProtokoll, eebVorlegen, fristAenderungText,
+  EEB_ERKLAERUNG, SCHRITTE, ablegbareAnhaenge, alsErledigt, anhaengeAblegen, anhaengeAbgelegt, anhaengeText, darfEebAbgeben, eebAbgeben, eebProtokoll, eebVorlegen, fristAenderungText,
   fristenAusNachricht, fristenUebernehmen, fristenZumZustellungsdatum, gerichtsAzKonflikt, istGerichtspost, istNotiert, terminEintragen, zuordnen, type KiAnsicht, type ZuordnenOptionen,
 } from "./analyse";
 import { istAbwesend, vertretungFuer } from "@/core/vertretung";
@@ -178,7 +178,7 @@ function FristVorschlagKarte({ p, notiert, index, rechtsmittel }: { p: FristVors
         </div>
       )}
 
-      <button type="button" onClick={() => setOffen((o) => !o)} aria-expanded={offen} className="mt-3 inline-flex items-center gap-1.5 rounded-full px-1 text-[12.5px] font-medium text-ink hover:underline">
+      <button type="button" onClick={() => setOffen((o) => !o)} aria-expanded={offen} className="mt-3 inline-flex items-center gap-1.5 rounded-full px-1 text-[12.5px] font-medium text-ink hover:underline max-sm:mt-1.5 max-sm:min-h-11 max-sm:px-2">
         <ChevronDown className={cn("size-3.5 transition-transform duration-300", offen && "rotate-180")} />
         {offen ? "Rechenweg ausblenden" : "Rechenweg anzeigen"}
       </button>
@@ -306,7 +306,7 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
     toast(r.vorher ? "Zuordnung geändert" : "Akte zugeordnet", {
       text: r.vorher
         ? `Jetzt ${ziel.aktenzeichen}${r.vorher.akte ? ` statt ${r.vorher.akte.aktenzeichen}` : ""} · ${r.vorher.dokumente} ${r.vorher.dokumente === 1 ? "Dokument" : "Dokumente"} verschoben${r.vorher.fristen ? `, ${r.vorher.fristen} ${r.vorher.fristen === 1 ? "Frist" : "Fristen"} mit umgezogen` : ""}${r.vorher.fristenBelassen ? `, ${r.vorher.fristenBelassen} ${r.vorher.fristenBelassen === 1 ? "Frist bleibt" : "Fristen bleiben"} in ${r.vorher.akte?.aktenzeichen ?? "der bisherigen Akte"}` : ""} – in beiden Verläufen protokolliert.`
-        : `In ${ziel.aktenzeichen} · Ordner „${r.ordner}“ abgelegt${r.anhaenge ? `, ${r.anhaenge} ${r.anhaenge === 1 ? "Anhang" : "Anhänge"} in „${r.anhangOrdner}“` : ""}.`,
+        : `In ${ziel.aktenzeichen} · Ordner „${r.ordner}“ abgelegt${n.anhaenge.length ? ` · ${anhaengeText(n, r.anhangOrdner)}` : ""}.`,
       ton: "erfolg",
     });
   };
@@ -321,11 +321,12 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
   const anhaengeKlick = () => {
     if (!ziel) return;
     const r = anhaengeAblegen(n, ziel, user);
-    toast(r.anzahl === 1 ? "Anhang abgelegt" : `${r.anzahl} Anhänge abgelegt`, { text: `In ${ziel.aktenzeichen} · Ordner „${r.ordner}“`, ton: "erfolg", aktion: { label: "E-Akte öffnen", onClick: () => nav(`/akten/${ziel.id}?tab=dokumente`) } });
+    toast(r.anzahl === 1 ? "Anhang abgelegt" : `${r.anzahl} Anhänge abgelegt`, { text: `In ${ziel.aktenzeichen} · ${anhaengeText(n, r.ordner)}`, ton: "erfolg", aktion: { label: "E-Akte öffnen", onClick: () => nav(`/akten/${ziel.id}?tab=dokumente`) } });
   };
 
   return (
-    <div className="ai-ring rounded-[22px]">
+    // Telefon: Schaltflächen der KI-Karte mindestens 44 px hoch (I3-T02-01) – Desktop-Optik unverändert
+    <div className="ai-ring rounded-[22px] max-sm:[&_.btn]:[--h:44px]">
       <div className="relative overflow-hidden rounded-[22px] bg-[linear-gradient(160deg,var(--violet-soft),transparent_55%)] p-4 sm:p-5">
         {/* Kopf */}
         <div className="flex items-start gap-3">

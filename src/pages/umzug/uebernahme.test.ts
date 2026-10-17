@@ -121,3 +121,40 @@ test("Abgebrochener Lauf: eigenes Feld „abgebrochen“, ältere Protokolle mit
   assert.ok(istAbgebrochen({ ...neu, abgebrochen: undefined, rueckgaengig: { am, von: ABBRUCH } }));
   assert.ok(!istAbgebrochen({ ...neu, abgebrochen: undefined, rueckgaengig: { am, von: user.id } }), "normales Rückgängig ist kein Abbruch");
 });
+
+test("Archivakte ohne Abschlussdatum: abschlussdatumUnbekannt, abgeschlossenAm = Übernahmetag (§ 50 BRAO vorsorglich)", async () => {
+  const { useData, zeilen } = await vorbereiten();
+  const { fuehreUmzugAus } = await import("./uebernahme");
+  const { ohneAbschlussdatum } = await import("./zuordnung");
+  const { abschlussText } = await import("@/pages/akten/helfer");
+  const ohne = zeilen.find((z) => ohneAbschlussdatum(z, "sechsJahre"))!;
+  const mitDatum = zeilen.find((z) => z.status === "abgeschlossen" && z.abgeschlossenAm)!;
+  const laufId = uid("uz");
+  await fuehreUmzugAus({
+    zeilen,
+    aktionFuer: () => "skip",
+    dateiAktionFuer: () => "merge",
+    umfang: "sechsJahre",
+    ohneDatumAktionFuer: (z) => (z.nr === ohne.nr ? "archiv" : undefined),
+    laufId,
+    system: "RA-MICRO",
+    user,
+    team,
+    bundesland: t.tenant.bundesland,
+    onFortschritt: () => {},
+    onZwischenstand: () => {},
+  });
+  const akten = useData.getState().data.akten.filter((a) => a.umzugLaufId === laufId);
+  const archiv = akten.find((a) => a.titel === ohne.titel)!;
+  assert.equal(archiv.status, "abgeschlossen");
+  assert.equal(archiv.abschlussdatumUnbekannt, true);
+  assert.equal(archiv.abgeschlossenAm, today(), "Aufbewahrung vorsorglich ab Übernahme");
+  const [j, m, d] = today().split("-");
+  assert.equal(abschlussText(archiv), `Abgeschlossen (Datum im Altsystem unbekannt) · übernommen am ${d}.${m}.${j}`);
+  // Archivakten mit Abschlussdatum aus dem Altsystem: Datum übernommen, keine Kennzeichnung
+  for (const a of akten.filter((x) => x.status === "abgeschlossen" && x.id !== archiv.id)) {
+    assert.equal(a.abschlussdatumUnbekannt, undefined, a.titel);
+    assert.notEqual(a.abgeschlossenAm, undefined);
+  }
+  assert.ok(mitDatum.abgeschlossenAm);
+});

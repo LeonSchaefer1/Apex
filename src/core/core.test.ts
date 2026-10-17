@@ -541,14 +541,17 @@ test("Demodaten: letzter Lauf = jüngste Aktivität, Zeitpläne eingehalten, E-R
   }
 });
 
-test("Demodaten (SEED_VERSION 10): Zusatzakten am Ende – übrige Akten, Fristen und Nachrichten unverändert", async () => {
+test("Demodaten (SEED_VERSION 11): Zusatzakten am Ende – übrige Akten, Fristen und Nachrichten unverändert", async () => {
   const { createHash } = await import("node:crypto");
   const { generateTenantData, SEED_VERSION } = await import("./seed/generate");
   const { DEMO_TENANTS, publicUser } = await import("./seed/tenants");
   const { fristenLage } = await import("./fristenLage");
   const { posteingangZahlen } = await import("./kennzahlen");
-  assert.equal(SEED_VERSION, 10);
-  // Fingerabdrücke vor der Änderung (SEED_VERSION 9, 16.10.2026): IDs und Aktenzeichen der Akten, IDs/Akte/Datum/Typ der Fristen, IDs/Akte/Eingangstag der Nachrichten
+  assert.equal(SEED_VERSION, 11);
+  // Fingerabdrücke vor der Änderung (SEED_VERSION 9, 16.10.2026): IDs und Aktenzeichen der Akten, IDs/Akte/Datum/Typ der Fristen, IDs/Akte/Eingangstag der Nachrichten.
+  // EINE gewollte Abweichung seit SEED_VERSION 11 (Vorgabe der Projektleitung): „Fremdgeld an Mandantin weiterleiten“ in 131/26
+  // ist eine Wiedervorlage statt einer Frist – für den Fingerabdruck wird ihr früherer Typ „frist“ eingesetzt, alles andere bleibt gleich.
+  const GEWOLLT = (f: { titel: string; typ: string }) => (f.titel === "Fremdgeld an Mandantin weiterleiten (§ 43a Abs. 7 BRAO)" && f.typ === "wiedervorlage" ? "frist" : f.typ);
   const VORHER: Record<string, [number, string, number, string, number, string]> = {
     "t-hartmann": [40, "8a921adc7dc38837", 76, "eb23078db1b0964b", 15, "2fc48309e70f5546"],
     "t-lindner": [37, "1bc9b63a9ae42a01", 78, "c3cf51f67535a736", 11, "e93e917105970674"],
@@ -559,7 +562,7 @@ test("Demodaten (SEED_VERSION 10): Zusatzakten am Ende – übrige Akten, Friste
   for (const t of DEMO_TENANTS) {
     const d = generateTenantData({ tenant: t.tenant, users: t.users.map(publicUser), profil: t.profil }, "2026-10-16");
     const ak = d.akten.filter((a) => !zusatz(a.id)).map((a) => `${a.id}|${a.aktenzeichen}`).sort();
-    const fr = d.fristen.filter((f) => !zusatz(f.id)).map((f) => `${f.id}|${f.akteId}|${f.datum}|${f.typ}`).sort();
+    const fr = d.fristen.filter((f) => !zusatz(f.id)).map((f) => `${f.id}|${f.akteId}|${f.datum}|${GEWOLLT(f)}`).sort();
     const na = d.nachrichten.map((n) => `${n.id}|${n.akteId ?? ""}|${n.eingang.slice(0, 10)}`).sort();
     assert.deepEqual([ak.length, h(ak), fr.length, h(fr), na.length, h(na)], VORHER[t.tenant.id], t.tenant.kurzname);
   }
@@ -586,8 +589,9 @@ test("Demodaten (SEED_VERSION 10): Zusatzakten am Ende – übrige Akten, Friste
   assert.ok(doks.some((x) => x.name.startsWith("Klageschrift") && x.status === "versandt" && x.portal));
   assert.ok(doks.some((x) => x.name.startsWith("Ladung zum Gütetermin") && x.ordner === "Gericht"));
   assert.ok(doks.some((x) => x.name.startsWith("Arbeitsvertrag")) && doks.some((x) => x.name === "Gesprächsnotiz Erstberatung"));
-  // Morgenzahlen aus T01 bleiben: 2 Fristen heute, keine Termine heute, 6 neue Nachrichten
-  assert.equal(fristenLage(d.fristen, heute).heute.length, 2);
+  // Morgenzahlen aus T01: seit SEED_VERSION 11 eine Frist heute (die Fremdgeld-Aufgabe 131/26 zählt als Wiedervorlage), keine Termine heute, 6 neue Nachrichten
+  assert.equal(fristenLage(d.fristen, heute).heute.length, 1);
+  assert.ok(fristenLage(d.fristen, heute).wiedervorlagen.some((f) => f.titel.startsWith("Fremdgeld an Mandantin weiterleiten")));
   assert.equal(d.fristen.filter((f) => f.typ === "termin" && f.status === "offen" && f.datum === heute).length, 0);
   assert.equal(posteingangZahlen(d.nachrichten).neu.length, 6);
   // mindestens 4 abrechenbare RSV-Akten mit erteilter Deckung, ohne Rechnung
@@ -604,4 +608,52 @@ test("Demodaten (SEED_VERSION 10): Zusatzakten am Ende – übrige Akten, Friste
   assert.ok(d.nachrichten.some((n) => n.betreff === "Unterlagen + wichtiger Hinweis zu Herrn Seifert"));
   // Vorgerichtliche Phasen ohne Gerichts-Az.
   assert.ok(d.akten.filter((a) => a.phase === "Außergerichtlich" || a.phase === "Mandatsaufnahme").every((a) => !a.gerichtsAz));
+});
+
+test("Demodaten (SEED_VERSION 11): keine Frist oder Notfrist mit Fachangestellter oder Auszubildender als Verantwortlicher (alle Präsentationskanzleien)", async () => {
+  const { generateTenantData } = await import("./seed/generate");
+  const { DEMO_TENANTS, publicUser } = await import("./seed/tenants");
+  const { istBerufstraeger } = await import("./vertretung");
+  for (const t of DEMO_TENANTS) {
+    for (const heute of ["2026-10-16", "2026-10-17", "2026-10-19"]) {
+      const users = t.users.map(publicUser);
+      const d = generateTenantData({ tenant: t.tenant, users, profil: t.profil }, heute);
+      const falsch = d.fristen
+        .filter((f) => f.typ === "frist" || f.typ === "notfrist")
+        .filter((f) => {
+          const u = users.find((x) => x.id === f.verantwortlichId);
+          return !u || !istBerufstraeger(u);
+        })
+        .map((f) => `${f.titel} (${d.akten.find((a) => a.id === f.akteId)?.aktenzeichen}, ${f.verantwortlichId})`);
+      assert.deepEqual(falsch, [], `${t.tenant.kurzname} ${heute}`);
+    }
+  }
+});
+
+test("Demodaten (SEED_VERSION 11): Fremdgeld-Aufgabe 131/26 ist Wiedervorlage von Mia Becker; 142/26 nennt Herkunft der Schaden-Nr.", async () => {
+  const { generateTenantData } = await import("./seed/generate");
+  const { DEMO_TENANTS, publicUser } = await import("./seed/tenants");
+  const t = DEMO_TENANTS[0];
+  const users = t.users.map(publicUser);
+  const heute = "2026-10-17";
+  const d = generateTenantData({ tenant: t.tenant, users, profil: t.profil }, heute);
+  const a131 = d.akten.find((a) => a.aktenzeichen === "131/26")!;
+  const fg = d.fristen.filter((f) => f.akteId === a131.id && f.titel === "Fremdgeld an Mandantin weiterleiten (§ 43a Abs. 7 BRAO)");
+  assert.equal(fg.length, 1);
+  assert.equal(fg[0].typ, "wiedervorlage");
+  assert.equal(fg[0].datum, heute);
+  assert.equal(users.find((u) => u.id === fg[0].verantwortlichId)?.name, "Mia Becker");
+  // Fremdgeld-Zahlung im Bankabgleich bleibt (6.120 €)
+  assert.ok(d.buchungen.some((b) => b.akteId === a131.id && b.fremdgeld && b.betrag === 6120));
+  // 142/26: Schaden-Nr. bleibt, Herkunft sichtbar (Notiz und Verlauf), Deckungsanfrage mit Antragsbestandteilen; Aktenwert 10.200 €
+  const weber = d.akten.find((a) => a.aktenzeichen === "142/26")!;
+  assert.equal(weber.rsv?.schadennummer, "S26-88412");
+  assert.equal(weber.rsv?.deckung, "offen");
+  assert.equal(weber.gegenstandswert, 10200);
+  const herkunft = "Schadenmeldung durch Herrn Weber telefonisch bei der Nordlicht Rechtsschutz AG am 14.10.2026 – Schaden-Nr. S26-88412; Deckungsanfrage der Kanzlei noch nicht versandt";
+  assert.ok(d.notizen.some((n) => n.akteId === weber.id && n.text.includes(herkunft)));
+  assert.ok(d.aktivitaeten.some((x) => x.akteId === weber.id && x.text.includes(herkunft)));
+  const deckung = d.dokumente.find((x) => x.akteId === weber.id && /^Deckungsanfrage/.test(x.name))!;
+  assert.match(deckung.inhalt, /Schaden-Nr\. S26-88412 \(Schadenmeldung durch Ihren Versicherungsnehmer\)/);
+  assert.match(deckung.inhalt, /Kündigungsschutzantrag 10\.200,00 € \(drei Bruttomonatsentgelte à 3\.400 €, § 42 Abs\. 2 S\. 1 GKG\) \+ Weiterbeschäftigungsantrag 3\.400,00 € = 13\.600,00 €/);
 });

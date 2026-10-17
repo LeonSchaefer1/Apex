@@ -1,5 +1,6 @@
 // Anlage neuer Kunden-Kanzleien (Apex Console) – gemeinsam für Demo- und Server-Betrieb.
 import type { Ansprechpartner, Bundesland, Sachgebiet, Tenant, User, Rolle } from "../types";
+import { heuteBerlin } from "../dates";
 import type { StadtKey } from "./pools";
 
 export function initialen(name: string): string {
@@ -29,12 +30,13 @@ export function stadtProfil(bundesland: Bundesland): StadtKey {
 export function baueKunde(input: {
   kanzlei: string; stadt: string; bundesland: Bundesland; adminName: string; adminEmail: string;
   arbeitsplaetze: number; schwerpunkte: Sachgebiet[]; testBis?: string; adminAnrede?: "Frau" | "Herr";
-}, idSuffix: string): { tenant: Tenant; admin: User } {
+}, idSuffix: string, now: Date = new Date()): { tenant: Tenant; admin: User } {
   const tenantId = `t-${idSuffix}`;
   const farbe = FARBEN[Math.floor(Math.random() * FARBEN.length)];
   const kurz = input.kanzlei.replace(/\s+(Rechtsanwälte|Rechtsanwaltsgesellschaft|PartG mbB|mbH|GbR)\b.*$/i, "").trim() || input.kanzlei;
-  const now = new Date();
-  const jahr = now.getFullYear();
+  // Lizenzdatum in deutscher Ortszeit: Ein Zugang um 01:05 Uhr gehört zum neuen Tag (UTC zeigte noch den Vortag, I3-T21-01)
+  const seit = heuteBerlin(now);
+  const jahr = Number(seit.slice(0, 4));
   const tenant: Tenant = {
     id: tenantId,
     name: input.kanzlei,
@@ -43,7 +45,7 @@ export function baueKunde(input: {
     adresse: input.stadt,
     bundesland: input.bundesland,
     schwerpunkte: input.schwerpunkte.length ? input.schwerpunkte : ["Vertragsrecht"],
-    lizenz: { typ: "lifetime", seit: now.toISOString().slice(0, 10), arbeitsplaetze: input.arbeitsplaetze, lizenzNr: `AAX-LT-${jahr}-${String(Math.floor(Math.random() * 9000) + 1000)}` },
+    lizenz: { typ: "lifetime", seit, arbeitsplaetze: input.arbeitsplaetze, lizenzNr: `AAX-LT-${jahr}-${String(Math.floor(Math.random() * 9000) + 1000)}` },
     ansprechpartner: { ...STANDARD_ANSPRECHPARTNER },
     farbe,
     createdAt: now.toISOString(),

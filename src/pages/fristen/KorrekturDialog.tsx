@@ -2,16 +2,17 @@
 // setzen – immer mit Pflichtgrund. Der vorherige Stand bleibt erhalten, die Vier-Augen-Kontrolle ist danach wieder offen.
 // „Korrektur anfordern“: die Kontrolleurin gibt die Frist mit Grund an die Verantwortliche zurück.
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Calculator, PenLine, Undo2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, Calculator, Landmark, PenLine, Undo2 } from "lucide-react";
 import { addDays, diffDays, fmtDate, fmtDateWd } from "@/core/dates";
-import { FRIST_REGELN, berechneNachRegel, gerichtsortDerAkte } from "@/core/fristen";
-import type { Frist, User } from "@/core/types";
+import { FRIST_REGELN, feiertagsortFuerFrist } from "@/core/fristen";
+import { BUNDESLAENDER, bundeslandName } from "@/core/feiertage";
+import type { Bundesland, Frist, FristGerichtsort, User } from "@/core/types";
 import { useCol } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
-import { Button, Field, Input, Modal, Segmented, Select, Textarea } from "@/components/ui";
+import { Button, Field, Input, Modal, Segmented, Select, Switch, Textarea } from "@/components/ui";
 import { RechenwegListe } from "./FristZeile";
-import { TYP_META, fordereKorrekturAn, korrigiereFrist, type FristKorrektur } from "./logik";
+import { TYP_META, fordereKorrekturAn, korrekturNeuBerechnet, korrigiereFrist, type FristKorrektur } from "./logik";
 
 const berechenbar = FRIST_REGELN.filter((r) => !r.dauerPflicht && r.festesDatum !== "pflicht");
 
@@ -20,7 +21,13 @@ export function KorrekturDialog({ f, user, open, onClose }: { f: Frist; user: Us
   const akten = useCol("akten");
   const kontakte = useCol("kontakte");
   const akte = akten.find((a) => a.id === f.akteId);
-  const land = gerichtsortDerAkte(akte, kontakte)?.land ?? tenant.bundesland;
+  // Gerichtsort wie bei der ursprünglichen Berechnung: gespeicherter Ort der Frist → Gericht der Akte → Kanzleisitz (I3-T03-02)
+  const ortFrist = useMemo(() => feiertagsortFuerFrist(f, akte, kontakte, tenant.bundesland), [f, akte, kontakte, tenant.bundesland]);
+  const ortText = ortFrist.feiertagsOrt ? `${bundeslandName(ortFrist.land)} (${ortFrist.feiertagsOrt})` : ortFrist.quelle === "hand" ? `${bundeslandName(ortFrist.land)} (von Hand gewählt)` : `${bundeslandName(ortFrist.land)} (Kanzleisitz – kein Gericht bekannt)`;
+  // Abweichen nur bewusst – wie im Fristenrechner: Schalter, rote Warnung, Pflichthäkchen
+  const [abweichend, setAbweichend] = useState(false);
+  const [landWahl, setLandWahl] = useState<Bundesland | "">("");
+  const [abweichendOk, setAbweichendOk] = useState(false);
   const mitRegel = !!f.regelKey && berechenbar.some((r) => r.key === f.regelKey);
   const [modus, setModus] = useState<"rechner" | "datum">(mitRegel ? "rechner" : "datum");
   const [regelKey, setRegelKey] = useState(f.regelKey ?? "");
@@ -34,32 +41,34 @@ export function KorrekturDialog({ f, user, open, onClose }: { f: Frist; user: Us
     setEreignis(f.ereignisDatum ?? "");
     setDatum(f.datum);
     setGrund("");
+    setAbweichend(false);
+    setLandWahl("");
+    setAbweichendOk(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, f.id]);
 
-  const erg = useMemo(() => {
+  const widerspruch = abweichend && !!landWahl && landWahl !== ortFrist.land;
+  /** Ort für die Neuberechnung samt dem an der Frist zu speichernden Gerichtsort */
+  const ort = useMemo((): { land: Bundesland; feiertagsOrt?: string; gerichtsort: FristGerichtsort } => {
+    if (widerspruch && landWahl)
+      return { land: landWahl, feiertagsOrt: `abweichend gewählt – ${ortFrist.feiertagsOrt ?? "bisheriger Ort"} liegt in ${bundeslandName(ortFrist.land)}`, gerichtsort: { land: landWahl, quelle: "hand" } };
+    const gericht = ortFrist.feiertagsOrt?.replace(/ – laut Akte$/, "");
+    return { land: ortFrist.land, feiertagsOrt: ortFrist.feiertagsOrt, gerichtsort: { land: ortFrist.land, ...(gericht ? { gericht } : {}), quelle: ortFrist.quelle } };
+  }, [widerspruch, landWahl, ortFrist]);
+
+  const neuRechner = useMemo(() => {
     if (modus !== "rechner" || !regelKey || !/^\d{4}-\d{2}-\d{2}$/.test(ereignis)) return null;
     try {
-      return berechneNachRegel(regelKey, ereignis, land, undefined, { kanzleiLand: tenant.bundesland });
+      return korrekturNeuBerechnet(f, regelKey, ereignis, ort, tenant.bundesland);
     } catch {
       return null;
     }
-  }, [modus, regelKey, ereignis, land, tenant.bundesland]);
+  }, [modus, regelKey, ereignis, ort, tenant.bundesland, f]);
+  const erg = neuRechner;
 
   const neu: FristKorrektur | null =
     modus === "rechner"
-      ? erg
-        ? {
-            datum: erg.ende,
-            vorfrist: erg.vorfrist,
-            ereignisDatum: ereignis,
-            regelKey,
-            titel: regelKey !== f.regelKey ? erg.regel.titel : undefined,
-            grundlage: erg.regel.grundlage,
-            rechenweg: erg.rechenweg,
-            typ: erg.regel.typ,
-          }
-        : null
+      ? neuRechner
       : /^\d{4}-\d{2}-\d{2}$/.test(datum)
         ? {
             datum,
@@ -68,7 +77,15 @@ export function KorrekturDialog({ f, user, open, onClose }: { f: Frist; user: Us
             rechenweg: [...(f.rechenweg ?? []), `Fristende von Hand korrigiert auf ${fmtDateWd(datum)} (vorher ${fmtDateWd(f.datum)}).`],
           }
         : null;
-  const fehlt = !neu ? (modus === "rechner" ? "Bitte Fristart und Ereignisdatum angeben." : "Bitte das neue Datum angeben.") : !grund.trim() ? "Bitte den Grund der Korrektur angeben (Pflicht)." : undefined;
+  const fehlt = !neu
+    ? modus === "rechner"
+      ? "Bitte Fristart und Ereignisdatum angeben."
+      : "Bitte das neue Datum angeben."
+    : !grund.trim()
+      ? "Bitte den Grund der Korrektur angeben (Pflicht)."
+      : modus === "rechner" && widerspruch && !abweichendOk
+        ? "Bitte die Abweichung vom Gerichtsort bestätigen."
+        : undefined;
 
   const speichern = () => {
     if (!neu || fehlt) return;
@@ -128,6 +145,63 @@ export function KorrekturDialog({ f, user, open, onClose }: { f: Frist; user: Us
             <Field label={FRIST_REGELN.find((r) => r.key === regelKey)?.ereignis ?? "Ereignisdatum"} htmlFor="korr-ereignis">
               <Input id="korr-ereignis" type="date" value={ereignis} onChange={(e) => setEreignis(e.target.value)} />
             </Field>
+            <div className="sm:col-span-2">
+              <Field
+                label="Gerichtsort (Bundesland)"
+                htmlFor="korr-land"
+                hint={
+                  ortFrist.quelle === "kanzleisitz"
+                    ? "Kein Gericht an Frist oder Akte – Feiertage am Kanzleisitz. Weicht der Gerichtsort ab, Schalter unten nutzen."
+                    : `Wie bei der ursprünglichen Berechnung${ortFrist.quelle === "akte" ? " (Gericht der Akte)" : ortFrist.quelle === "hand" ? " (von Hand gewählt)" : ""} – maßgeblich sind die Feiertage am Ort der Fristwahrung (§ 222 Abs. 2 ZPO).`
+                }
+              >
+                <div id="korr-land" className="flex min-h-11 items-center gap-2 rounded-[14px] bg-ink-softer px-3.5 py-2 text-[13.5px] ring-1 ring-inset ring-[var(--line)]">
+                  <Landmark className="size-4 shrink-0 text-fg-3" aria-hidden />
+                  <span className="min-w-0 break-words font-medium">{ortText}</span>
+                </div>
+              </Field>
+              <div className="mt-2 flex items-center gap-3">
+                <label htmlFor="korr-abweichend" className="flex-1 text-[13px] text-fg-2">
+                  Abweichender Gerichtsort
+                </label>
+                <Switch
+                  id="korr-abweichend"
+                  checked={abweichend}
+                  label="Abweichender Gerichtsort"
+                  onChange={(v) => {
+                    setAbweichend(v);
+                    setLandWahl("");
+                    setAbweichendOk(false);
+                  }}
+                />
+              </div>
+              {abweichend && (
+                <div className="mt-2 grid gap-2">
+                  <Select id="korr-land-wahl" aria-label="Abweichendes Bundesland des Gerichtsorts" value={landWahl} onChange={(e) => { setLandWahl(e.target.value as Bundesland | ""); setAbweichendOk(false); }}>
+                    <option value="">Bundesland wählen …</option>
+                    {BUNDESLAENDER.map((b) => (
+                      <option key={b.code} value={b.code}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </Select>
+                  {widerspruch && landWahl && (
+                    <div role="alert" className="grid gap-2 rounded-[14px] bg-seal-soft p-3 text-[12.5px] leading-relaxed text-seal">
+                      <div className="flex gap-2">
+                        <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+                        <span>
+                          <strong className="font-semibold">Achtung – Feiertage weichen vom bisherigen Gerichtsort ab.</strong> Bisher: {ortText}; gerechnet wird mit den Feiertagen in {bundeslandName(landWahl)}. Ein abweichendes Fristende kann die Frist versäumen lassen.
+                        </span>
+                      </div>
+                      <label className="flex items-start gap-2 font-medium">
+                        <input type="checkbox" className="mt-0.5 size-4 accent-[var(--seal)]" checked={abweichendOk} onChange={(e) => setAbweichendOk(e.target.checked)} />
+                        <span>Ich habe geprüft: Der Gerichtsort liegt tatsächlich in {bundeslandName(landWahl)}.</span>
+                      </label>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <Field label="Neues Datum" htmlFor="korr-datum" hint={f.vorfrist ? "Die Vorfrist wird im gleichen Abstand verschoben." : undefined}>
@@ -147,7 +221,7 @@ export function KorrekturDialog({ f, user, open, onClose }: { f: Frist; user: Us
                 <div className="eyebrow mb-2 inline-flex items-center gap-1.5">
                   <Calculator className="size-3.5" /> Rechenweg
                 </div>
-                <RechenwegListe schritte={erg.rechenweg} />
+                <RechenwegListe schritte={erg.rechenweg ?? []} />
               </div>
             )}
           </div>

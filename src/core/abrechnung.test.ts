@@ -79,3 +79,34 @@ test("Demodaten: Präsentationskanzleien enthalten einen offenen Versicherer-Ums
   assert.ok(treffer.length >= 1, "kein Fremdgeld-Umsatz in den Demodaten");
   assert.equal(d.umzugLaeufe.length, 0);
 });
+
+// Usability-Iteration 3 (A-00, A-16, I3-T07-03): Rechnungsangaben im Kanzleiprofil
+test("fehlendeRechnungsangaben: Steuernummer/USt-IdNr. und IBAN mit Prüfziffer", async () => {
+  const { fehlendeRechnungsangaben, pruefeRechnungsangaben, ustIdNrGueltig, steuernummerGueltig, bicGueltig } = await import("./abrechnung");
+  assert.deepEqual(fehlendeRechnungsangaben({}), ["Steuernummer oder USt-IdNr. (§ 14 Abs. 4 S. 1 Nr. 2 UStG)", "Bankverbindung (IBAN)"]);
+  // Platzhalter der Rechnungsvorschau zählt nicht
+  assert.deepEqual(fehlendeRechnungsangaben({ ustIdNr: "DE000000000", geschaeftskonto: { iban: "DE89 3704 0044 0532 0130 00" } }), ["Steuernummer oder USt-IdNr. (§ 14 Abs. 4 S. 1 Nr. 2 UStG)"]);
+  // falsche Prüfziffer → IBAN fehlt
+  assert.deepEqual(fehlendeRechnungsangaben({ steuernummer: "12/345/67890", geschaeftskonto: { iban: "DE89 3704 0044 0532 0130 01" } }), ["Bankverbindung (IBAN)"]);
+  assert.deepEqual(fehlendeRechnungsangaben({ ustIdNr: "DE 123 456 789", geschaeftskonto: { iban: "DE89370400440532013000", bic: "COBADEFFXXX", bank: "Commerzbank" } }), []);
+  assert.deepEqual(fehlendeRechnungsangaben({ steuernummer: "2181508150", geschaeftskonto: { iban: "de02120300000000202051" } }), []);
+  assert.equal(ustIdNrGueltig("DE123456789"), true);
+  assert.equal(ustIdNrGueltig("DE12345678"), false);
+  assert.equal(ustIdNrGueltig("AT123456789"), false);
+  assert.equal(steuernummerGueltig("12/345/67890"), true);
+  assert.equal(steuernummerGueltig("1234567890123"), true);
+  assert.equal(steuernummerGueltig("12/345"), false);
+  assert.equal(steuernummerGueltig("12-345-67890"), false);
+  assert.equal(bicGueltig("COBADEFF"), true);
+  assert.equal(bicGueltig("COBADEFFXXX"), true);
+  assert.equal(bicGueltig("COBA"), false);
+  // feldgenaue Meldungen
+  assert.deepEqual(pruefeRechnungsangaben({}), {});
+  const f = pruefeRechnungsangaben({ ustIdNr: "DE12345", steuernummer: "12/3", geschaeftskonto: { iban: "DE89 3704 0044 0532 0130 01", bic: "XX" } });
+  assert.match(f.ustIdNr!, /„DE“ und 9 Ziffern/);
+  assert.match(f.steuernummer!, /10, 11 oder 13 Ziffern/);
+  assert.match(f.iban!, /Prüfziffer/);
+  assert.match(f.bic!, /8 oder 11 Zeichen/);
+  assert.match(pruefeRechnungsangaben({ ustIdNr: "DE000000000" }).ustIdNr!, /Platzhalter/);
+  assert.match(pruefeRechnungsangaben({ geschaeftskonto: { iban: "", bank: "Sparkasse" } }).iban!, /IBAN des Geschäftskontos/);
+});

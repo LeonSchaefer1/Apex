@@ -97,6 +97,51 @@ export const AUTOMATION_DEFS: Omit<Automation, "id" | "laeufe" | "letzterLauf" |
 /** Automatiken, deren Ergebnis die Kanzlei verlässt – sie legen immer zur Freigabe vor. */
 export const AUSGEHEND = new Set(["mandatsaufnahme", "deckungsanfrage", "mandanten-update", "mahnwesen"]);
 
+/**
+ * Automatiken, an denen die Fristenkontrolle der Kanzlei hängt (§ 85 Abs. 2 ZPO: Verschulden des Anwalts wird zugerechnet).
+ * Pausieren und Einschalten nur durch Partner bzw. Administration, mit Rückfrage; solange pausiert, warnen Cockpit und Fristen.
+ */
+export const FRIST_AUTOMATIKEN = ["posteingang-fristen", "vorfristen", "eeb"] as const;
+export type FristAutomatikKey = (typeof FRIST_AUTOMATIKEN)[number];
+
+export function istFristAutomatik(key: string): key is FristAutomatikKey {
+  return (FRIST_AUTOMATIKEN as readonly string[]).includes(key);
+}
+
+const FOLGE_BEIM_PAUSIEREN: Record<FristAutomatikKey, string> = {
+  "posteingang-fristen": "Neue beA-Nachrichten werden dann nicht mehr auf Fristen geprüft – Sie notieren Fristen von Hand.",
+  vorfristen: "Vorfristen und Wiedervorlagen zu neuen Fristen werden nicht mehr gesetzt.",
+  eeb: "Empfangsbekenntnisse werden nicht mehr vorbereitet – die Frist beginnt trotzdem mit der Zustellung.",
+};
+
+/** Was das Pausieren einer Automatik bewirkt – ein Satz für Rückfrage, Hinweisband und Protokoll. */
+export function folgeBeimPausieren(key: string): string {
+  if (istFristAutomatik(key)) return FOLGE_BEIM_PAUSIEREN[key];
+  const d = automationDef(key);
+  return d ? `„${d.name}“ bereitet dann nichts mehr vor, bis sie wieder eingeschaltet ist.` : "Die Automatik bereitet dann nichts mehr vor, bis sie wieder eingeschaltet ist.";
+}
+
+/** Folge als Zustand, solange die Automatik pausiert ist (Hinweisband, Briefing): ohne das „dann“ der Rückfrage. */
+export function folgeWaehrendPause(key: string): string {
+  return folgeBeimPausieren(key).replace(/ dann (?=nicht|nichts)/, " ");
+}
+
+const FRIST_AUTOMATIK_KURZ: Record<FristAutomatikKey, string> = {
+  "posteingang-fristen": "Fristerkennung",
+  vorfristen: "Vorfristen & Wiedervorlagen",
+  eeb: "eEB-Vorbereitung",
+};
+
+/** Kurzbezeichnung für Hinweise: „Fristerkennung pausiert seit …“, „Vorfristen & Wiedervorlagen pausiert seit …“. */
+export function fristAutomatikKurzname(key: string): string {
+  return istFristAutomatik(key) ? FRIST_AUTOMATIK_KURZ[key] : automationDef(key)?.name ?? key;
+}
+
+/** Pausierte Fristautomatiken in der Reihenfolge von FRIST_AUTOMATIKEN (Posteingang zuerst). */
+export function pausierteFristAutomatiken<T extends Pick<Automation, "key" | "aktiv">>(automationen: readonly T[]): T[] {
+  return FRIST_AUTOMATIKEN.map((k) => automationen.find((a) => a.key === k)).filter((a): a is T => !!a && !a.aktiv);
+}
+
 /** Gesparte Minuten für `vorgaenge` tatsächlich bearbeitete Vorgänge (0 Vorgänge → 0 Minuten). */
 export function ersparnisMinuten(key: string, vorgaenge: number): number {
   const d = automationDef(key);

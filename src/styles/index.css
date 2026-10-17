@@ -433,9 +433,10 @@
 :root {
   --tabbar-h: 72px;
 }
-/* Tastaturfokus scrollt nie unter die Assistent-Kugel bzw. die Tab-Leiste (WCAG 2.4.11) */
+/* Tastaturfokus scrollt nie unter die Assistent-Kugel bzw. die Tab-Leiste (WCAG 2.4.11). Die Kopfleiste liegt über der
+   Scrollfläche (nicht darin); oben genügt deshalb Luft für ihren Verlauf (10 px) plus Abstand. */
 .haupt-scroll {
-  scroll-padding-top: 84px;
+  scroll-padding-top: 16px;
   scroll-padding-bottom: 110px;
 }
 @media (max-width: 767px) {

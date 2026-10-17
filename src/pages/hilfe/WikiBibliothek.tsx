@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowRightLeft, BookOpen, CircleHelp, Clock, FolderOpen, Inbox, Play, ReceiptEuro, Rocket, Sparkles, Users } from "lucide-react";
-import { WIKI, type WikiArtikel } from "@/content/wiki";
+import { wikiFuer, type WikiArtikel } from "@/content/wiki";
+import { useKanzlei } from "@/store/session";
 import { search } from "@/core/search";
 import { useUI } from "@/store/ui";
 import { Button, Card, Chip, Empty, Modal, SearchField, Segmented } from "@/components/ui";
@@ -21,6 +22,8 @@ const KAT_ICON: Record<Kat, React.ReactNode> = {
 
 /** Animiertes Wiki: durchsuchbar, nach Themen gefiltert, jeder Artikel als kurze, animierte Anleitung. */
 export function WikiBibliothek() {
+  // Wiki mit der geschlechtsrichtigen Bezeichnung der Ansprechperson dieser Kanzlei
+  const WIKI = wikiFuer(useKanzlei().tenant.ansprechpartner);
   const [q, setQ] = useState("");
   const [kat, setKat] = useState<"alle" | Kat>("alle");
   const [offen, setOffenRoh] = useState<WikiArtikel | null>(null);
@@ -32,7 +35,7 @@ export function WikiBibliothek() {
   const gezeigt = offen ?? zuletzt;
   const { zeigeHilfe, oeffneAssistent } = useUI();
 
-  const kategorien = useMemo(() => [...new Set(WIKI.map((w) => w.kategorie))], []);
+  const kategorien = useMemo(() => [...new Set(WIKI.map((w) => w.kategorie))], [WIKI]);
   const treffer = useMemo(() => {
     const basis = kat === "alle" ? WIKI : WIKI.filter((w) => w.kategorie === kat);
     if (!q.trim()) return basis;

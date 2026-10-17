@@ -375,7 +375,7 @@ export function TabDokumente({ akte }: { akte: Akte }) {
     <div className={cn("grid grid-cols-1 gap-4 md:grid-cols-[230px_minmax(0,1fr)] max-sm:[&_input.field]:!h-11", MOBIL_TREFFER)}>
       {/* Ordner */}
       <div className="min-w-0">
-        <Card padded={false} className="p-2 md:sticky md:top-[84px]">
+        <Card padded={false} className="p-2 md:sticky md:top-4">
           <div className="eyebrow hidden px-3 pb-1.5 pt-2 md:block">Ordner</div>
           <ul className="no-scrollbar flex gap-1 overflow-x-auto md:grid md:grid-cols-1 md:gap-0.5 md:overflow-visible">
             {ordnerListe.map(({ key, label, Icon }) => {
@@ -440,7 +440,7 @@ export function TabDokumente({ akte }: { akte: Akte }) {
 
         <AnimatePresence initial={false}>
           {auswahl.size > 0 && (
-            <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6, transition: { duration: 0.12 } }} transition={{ type: "spring", stiffness: 520, damping: 36 }} className="relative z-10 border-b border-[var(--line)] bg-ink-softer">
+            <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6, transition: { duration: 0.12 } }} transition={{ type: "spring", stiffness: 520, damping: 36 }} className="relative z-10 border-b border-[var(--line)] bg-ink-softer max-md:hidden">
               <div className="flex flex-wrap items-center gap-2 px-4 py-2 text-[13px]">
                 <span className="num font-semibold">{auswahl.size} ausgewählt</span>
                 {/* Zielordner direkt als Knöpfe – ohne Zwischenmenü */}
@@ -658,6 +658,42 @@ export function TabDokumente({ akte }: { akte: Akte }) {
           )}
         </AnimatePresence>
       </Card>
+
+      {/* Telefon: Mehrfachauswahl als feste Leiste über der Tab-Leiste (volle Breite – die Assistent-Kugel sitzt am Telefon in der
+          Tab-Leiste) – immer sichtbar, die Schnellaktionsleiste ist hier ausgeblendet; der untere Innenabstand der Seite hält die
+          letzte Zeile darüber (I3-T05-01) */}
+      <AnimatePresence>
+        {auswahl.size > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 12 }}
+            transition={{ type: "spring", stiffness: 520, damping: 36 }}
+            className="fixed bottom-[calc(88px+env(safe-area-inset-bottom))] left-3 right-3 z-30 md:hidden"
+          >
+            <div className="glass-strong tabbar-deckend flex items-center gap-1 rounded-full py-1 pl-4 pr-1" style={{ boxShadow: "var(--glass-shadow)" }} role="toolbar" aria-label="Auswahl bearbeiten">
+              <span className="num min-w-0 flex-1 truncate text-[13px] font-semibold">{auswahl.size} ausgewählt</span>
+              <Menu
+                trigger={({ toggle }) => (
+                  <button type="button" onClick={toggle} className="flex min-h-11 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium text-fg-2 hover:bg-ink-softer">
+                    <FolderInput className="size-4" /> Verschieben
+                  </button>
+                )}
+                items={ORDNER.map((o) => {
+                  const I = ORDNER_ICON[o];
+                  return { label: `Nach „${o}“`, icon: <I />, onClick: () => verschiebe([...auswahl], o) };
+                })}
+              />
+              <button type="button" onClick={() => void loesche([...auswahl])} className="icon-btn !size-11 text-seal" aria-label={`${auswahl.size} ${auswahl.size === 1 ? "Dokument" : "Dokumente"} löschen`}>
+                <Trash2 className="size-4" />
+              </button>
+              <button type="button" onClick={() => setAuswahl(new Set())} className="icon-btn !size-11 text-fg-2" aria-label="Auswahl aufheben">
+                <X className="size-4" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <DokumentVorschau
         akte={akte}

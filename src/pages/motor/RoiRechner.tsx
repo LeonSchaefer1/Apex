@@ -8,6 +8,8 @@ import type { Automation } from "@/core/types";
 import { kostenLifetime, LIZENZ_KENNZEICHNUNG, PREIS_HINWEIS, WARTUNG_HINWEIS, WARTUNG_INHALT } from "@/content/lizenz";
 import { AnimatedNumber, Button, Card, Chip, Field, Input, Modal, Switch } from "@/components/ui";
 import { toast } from "@/store/ui";
+import { useKanzlei } from "@/store/session";
+import { festeAnsprechBezeichnung } from "@/lib/rollen";
 import { cn } from "@/lib/cn";
 import { ARBEITSWOCHEN, JAHRESARBEITSSTUNDEN, KATEGORIEN, PERSONALKOSTEN_JAHR, WERT_PRO_STUNDE, ZIEL_STUNDEN, kostensatz, ungefaehr } from "./shared";
 
@@ -69,9 +71,10 @@ function ZahlFeld({ id, label, value, onChange, suffix, hint, step = 1, classNam
 /**
  * Ersparnis-Rechner mit eigenen Mengen: Vorgänge pro Woche je Automatik × Minuten je Vorgang (aus der Definition) ergeben die
  * Stunden pro Woche; bewertet zum internen Kostensatz aus Personalkosten ÷ Jahresarbeitsstunden. Umsatzpotenzial nur, wenn
- * anwaltliche Zeit ausdrücklich eingegeben ist. Daneben der Kostenvergleich Lifetime-Lizenz (mit Wartung) vs. Abo.
+ * anwaltliche Zeit ausdrücklich eingegeben ist. Daneben der Kostenvergleich Lifetime-Lizenz (mit Wartung) oder Abo.
  */
 export function RoiRechner({ startSatz, startArbeitsplaetze, automationen, mengen, demo, kanzleiId, kanzleiName }: { startSatz: number; startArbeitsplaetze: number; automationen: Automation[]; mengen: Record<string, number>; demo?: boolean; kanzleiId: string; kanzleiName: string }) {
+  const { tenant } = useKanzlei();
   const liste = useMemo(() => [...automationen].sort((a, b) => KATEGORIEN.indexOf(a.kategorie) - KATEGORIEN.indexOf(b.kategorie) || a.name.localeCompare(b.name, "de")), [automationen]);
   const vorbelegung = () => Object.fromEntries(liste.map((a) => [a.key, String(mengen[a.key] ?? 0)]));
   const key = speicherKey(kanzleiId);
@@ -293,14 +296,14 @@ export function RoiRechner({ startSatz, startArbeitsplaetze, automationen, menge
           </p>
         </div>
 
-        {/* Lifetime vs. Abo */}
+        {/* Lifetime-Lizenz oder Abo */}
         <div className="flex flex-col gap-5 border-t border-[var(--line)] p-5 md:p-6 lg:border-l lg:border-t-0">
           <div className="flex flex-wrap items-start gap-3">
             <div className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">
               <InfinityIcon className="size-[18px]" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="title-md">Lifetime-Lizenz vs. Abo über 5 Jahre</div>
+              <div className="title-md">Lifetime-Lizenz oder Abo – Kosten über 5 Jahre</div>
               <div className="mt-0.5 text-[12.5px] text-fg-3">Einmal investiert, dazu die optionale Wartung – gegenüber monatlichen Abo-Gebühren.</div>
             </div>
             <Chip tone="amber" icon={<Info className="size-3" />}>
@@ -389,7 +392,7 @@ export function RoiRechner({ startSatz, startArbeitsplaetze, automationen, menge
           </>
           )}
           <p className="text-[12.5px] leading-snug text-fg-3">
-            Beispielrechnung mit Ihren Eingaben (Abo-Preis als mittlerer Marktpreis, Lizenz und Wartung aus Ihrem Angebot) – kein Angebot. {LIZENZ_KENNZEICHNUNG}; Ihren verbindlichen Preis nennt Ihnen Ihre feste Ansprechperson.
+            Beispielrechnung mit Ihren Eingaben (Abo-Preis als mittlerer Marktpreis, Lizenz und Wartung aus Ihrem Angebot) – kein Angebot. {LIZENZ_KENNZEICHNUNG}; Ihren verbindlichen Preis nennt Ihnen {festeAnsprechBezeichnung(tenant.ansprechpartner)}.
           </p>
         </div>
       </div>
@@ -475,7 +478,7 @@ function RoiDruck({
       )}
       {vergleich ? (
         <p>
-          Kosten über {JAHRE} Jahre bei {vergleich.ap} Arbeitsplätzen: Abo {fmtEUR(vergleich.aboSumme, { cents: false })} ({fmtEUR(vergleich.aboPreis, { cents: false })} je Platz/Monat) · Lifetime-Lizenz laut Angebot{" "}
+          <strong>Lifetime-Lizenz oder Abo – Kosten über {JAHRE} Jahre</strong> bei {vergleich.ap} Arbeitsplätzen: Abo {fmtEUR(vergleich.aboSumme, { cents: false })} ({fmtEUR(vergleich.aboPreis, { cents: false })} je Platz/Monat) · Lifetime-Lizenz laut Angebot{" "}
           {fmtEUR(vergleich.ltSumme, { cents: false })} ({fmtEUR(vergleich.ltPreis, { cents: false })} je Platz{vergleich.wtPreis ? ` + Wartung ${fmtEUR(vergleich.wtPreis, { cents: false })} je Platz und Jahr ab Jahr 2` : ""}).
         </p>
       ) : (

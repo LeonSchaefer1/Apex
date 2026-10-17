@@ -8,7 +8,7 @@ import { darfEebAbgeben as darfEebAbgebenRolle, istConsole } from "@/lib/backend
 import { normalize } from "@/core/search";
 import { useData } from "@/store/data";
 import { useSession } from "@/store/session";
-import { legeFristAn, vorfristenZu } from "@/pages/fristen/logik";
+import { gerichtsortAusRechenweg, legeFristAn, vorfristenZu } from "@/pages/fristen/logik";
 
 export const SCHRITTE = [
   { titel: "Dokument lesen", text: "Text und Anhänge werden erfasst" },
@@ -241,6 +241,19 @@ export function ablegbareAnhaenge(n: Nachricht): Anhang[] {
 
 const anhangDokId = (n: Pick<Nachricht, "id">, i: number) => `dok-${n.id}-anhang-${i + 1}`;
 
+/**
+ * Alle Anhänge beim Namen nennen – auch die, die nicht abgelegt werden (I3-T02-03):
+ * „2 Anhänge: Urteil_28O211-26.pdf in ‚Gericht‘ abgelegt · Zustellungsnachricht.xml (Strukturdaten) nicht abgelegt“.
+ */
+export function anhaengeText(n: Pick<Nachricht, "anhaenge">, ordner: string): string {
+  const alle = n.anhaenge;
+  if (!alle.length) return "";
+  const abgelegt = ablegbareAnhaenge(n as Nachricht);
+  const nicht = alle.filter((a) => !abgelegt.includes(a));
+  const teile = [abgelegt.length ? `${abgelegt.map((a) => a.name).join(", ")} in ‚${ordner}‘ abgelegt` : "", ...nicht.map((a) => `${a.name} (Strukturdaten) nicht abgelegt`)].filter(Boolean);
+  return `${alle.length} ${alle.length === 1 ? "Anhang" : "Anhänge"}: ${teile.join(" · ")}`;
+}
+
 /** Alle Dokumente, die aus dieser Nachricht in einer E-Akte abgelegt wurden: die Nachricht selbst und ihre Anhänge. */
 export function dokumenteAusNachricht(n: Pick<Nachricht, "id">, dokumente: Dokument[]): Dokument[] {
   const basis = `dok-${n.id}`;
@@ -331,7 +344,7 @@ export function anhaengeAblegen(n: Nachricht, akte: Akte, user: User, opts: { le
     });
     anzahl++;
   });
-  if (anzahl && !opts.leise) log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `${anzahl} ${anzahl === 1 ? "Anhang" : "Anhänge"} aus „${n.betreff}“ in der E-Akte abgelegt (${ordner})` });
+  if (anzahl && !opts.leise) log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Anhänge aus „${n.betreff}“ in der E-Akte – ${anhaengeText(n, ordner)}` });
   return { anzahl, ordner, verschoben };
 }
 
@@ -421,7 +434,7 @@ export function zuordnen(n: Nachricht, akte: Akte, user: User, ansicht: KiAnsich
       akteur: "nutzer",
       userId: user.id,
       akteId: akte.id,
-      text: `Nachricht „${n.betreff}“ der Akte ${akte.aktenzeichen} zugeordnet und in der E-Akte abgelegt (${dok.ordner}${anh.anzahl + anh.verschoben ? `, ${anh.anzahl + anh.verschoben} ${anh.anzahl + anh.verschoben === 1 ? "Anhang" : "Anhänge"} in „${anh.ordner}“` : ""})${vorherAkte ? ` – vorher ${vorherAkte.aktenzeichen}${mitnehmen ? `, ${ausVorher.haupt.length} ${ausVorher.haupt.length === 1 ? "Frist bzw. Termin" : "Fristen bzw. Termine"} mit umgezogen` : ""}` : ""}${konfliktText}${nachEeb}`,
+      text: `Nachricht „${n.betreff}“ der Akte ${akte.aktenzeichen} zugeordnet und in der E-Akte abgelegt (${dok.ordner}${n.anhaenge.length ? ` · ${anhaengeText(n, anh.ordner)}` : ""})${vorherAkte ? ` – vorher ${vorherAkte.aktenzeichen}${mitnehmen ? `, ${ausVorher.haupt.length} ${ausVorher.haupt.length === 1 ? "Frist bzw. Termin" : "Fristen bzw. Termine"} mit umgezogen` : ""}` : ""}${konfliktText}${nachEeb}`,
     });
   return {
     ordner: dok.ordner,
@@ -449,6 +462,8 @@ export function fristenUebernehmen(n: Nachricht, akte: Akte, user: User, ansicht
       grundlage: p.grundlage,
       ereignisDatum: p.ereignisDatum,
       rechenweg: p.rechenweg,
+      // Ort der Fristwahrung, mit dessen Feiertagen gerechnet wurde (z. B. Kammergericht als Berufungsgericht) – für Korrekturen (I3-T03-02)
+      gerichtsort: gerichtsortAusRechenweg(p.rechenweg),
       quelle: "ki",
       verantwortlichId: akte.bearbeiterId,
       vorfristVerantwortlichId: akte.sachbearbeiterId ?? akte.bearbeiterId,

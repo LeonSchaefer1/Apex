@@ -4,6 +4,7 @@ import { CheckCircle2, DatabaseBackup, Landmark, Library, Mail, RefreshCw, Scale
 import { DEMO_KI_NAME, useAiStatus } from "@/ai/status";
 import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
 import { addDays, fmtDate, fmtNum, today } from "@/core/dates";
+import { letzteSicherung } from "@/core/rueckruf";
 import { Card, Chip } from "@/components/ui";
 import { cn } from "@/lib/cn";
 
@@ -39,6 +40,7 @@ export function Systemstatus() {
   const kiDetail =
     ai.quelle === "server" ? `Claude über Ihren Kanzlei-Server${ai.modell ? ` · ${ai.modell}` : ""}` : ai.quelle === "artefakt" ? "Claude über die Vorschau-Laufzeit" : "Nach festen Regeln im Browser · keine Datenübertragung";
 
+  const sicherung = letzteSicherung(new Date());
   const dienste: Dienst[] = useMemo(
     () => [
       { key: "bea", name: "beA (BRAK)", detail: "Besonderes elektronisches Anwaltspostfach · Abruf alle 2 Min.", icon: <Scale className="size-[18px]" />, latenz: [170, 260] },
@@ -49,9 +51,10 @@ export function Systemstatus() {
       { key: "bank", name: "Bankabruf (FinTS/CAMT)", detail: "Kontoumsätze stündlich als CAMT.053", icon: <Landmark className="size-[18px]" />, latenz: [290, 420] },
       { key: "ki", name: ai.quelle === "demo" ? DEMO_KI_NAME : "KI (Claude)", detail: kiDetail, icon: <Sparkles className="size-[18px]" />, latenz: ai.quelle === "demo" ? null : [620, 940], latenzText: ai.quelle === "demo" ? "lokal" : undefined, ki: true },
       { key: "falldb", name: "Fall-Datenbank", detail: `${fmtNum(ENTSCHEIDUNGEN.length)} Entscheidungen im Demo-Auszug · Suche lokal`, icon: <Library className="size-[18px]" />, latenz: [6, 18] },
-      { key: "backup", name: "Backups", detail: "Letzte Sicherung heute 03:00 Uhr · verschlüsselt · 3-2-1-Prinzip", icon: <DatabaseBackup className="size-[18px]" />, latenz: null, latenzText: "03:00" },
+      // Nächtliche Sicherung um 03:00 Uhr – vor 03:00 Uhr war die letzte gestern (nie eine Zeit in der Zukunft, I3-T12-05)
+      { key: "backup", name: "Backups", detail: `Letzte Sicherung ${sicherung.text} · verschlüsselt · 3-2-1-Prinzip`, icon: <DatabaseBackup className="size-[18px]" />, latenz: null, latenzText: sicherung.text },
     ],
-    [ai.quelle, kiDetail],
+    [ai.quelle, kiDetail, sicherung.text],
   );
 
   return (

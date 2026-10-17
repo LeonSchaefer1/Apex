@@ -1,20 +1,21 @@
 // Kopf der Akte: Aktenzeichen, Titel, Status-Chips, Beteiligte, Aktionen und Phasen-Leiste.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { motion } from "motion/react";
-import { Archive, CalendarPlus, Check, ChevronDown, CircleDot, CircleHelp, Copy, Eye, FolderOpen, Globe, Lock, Mail, MoreHorizontal, PauseCircle, PlayCircle, Sparkles } from "lucide-react";
+import { Archive, CalendarClock, CalendarPlus, Check, ChevronDown, CircleDot, CircleHelp, Copy, Eye, FolderOpen, Globe, Lock, Mail, MoreHorizontal, PauseCircle, PlayCircle, Sparkles, StickyNote } from "lucide-react";
 import type { Akte, AktenPhase, Buchung, Frist, Rechnung } from "@/core/types";
 import { istKritisch, zaehltAlsFrist } from "@/core/fristenLage";
-import { fmtDate, fmtDateWd, fmtEUR, nowLocal, round2, today } from "@/core/dates";
+import { addMonthsBGB, fmtDate, fmtDateWd, fmtEUR, nowLocal, round2, today } from "@/core/dates";
 import { istOffen, offenerBetrag } from "@/pages/abrechnung/lib";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast, useUI } from "@/store/ui";
-import { Avatar, Button, Card, Chip, IconButton, Menu, confirmDialog } from "@/components/ui";
+import { Avatar, Button, Card, Chip, Field, IconButton, Input, Menu, Modal } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { KontaktAvatar, kopiere } from "@/pages/kontakte/kontaktHelfer";
-import { DECKUNG_INFO, PHASEN, PRIO_INFO, SACHGEBIET_ICON, STATUS_INFO, SachgebietChip, kontoSummen, useKontaktMap, useTeam } from "./helfer";
-import { useMandantenportal } from "./Mandantenportal";
+import { DECKUNG_INFO, PHASEN, PRIO_INFO, SACHGEBIET_ICON, STATUS_INFO, SachgebietChip, abschlussText, kontoSummen, useKontaktMap, useTeam } from "./helfer";
+import { PORTAL_WV_TITEL, portalOffenBis, sperrePortal, useMandantenportal } from "./Mandantenportal";
+import { legeFristAn } from "@/pages/fristen/logik";
 import { DateiDialog, type AusgabeDatei } from "@/pages/fristen/dateiAusgabe";
 import { erzeugeIcs, icsDateiname } from "@/pages/fristen/ics";
 
@@ -86,20 +87,122 @@ export function abschlussHinweise(akteId: string, data: { fristen: Frist[]; rech
   return { text: `${warnung ? "Achtung: " : ""}${teile.join(" ")}`, warnung };
 }
 
-export async function akteAbschliessen(akte: Akte, userId: string) {
-  const { text, warnung } = abschlussHinweise(akte.id, useData.getState().data);
-  const ok = await confirmDialog({
-    titel: `Akte ${akte.aktenzeichen} abschließen?`,
-    text: `${text} Die Akte wird archiviert und die Aufbewahrungsfrist der Handakte (§ 50 BRAO, sechs Jahre) vorgemerkt.${warnung ? "" : " Sie können sie jederzeit wieder öffnen."}`,
-    bestaetigen: "Akte abschließen",
-  });
-  if (!ok) return false;
+/** Mandantenportal beim Abschluss: sperren (Standard) oder bis zu einem Datum offen lassen (Wiedervorlage zum Sperren). */
+export type PortalBeimAbschluss = { art: "sperren" } | { art: "offen"; bis: string };
+
+/**
+ * Akte abschließen – bei aktivem Mandantenportal mit Entscheidung „Portal sperren“ bzw. „offen lassen bis …“ (I3-T23-03):
+ * Verlaufseintrag, beim Offenlassen eine Wiedervorlage zum Sperren am gewählten Tag.
+ */
+export function akteAbschliessenMitPortal(akte: Akte, userId: string, portal?: PortalBeimAbschluss): number {
   const jahr = schliesseAkteAb(akte, userId);
-  toast("Akte abgeschlossen", { ton: "erfolg", text: `Aufbewahrung bis 31.12.${jahr} vorgemerkt (§ 50 BRAO)` });
-  return true;
+  if (akte.mandantenportal && portal?.art === "sperren") sperrePortal(akte, userId, "beim Abschluss der Akte");
+  if (akte.mandantenportal && portal?.art === "offen") {
+    legeFristAn({
+      akteId: akte.id,
+      titel: PORTAL_WV_TITEL,
+      typ: "wiedervorlage",
+      datum: portal.bis,
+      quelle: "automatisch",
+      verantwortlichId: akte.bearbeiterId,
+      notiz: `Beim Abschluss am ${fmtDate(today())} offen gelassen – am ${fmtDate(portal.bis)} sperren.`,
+    });
+    useData.getState().log({ akteur: "nutzer", userId, akteId: akte.id, text: `Mandantenportal bleibt nach dem Abschluss aktiv bis ${fmtDate(portal.bis)} – Wiedervorlage zum Sperren angelegt – ${akte.aktenzeichen}` });
+  }
+  return jahr;
 }
 
-export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail: () => void; onFrist: () => void; onKi: () => void }) {
+/** Rückfrage „Akte abschließen?“ mit Hinweisen und – bei aktivem Portal – der Entscheidung zum Mandantenportal. */
+function AbschlussDialog({ akte, open, onClose }: { akte: Akte; open: boolean; onClose: () => void }) {
+  const { user } = useKanzlei();
+  const data = useData((s) => s.data);
+  const vorschlag = addMonthsBGB(today(), 3).date;
+  const [portalArt, setPortalArt] = useState<"sperren" | "offen">("sperren");
+  const [bis, setBis] = useState(vorschlag);
+  useEffect(() => {
+    if (!open) return;
+    setPortalArt("sperren");
+    setBis(addMonthsBGB(today(), 3).date);
+  }, [open]);
+  const { text, warnung } = useMemo(() => (open ? abschlussHinweise(akte.id, data) : { text: "", warnung: false }), [open, akte.id, data]);
+  const bisOk = /^\d{4}-\d{2}-\d{2}$/.test(bis) && bis > today();
+  const abschliessen = () => {
+    if (akte.mandantenportal && portalArt === "offen" && !bisOk) return;
+    const jahr = akteAbschliessenMitPortal(akte, user.id, akte.mandantenportal ? (portalArt === "offen" ? { art: "offen", bis } : { art: "sperren" }) : undefined);
+    onClose();
+    toast("Akte abgeschlossen", {
+      ton: "erfolg",
+      text: `Aufbewahrung bis 31.12.${jahr} vorgemerkt (§ 50 BRAO)${akte.mandantenportal ? (portalArt === "offen" ? ` · Mandantenportal aktiv bis ${fmtDate(bis)}` : " · Mandantenportal gesperrt") : ""}`,
+    });
+  };
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="sm"
+      icon={<Archive className="size-[18px]" />}
+      title={`Akte ${akte.aktenzeichen} abschließen?`}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} data-autofocus>
+            Abbrechen
+          </Button>
+          <Button variant="primary" onClick={abschliessen} disabled={!!akte.mandantenportal && portalArt === "offen" && !bisOk}>
+            Akte abschließen
+          </Button>
+        </>
+      }
+    >
+      <p className="text-[14px] text-fg-2">
+        {text} Die Akte wird archiviert und die Aufbewahrungsfrist der Handakte (§ 50 BRAO, sechs Jahre) vorgemerkt.{warnung ? "" : " Sie können sie jederzeit wieder öffnen."}
+      </p>
+      {akte.mandantenportal && (
+        <fieldset className="mt-4 rounded-[16px] bg-ink-softer p-3.5 ring-1 ring-inset ring-[var(--line)]">
+          <legend className="sr-only">Mandantenportal nach dem Abschluss</legend>
+          <div className="flex items-center gap-1.5 text-[13px] font-semibold text-fg">
+            <Globe className="size-4 text-green" aria-hidden /> Das Mandantenportal ist aktiv – was soll damit geschehen?
+          </div>
+          <label className="mt-2.5 flex min-h-11 cursor-pointer items-start gap-2.5 text-[13.5px]">
+            <input type="radio" name={`portal-${akte.id}`} className="mt-1 size-4 accent-[var(--ink)]" checked={portalArt === "sperren"} onChange={() => setPortalArt("sperren")} />
+            <span>
+              <span className="font-medium">Portal sperren</span>
+              <span className="block text-[12.5px] text-fg-3">Der Mandant verliert den Zugang mit dem Abschluss (empfohlen).</span>
+            </span>
+          </label>
+          <label className="flex min-h-11 cursor-pointer items-start gap-2.5 text-[13.5px]">
+            <input type="radio" name={`portal-${akte.id}`} className="mt-1 size-4 accent-[var(--ink)]" checked={portalArt === "offen"} onChange={() => setPortalArt("offen")} />
+            <span className="min-w-0 flex-1">
+              <span className="font-medium">Offen lassen bis …</span>
+              <span className="block text-[12.5px] text-fg-3">Für Nachfragen oder Unterlagen; am gewählten Tag erinnert eine Wiedervorlage ans Sperren.</span>
+            </span>
+          </label>
+          {portalArt === "offen" && (
+            <Field label="Portal aktiv bis" htmlFor={`portal-bis-${akte.id}`} className="ml-6 mt-1" hint={!bisOk ? "Bitte ein Datum nach heute wählen." : `Vorschlag: drei Monate (${fmtDate(vorschlag)})`}>
+              <Input id={`portal-bis-${akte.id}`} type="date" min={today()} value={bis} onChange={(e) => setBis(e.target.value)} aria-invalid={!bisOk} />
+            </Field>
+          )}
+        </fieldset>
+      )}
+    </Modal>
+  );
+}
+
+export function AkteKopf({
+  akte,
+  onEmail,
+  onFrist,
+  onKi,
+  onNotiz,
+  onWiedervorlage,
+}: {
+  akte: Akte;
+  onEmail: () => void;
+  onFrist: () => void;
+  onKi: () => void;
+  /** Notiz bzw. Wiedervorlage – auch ohne die mobile Schnellaktionsleiste erreichbar (I3-T05-01) */
+  onNotiz?: () => void;
+  onWiedervorlage?: () => void;
+}) {
   const kontakte = useKontaktMap();
   const fristen = useCol("fristen");
   const termin = naechsterTermin(akte.id, fristen);
@@ -114,6 +217,11 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
   const sb = akte.sachbearbeiterId ? byId.get(akte.sachbearbeiterId) : undefined;
   const Icon = SACHGEBIET_ICON[akte.sachgebiet];
   const [datei, setDatei] = useState<AusgabeDatei | null>(null);
+  const [abschluss, setAbschluss] = useState(false);
+  const aktivitaeten = useCol("aktivitaeten");
+  const portalBis = akte.mandantenportal ? portalOffenBis(akte.id, fristen) : undefined;
+  // „Mandantenportal gesperrt“ im Kopf einer abgeschlossenen Akte, deren Portal (beim Abschluss oder danach) gesperrt wurde
+  const portalGesperrt = !akte.mandantenportal && akte.status === "abgeschlossen" && aktivitaeten.some((a) => a.akteId === akte.id && a.text.startsWith("Mandantenportal gesperrt"));
   const terminIcs = () =>
     termin &&
     setDatei({
@@ -173,12 +281,14 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
                 </IconButton>
               )}
               items={[
+                ...(onNotiz ? [{ label: "Notiz …", icon: <StickyNote />, onClick: onNotiz }] : []),
+                ...(onWiedervorlage ? [{ label: "Wiedervorlage …", icon: <CalendarClock />, onClick: onWiedervorlage }, "sep" as const] : []),
                 akte.status === "ruhend"
                   ? { label: "Bearbeitung wieder aufnehmen", icon: <PlayCircle />, onClick: () => setzeStatus("offen") }
                   : akte.status === "offen"
                     ? { label: "Akte ruhen lassen", icon: <PauseCircle />, onClick: () => setzeStatus("ruhend"), hint: "Status" }
                     : { label: "Akte wieder öffnen", icon: <FolderOpen />, onClick: () => setzeStatus("offen") },
-                ...(akte.status !== "abgeschlossen" ? [{ label: "Akte abschließen …", icon: <Archive />, onClick: () => void akteAbschliessen(akte, user.id) }] : []),
+                ...(akte.status !== "abgeschlossen" ? [{ label: "Akte abschließen …", icon: <Archive />, onClick: () => setAbschluss(true) }] : []),
                 "sep" as const,
                 { label: akte.mandantenportal ? "Mandantenportal sperren" : "Mandantenportal freischalten …", icon: akte.mandantenportal ? <Lock /> : <Globe />, onClick: portal },
                 { label: "Als Mandant ansehen", icon: <Eye />, onClick: portalAktionen.ansehen },
@@ -202,9 +312,8 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
                 </Chip>
               )}
               {akte.status !== "offen" && (
-                <Chip tone={STATUS_INFO[akte.status].tone} dot>
-                  {STATUS_INFO[akte.status].label}
-                  {akte.abgeschlossenAm ? ` am ${fmtDate(akte.abgeschlossenAm)}` : ""}
+                <Chip tone={STATUS_INFO[akte.status].tone} dot title={akte.abschlussdatumUnbekannt ? "Aus dem Umzug: Abschlussdatum im Altsystem nicht übertragen – Aufbewahrung (§ 50 BRAO) vorsorglich ab Übernahme" : undefined}>
+                  {abschlussText(akte)}
                 </Chip>
               )}
               {akte.prioritaet !== "normal" && (
@@ -218,8 +327,13 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
                 </Chip>
               )}
               {akte.mandantenportal && (
-                <Chip tone="green" icon={<Globe className="size-3" />}>
-                  Mandantenportal aktiv
+                <Chip tone="green" icon={<Globe className="size-3" />} title={portalBis ? `Wiedervorlage zum Sperren am ${fmtDate(portalBis.datum)}` : undefined}>
+                  Mandantenportal aktiv{portalBis ? ` bis ${fmtDate(portalBis.datum)}` : ""}
+                </Chip>
+              )}
+              {portalGesperrt && (
+                <Chip tone="neutral" icon={<Lock className="size-3" />}>
+                  Mandantenportal gesperrt
                 </Chip>
               )}
             </div>
@@ -230,7 +344,7 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
         <dl className="mt-4 grid grid-cols-2 gap-x-5 gap-y-4 border-t border-[var(--line)] pt-4 lg:grid-cols-3 xl:grid-cols-6">
           <Fakt label="Mandant">
             {mandant ? (
-              <Link to={`/kontakte?id=${mandant.id}`} className="group flex min-h-11 min-w-0 items-center gap-2 sm:min-h-0">
+              <Link to={`/kontakte?id=${mandant.id}`} className="group flex min-h-11 min-w-0 items-center gap-2 sm:min-h-6 pointer-coarse:min-h-11">
                 <KontaktAvatar k={mandant} size={24} />
                 <span className="min-w-0 break-words font-medium group-hover:text-ink">{mandant.name}</span>
               </Link>
@@ -240,7 +354,7 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
           </Fakt>
           <Fakt label="Gegner" sub={gegneranwalt ? `vertreten durch ${gegneranwalt.name}` : undefined}>
             {gegner ? (
-              <Link to={`/kontakte?id=${gegner.id}`} className="flex min-h-11 min-w-0 items-center break-words font-medium hover:text-ink sm:min-h-0">
+              <Link to={`/kontakte?id=${gegner.id}`} className="flex min-h-11 min-w-0 items-center break-words font-medium hover:text-ink sm:min-h-6 pointer-coarse:min-h-11">
                 {gegner.name}
               </Link>
             ) : (
@@ -251,7 +365,7 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
             label="Gericht"
             sub={
               akte.gerichtsAz ? (
-                <button type="button" onClick={() => void kopiere(akte.gerichtsAz!, "Gerichtliches Aktenzeichen")} title="Gerichtliches Aktenzeichen kopieren" className="mono inline-flex min-h-11 items-center break-all text-left font-medium text-fg-2 hover:text-ink sm:min-h-0">
+                <button type="button" onClick={() => void kopiere(akte.gerichtsAz!, "Gerichtliches Aktenzeichen")} title="Gerichtliches Aktenzeichen kopieren" className="mono inline-flex min-h-11 items-center break-all text-left font-medium text-fg-2 hover:text-ink sm:min-h-6 pointer-coarse:min-h-11">
                   Az. {akte.gerichtsAz}
                 </button>
               ) : gericht ? (
@@ -260,7 +374,7 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
             }
           >
             {gericht ? (
-              <Link to={`/kontakte?id=${gericht.id}`} className="flex min-h-11 min-w-0 items-center break-words font-medium hover:text-ink sm:min-h-0">
+              <Link to={`/kontakte?id=${gericht.id}`} className="flex min-h-11 min-w-0 items-center break-words font-medium hover:text-ink sm:min-h-6 pointer-coarse:min-h-11">
                 {gericht.name}
               </Link>
             ) : (
@@ -273,7 +387,7 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
               termin ? (
                 <>
                   <span className="block">{[termin.titel, termin.ort].filter(Boolean).join(" · ")}</span>
-                  <button type="button" onClick={terminIcs} className="mt-0.5 inline-flex min-h-11 items-center gap-1 font-medium text-ink hover:underline sm:min-h-0" title="Termin als Kalenderdatei (.ics) für Outlook, Apple oder Google Kalender">
+                  <button type="button" onClick={terminIcs} className="mt-0.5 inline-flex min-h-11 items-center gap-1 font-medium text-ink hover:underline sm:min-h-6 pointer-coarse:min-h-11" title="Termin als Kalenderdatei (.ics) für Outlook, Apple oder Google Kalender">
                     <CalendarPlus className="size-3.5" aria-hidden />
                     In Kalender (.ics)
                   </button>
@@ -305,8 +419,9 @@ export function AkteKopf({ akte, onEmail, onFrist, onKi }: { akte: Akte; onEmail
           </Fakt>
         </dl>
       </div>
-      <PhasenLeiste akte={akte} />
+      <PhasenLeiste akte={akte} onAbschliessen={() => setAbschluss(true)} />
       {portalAktionen.dialoge}
+      <AbschlussDialog akte={akte} open={abschluss} onClose={() => setAbschluss(false)} />
       <DateiDialog datei={datei} onClose={() => setDatei(null)} />
     </Card>
   );
@@ -337,7 +452,7 @@ function leseOffen(): boolean {
   }
 }
 
-function PhasenLeiste({ akte }: { akte: Akte }) {
+function PhasenLeiste({ akte, onAbschliessen }: { akte: Akte; onAbschliessen: () => void }) {
   const { user } = useKanzlei();
   // Einklappbar – der Zustand bleibt je Gerät erhalten
   const [offen, setOffen] = useState(leseOffen);
@@ -367,7 +482,7 @@ function PhasenLeiste({ akte }: { akte: Akte }) {
   const setze = async (p: AktenPhase) => {
     if (p === akte.phase) return;
     if (p === "Abgeschlossen") {
-      await akteAbschliessen(akte, user.id);
+      onAbschliessen();
       return;
     }
     const st = useData.getState();

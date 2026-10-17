@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router";
 import { motion } from "motion/react";
-import { MoreHorizontal } from "lucide-react";
-import { MOBILE_TABS, navFor, navFuer } from "@/app/nav";
+import { MoreHorizontal, RadioTower } from "lucide-react";
+import { MOBILE_TABS, SYSTEMSTATUS, beschreibungFuer, navFor, navFuer } from "@/app/nav";
 import { cn } from "@/lib/cn";
 import { Drawer, useDialogOffen } from "@/components/ui";
 import { useKanzlei } from "@/store/session";
@@ -17,7 +17,7 @@ export function MobileTabBar() {
   const active = navFor(loc.pathname)?.to;
   const [mehr, setMehr] = useState(false);
   const badges = useBadges();
-  const { user } = useKanzlei();
+  const { user, tenant } = useKanzlei();
   const nachRolle = navFuer(user.rolle);
   const tabs = nachRolle.filter((n) => MOBILE_TABS.includes(n.to));
   // Auf dem Smartphone sitzt die Assistent-Kugel neben der Tab-Leiste – in deren Zone, ohne Listeneinträge zu verdecken.
@@ -44,7 +44,7 @@ export function MobileTabBar() {
             const isActive = active === t.to;
             const badge = badges[t.to];
             return (
-              <NavLink key={t.to} to={t.to} className="relative flex h-[52px] flex-1 flex-col items-center justify-center gap-0.5 rounded-full text-[12px] font-medium">
+              <NavLink key={t.to} to={t.to} aria-label={badge?.anzahl ? `${t.label}, ${badge.bedeutung}` : t.label} className="relative flex h-[52px] flex-1 flex-col items-center justify-center gap-0.5 rounded-full text-[12px] font-medium">
                 {isActive && (
                   <motion.span layoutId="tab-pill" transition={{ type: "spring", stiffness: 520, damping: 36 }} className="absolute inset-0 -z-10 rounded-full bg-ink-soft" />
                 )}
@@ -73,6 +73,24 @@ export function MobileTabBar() {
       </motion.nav>
       <Drawer open={mehr} onClose={() => setMehr(false)} title="Alle Bereiche" subtitle="Jede Funktion mit einem Satz erklärt.">
         <div className="grid gap-2">
+          {/* Systemstatus direkt (beA, E-Mail, Bank) – als erster Eintrag, sonst läge er tief in „Hilfe & Support“ */}
+          <button
+            type="button"
+            onClick={() => {
+              setMehr(false);
+              nav(SYSTEMSTATUS.to);
+            }}
+            className="flex items-start gap-3 rounded-[18px] p-3 text-left transition-colors hover:bg-ink-softer"
+          >
+            <span className="relative grid size-10 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">
+              <RadioTower className="size-5" />
+              <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-[var(--amber)]" aria-hidden />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-[14.5px] font-semibold">{SYSTEMSTATUS.label}</span>
+              <span className="block text-[12.5px] leading-snug text-fg-3">{SYSTEMSTATUS.beschreibung}</span>
+            </span>
+          </button>
           {nachRolle.filter((n) => !MOBILE_TABS.includes(n.to)).map((n) => (
             <button
               key={n.to}
@@ -88,7 +106,7 @@ export function MobileTabBar() {
               </span>
               <span className="min-w-0">
                 <span className="block text-[14.5px] font-semibold">{n.label}</span>
-                <span className="block text-[12.5px] leading-snug text-fg-3">{n.beschreibung}</span>
+                <span className="block text-[12.5px] leading-snug text-fg-3">{beschreibungFuer(n, tenant.ansprechpartner)}</span>
               </span>
             </button>
           ))}

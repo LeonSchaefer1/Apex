@@ -2,7 +2,7 @@
 // Erzeugt die strukturierten Daten einer Rechnung zum Abrufen; im Prototyp ohne Versand und ohne PDF/A-3-Container.
 import type { Akte, Kontakt, Rechnung, RechnungsPosition, Tenant, Zeiteintrag } from "@/core/types";
 import { round2 } from "@/core/dates";
-import { leistungszeitraum, satzAusPosition } from "./lib";
+import { ibanGueltig, ibanKompakt, leistungszeitraum, satzAusPosition } from "./lib";
 
 const x = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const b = (n: number) => round2(n).toFixed(2);
@@ -15,11 +15,24 @@ function typCode(r: Rechnung): string {
   return "380";
 }
 
-function steuerKennung(t: Tenant): { id: string; schema: "VAT" | "FC" } {
-  if (t.ustIdNr) return { id: t.ustIdNr, schema: "VAT" };
-  if (t.steuernummer) return { id: t.steuernummer, schema: "FC" };
-  return { id: "DE000000000", schema: "VAT" };
+/**
+ * Steuerkennungen der Kanzlei aus dem Kanzleiprofil (§ 14 Abs. 4 S. 1 Nr. 2 UStG): USt-IdNr. (VAT) und/oder Steuernummer (FC).
+ * Fehlen beide, steht ein gekennzeichneter Platzhalter im XML (I3-T07-03).
+ */
+function steuerKennungen(t: Tenant): { id: string; schema: "VAT" | "FC"; platzhalter?: boolean }[] {
+  const k: { id: string; schema: "VAT" | "FC"; platzhalter?: boolean }[] = [];
+  if (t.ustIdNr?.trim()) k.push({ id: t.ustIdNr.replace(/\s+/g, "").toUpperCase(), schema: "VAT" });
+  if (t.steuernummer?.trim()) k.push({ id: t.steuernummer.trim(), schema: "FC" });
+  return k.length ? k : [{ id: "DE000000000", schema: "VAT", platzhalter: true }];
 }
+
+/** Geschäftskonto der Kanzlei (Zahlungsweg) – Platzhalter nur, wenn im Kanzleiprofil keine gültige IBAN hinterlegt ist. */
+function konto(t: Tenant): { iban: string; bic?: string; bank?: string; platzhalter: boolean } {
+  const g = t.geschaeftskonto;
+  if (g?.iban && ibanGueltig(g.iban)) return { iban: ibanKompakt(g.iban), bic: g.bic?.replace(/\s+/g, "").toUpperCase() || undefined, bank: g.bank?.trim() || undefined, platzhalter: false };
+  return { iban: "DE00000000000000000000", platzhalter: true };
+}
+const PLATZHALTER_KOMMENTAR = "<!-- Platzhalter: im Kanzleiprofil (Einstellungen → Kanzlei → Rechnungsangaben) hinterlegen -->";
 
 /** Adresse „Kurfürstendamm 186, 10707 Berlin“ in Straße, PLZ, Ort zerlegen. */
 function adresse(text: string): { strasse: string; plz: string; ort: string } {
@@ -46,7 +59,8 @@ interface Kontext {
 /** XRechnung (UBL 2.1) – als XML-Datei abrufbar. */
 export function xrechnungXml(r: Rechnung, { akte, empfaenger, tenant, hinweise = [], zeiten = [] }: Kontext): string {
   const [von, bis] = leistungszeitraum(akte, r, zeiten);
-  const st = steuerKennung(tenant);
+  const st = steuerKennungen(tenant);
+  const kt = konto(tenant);
   const sitz = adresse(tenant.adresse);
   const zeilen = r.positionen.map(zeile);
   const partei = (name: string, a: { strasse: string; plz: string; ort: string }, steuer = "") => `
@@ -62,8 +76,12 @@ export function xrechnungXml(r: Rechnung, { akte, empfaenger, tenant, hinweise =
   const verkaeufer = partei(
     tenant.name,
     sitz,
-    `
-        <cac:PartyTaxScheme><cbc:CompanyID>${x(st.id)}</cbc:CompanyID><cac:TaxScheme><cbc:ID>${st.schema}</cbc:ID></cac:TaxScheme></cac:PartyTaxScheme>`,
+    st
+      .map(
+        (k) => `${k.platzhalter ? `\n        ${PLATZHALTER_KOMMENTAR}` : ""}
+        <cac:PartyTaxScheme><cbc:CompanyID>${x(k.id)}</cbc:CompanyID><cac:TaxScheme><cbc:ID>${k.schema}</cbc:ID></cac:TaxScheme></cac:PartyTaxScheme>`,
+      )
+      .join(""),
   );
   const kaeufer = partei(empfaenger?.name ?? "Mandant", { strasse: empfaenger?.strasse ?? "", plz: empfaenger?.plz ?? "", ort: empfaenger?.ort ?? "" });
   const notiz = [akte ? `In Sachen ${akte.titel}` : "", ...hinweise].filter(Boolean).join(" · ");
@@ -85,7 +103,7 @@ export function xrechnungXml(r: Rechnung, { akte, empfaenger, tenant, hinweise =
   <cac:PaymentMeans>
     <cbc:PaymentMeansCode>58</cbc:PaymentMeansCode>
     <cbc:PaymentID>${x(r.nummer)}</cbc:PaymentID>
-    <cac:PayeeFinancialAccount><cbc:ID>DE00000000000000000000</cbc:ID></cac:PayeeFinancialAccount>
+    ${kt.platzhalter ? `${PLATZHALTER_KOMMENTAR}\n    ` : ""}<cac:PayeeFinancialAccount><cbc:ID>${x(kt.iban)}</cbc:ID>${kt.bank ? `<cbc:Name>${x(kt.bank)}</cbc:Name>` : ""}${kt.bic ? `<cac:FinancialInstitutionBranch><cbc:ID>${x(kt.bic)}</cbc:ID></cac:FinancialInstitutionBranch>` : ""}</cac:PayeeFinancialAccount>
   </cac:PaymentMeans>
   <cac:TaxTotal>
     <cbc:TaxAmount currencyID="EUR">${b(r.ust)}</cbc:TaxAmount>
@@ -123,7 +141,8 @@ ${zeilen
 /** ZUGFeRD / Factur-X (CII, Profil EN 16931) – das XML, das in die PDF/A-3 eingebettet wird. */
 export function zugferdXml(r: Rechnung, { akte, empfaenger, tenant, hinweise = [], zeiten = [] }: Kontext): string {
   const [von, bis] = leistungszeitraum(akte, r, zeiten);
-  const st = steuerKennung(tenant);
+  const st = steuerKennungen(tenant);
+  const kt = konto(tenant);
   const sitz = adresse(tenant.adresse);
   const d = (iso: string) => `<udt:DateTimeString format="102">${iso.replace(/-/g, "")}</udt:DateTimeString>`;
   const notiz = [akte ? `In Sachen ${akte.titel}` : "", ...hinweise].filter(Boolean);
@@ -158,7 +177,7 @@ ${zeilen
       <ram:SellerTradeParty>
         <ram:Name>${x(tenant.name)}</ram:Name>
         <ram:PostalTradeAddress><ram:PostcodeCode>${x(sitz.plz)}</ram:PostcodeCode><ram:LineOne>${x(sitz.strasse)}</ram:LineOne><ram:CityName>${x(sitz.ort)}</ram:CityName><ram:CountryID>DE</ram:CountryID></ram:PostalTradeAddress>
-        <ram:SpecifiedTaxRegistration><ram:ID schemeID="${st.schema === "VAT" ? "VA" : "FC"}">${x(st.id)}</ram:ID></ram:SpecifiedTaxRegistration>
+${st.map((k) => `${k.platzhalter ? `        ${PLATZHALTER_KOMMENTAR}\n` : ""}        <ram:SpecifiedTaxRegistration><ram:ID schemeID="${k.schema === "VAT" ? "VA" : "FC"}">${x(k.id)}</ram:ID></ram:SpecifiedTaxRegistration>`).join("\n")}
       </ram:SellerTradeParty>
       <ram:BuyerTradeParty>
         <ram:Name>${x(empfaenger?.name ?? "Mandant")}</ram:Name>
@@ -171,7 +190,7 @@ ${zeilen
     <ram:ApplicableHeaderTradeSettlement>
       <ram:PaymentReference>${x(r.nummer)}</ram:PaymentReference>
       <ram:InvoiceCurrencyCode>EUR</ram:InvoiceCurrencyCode>
-      <ram:SpecifiedTradeSettlementPaymentMeans><ram:TypeCode>58</ram:TypeCode><ram:PayeePartyCreditorFinancialAccount><ram:IBANID>DE00000000000000000000</ram:IBANID></ram:PayeePartyCreditorFinancialAccount></ram:SpecifiedTradeSettlementPaymentMeans>
+      ${kt.platzhalter ? `${PLATZHALTER_KOMMENTAR}\n      ` : ""}<ram:SpecifiedTradeSettlementPaymentMeans><ram:TypeCode>58</ram:TypeCode><ram:PayeePartyCreditorFinancialAccount><ram:IBANID>${x(kt.iban)}</ram:IBANID>${kt.bank ? `<ram:AccountName>${x(kt.bank)}</ram:AccountName>` : ""}</ram:PayeePartyCreditorFinancialAccount>${kt.bic ? `<ram:PayeeSpecifiedCreditorFinancialInstitution><ram:BICID>${x(kt.bic)}</ram:BICID></ram:PayeeSpecifiedCreditorFinancialInstitution>` : ""}</ram:SpecifiedTradeSettlementPaymentMeans>
       <ram:ApplicableTradeTax><ram:CalculatedAmount>${b(r.ust)}</ram:CalculatedAmount><ram:TypeCode>VAT</ram:TypeCode><ram:BasisAmount>${b(r.netto)}</ram:BasisAmount><ram:CategoryCode>S</ram:CategoryCode><ram:RateApplicablePercent>${UST}</ram:RateApplicablePercent></ram:ApplicableTradeTax>
       <ram:BillingSpecifiedPeriod><ram:StartDateTime>${d(von)}</ram:StartDateTime><ram:EndDateTime>${d(bis)}</ram:EndDateTime></ram:BillingSpecifiedPeriod>
       <ram:SpecifiedTradePaymentTerms><ram:DueDateDateTime>${d(r.faellig)}</ram:DueDateDateTime></ram:SpecifiedTradePaymentTerms>

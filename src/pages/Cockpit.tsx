@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { MotionConfig } from "motion/react";
 import { PageHeader, Segmented } from "@/components/ui";
+import { FristAutomatikHinweis } from "@/components/FristAutomatikHinweis";
 import { darfAbrechnung } from "@/lib/backend";
 import { fmtDateLong, today, wochentagName } from "@/core/dates";
 import { Briefing } from "./cockpit/Briefing";
@@ -64,7 +65,9 @@ export default function Cockpit() {
       />
 
       <div className="grid gap-4">
-        <Briefing saetze={d.briefing} erstellt={erstellt} />
+        {/* Pausierte Fristautomatik: Hinweis mit Zeitpunkt und Person über allem anderen (I3-T10-01) */}
+        <FristAutomatikHinweis />
+        <Briefing saetze={d.briefing} warnungen={d.warnungen} erstellt={erstellt} />
         <Schnellaktionen />
 
         <div className="grid grid-cols-1 gap-4 @2xl:grid-cols-2 @4xl:grid-cols-12">

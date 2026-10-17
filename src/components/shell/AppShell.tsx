@@ -16,6 +16,7 @@ import { LadeBildschirm } from "./LadeBildschirm";
 import { Sperrbildschirm } from "./Sperrbildschirm";
 import { ZweiFaktorPflicht } from "./ZweiFaktorPflicht";
 import { WiedervorlageDialog, ZeiterfassungDialog, useTastenkuerzel } from "./Tastenkuerzel";
+import { PasswortAendernDialog } from "@/components/sicherheit/PasswortAendern";
 import { KeinZugriff } from "./KeinZugriff";
 import { bereichErlaubt } from "@/app/nav";
 import { useUI } from "@/store/ui";
@@ -53,6 +54,7 @@ export function AppShell() {
     ui.schliesseAssistent();
     ui.setWiedervorlage(null);
     ui.setZeiterfassung(null);
+    ui.setPasswortAendern(false);
     ui.setKuerzel(false);
     ui.zeigeHilfe(null);
   }, [gesperrt]);
@@ -106,9 +108,13 @@ export function AppShell() {
         </a>
         <Sidebar />
         <div className="relative z-10 flex min-w-0 flex-1 flex-col">
+          {/* Kopfleiste über (nicht in) der Scrollfläche: Inhalt läuft nie unter ihre Knöpfe – kein verdecktes Bedienelement
+              beim Scrollen (WCAG 2.4.11, 2.5.8; I3-T07-02). Ihr Verlauf blendet die oberste Inhaltskante weich aus. */}
+          <TopBar />
+          {/* Ebene für Kurzköpfe einzelner Seiten (z. B. Akte): liegt wie die Kopfleiste über der Scrollfläche, nicht darin */}
+          <div id="kopf-ebene" className="pointer-events-none relative z-30 h-0 shrink-0" />
           {/* Unten Freiraum für die Assistent-Kugel bzw. mobil für Tab-Leiste und schwebende Aktionsleiste: Fokus und letzte Inhalte liegen nie darunter (WCAG 2.4.11). */}
           <div ref={scrollRef} className="haupt-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden" id="haupt-scroll">
-            <TopBar />
             <main id="inhalt" tabIndex={-1} className="mx-auto w-full max-w-[1480px] px-4 pb-[calc(var(--tabbar-h)+env(safe-area-inset-bottom)+76px)] pt-6 outline-none md:px-8 md:pb-28">
               <AnimatePresence mode="wait">
                 <motion.div
@@ -131,6 +137,7 @@ export function AppShell() {
         <QuickHelp />
         <WiedervorlageDialog />
         <ZeiterfassungDialog />
+        <PasswortAendernDialog />
         <AssistantDock />
       </div>
       {gesperrt && <Sperrbildschirm />}

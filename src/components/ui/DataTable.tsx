@@ -140,8 +140,8 @@ export function DataTable<T>({
         {dichte === "compact" ? <Rows3 className="size-4" /> : <Rows4 className="size-4" />}
       </button>
       <Menu
-        trigger={({ toggle }) => (
-          <button type="button" className="icon-btn !size-8" aria-label="Spalten wählen" title="Spalten wählen" onClick={toggle}>
+        trigger={({ open, toggle }) => (
+          <button type="button" className="icon-btn !size-8" aria-label="Spalten wählen" title="Spalten wählen" aria-haspopup="menu" aria-expanded={open} onClick={toggle}>
             <Columns3 className="size-4" />
           </button>
         )}
@@ -151,6 +151,9 @@ export function DataTable<T>({
           .map((c) => ({
             label: typeof c.columnDef.header === "string" ? c.columnDef.header : c.id,
             icon: c.getIsVisible() ? <Check /> : <span className="inline-block size-4" />,
+            // Umschalter: angesagt als „aktiviert/nicht aktiviert“; das Menü bleibt offen für mehrere Spalten nacheinander
+            checked: c.getIsVisible(),
+            offenLassen: true,
             onClick: () => c.toggleVisibility(),
           }))}
       />

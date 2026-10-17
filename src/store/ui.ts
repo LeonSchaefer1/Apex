@@ -1,6 +1,8 @@
 import { create } from "zustand";
 
 export type ThemeWahl = "system" | "light" | "dark";
+/** Vorbelegte Akte für W/Z-Dialoge – aus der Akte der Seite oder aus der im Posteingang geöffneten Nachricht. */
+export type AkteVorbelegung = { akteId?: string; herkunft?: "akte" | "nachricht" };
 export type Dichte = "comfortable" | "compact";
 /** Schriftgröße der Oberfläche (je Gerät): 100 %, 112 % oder 125 %. */
 export type Schriftgroesse = 100 | 112 | 125;
@@ -90,12 +92,15 @@ interface UIState {
   /** Kürzel-Übersicht (Taste „?“) */
   kuerzelOffen: boolean;
   setKuerzel: (o: boolean) => void;
-  /** Schnelle Wiedervorlage (Taste „W“) – optional mit vorbelegter Akte */
-  wiedervorlage: { akteId?: string } | null;
-  setWiedervorlage: (w: { akteId?: string } | null) => void;
+  /** Schnelle Wiedervorlage (Taste „W“) – optional mit vorbelegter Akte; `herkunft` „nachricht“: Akte der geöffneten Nachricht */
+  wiedervorlage: AkteVorbelegung | null;
+  setWiedervorlage: (w: AkteVorbelegung | null) => void;
   /** Schnelle Zeiterfassung (Taste „Z“) – optional mit vorbelegter Akte */
-  zeiterfassung: { akteId?: string } | null;
-  setZeiterfassung: (z: { akteId?: string } | null) => void;
+  zeiterfassung: AkteVorbelegung | null;
+  setZeiterfassung: (z: AkteVorbelegung | null) => void;
+  /** Dialog „Passwort ändern“ (Einstellungen → Datenschutz, Strg+K) */
+  passwortAendern: boolean;
+  setPasswortAendern: (o: boolean) => void;
   /** Kürzel mit einzelnen Buchstaben (W, F, Z, ?, Posteingang J/K/U/E) – abschaltbar (WCAG 2.1.4); Alt+Taste wirkt immer. */
   einzeltastenKuerzel: boolean;
   setEinzeltastenKuerzel: (an: boolean) => void;
@@ -118,6 +123,7 @@ export const useUI = create<UIState>((set, get) => ({
   kuerzelOffen: false,
   wiedervorlage: null,
   zeiterfassung: null,
+  passwortAendern: false,
   einzeltastenKuerzel: read<boolean>("aa:einzeltasten", true) !== false,
   sidebarKompakt: read<boolean>("aa:sidebar", false),
   assistentOffen: false,
@@ -158,6 +164,7 @@ export const useUI = create<UIState>((set, get) => ({
   setKuerzel: (o) => set({ kuerzelOffen: o }),
   setWiedervorlage: (w) => set({ wiedervorlage: w }),
   setZeiterfassung: (z) => set({ zeiterfassung: z }),
+  setPasswortAendern: (o) => set({ passwortAendern: o }),
   setEinzeltastenKuerzel: (an) => {
     write("aa:einzeltasten", an);
     set({ einzeltastenKuerzel: an });

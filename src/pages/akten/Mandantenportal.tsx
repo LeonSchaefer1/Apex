@@ -64,6 +64,24 @@ export function setzePortal(d: Dokument, akte: Akte, userId: string, bereitstell
   return true;
 }
 
+/** Wiedervorlage „Portal sperren“, wenn das Portal beim Abschluss der Akte offen gelassen wurde (I3-T23-03). */
+export const PORTAL_WV_TITEL = "Mandantenportal sperren (Akte abgeschlossen)";
+
+/** Offene Wiedervorlage zum Sperren des Portals – ihr Datum ist „aktiv bis …“. */
+export function portalOffenBis(akteId: string, fristen: Frist[]): Frist | undefined {
+  return fristen.filter((f) => f.akteId === akteId && f.status === "offen" && f.typ === "wiedervorlage" && f.titel === PORTAL_WV_TITEL).sort((a, b) => a.datum.localeCompare(b.datum))[0];
+}
+
+/** Portal sperren (ohne Rückfrage – die Rückfrage liegt beim Aufrufer): Akte, offene Sperr-Wiedervorlage erledigt, Verlauf. */
+export function sperrePortal(akte: Akte, userId: string, anlass?: string): void {
+  const st = useData.getState();
+  st.patch("akten", akte.id, { mandantenportal: false, updatedAt: nowLocal() });
+  for (const f of st.data.fristen.filter((x) => x.akteId === akte.id && x.status === "offen" && x.titel === PORTAL_WV_TITEL))
+    st.patch("fristen", f.id, { status: "erledigt", erledigtAm: nowLocal(), erledigtVon: userId });
+  const mandant = st.data.kontakte.find((k) => k.id === akte.mandantId);
+  st.log({ akteur: "nutzer", userId, akteId: akte.id, text: `Mandantenportal gesperrt${anlass ? ` ${anlass}` : ""} – ${mandant?.name ?? "Mandant"} hat keinen Zugriff mehr – ${akte.aktenzeichen}` });
+}
+
 /** Termine, die der Mandant sieht – keine Fristen, Vorfristen oder Wiedervorlagen (Fristinterna). */
 export function portalTermine(akteId: string, fristen: Frist[]): Frist[] {
   return fristen.filter((f) => f.akteId === akteId && f.typ === "termin" && f.status === "offen" && f.datum >= today()).sort((a, b) => a.datum.localeCompare(b.datum));
@@ -85,8 +103,7 @@ export function useMandantenportal(akte: Akte) {
       gefahr: true,
     });
     if (!ok) return;
-    useData.getState().patch("akten", akte.id, { mandantenportal: false, updatedAt: nowLocal() });
-    useData.getState().log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Mandantenportal gesperrt – ${mandant?.name ?? "Mandant"} hat keinen Zugriff mehr – ${akte.aktenzeichen}` });
+    sperrePortal(akte, user.id);
     toast("Mandantenportal gesperrt", { ton: "erfolg", text: `${mandant?.name ?? "Der Mandant"} hat keinen Zugriff mehr.` });
   };
   const freischaltenBestaetigt = () => {
@@ -99,7 +116,7 @@ export function useMandantenportal(akte: Akte) {
       text: `Mandantenportal freigeschaltet für ${mandant.name} (Zugangs-E-Mail an ${mandant.email}) – ${akte.aktenzeichen}`,
     });
     setFrage(false);
-    toast("Mandantenportal freigeschaltet", { ton: "erfolg", text: `${mandant.name} erhält die Zugangs-E-Mail an ${mandant.email}.` });
+    toast("Mandantenportal freigeschaltet", { ton: "erfolg", text: `${mandant.name} erhält die Zugangs-E-Mail an ${mandant.email} (im Prototyp nicht versendet).` });
   };
 
   const dialoge = (

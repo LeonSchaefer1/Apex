@@ -13,7 +13,7 @@ import type { Akte, Buchung, Dokument, Kontakt, Tenant, User } from "@/core/type
 import { useIsMobile } from "@/lib/useMedia";
 import { cn } from "@/lib/cn";
 import { kopiereText } from "@/lib/zwischenablage";
-import { fmtEURkompakt, fmtProzent, parseBetrag } from "./lib";
+import { fmtEURkompakt, fmtProzent, parseBetrag, zinsAbschnittGrund } from "./lib";
 import { niceTicks } from "./UmsatzChart";
 import { Anschrift, Briefkopf, TabKopf, useLookups, useMeasure } from "./ui";
 
@@ -666,7 +666,7 @@ export function ForderungskontoTab() {
         <div className="px-5 pt-5">
           <CardHeader
             title="Zinsabschnitte"
-            subtitle={`Taggenau (act/365) – neuer Abschnitt bei jeder Änderung des Basiszinssatzes oder des Kapitals. Summe ${fmtEUR(zinsGesamt)}.`}
+            subtitle={`Taggenau (act/365) – neuer Abschnitt bei jeder Änderung des Basiszinssatzes, des Kapitals oder bei einer Kostenbuchung. Summe ${fmtEUR(zinsGesamt)}.`}
             className="!mb-3"
           />
         </div>
@@ -676,8 +676,11 @@ export function ForderungskontoTab() {
           <ul className="divide-y divide-[var(--line)] border-t border-[var(--line)]">
             {stand.zinsAbschnitte.map((z, i) => (
               <li key={i} className="flex items-baseline justify-between gap-3 px-5 py-2.5 text-[12.5px]">
-                <span className="num text-fg-2">
-                  {fmtDate(z.von)} – {fmtDate(z.bis)} · {z.tage} T. · {fmtProzent(z.zinssatz)}
+                <span className="min-w-0">
+                  <span className="num block text-fg-2">
+                    {fmtDate(z.von)} – {fmtDate(z.bis)} · {z.tage} T. · {fmtProzent(z.zinssatz)}
+                  </span>
+                  <span className="block text-fg-3">{zinsAbschnittGrund(z, stand.zinsAbschnitte[i - 1], stand.verlauf)}</span>
                 </span>
                 <span className="num font-semibold">{fmtEUR(z.zinsen)}</span>
               </li>
@@ -693,6 +696,7 @@ export function ForderungskontoTab() {
                   <th className="!text-right">Tage</th>
                   <th className="!text-right">Kapital</th>
                   <th className="!text-right">Zinssatz</th>
+                  <th>Neuer Abschnitt wegen</th>
                   <th className="!pr-5 !text-right">Zinsen</th>
                 </tr>
               </thead>
@@ -704,6 +708,7 @@ export function ForderungskontoTab() {
                     <td className="num text-right">{z.tage}</td>
                     <td className="num text-right">{fmtEUR(z.kapital)}</td>
                     <td className="num text-right">{fmtProzent(z.zinssatz)}</td>
+                    <td className="text-[12.5px] text-fg-3">{zinsAbschnittGrund(z, stand.zinsAbschnitte[i - 1], stand.verlauf)}</td>
                     <td className="num !pr-5 text-right font-semibold">{fmtEUR(z.zinsen)}</td>
                   </tr>
                 ))}
