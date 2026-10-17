@@ -1,6 +1,6 @@
 # AnwaltApex – Masterprompt für Claude Code
 
-Stand: 16.10.2026 · ersetzt den Entwurf „Masterprompt_Software_Claude_Code.txt“
+Stand: 16.10.2026, ergänzt am 17.10.2026 um den [Stand nach Umsetzung und Usability-Studie](#stand-nach-umsetzung-und-usability-studie) · ersetzt den Entwurf „Masterprompt_Software_Claude_Code.txt“
 
 ---
 
@@ -12,6 +12,8 @@ Stand: 16.10.2026 · ersetzt den Entwurf „Masterprompt_Software_Claude_Code.tx
 | Optional für besonders schwierige Entscheidungen | Claude Fable 5.1 | `claude-fable-5-1` | Leistungsfähigstes allgemein verfügbares Modell von Anthropic. Sinnvoll für Architektur-Reviews, Sicherheits-Reviews und knifflige Fristen-/Gebührenlogik. Etwa 2,5-mal so teuer wie Opus 5.5 (10 $ / 50 $). |
 | KI-Funktionen in der App (Fallanalyse, Schriftsätze, Assistent) | Claude Opus 5.5 | `claude-opus-5-5` | Beste Qualität bei juristischer Argumentation und Werkzeugnutzung. Adaptive Thinking ist immer an und wird per `output_config.effort` gesteuert: low für den Assistenten, medium für Analysen. Server-seitige Fallbacks sind aktiviert (`fallbacks: "default"`). |
 | Massenverarbeitung im Posteingang (Option) | Claude Haiku 5.5 | `claude-haiku-5-5` | Schnell und sehr günstig (0,10 $ / 0,50 $) für Klassifizierung und Zuordnung großer Mengen. Fristen berechnet ohnehin der deterministische Rechenkern. |
+
+> Geprüft am 17.10.2026: Modell-IDs, Kontextgröße und Preise der Tabelle sind aktuell (Haiku 5.5: 0,10 $ / 0,50 $ für Eingaben bis 100.000 Token). In der App ist `claude-opus-5-5` der Standard (`AI_MODEL`); Haiku 5.5 ist für Massenaufgaben vorgesehen, im Prototyp aber noch nicht verdrahtet.
 
 > Der ursprüngliche Entwurf empfahl „Claude 3.7 Sonnet“. Dieses Modell ist mehrere Generationen alt. Für ein Produkt dieser Tiefe ist **Claude Opus 5.5 in Claude Code** die richtige Wahl.
 
@@ -177,9 +179,77 @@ Phase 6 – Umzug & Betrieb: Migrations-Importer je Altsystem, On-Prem-Installer
 
 ---
 
-## Anhang: Was der Prototyp in diesem Repository bereits zeigt
+## Stand nach Umsetzung und Usability-Studie
 
-- Vollständige, klickbare Web-App mit allen Modulen aus Abschnitt 4 (Demo- und Server-Betrieb).
-- Geprüfte Fachlogik in `src/core` (Fristen inkl. Feiertage aller Bundesländer, RVG 2025/2021, Zinsen/§ 367 BGB).
-- KI-Funktionen live mit Claude (Server-Proxy bzw. Artefakt-Laufzeit) und mit Offline-Fallback.
-- Mehrmandanten-Server mit getrennten Kanzleidaten, Testzugängen (Apex Console), Docker & Render-Konfiguration.
+**Stand:** 17.10.2026 · Prototyp v0.9 · Demodaten `SEED_VERSION` 13 · 229 automatische Tests · axe-core 0 serious / 0 critical · fünf Usability-Iterationen mit dem Kundenavatar Claudia Reinholz ([Übersicht](usability/README.md))
+
+### Was gebaut ist
+
+Der Prototyp in diesem Repository ist eine vollständige, klickbare Web-App mit allen Modulen aus Abschnitt 4, im Browser-Demo- und im Server-Betrieb. Er ist die Referenz für Design, Benennung und Fachlogik der Produktion.
+
+| Modul (Abschnitt 4) | Stand im Prototyp | Für die Produktion offen |
+|---|---|---|
+| Cockpit | KI-Briefing in drei Sätzen (auch vorgelesen), „Heute & morgen fällig“, Posteingang, KI-Empfehlung, 38h-Motor, Finanzen; „Ganze Kanzlei“ / „Nur meine“ | – |
+| Akten, E-Akte | Mandatsaufnahme mit Kollisionsprüfung (auch über Dubletten) und automatischen Entwürfen, E-Akte mit Umbenennen, Stapelaktionen, Drag & Drop und Versionen, Aktenkonto, Verlauf, Rechtsschutz nachtragbar, Mandantenportal je Akte (Freigabe je Dokument, Vorschau „Als Mandant ansehen“) | Upload großer Bestände, OCR, Portal für Mandanten selbst (Phase 2/3) |
+| Posteingang | KI-Zuordnung mit Grund und Sicherheit, Fristenerkennung, Mandatsanfragen, eEB nur durch Berufsträger und erst nach notierter Frist, Fristkorrektur an das eEB-Datum gebunden, Tastatur J/K/U/E | echte beA- und E-Mail-Anbindung (Phase 3) |
+| Fristen | Fristenrechner mit Rechenweg und Regelkatalog (ZPO, ArbGG, KSchG, StPO, OWiG, VwGO, FamFG, BGB), Feiertage aller Länder am Gerichtsort, Vier-Augen-Kontrolle, Ausgangskontrolle, Vertretung, .ics-Export | – |
+| Apex KI | KI-Fallanalyse, Dokument-Analyse (inkl. vertraglicher Ausschlussfristen), Schriftsatz-Entwurf – live mit Claude oder als Demo-KI (offline) | Rechtsprechungs-RAG mit Embeddings (Phase 5) |
+| Fall-Datenbank | Stichwortsuche und KI-Recherche über einen Demo-Auszug von 33 Leitentscheidungen, „Für Ihre Akten“, Anheften an Akten | Ingestion Open Legal Data / NeuRIS, Instanzgerichte (Phase 5) |
+| 38h-Motor | 12 Automatiken mit Freigabe vor jedem Versand, Messung der letzten 7 Tage (Beispielwerte), ROI-Rechner mit eigenen Mengen | Workflow-Engine mit echter Messung (Phase 5) |
+| Abrechnung | RVG je Angelegenheit (2025/2021), Sammelabrechnung mit Vorschuss nach § 9 RVG, Storno und Korrekturrechnung, XRechnung/ZUGFeRD, Bankabgleich mit Geschäfts- und Anderkonto, Fremdgeld-Wächter mit SEPA-Datei, Forderungskonto mit § 367 BGB, Zinsrechner, Zeiterfassung | FinTS/EBICS-Anbindung, PfÜB/ZV-Formulare, FiBu mit DATEV-Export (Phase 4) |
+| Kontakte | Rollen je Akte, Kollisionsprüfung, Zusammenführen von Dubletten | – |
+| Diktat | Spracheingabe für Notizen und E-Mails (Web Speech API) | Diktat On-Premise (Whisper oder Partner) |
+| Umzug | fünf Schritte mit Spaltenzuordnung, Windows-1252, Dubletten- und Plausibilitätsprüfung, Fristen in die Vier-Augen-Kontrolle, Umzugsprotokoll mit „Rückgängig“; CSV-Import echt | Importer je Altsystem inkl. Dokumente und Aktenkonten (Phase 6) |
+| Hilfe & Support | feste Ansprechpartnerin mit Servicezeit, Systemstatus, geprüfte Updates, animiertes Wiki, Schnellhilfe je Seite | echter Rückruf und Fernwartung |
+| Apex Assistent | Sprache und Text, Werkzeuge für Fristen, Akten, RVG, Rechtsprechung, Finanzen und Wiki, Bestätigungskarte vor jedem Eintrag, Notfallwissen beA-Störung, Eskalation an die Ansprechpartnerin | – |
+| Einstellungen | Kanzleiprofil mit Briefkopf und Rechnungsangaben, Team mit Rollen, Abwesenheit, Vertretung und Fristübertragung, Lizenz (neutraler Wortlaut), KI, Darstellung, Datenschutz & Verträge, Zwei-Faktor-Anmeldung, Sperre bei Inaktivität | SSO (Entra ID) |
+| Apex Console | Testzugänge mit Startpasswort und Pflicht zum Passwortwechsel, Pausieren, Zurücksetzen, Löschen, Neuvergabe von Startpasswörtern – jeder Eingriff im Protokoll der Kanzlei | Lizenz- und Supportverwaltung (Phase 6) |
+| Betrieb | Hono-Server mit `node:sqlite`, Mandantentrennung je Sitzung und Tab, KI-Proxy mit Kontingenten, Audit-Protokoll, Docker und Render; Artefakt als eine HTML-Datei | Zielarchitektur aus Abschnitt 7 (PostgreSQL mit RLS, Meilisearch, BullMQ, Tauri, Updates mit Rollback) |
+
+**Querschnitt, der für die Produktion übernommen werden soll:**
+
+- Eine Zählweise für alle Bereiche: `src/core/fristenLage.ts` (Fristen = Notfristen und Fristen; Wiedervorlagen, Vorfristen und Termine getrennt; gleitendes Fenster „nächste 7 Tage“) und `src/core/kennzahlen.ts` (Posteingang, Finanzen, Motor „letzte 7 Tage“, Briefing).
+- Feste Wortlaute statt verstreuter Texte: `DEMO_KI_NAME`, `SIMULIERT_STATUS`, `src/content/lizenz.ts`, `src/lib/rollen.ts`.
+- Barrierefreiheit über Tokens und Bausteine (Kontrast-Tokens, Fokusregeln in `Modal`/`Drawer`/`confirmDialog`, Touch-Ziele 44 px, abschaltbare Einzeltasten-Kürzel) – siehe [UI-Leitfaden](UI-LEITFADEN.md#5-bedienung-und-barrierefreiheit).
+
+### Erkenntnisse aus den fünf Iterationen
+
+| Iteration | Schwerpunkt | SUS | Wichtigste Erkenntnis | Folge im Produkt |
+|---|---|---|---|---|
+| 1 | Erstkontakt und Baseline | 65,6 | Der Fachkern trägt (Fristen, RVG, Zinsen exakt). Engpass ist das **Vertrauen** (Note 3,5): Testzugang per Klick, erfundene Protokolleinträge, ungekennzeichnete Demozahlen, Automatiken ohne Freigabe. Vier Haftungsfälle (eEB durch ReFa, überlesene Ausschlussfrist, Zeithonorar, Testzugang). | eEB nur für Berufsträger, „Beispiel“ und „simuliert“ überall gekennzeichnet, Freigabe vor jedem Versand, Ausgangskontrolle, verbindliche Kollisionsentscheidung, lückenloses eEB-Protokoll |
+| 2 | Effizienz und Tastatur | 71,9 | Fehlzuordnungen im Posteingang können die Verschwiegenheit verletzen (Dokument im fremden Mandantenportal); Zeithonorar mit zwei Sätzen; Dialoge halten den Fokus nicht. | Rücknahme räumt die fremde Akte auf, Portal nur mit Einzelfreigabe, ein Stundensatz, Fokusfallen, Posteingang- und Fristen-Kürzel, abschaltbare Einzeltasten |
+| 3 | Mobil und Tablet | 76,3 | Keine Rechenfehler mehr, aber „Türen, durch die ein müder Mensch einen Fehler trägt“: Honorar als Fremdgeld gebucht, Sammelabrechnung über ausgeblendete Akten, Rechner still mit „heute“ vorbelegt; mobile Aktionen nicht erreichbar. | Rückfrage bei Fremdgeld, Abrechnung nur der sichtbaren Auswahl, keine stillen Vorbelegungen, Aktionen am iPhone im Bild, Tablet-Navigation |
+| 4 | Lesbarkeit, Dunkelmodus, Barrierefreiheit | 78,1 | Grundlage trägt (200 %, 320 px, Farbfehlsicht), aber Kollisionsprüfung über eine Dublette lückenhaft (K) und Weiß auf `--ink` im Dunkeln unter 4,5 : 1. | Kollision über Dubletten, Kontrast-Tokens (`--ink-fill`, `--*-text`, `--on-green`), Tabellen per Tastatur, Konto je Kontoumsatz, Anbieter-Eingriff im Protokoll |
+| 5 | Abnahme und Kaufentscheidung | 80,6 | 24 / 24 Aufgaben ohne Hilfe, alle Prüfwerte exakt, axe 0 / 0. Ein K-Befund: Fristkorrektur ließ ein Datum gegen das eEB zu. Kauf viermal „unter Bedingungen“, Empfehlung 8 / 10. | Korrektur an das eEB-Datum gebunden, Eingabeprüfung Gegenstandswert, eine neutrale Wartungsaussage, Fristentscheidung vor dem Deaktivieren eines Zugangs |
+
+**Übergreifende Lehren:**
+
+1. **Vertrauen entsteht durch Ehrlichkeit und Protokoll.** Die größten Sprünge der Vertrauensnote (3,5 → 1,63) kamen nicht aus neuen Funktionen, sondern aus Kennzeichnung („simuliert“, „Beispielwerte“), Anbieter-Eingriffen im Protokoll und neutralen statt erfundenen Zusagen.
+2. **Die Risiken liegen in den Übergängen.** Der Rechenkern war ab der ersten Runde exakt. Fehler entstanden beim Korrigieren, Zuordnen, Buchen und bei Rollen. Jede solche Stelle braucht eine Plausibilitätsprüfung, eine Rückfrage mit sicherer Vorauswahl und „Rückgängig“.
+3. **Eine Zählweise für alle Bereiche.** Weichen Cockpit, Kalender und Assistent auch nur in einer Zahl ab, fällt das Vertrauen sofort. Fristen und Wiedervorlagen werden deshalb überall getrennt genannt.
+4. **Barrierefreiheit und Dunkelmodus gehören in Tokens und Bausteine,** nicht in einzelne Seiten. Seit Iteration 4 bleiben Verstöße aus, weil die Regeln zentral liegen.
+5. **Die Preisbereitschaft folgt den eingesparten Softwarekosten,** nicht der gemessenen Zeitersparnis: „günstig“ ≈ 12.000 €, „teuer, aber noch“ 20.000–25.000 € (nur mit Pilot oder Raten), „zu teuer“ ab 30.000–35.000 € für 7 Arbeitsplätze; Wartung bis 15 % pro Jahr (Trendwerte, [Iteration 5, Abschnitt 4.4](usability/iteration-5.md#44-preisfragen-van-westendorp-lifetime-lizenz-für-7-arbeitsplätze-netto)).
+
+### Offene Entscheidungen des Auftraggebers
+
+Diese Punkte lassen sich im Produkt nicht lösen. Bis zur Entscheidung steht in der App nur der neutrale Wortlaut aus `src/content/lizenz.ts` („im Angebot geregelt“ bzw. „auf Anfrage“).
+
+| # | Entscheidung | Stand im Produkt |
+|---|---|---|
+| 1 | Lizenzpreis für 7 Arbeitsplätze und schriftliches Angebot | „Preis auf Anfrage – verbindlich im Angebot“ |
+| 2 | Wartung: Satz bzw. Betrag, Inhalt, Update-Zeitpunkt, ob ein Wartungsjahr im Lizenzpreis enthalten ist | „Wartung: Umfang und Preis regelt das Angebot“; ROI-Rechner fragt „laut Angebot“ |
+| 3 | Übertragbarkeit der Lizenz (Fusion, Verkauf, Nachfolge) | „im Angebot geregelt“ |
+| 4 | Quellcode-Hinterlegung (Escrow) bzw. offenes Exportformat | „auf Anfrage“ |
+| 5 | KI-Verarbeitung in der EU oder eine nach § 43e Abs. 4 BRAO tragfähige Lösung für die Live-KI | Live-KI über Anthropic (USA), „Verarbeitung der Live-KI in der EU: auf Anfrage“; Demo-KI offline |
+| 6 | Impressum mit echten Anbieterdaten (§ 5 DDG) | gekennzeichneter Platzhalter (I1-T00-02, H, teilweise) |
+| 7 | Festpreis und Termin für den begleiteten Umzug der Altakten | „Gemeinsam mit Lena Vogt“, ohne Preis |
+| 8 | Pilot, Probelauf mit dem echten Export, Ratenzahlung oder Mietkauf für Preise über 15.000 € | – |
+| 9 | Zusage, dass Fristenrechner und Abrechnung ohne Wartung nutzbar bleiben | im Entwurf der Lizenzbedingungen, verbindlich erst im Angebot |
+
+Quelle und Begründung je Punkt: [Iteration 5, Abschnitt 4.6](usability/iteration-5.md#46-offene-entscheidungen-des-auftraggebers).
+
+### Empfohlene nächste Schritte
+
+1. **Kurzer Abnahme-Nachtest** mit dem Avatar (T03, T07, T13 und die M-Befunde aus T02, T04, T10, T14, T23) – mit fester Seitenuhr, damit sich Werktagssituationen und die Fristkorrektur nach dem eEB prüfen lassen. Danach Kauf, Noten, UEQ-S und SUS neu erheben.
+2. **Entscheidungen 1–9 einholen** und als Text im Produkt eintragen (`src/content/lizenz.ts`, Impressum).
+3. **Phase 1 der Zielarchitektur** beginnen: `packages/core` aus `src/core` übernehmen (inkl. Tests), danach Datenbank mit RLS und Auth.

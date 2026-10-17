@@ -158,21 +158,28 @@
 
 ### 4.1 Abgleich mit dem Abnahmeziel (Kundenavatar 1.12)
 
-| # | Abnahmeziel | Ergebnis Iteration 5 | Bewertung |
-|---|---|---|---|
-| 1 | Alle 24 Aufgaben (T00–T23) ohne Hilfe erledigt | 24 / 24 erledigt, 0 mit Hilfe, 0 mit Umweg, 0 abgebrochen | **erfüllt** |
-| 2 | 0 offene K- und H-Befunde | **1 K offen:** I5-T03-01 (Fristkorrektur gegen das eEB-Datum). **1 H teilweise:** I1-T00-02 (Impressum), wartet auf echte Anbieterdaten vom Auftraggeber | **nicht erfüllt** – I5-T03-01 ist Auftrag B-01; das Impressum entscheidet der Auftraggeber |
-| 3 | Alle Prüfwerte exakt: T04, T07 (16 Werte + Zeithonorar), T09 (Satzwechsel, A–C), T11 (0 Zeichenfehler), T18 (6 Daten) | T04 02.11.2026 / 11.400 € · T07 16/16 + 428,40 € · T09 0,00 €, Satzwechsel, A–C · T11 0 Zeichenfehler · T18 6/6 | **erfüllt** |
-| 4 | axe-core ohne Verstoß „serious“ und „critical“ in allen geprüften Ansichten | 0 / 0 in 72 Prüfzeilen (hell, dunkel, 200 %, 320 px, iPhone) | **erfüllt** |
-| 5 | SUS ≥ 80 (Trendwert) | **80,6** (A 82,5 · B 77,5 · C 80,0 · D 82,5) | **erfüllt** (knapp; Block B wegen I5-T03-01 bei 77,5) |
-| 6 | UEQ-S ≥ +1,5 in beiden Skalen | pragmatisch **+1,69** · hedonisch **+1,44** (B +1,25) | **teilweise** – hedonisch knapp verfehlt |
-| 7 | Alle Schulnoten ≤ 2,0 | Mittel je Dimension höchstens 2,0; als Einzelnote 26 von 27 ≤ 2,0 (Block B Vertrauen 2,5) | **teilweise** |
-| 8 | Vertrauen und Fachliche Korrektheit = 1 | Vertrauen **1,63** (A 2 · B 2,5 · C 1 · D 1), Fachlich **1,25** (A 1 · B 2 · C 1 · D 1) | **nicht erfüllt** – B wegen I5-T03-01; A wegen offener Vertragsfragen (Impressum, Wartungspreis, Übertragbarkeit, Escrow, KI in den USA) |
-| 9 | Kauf heute „ja“ oder „unter Bedingungen“, die nur noch Vertrag und Preis betreffen | 4 × unter Bedingungen; **nur Block D** ausschließlich Vertrag und Preis. Produktbedingungen: A I5-T13-01 (eine Wartungsaussage), B I5-T03-01, C I5-T07-01 | **nicht erfüllt** – alle drei Produktbedingungen sind Aufträge dieser Runde (A-02, B-01, B-03) |
+| # | Abnahmeziel | Ergebnis Iteration 5 | Bewertung | Stand nach Umsetzung (Abschnitt 12) |
+|---|---|---|---|---|
+| 1 | Alle 24 Aufgaben (T00–T23) ohne Hilfe erledigt | 24 / 24 erledigt, 0 mit Hilfe, 0 mit Umweg, 0 abgebrochen | **erfüllt** | **erfüllt** (Testergebnis) – nicht neu gemessen; die geänderten Wege (Fristkorrektur, Deaktivieren eines Zugangs, Taste U) prüft der Abnahme-Nachtest |
+| 2 | 0 offene K- und H-Befunde | **1 K offen:** I5-T03-01 (Fristkorrektur gegen das eEB-Datum). **1 H teilweise:** I1-T00-02 (Impressum), wartet auf echte Anbieterdaten vom Auftraggeber | **nicht erfüllt** – I5-T03-01 ist Auftrag B-01; das Impressum entscheidet der Auftraggeber | **produktseitig erfüllt** – I5-T03-01 umgesetzt und im Browser nachgestellt (12.1: Zukunft und Datum vor dem Eingang gesperrt, spätere Abweichung nur mit Pflichtbestätigung, Chip in der Vier-Augen-Ansicht). Offen bleibt nur I1-T00-02 (Impressum) – **Auftraggeber-Entscheidung** (4.6 Nr. 6) |
+| 3 | Alle Prüfwerte exakt: T04, T07 (16 Werte + Zeithonorar), T09 (Satzwechsel, A–C), T11 (0 Zeichenfehler), T18 (6 Daten) | T04 02.11.2026 / 11.400 € · T07 16/16 + 428,40 € · T09 0,00 €, Satzwechsel, A–C · T11 0 Zeichenfehler · T18 6/6 | **erfüllt** | **erfüllt** – alle Prüfwerte in der Prüfung erneut nachgerechnet und exakt (12.3); T03 ist mit der Bindung an das eEB-Datum auch fachlich abgesichert |
+| 4 | axe-core ohne Verstoß „serious“ und „critical“ in allen geprüften Ansichten | 0 / 0 in 72 Prüfzeilen (hell, dunkel, 200 %, 320 px, iPhone) | **erfüllt** | **erfüllt** – 0 / 0 in 68 Ansichten der Prüfung (hell, dunkel, 320 px, 200 %); der dabei gefundene target-size-Verstoß an der Apex Island ist behoben (12.2, 12.3) |
+| 5 | SUS ≥ 80 (Trendwert) | **80,6** (A 82,5 · B 77,5 · C 80,0 · D 82,5) | **erfüllt** (knapp; Block B wegen I5-T03-01 bei 77,5) | **erfüllt** (Testwert) – **nicht neu gemessen**; Block B (77,5) begründete seinen Wert mit I5-T03-01, der umgesetzt ist. Neuerhebung im Abnahme-Nachtest |
+| 6 | UEQ-S ≥ +1,5 in beiden Skalen | pragmatisch **+1,69** · hedonisch **+1,44** (B +1,25) | **teilweise** – hedonisch knapp verfehlt | **nicht neu gemessen** – für den hedonischen Wert gibt es keinen eigenen Befund; Neuerhebung im Abnahme-Nachtest |
+| 7 | Alle Schulnoten ≤ 2,0 | Mittel je Dimension höchstens 2,0; als Einzelnote 26 von 27 ≤ 2,0 (Block B Vertrauen 2,5) | **teilweise** | **nicht neu gemessen** – die einzige Note über 2,0 (Vertrauen 2,5, Block B) beruhte auf I5-T03-01, der umgesetzt ist |
+| 8 | Vertrauen und Fachliche Korrektheit = 1 | Vertrauen **1,63** (A 2 · B 2,5 · C 1 · D 1), Fachlich **1,25** (A 1 · B 2 · C 1 · D 1) | **nicht erfüllt** – B wegen I5-T03-01; A wegen offener Vertragsfragen (Impressum, Wartungspreis, Übertragbarkeit, Escrow, KI in den USA) | **nicht neu gemessen** – der Produktgrund von Block B (I5-T03-01) ist umgesetzt. Block A begründet „Vertrauen 2“ mit offenen Vertragsfragen – das hängt nur noch an **Auftraggeber-Entscheidungen** (4.6 Nr. 1–6) |
+| 9 | Kauf heute „ja“ oder „unter Bedingungen“, die nur noch Vertrag und Preis betreffen | 4 × unter Bedingungen; **nur Block D** ausschließlich Vertrag und Preis. Produktbedingungen: A I5-T13-01 (eine Wartungsaussage), B I5-T03-01, C I5-T07-01 | **nicht erfüllt** – alle drei Produktbedingungen sind Aufträge dieser Runde (A-02, B-01, B-03) | **produktseitig erfüllt** – alle drei Produktbedingungen umgesetzt und vorgeführt (I5-T03-01, I5-T07-01, I5-T13-01; 12.1, 12.4). Übrig sind nur Vertrag und Preis – **Auftraggeber-Entscheidungen** (4.6). Bestätigung im Abnahme-Nachtest |
+
+**Stand nach Umsetzung in Kürze:** Produktseitig ist kein Abnahmepunkt mehr offen.
+
+- **Erfüllt:** 1, 3, 4 und 5 (SUS als Testwert, nicht neu gemessen).
+- **Produktseitig erfüllt, nur noch abhängig von Auftraggeber-Entscheidungen:** 2 (Impressum) und 9 (Vertrag und Preis).
+- **Nicht neu gemessen:** 6, 7 und 8. Für 7 und 8 ist der Produktgrund (I5-T03-01) beseitigt; Punkt 8 hängt für Block A zusätzlich an den Entscheidungen aus 4.6.
+- Neue Messwerte liefert erst der Abnahme-Nachtest (11.6).
 
 **Was bis zur Abnahme fehlt:**
 
-1. **Produkt:** I5-T03-01 (K), I5-T07-01 (M) und I5-T13-01 (M) umsetzen und im Abnahme-Nachtest vorführen. Block B macht die Vorführung zur Kaufbedingung.
+1. **Produkt:** I5-T03-01 (K), I5-T07-01 (M) und I5-T13-01 (M) umsetzen und im Abnahme-Nachtest vorführen. Block B macht die Vorführung zur Kaufbedingung. *Stand: umgesetzt und in der Prüfung vorgeführt (Abschnitt 12); die Vorführung vor der Persona steht noch aus.*
 2. **Auftraggeber:** die Entscheidungen aus Abschnitt 4.6. Sie bestimmen die Vertrauensnote von Block A und die Kaufbedingungen aller Blöcke.
 3. **Trendwerte neu messen:** UEQ-S hedonisch (+1,44) und die Noten „Vertrauen“ und „Fachlich“ nach dem Abnahme-Nachtest. Für den hedonischen Wert gibt es keinen eigenen Befund. Block B begründet ihn mit „neuartig +1“.
 
