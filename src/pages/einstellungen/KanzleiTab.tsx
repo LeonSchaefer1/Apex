@@ -188,9 +188,10 @@ export function KanzleiTab() {
           <div className="eyebrow mb-3">Vorschau Briefkopf</div>
           <div className="paper p-5">
             <div className="flex items-start justify-between gap-3">
+              {/* Wie der echte Briefkopf der Rechnung: voller Name und alle Schwerpunkte – umbrechen statt kürzen (I5-T16-01) */}
               <div className="min-w-0">
-                <div className="truncate text-[15px] font-semibold tracking-[-0.01em]">{p.name || "Name der Kanzlei"}</div>
-                <div className="truncate text-[12px] opacity-70">{p.schwerpunkte.slice(0, 3).join(" · ") || "Schwerpunkte"}</div>
+                <div className="text-[15px] font-semibold leading-snug tracking-[-0.01em] [overflow-wrap:anywhere]">{p.name || "Name der Kanzlei"}</div>
+                <div className="mt-0.5 text-[12px] leading-snug opacity-70 [overflow-wrap:anywhere]">{p.schwerpunkte.join(" · ") || "Schwerpunkte"}</div>
               </div>
               <span className="size-6 shrink-0 rounded-[7px]" style={{ background: tenant.farbe }} aria-hidden />
             </div>

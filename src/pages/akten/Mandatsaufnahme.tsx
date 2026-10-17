@@ -19,7 +19,7 @@ import { aktenVonKontakt, findeKontaktNachName, istOrganisationsName, KontaktAva
 import { GLEICH_GRUND, gleicheKontakte, kollisionFuerEntwurf, kollisionFuerNeuesMandat, type KollisionsTreffer } from "@/core/kontaktpruefung";
 import { ueberText } from "@/pages/kontakte/auskunft";
 import { SACHGEBIETE, naechstesAktenzeichen, useTeam } from "./helfer";
-import { deckungsanfrageDokument, deckungsanfrageProtokollieren, deckungsWiedervorlage, rsvAusEingabe, versichererSichern } from "./rsv";
+import { deckungsanfrageDokument, deckungsanfrageProtokollieren, deckungsWiedervorlage, rsvAusEingabe, versichererSichern, versichererWarnung } from "./rsv";
 import { VersichererAuswahl } from "./VersichererAuswahl";
 
 const SCHRITTE = ["Mandant", "Sache", "Rechtsschutz", "Zusammenfassung"] as const;
@@ -52,6 +52,8 @@ interface Rsv {
   nummer: string;
   schadennummer: string;
   selbstbeteiligung: string;
+  /** Pflichtbestätigung: Versicherer ist bisher nur als Gegner bekannt bzw. Gegner dieses Mandats (I5-T04-01) */
+  gegenseiteOk?: boolean;
 }
 
 /** Kündigungsschutz: Zugang der Kündigung und Bruttomonatsentgelt (nur Arbeitsrecht). */
@@ -463,6 +465,10 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
     window.setTimeout(() => document.getElementById(ziel)?.focus(), 30);
   };
 
+  // Versicherer der Gegenseite als RSV gewählt? (nur als Gegner bekannt bzw. Gegner dieses Mandats) – Pflichtbestätigung
+  const eigenerGegner = useMemo(() => ({ kontaktId: gegnerKontakt?.id, name: sache.gegner }), [gegnerKontakt?.id, sache.gegner]);
+  const rsvWarnung = rsv.aktiv ? versichererWarnung(rsv.versicherung, kontakte, akten, eigenerGegner) : undefined;
+
   // Was fehlt noch? – erklärt, statt den Knopf kommentarlos zu sperren
   const fehler: (string | undefined)[] = [
     modus === "bestehend"
@@ -487,7 +493,11 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
             : arbeitsrecht && kschg.zugang && !zugangOk
               ? "Bitte das Datum des Zugangs der Kündigung vollständig eintragen – oder das Feld leeren."
               : undefined,
-    rsv.aktiv && !rsv.versicherung.trim() ? "Bitte die Rechtsschutzversicherung eintragen – oder den Schalter ausschalten, wenn keine besteht." : undefined,
+    rsv.aktiv && !rsv.versicherung.trim()
+      ? "Bitte die Rechtsschutzversicherung eintragen – oder den Schalter ausschalten, wenn keine besteht."
+      : rsvWarnung && !rsv.gegenseiteOk
+        ? `Bitte prüfen und bestätigen, dass ${rsv.versicherung.trim()} die Rechtsschutzversicherung des Mandanten ist – sonst ginge die Deckungsanfrage an die Gegenseite.`
+        : undefined,
     treffer.length && !entscheidung
       ? "Bitte über den Kollisionstreffer entscheiden: „Mandat trotzdem übernehmen“ mit Begründung oder „Mandat ablehnen“."
       : entscheidung === "uebernommen" && !kollision.vermerk.trim()
@@ -533,6 +543,10 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
     if (zuSchnell()) return;
     if (!gueltig[schritt]) {
       setZeigeFehler(true);
+      // Rechtsschutz (I5-T04-01): Fokus dorthin, wo die Angabe fehlt – Versicherer oder das Pflichthäkchen „Gegenseite?“
+      if (schritt === 2 && rsv.aktiv) {
+        window.setTimeout(() => document.getElementById(rsv.versicherung.trim() ? "ma-vers-gegenseite-ok" : "ma-vers")?.focus(), 0);
+      }
       return;
     }
     gehe(schritt + 1);
@@ -1024,7 +1038,16 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                         <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ type: "spring", stiffness: 420, damping: 38 }} className="overflow-hidden">
                           <div className="grid grid-cols-1 gap-3 p-0.5 sm:grid-cols-2">
                             <Field label="Versicherung *" htmlFor="ma-vers" className="sm:col-span-2">
-                              <VersichererAuswahl id="ma-vers" value={rsv.versicherung} onChange={(v) => setRsv({ ...rsv, versicherung: v })} fehler={zeigeFehler && !!fehler[2]} describedBy={zeigeFehler && fehler[2] ? "ma-fehler" : undefined} />
+                              <VersichererAuswahl
+                                id="ma-vers"
+                                value={rsv.versicherung}
+                                onChange={(v) => setRsv({ ...rsv, versicherung: v, gegenseiteOk: false })}
+                                fehler={zeigeFehler && !!fehler[2]}
+                                describedBy={zeigeFehler && fehler[2] ? "ma-fehler" : undefined}
+                                eigenerGegner={eigenerGegner}
+                                bestaetigt={!!rsv.gegenseiteOk}
+                                onBestaetigt={(v) => setRsv({ ...rsv, gegenseiteOk: v })}
+                              />
                             </Field>
                             <Field label="Versicherungsnummer" htmlFor="ma-vnr" hint="Optional – wird nachgereicht, falls noch nicht bekannt. Die Deckungsanfrage nennt dann den Versicherungsnehmer.">
                               <Input id="ma-vnr" value={rsv.nummer} onChange={(e) => setRsv({ ...rsv, nummer: e.target.value })} placeholder="z. B. RS-4471209" className="mono" autoComplete="off" />

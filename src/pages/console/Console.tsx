@@ -20,6 +20,7 @@ import { fmtNum } from "@/core/dates";
 import { KundenKarte, type KartenAktionen } from "./KundenKarte";
 import { NeuerZugang, ZugangsDaten } from "./NeuerZugang";
 import { einladungsText, kopieren } from "./helfer";
+import { kanzleiStatusText, kanzleiStatusZahlen } from "@/core/kennzahlen";
 
 /** Offenlegung gegenüber der Kanzlei – steht in Bestätigung und Ergebnis jeder Passwortvergabe durch AnwaltApex. */
 const PROTOKOLL_SATZ = "Die Kanzlei sieht diesen Vorgang in ihrem Protokoll (Einstellungen → Datenschutz). Die Person muss bei der nächsten Anmeldung ein eigenes Passwort festlegen.";
@@ -66,8 +67,8 @@ export default function ConsolePage() {
       tests: l.filter((k) => k.tenant.status === "test" && (!k.tenant.testBis || k.tenant.testBis >= heute)).length,
       nutzer: l.reduce((s, k) => s + k.users.length, 0),
       akten: l.reduce((s, k) => s + k.stats.akten, 0),
-      aktiv: l.filter((k) => (k.tenant.status ?? "aktiv") === "aktiv").length,
-      pausiert: l.filter((k) => k.tenant.status === "pausiert").length,
+      // Aufteilung nach Status – aktiv + im Test + pausiert ergibt die Gesamtzahl (I5-T21-01)
+      status: kanzleiStatusZahlen(l.map((k) => k.tenant)),
     };
   }, [kunden, heute]);
 
@@ -181,7 +182,7 @@ export default function ConsolePage() {
           {/* Kennzahlen – aus derselben Liste wie die Karten; vor dem Laden „–“ statt vorläufiger Werte */}
           <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-busy={!kunden}>
             {[
-              { label: "Kanzleien", wert: kpi.kunden, icon: <Building2 className="size-4" />, ton: "ink" as const, sub: kunden ? `${kpi.aktiv} aktiv · ${kpi.pausiert} pausiert` : "wird geladen …" },
+              { label: "Kanzleien", wert: kpi.kunden, icon: <Building2 className="size-4" />, ton: "ink" as const, sub: kunden ? kanzleiStatusText(kpi.status) : "wird geladen …" },
               { label: "Aktive Tests", wert: kpi.tests, icon: <FlaskConical className="size-4" />, ton: "violet" as const, sub: "Testzugang läuft" },
               { label: "Nutzer gesamt", wert: kpi.nutzer, icon: <Users className="size-4" />, ton: "green" as const, sub: "über alle Kanzleien" },
               { label: "Akten gesamt", wert: kpi.akten, icon: <FolderOpen className="size-4" />, ton: "amber" as const, sub: "streng getrennt" },

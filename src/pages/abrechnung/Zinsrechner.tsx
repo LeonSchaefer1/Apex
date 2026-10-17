@@ -1,13 +1,13 @@
 // Reiter „Zinsrechner“: freier Verzugszinsrechner (§ 288 BGB) für die schnelle Gegenprüfung – Betrag, Zeitraum, 5 PP, 9 PP
 // oder fester Satz. Gleicher Rechenkern wie das Forderungskonto (src/core/zinsen.ts), Abschnitte je Basiszinswechsel, act/365.
 import { useMemo, useRef, useState } from "react";
-import { Copy, Info, Percent } from "lucide-react";
+import { AlertTriangle, Copy, Info, Percent } from "lucide-react";
 import { Button, Card, CardHeader, Field, Input, Segmented } from "@/components/ui";
 import { diffDays, fmtDate, fmtEUR, round2 } from "@/core/dates";
 import { basiszinsAm, verzugszinsen, type ZinsAbschnitt } from "@/core/zinsen";
 import { kopiereText } from "@/lib/zwischenablage";
 import { toast } from "@/store/ui";
-import { fmtProzent, parseBetrag } from "./lib";
+import { fmtProzent, pruefeBetragEingabe, pruefeZinssatzEingabe } from "./lib";
 import { TabKopf as Kopf } from "./ui";
 
 type Satzart = "5" | "9" | "fest";
@@ -35,18 +35,30 @@ export function ZinsrechnerTab() {
   };
   const tabelleRef = useRef<HTMLTableElement>(null);
 
-  const kapital = parseBetrag(betrag);
+  // Eingabeprüfung je Feld (I5-T07-01): Meldung am Feld, kein Ergebnis – nie still mit 0 rechnen
+  const betragPruefung = pruefeBetragEingabe(betrag, "Bitte einen Betrag über 0 € eingeben, z. B. 5.000.");
+  const kapital = betragPruefung.wert ?? 0;
   const datumOk = /^\d{4}-\d{2}-\d{2}$/.test(von) && /^\d{4}-\d{2}-\d{2}$/.test(bis);
-  const festSatz = parseBetrag(fest);
-  const fehler = !(kapital > 0)
-    ? "Bitte einen Betrag eingeben, z. B. 5.000."
-    : !datumOk
-      ? "Bitte Beginn und Ende des Zinszeitraums eintragen."
-      : bis < von
-        ? "Das Ende liegt vor dem Beginn."
-        : art === "fest" && !(festSatz > 0)
-          ? "Bitte einen Zinssatz in Prozent eingeben, z. B. 4."
-          : undefined;
+  const satzPruefung = pruefeZinssatzEingabe(fest);
+  const festSatz = satzPruefung.wert ?? 0;
+  const feldFehler = {
+    betrag: betragPruefung.fehler,
+    von: !/^\d{4}-\d{2}-\d{2}$/.test(von) ? "Bitte den Beginn des Zinszeitraums eintragen." : undefined,
+    bis: !/^\d{4}-\d{2}-\d{2}$/.test(bis) ? "Bitte das Ende des Zinszeitraums eintragen." : datumOk && bis < von ? `Das Ende liegt vor dem Beginn (${fmtDate(von)}).` : undefined,
+    fest: art === "fest" ? satzPruefung.fehler : undefined,
+  };
+  const fehler = feldFehler.betrag ?? feldFehler.von ?? feldFehler.bis ?? feldFehler.fest;
+  const fehlerAttr = (k: keyof typeof feldFehler, extra?: string) => ({
+    "aria-invalid": feldFehler[k] ? true : undefined,
+    "aria-describedby": [feldFehler[k] ? `zr-${k}-fehler` : "", extra ?? ""].filter(Boolean).join(" ") || undefined,
+  });
+  const fehlerText = (k: keyof typeof feldFehler) =>
+    feldFehler[k] ? (
+      <p id={`zr-${k}-fehler`} className="mt-1.5 flex items-start gap-1.5 text-[12.5px] font-medium text-seal">
+        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+        {feldFehler[k]}
+      </p>
+    ) : null;
 
   const abschnitte = useMemo<ZinsAbschnitt[]>(() => {
     if (fehler) return [];
@@ -83,14 +95,17 @@ export function ZinsrechnerTab() {
           <div className="grid gap-3.5">
             {beispiel && <BeispielHinweis />}
             <Field label="Betrag (€)" htmlFor="zr-betrag">
-              <Input id="zr-betrag" value={betrag} onChange={(e) => eigen(setBetrag)(e.target.value)} inputMode="decimal" className="num" aria-describedby={beispiel ? "beispiel-hinweis" : undefined} />
+              <Input id="zr-betrag" value={betrag} onChange={(e) => eigen(setBetrag)(e.target.value)} inputMode="decimal" className="num" {...fehlerAttr("betrag", beispiel ? "beispiel-hinweis" : undefined)} />
+              {fehlerText("betrag")}
             </Field>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="von (einschließlich)" htmlFor="zr-von">
-                <Input id="zr-von" type="date" value={von} onChange={(e) => eigen(setVon)(e.target.value)} />
+                <Input id="zr-von" type="date" value={von} onChange={(e) => eigen(setVon)(e.target.value)} {...fehlerAttr("von")} />
+                {fehlerText("von")}
               </Field>
               <Field label="bis (einschließlich)" htmlFor="zr-bis">
-                <Input id="zr-bis" type="date" value={bis} onChange={(e) => eigen(setBis)(e.target.value)} />
+                <Input id="zr-bis" type="date" value={bis} onChange={(e) => eigen(setBis)(e.target.value)} {...fehlerAttr("bis")} />
+                {fehlerText("bis")}
               </Field>
             </div>
             <Field label="Zinssatz">
@@ -107,7 +122,8 @@ export function ZinsrechnerTab() {
             </Field>
             {art === "fest" && (
               <Field label="Fester Jahreszinssatz (%)" htmlFor="zr-fest">
-                <Input id="zr-fest" value={fest} onChange={(e) => eigen(setFest)(e.target.value)} inputMode="decimal" className="num" />
+                <Input id="zr-fest" value={fest} onChange={(e) => eigen(setFest)(e.target.value)} inputMode="decimal" className="num" {...fehlerAttr("fest")} />
+                {fehlerText("fest")}
               </Field>
             )}
             <p className="flex items-start gap-2 rounded-[12px] bg-ink-softer px-3 py-2 text-[12.5px] text-fg-2">
@@ -119,11 +135,7 @@ export function ZinsrechnerTab() {
                 {art !== "fest" && datumOk && ` Basiszinssatz am ${fmtDate(von)}: ${fmtProzent(basiszinsAm(von))}.`}
               </span>
             </p>
-            {fehler && (
-              <p role="status" className="text-[12.5px] font-medium text-seal">
-                {fehler}
-              </p>
-            )}
+
           </div>
         </Card>
 
@@ -160,7 +172,7 @@ export function ZinsrechnerTab() {
                 {!abschnitte.length && (
                   <tr>
                     <td colSpan={5} className="py-6 text-center text-[13px] text-fg-3">
-                      {fehler ?? "Keine Zinsen im Zeitraum."}
+                      {fehler ? "Das Ergebnis erscheint, sobald alle Eingaben gültig sind." : "Keine Zinsen im Zeitraum."}
                     </td>
                   </tr>
                 )}

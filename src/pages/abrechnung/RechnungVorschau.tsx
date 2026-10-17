@@ -8,10 +8,10 @@ import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
 import { fmtDate, fmtEUR, fmtNum, round2, today } from "@/core/dates";
 import { fassungFuerAuftrag } from "@/core/rvg";
-import type { Aktivitaet, Akte, Kontakt, Rechnung, RechnungsPosition, Tenant, User, Zeiteintrag } from "@/core/types";
+import type { Akte, Kontakt, Rechnung, RechnungsPosition, Tenant, User, Zeiteintrag } from "@/core/types";
 import { cn } from "@/lib/cn";
 import { aktiveZahlungen, aktualisierePositionen, belegArt, erfasseZahlung, korrigiereRechnung, loescheEntwurf, nimmZahlungZurueck, sendeZahlungserinnerungen, setzeFormat, stelleRechnung, storniereRechnung } from "./aktionen";
-import { betragFuerMinuten, ERECHNUNG_PFLICHT, FASSUNG_LABEL, fmtDauer, fmtSatz, ibanFormatiert, ibanGueltig, istEntwurfsKennung, istOffen, istReineZeitrechnung, korrekturText, leistungszeitraum, offenerBetrag, parseBetrag, RSV_VORSTEUER_HINWEIS, rsvBlockText, satzAusPosition } from "./lib";
+import { betragFuerMinuten, ERECHNUNG_PFLICHT, FASSUNG_LABEL, fmtDauer, fmtSatz, ibanFormatiert, ibanGueltig, istEntwurfsKennung, istOffen, istReineZeitrechnung, korrekturText, leistungszeitraum, offenerBetrag, parseBetrag, RSV_VORSTEUER_HINWEIS, rsvBlockText, satzAusPosition, unterzeichnerVon } from "./lib";
 import { StellenDialog } from "./StellenDialog";
 import { Anschrift, Betrag, Briefkopf, FORMAT_INFO, FormatChip, InfoZeile, StatusChip, useLookups } from "./ui";
 import { xrechnungXml, zugferdXml } from "./erechnung";
@@ -56,30 +56,6 @@ function PositionZeile({ p }: { p: RechnungsPosition }) {
       <td className={cn("num whitespace-nowrap py-2 text-right font-medium", p.betrag < 0 && "opacity-75")}>{fmtEUR(p.betrag)}</td>
     </tr>
   );
-}
-
-const istBerufstraeger = (u?: User) => !!u && (u.rolle === "partner" || u.rolle === "anwalt");
-
-/**
- * Unterzeichner bzw. „Bearbeitung“: wer die Rechnung gestellt hat (Protokoll), bei Entwürfen die abrechnende angemeldete
- * Person – jeweils nur Berufsträger; sonst die Bearbeiterin bzw. der Bearbeiter der Akte.
- */
-export function unterzeichnerVon(r: Rechnung, aktivitaeten: Aktivitaet[], users: Map<string, User>, angemeldet: User, bearbeiter?: User): User | undefined {
-  const gestelltVon = r.status !== "entwurf"
-    ? aktivitaeten
-        .filter((a) => a.akteur === "nutzer" && a.userId && a.akteId === r.akteId && a.text.includes(`${r.nummer} gestellt`))
-        .sort((a, b) => b.zeit.localeCompare(a.zeit))
-        .map((a) => users.get(a.userId!))
-        .find(istBerufstraeger)
-    : undefined;
-  if (gestelltVon) return gestelltVon;
-  if (r.status === "entwurf" && istBerufstraeger(angemeldet)) return angemeldet;
-  const erstelltVon = aktivitaeten
-    .filter((a) => a.akteur === "nutzer" && a.userId && a.akteId === r.akteId && a.text.includes(`(${r.nummer})`))
-    .sort((a, b) => b.zeit.localeCompare(a.zeit))
-    .map((a) => users.get(a.userId!))
-    .find(istBerufstraeger);
-  return erstelltVon ?? bearbeiter;
 }
 
 /** Anlage „Tätigkeitsnachweis“ einer Zeitrechnung: je Eintrag Datum, Person, Tätigkeit, Dauer, Betrag. */
@@ -141,7 +117,7 @@ function Taetigkeitsnachweis({ r, zeiten, users }: { r: Rechnung; zeiten: Zeitei
  * die Berechnung nennt den verantwortlichen Rechtsanwalt.
  */
 export function RechnungPapier({
-  r, akte, empfaenger, tenant, bearbeiter, zeiten = [], users, korrekturNummer,
+  r, akte, empfaenger, tenant, bearbeiter, zeiten = [], users, korrekturNummer, rechnungen = [],
 }: {
   r: Rechnung;
   /** Nummer der stornierten Ursprungsrechnung („Korrektur zu RE-…“) */
@@ -153,8 +129,10 @@ export function RechnungPapier({
   bearbeiter?: User;
   zeiten?: Zeiteintrag[];
   users?: Map<string, User>;
+  /** Rechnungen der Kanzlei – Korrekturrechnung mit Leistungszeitraum der stornierten Rechnung */
+  rechnungen?: Rechnung[];
 }) {
-  const [von, bis] = leistungszeitraum(akte, r, zeiten);
+  const [von, bis] = leistungszeitraum(akte, r, zeiten, rechnungen);
   const rvg = r.positionen.some((p) => /^\d{4}$/.test(p.vv) && p.vv !== "7002");
   const fassung = akte ? fassungFuerAuftrag(akte.createdAt.slice(0, 10)) : "2025";
   // Reine Zeitrechnung (§ 3a RVG): kein Gegenstandswert im Kopf – er ist für die Vergütung ohne Bedeutung.
@@ -372,7 +350,7 @@ export function RechnungVorschau({ id, onClose }: { id: string | null; onClose: 
   const akte = r ? akten.get(r.akteId) : undefined;
   const empfaenger = r ? kontakte.get(r.empfaengerId) : undefined;
   const akteBearbeiter = akte ? users.get(akte.bearbeiterId) : undefined;
-  const bearbeiter = useMemo(() => (r ? unterzeichnerVon(r, aktivitaeten, users, user, akteBearbeiter) : akteBearbeiter), [r, aktivitaeten, users, user, akteBearbeiter]);
+  const bearbeiter = useMemo(() => (r ? unterzeichnerVon(r, aktivitaeten, users, user, akteBearbeiter, rechnungen) : akteBearbeiter), [r, aktivitaeten, users, user, akteBearbeiter, rechnungen]);
   const korrekturNummer = r?.korrekturVon ? rechnungen.find((x) => x.id === r.korrekturVon)?.nummer : undefined;
   const korrekturEntwurf = r ? rechnungen.find((x) => x.korrekturVon === r.id && x.status !== "storniert") : undefined;
   const zahlungen = useMemo(() => (r ? aktiveZahlungen(r, buchungen) : []), [r, buchungen]);
@@ -380,7 +358,7 @@ export function RechnungVorschau({ id, onClose }: { id: string | null; onClose: 
   /** XRechnung bzw. ZUGFeRD einer Rechnung abrufen – Vorschau mit „Datei speichern“ und Kopieren. */
   const formatAbrufen = (f: "XRechnung" | "ZUGFeRD") => {
     if (!r) return;
-    const ktx = { akte, empfaenger, tenant, hinweise: r.rsv ? [rsvBlockText(r.rsv, fmtEUR)] : [], zeiten: zeitenAlle };
+    const ktx = { akte, empfaenger, tenant, hinweise: r.rsv ? [rsvBlockText(r.rsv, fmtEUR)] : [], zeiten: zeitenAlle, rechnungen };
     const nr = r.nummer.replace(/[^A-Za-z0-9-]+/g, "_");
     setDatei(
       f === "XRechnung"
@@ -665,7 +643,7 @@ export function RechnungVorschau({ id, onClose }: { id: string | null; onClose: 
             )}
           </AnimatePresence>
 
-          <RechnungPapier r={r} akte={akte} empfaenger={empfaenger} tenant={tenant} bearbeiter={bearbeiter} zeiten={zeitenAlle} users={users} korrekturNummer={korrekturNummer} />
+          <RechnungPapier r={r} akte={akte} empfaenger={empfaenger} tenant={tenant} bearbeiter={bearbeiter} zeiten={zeitenAlle} users={users} korrekturNummer={korrekturNummer} rechnungen={rechnungen} />
         </>
       )}
       <DateiDialog datei={datei} onClose={() => setDatei(null)} />

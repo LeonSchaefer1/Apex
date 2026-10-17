@@ -1,6 +1,6 @@
 // Gemeinsame Fristen-Helfer für Fristenkalender und Posteingang (Anlegen, Erledigen, Vier-Augen-Kontrolle, Darstellung).
-import { addDays, addMonthsBGB, fmtDate, fmtEUR, fmtTime, fromISO, nowLocal, today, uid, weekday } from "@/core/dates";
-import { berechneNachRegel, type Einheit } from "@/core/fristen";
+import { addDays, addMonthsBGB, diffDays, fmtDate, fmtDateWd, fmtEUR, fmtTime, fromISO, nowLocal, today, uid, weekday } from "@/core/dates";
+import { berechneNachRegel, fristArt, type Einheit, type FristRegel } from "@/core/fristen";
 import { BUNDESLAENDER } from "@/core/feiertage";
 import { istKritisch } from "@/core/fristenLage";
 import { useData } from "@/store/data";
@@ -458,7 +458,7 @@ export function korrekturNeuBerechnet(
  * Der vorherige Stand bleibt in `korrekturen` erhalten, Vorfristen ziehen mit, die Vier-Augen-Kontrolle ist danach
  * wieder offen und eine angeforderte Korrektur erledigt. Protokolliert.
  */
-export function korrigiereFrist(f: Frist, userId: ID, neu: FristKorrektur, grund: string): void {
+export function korrigiereFrist(f: Frist, userId: ID, neu: FristKorrektur, grund: string, opts: KorrekturZusatz = {}): void {
   const { patch, log, data } = useData.getState();
   const aktuell = data.fristen.find((x) => x.id === f.id) ?? f;
   const am = nowLocal();
@@ -486,8 +486,142 @@ export function korrigiereFrist(f: Frist, userId: ID, neu: FristKorrektur, grund
     akteur: "nutzer",
     userId,
     akteId: f.akteId,
-    text: `${TYP_META[aktuell.typ].label} „${vorher.titel}“ korrigiert: ${was.join(", ") || "ohne Datumsänderung"} – Grund: ${grund.trim()}${unterliegtKontrolle(aktuell) ? " · Vier-Augen-Kontrolle wieder offen" : ""}`,
+    text: `${TYP_META[aktuell.typ].label} „${vorher.titel}“ korrigiert: ${was.join(", ") || "ohne Datumsänderung"} – Grund: ${grund.trim()}${opts.mitFrist ? ` (zusammen mit „${opts.mitFrist}“)` : ""}${opts.eebDatum ? ` · Zustellungsdatum laut eEB ${fmtDate(opts.eebDatum)}${opts.eebAbweichungBestaetigt ? " – Abweichung geprüft und bestätigt" : ""}` : ""}${unterliegtKontrolle(aktuell) ? " · Vier-Augen-Kontrolle wieder offen" : ""}`,
   });
+}
+
+/** Zusatzangaben für Verlauf und Historie einer Korrektur. */
+export interface KorrekturZusatz {
+  /** Zustellungsdatum laut eEB der Nachricht, aus der die Frist stammt */
+  eebDatum?: ISODate;
+  /** Spätere Abweichung vom eEB bewusst bestätigt (Pflichthäkchen) */
+  eebAbweichungBestaetigt?: boolean;
+  /** Mitkorrigiert zusammen mit dieser Frist (Geschwisterfrist derselben Nachricht) */
+  mitFrist?: string;
+}
+
+// ───────────── Fristkorrektur am eEB-Zustellungsdatum (I5-T03-01) ─────────────
+
+/** Vermerk „Betreff“ in der Notiz – so verbindet die Übernahme aus dem Posteingang Frist und Nachricht (wie `fristenAusNachricht`). */
+export function vermerkZu(n: Pick<Nachricht, "betreff">): string {
+  return `„${n.betreff}“`;
+}
+
+/** Nachricht derselben Akte, aus der die Frist laut Vermerk in der Notiz stammt (mit oder ohne eEB). */
+export function nachrichtZurFrist(f: Pick<Frist, "akteId" | "notiz" | "typ">, nachrichten: Nachricht[]): Nachricht | undefined {
+  if (!f.notiz || f.typ === "vorfrist") return undefined;
+  return nachrichten.find((n) => n.akteId === f.akteId && f.notiz!.includes(vermerkZu(n)));
+}
+
+/**
+ * Nachricht mit eEB-Zustellungsdatum, aus der die Frist stammt: über den Vermerk „Betreff“ in der Notiz (wie
+ * `fristenAusNachricht`); Rückfall ohne Vermerk: gleiche Akte und eEB-Zustellungsdatum = bisheriges Ereignisdatum der Frist
+ * (aktuell oder vor einer Korrektur). Nur für Notfristen und Fristen.
+ */
+export function eebZurFrist(f: Pick<Frist, "akteId" | "notiz" | "typ" | "ereignisDatum" | "korrekturen">, nachrichten: Nachricht[]): Nachricht | undefined {
+  if (f.typ !== "notfrist" && f.typ !== "frist") return undefined;
+  const herkunft = nachrichtZurFrist(f, nachrichten);
+  if (herkunft) return herkunft.eebZustellungsdatum ? herkunft : undefined;
+  const bisher = new Set([f.ereignisDatum, ...(f.korrekturen ?? []).map((k) => k.vorher.ereignisDatum)].filter((x): x is ISODate => !!x));
+  return nachrichten.find((n) => n.akteId === f.akteId && !!n.eebZustellungsdatum && bisher.has(n.eebZustellungsdatum));
+}
+
+/** Rechenweg-Vermerk einer Datumskorrektur, die bewusst vom Fristende laut eEB abweicht. */
+export const EEB_ABWEICHUNG_VERMERK = "Fristende weicht vom Fristende laut eEB ab";
+
+/**
+ * Weicht die Frist vom eEB ab? Ereignis ≠ Zustellungsdatum laut eEB – oder das Fristende wurde von Hand bewusst über das
+ * Fristende laut eEB hinaus gesetzt (Vermerk im Rechenweg). Für Chip, Vier-Augen-Kontrolle und Fristdetails.
+ */
+export function eebAbweichungDerFrist(f: Pick<Frist, "akteId" | "notiz" | "typ" | "ereignisDatum" | "korrekturen" | "rechenweg">, nachrichten: Nachricht[]): { eebDatum: ISODate; ereignis?: ISODate; spaeter: boolean; nachricht: Nachricht } | undefined {
+  const n = eebZurFrist(f, nachrichten);
+  if (!n?.eebZustellungsdatum) return undefined;
+  const eebDatum = n.eebZustellungsdatum;
+  if (f.ereignisDatum && f.ereignisDatum !== eebDatum) return { eebDatum, ereignis: f.ereignisDatum, spaeter: f.ereignisDatum > eebDatum, nachricht: n };
+  if (f.rechenweg?.some((z) => z.startsWith(EEB_ABWEICHUNG_VERMERK))) return { eebDatum, ereignis: f.ereignisDatum, spaeter: true, nachricht: n };
+  return undefined;
+}
+
+/** Fristarten, deren Ereignis bei der Korrektur schon geschehen sein muss (Zustellung, Zugang, Verkündung, Bekanntgabe). */
+const MUSS_GESCHEHEN = /^(Zustellung|Zugang|Verkündung|Bekanntgabe|Schriftliche Bekanntgabe)/;
+
+/** Bezeichnung des Ereignisdatums für Meldungen: „Zustellungsdatum“, „Zugangsdatum“ … */
+function ereignisBezeichnung(ereignis?: string): string {
+  if (!ereignis || /^Zustellung/.test(ereignis)) return "Zustellungsdatum";
+  if (/^Zugang/.test(ereignis)) return "Zugangsdatum";
+  if (/^Verkündung/.test(ereignis)) return "Verkündungsdatum";
+  if (/Bekanntgabe/.test(ereignis)) return "Datum der Bekanntgabe";
+  return "Zustellungsdatum";
+}
+
+export interface KorrekturPruefung {
+  /** Echte Sperre (Meldung am Feld): Ereignis in der Zukunft bzw. vor dem Eingangstag */
+  sperre?: string;
+  /** Abweichung vom Zustellungsdatum laut eEB – später: Pflichtbestätigung, früher: Hinweis */
+  abweichung?: { tage: number; spaeter: boolean; text: string };
+}
+
+/**
+ * Prüft das Ereignisdatum einer Fristkorrektur (I5-T03-01):
+ * - Sperre „… kann nicht in der Zukunft liegen“, wenn das Ereignis schon geschehen sein muss (Zustellung, Zugang, Verkündung,
+ *   Bekanntgabe – oder es liegt ein eEB vor). Nicht bei Befristungsende, Fälligkeit u. ä.
+ * - Sperre „… frühestens am Eingangstag“, wenn das Ereignis vor dem Eingang der Nachricht liegt (gleiche Regel wie der eEB-Dialog).
+ * - Abweichung vom Zustellungsdatum laut eEB: `tage` = Abstand der Ereignisse; `text` nennt mit `endeNeu`/`endeEeb` die Fristenden.
+ */
+export function pruefeKorrekturDatum(p: {
+  ereignis: ISODate;
+  heute: ISODate;
+  /** Eingangstag der Nachricht (nur bei Zustellung an die Kanzlei, z. B. gegen eEB) */
+  eingang?: ISODate;
+  /** Zustellungsdatum laut eEB */
+  eebDatum?: ISODate;
+  regel?: Pick<FristRegel, "ereignis" | "typ"> & Partial<FristRegel>;
+  /** Fristende mit dem neuen Ereignis */
+  endeNeu?: ISODate;
+  /** Fristende mit dem Zustellungsdatum laut eEB */
+  endeEeb?: ISODate;
+}): KorrekturPruefung {
+  const muss = !!p.eebDatum || (!!p.regel && MUSS_GESCHEHEN.test(p.regel.ereignis));
+  const name = ereignisBezeichnung(p.regel?.ereignis);
+  if (muss && p.ereignis > p.heute) return { sperre: `${name} kann nicht in der Zukunft liegen.` };
+  if (muss && p.eingang && p.ereignis < p.eingang) return { sperre: `${name} frühestens am Eingangstag ${fmtDate(p.eingang)} – vorher lag das Schriftstück der Kanzlei nicht vor.` };
+  if (!p.eebDatum || p.ereignis === p.eebDatum) return {};
+  const spaeter = p.ereignis > p.eebDatum;
+  const tage = Math.abs(diffDays(p.eebDatum, p.ereignis));
+  const tageText = (n: number) => `${n}\u00a0${n === 1 ? "Tag" : "Tage"}`;
+  let text: string;
+  if (p.endeNeu && p.endeEeb) {
+    const n = diffDays(p.endeEeb, p.endeNeu);
+    const verlauf = `${fmtDateWd(p.endeEeb)} → ${fmtDateWd(p.endeNeu)}`;
+    if (n === 0) text = `Das Fristende bleibt ${fmtDateWd(p.endeNeu)}; das Ereignis liegt aber ${tageText(tage)} ${spaeter ? "nach" : "vor"} dem Zustellungsdatum laut eEB (${fmtDate(p.eebDatum)}).`;
+    else if (n > 0) text = `Die Frist endet dann ${tageText(n)} nach dem Fristende laut eEB (${verlauf}).`;
+    else text = `Die Frist endet dann ${tageText(-n)} vor dem Fristende laut eEB (${verlauf}).`;
+  } else text = `Das Ereignis liegt ${tageText(tage)} ${spaeter ? "nach" : "vor"} dem Zustellungsdatum laut eEB (${fmtDate(p.eebDatum)}).`;
+  if (spaeter && p.regel?.typ === "notfrist") text += " Eine Notfrist kann nicht verlängert werden (§\u00a0224 Abs.\u00a02 ZPO).";
+  else if (spaeter && p.regel?.key && fristArt(p.regel as FristRegel).kritisch) text += " Die Frist ist nicht verlängerbar.";
+  return { abweichung: { tage, spaeter, text } };
+}
+
+/**
+ * Geschwisterfristen: andere offene Fristen derselben Nachricht (gleicher Vermerk, gleiches bisheriges Ereignisdatum) –
+ * z. B. die Berufungsbegründungsfrist zur Berufungsfrist. Sie werden bei einer Korrektur des Ereignisses mit angeboten.
+ */
+export function geschwisterFristen(f: Frist, fristen: Frist[], nachrichten: Nachricht[]): Frist[] {
+  if (!f.ereignisDatum) return [];
+  const n = nachrichtZurFrist(f, nachrichten);
+  if (!n) return [];
+  const vermerk = vermerkZu(n);
+  return fristen.filter((x) => x.id !== f.id && x.akteId === f.akteId && x.status === "offen" && (x.typ === "notfrist" || x.typ === "frist") && x.ereignisDatum === f.ereignisDatum && !!x.notiz?.includes(vermerk));
+}
+
+/**
+ * Korrigiert eine Frist und die gewählten Geschwisterfristen mit demselben Grund – je Frist `korrigiereFrist`
+ * (Vier-Augen-Kontrolle wieder offen, ein Verlaufseintrag je Frist).
+ */
+export function korrigiereMitGeschwistern(f: Frist, userId: ID, neu: FristKorrektur, grund: string, geschwister: { f: Frist; neu: FristKorrektur }[], opts: KorrekturZusatz = {}): number {
+  korrigiereFrist(f, userId, neu, grund, opts);
+  for (const g of geschwister) korrigiereFrist(g.f, userId, g.neu, grund, { eebDatum: opts.eebDatum, eebAbweichungBestaetigt: opts.eebAbweichungBestaetigt, mitFrist: f.titel });
+  return 1 + geschwister.length;
 }
 
 /** Kontrolle: „Korrektur anfordern“ mit Grund – sichtbar für die verantwortliche Person, protokolliert. */

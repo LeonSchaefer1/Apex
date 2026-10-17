@@ -11,7 +11,7 @@ import { cn } from "@/lib/cn";
 import { leseDatei, parseCsv, type CsvErgebnis, type DateiInfo } from "./csv";
 import { autoZuordnung, baueZeilen, systemName as sysName, type DateiDublettenAktion, type DublettenAktion, type OhneDatumAktion, type QuellSystem, type Umfang, type ZielFeld } from "./zuordnung";
 import { beispielExport } from "./beispiel";
-import { fristenAusErgebnis, fristenAusLauf, fristenZaehlung, fuehreUmzugAus, macheRueckgaengig, umzugPlan, type Entitaet, type Ergebnis, type Fortschritt } from "./uebernahme";
+import { fristenAusErgebnis, fristenAusLauf, fristenZaehlung, fuehreUmzugAus, laufFristenText, macheRueckgaengig, umzugPlan, type Entitaet, type Ergebnis, type Fortschritt } from "./uebernahme";
 import { erreichbarkeit } from "./erreichbarkeit";
 import { SchrittDaten, SchrittFertig, SchrittQuelle, SchrittUebernahme, SchrittZuordnung } from "./Schritte";
 import {
@@ -272,8 +272,10 @@ export default function Umzug() {
       gefahr: true,
     });
     if (!ok) return;
+    // Aufteilung vor dem Löschen festhalten – der Protokolleintrag zählt danach gleich (I5-T11-01)
+    const vorher = fristenAusLauf(lauf.id, useData.getState().data.fristen);
     macheRueckgaengig(lauf.undo, lauf.system, user.id, lauf.id);
-    markiereRueckgaengig(lauf.id, { am: nowLocal(), von: user.id });
+    markiereRueckgaengig(lauf.id, { am: nowLocal(), von: user.id }, vorher);
     toast("Umzug rückgängig gemacht", { text: "Der Datenbestand entspricht wieder dem Stand vor diesem Lauf.", ton: "info" });
     if (ergebnis?.laufId === lauf.id) neuStarten();
   };
@@ -565,12 +567,8 @@ export default function Umzug() {
 /** Umzugsprotokoll: alle Läufe mit Datum, Datei und Zahlen – „Rückgängig machen“ je Lauf, auch nach dem Neuladen. */
 function Umzugsprotokoll({ laeufe, onRueckgaengig, team, laufendeId }: { laeufe: UmzugLauf[]; onRueckgaengig: (l: UmzugLauf) => void; team: { id: string; name: string }[]; laufendeId: string | null }) {
   const fristen = useCol("fristen");
-  /** Dieselbe Zählung wie Meldung und Kachel (I4-T11-02); nach „Rückgängig“ sind die Fristen gelöscht – dann die Gesamtzahl */
-  const protokollFristen = (l: UmzugLauf) => {
-    const z = fristenAusLauf(l.id, fristen);
-    if (z.fristen + z.wiedervorlagen + z.termine === l.zahlen.fristen) return fristenZaehlung(z);
-    return `${l.zahlen.fristen} ${l.zahlen.fristen === 1 ? "Frist bzw. Wiedervorlage" : "Fristen und Wiedervorlagen"}`;
-  };
+  /** Dieselbe Zählung wie Meldung und Kachel (I4-T11-02) – vor und nach „Rückgängig“ gleich (I5-T11-01) */
+  const protokollFristen = (l: UmzugLauf) => laufFristenText(l, fristen);
   if (!laeufe.length) return null;
   return (
     <Card>

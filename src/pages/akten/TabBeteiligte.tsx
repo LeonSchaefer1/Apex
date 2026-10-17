@@ -1,5 +1,5 @@
 // Reiter „Beteiligte“: Mandant, Gegner, Gegneranwalt, Gericht und Versicherung mit Kontaktdaten.
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { motion } from "motion/react";
 import { AlertTriangle, ArrowUpRight, AtSign, BadgeCheck, Eye, FileText, HandCoins, Hash, Info, Link2, MapPin, PenLine, Phone, Plus, Send, ShieldCheck, Unlink } from "lucide-react";
@@ -16,7 +16,7 @@ import { CopyButton, KontaktAvatar, kontaktAdresse } from "@/pages/kontakte/kont
 import { KontaktAuswahl } from "@/pages/kontakte/KontaktFormular";
 import { DECKUNG_INFO, DOK_STATUS_INFO, dokumentBezeichnung, offenePlatzhalter, ohneEntwurfsVermerk } from "./helfer";
 import { parseEuro } from "./Mandatsaufnahme";
-import { LEERE_RSV_EINGABE, rsvNachtragen, sbFehlerhaft, type RsvEingabe } from "./rsv";
+import { LEERE_RSV_EINGABE, rsvNachtragen, sbFehlerhaft, versichererWarnung, type RsvEingabe } from "./rsv";
 import { VersichererAuswahl } from "./VersichererAuswahl";
 import { VorschussDialog } from "./Vorschuss";
 
@@ -554,18 +554,29 @@ function RsvErgaenzenDialog({ akte, open, onClose }: { akte: Akte; open: boolean
   const { user, team, tenant } = useKanzlei();
   const [e, setE] = useState<RsvEingabe>(LEERE_RSV_EINGABE);
   const [zeigeFehler, setZeigeFehler] = useState(false);
+  // Pflichtbestätigung, wenn der Gegner dieser Akte bzw. ein nur als Gegner bekannter Versicherer gewählt ist (I5-T04-01)
+  const [gegenseiteOk, setGegenseiteOk] = useState(false);
+  const kontakte = useCol("kontakte");
+  const akten = useCol("akten");
   useEffect(() => {
     if (!open) return;
     setE(LEERE_RSV_EINGABE);
     setZeigeFehler(false);
+    setGegenseiteOk(false);
   }, [open]);
-  const versFehler = !e.versicherung.trim() ? "Bitte die Rechtsschutzversicherung eintragen oder aus der Liste wählen." : undefined;
+  const eigenerGegner = useMemo(() => ({ kontaktId: akte.gegnerId, az: akte.aktenzeichen }), [akte.gegnerId, akte.aktenzeichen]);
+  const warnung = versichererWarnung(e.versicherung, kontakte, akten, eigenerGegner);
+  const versFehler = !e.versicherung.trim()
+    ? "Bitte die Rechtsschutzversicherung eintragen oder aus der Liste wählen."
+    : warnung && !gegenseiteOk
+      ? `Bitte prüfen und bestätigen, dass ${e.versicherung.trim()} die Rechtsschutzversicherung des Mandanten ist – sonst ginge die Deckungsanfrage an die Gegenseite.`
+      : undefined;
   const sbFehler = sbFehlerhaft(e.selbstbeteiligung) ? "Bitte einen Betrag wie 150 oder 250,00 eingeben – oder das Feld leeren." : undefined;
   const speichern = () => {
     if (versFehler || sbFehler) {
       setZeigeFehler(true);
-      // Fokus ins erste ungültige Feld
-      window.setTimeout(() => document.getElementById(versFehler ? "rsvn-vers" : "rsvn-sb")?.focus(), 0);
+      // Fokus ins erste ungültige Feld (bei fehlender Bestätigung auf das Häkchen)
+      window.setTimeout(() => document.getElementById(versFehler ? (warnung && e.versicherung.trim() ? "rsvn-vers-gegenseite-ok" : "rsvn-vers") : "rsvn-sb")?.focus(), 0);
       return;
     }
     const { rsv, wiedervorlage } = rsvNachtragen({ akte, eingabe: e, user, team, tenant });
@@ -596,7 +607,19 @@ function RsvErgaenzenDialog({ akte, open, onClose }: { akte: Akte; open: boolean
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="Versicherung *" htmlFor="rsvn-vers" className="sm:col-span-2">
-          <VersichererAuswahl id="rsvn-vers" value={e.versicherung} onChange={(v) => setE((x) => ({ ...x, versicherung: v }))} fehler={zeigeFehler && !!versFehler} describedBy={zeigeFehler && versFehler ? "rsvn-vers-fehler" : undefined} />
+          <VersichererAuswahl
+            id="rsvn-vers"
+            value={e.versicherung}
+            onChange={(v) => {
+              setE((x) => ({ ...x, versicherung: v }));
+              setGegenseiteOk(false);
+            }}
+            fehler={zeigeFehler && !!versFehler}
+            describedBy={zeigeFehler && versFehler ? "rsvn-vers-fehler" : undefined}
+            eigenerGegner={eigenerGegner}
+            bestaetigt={gegenseiteOk}
+            onBestaetigt={setGegenseiteOk}
+          />
           {zeigeFehler && versFehler && (
             <p id="rsvn-vers-fehler" role="alert" className="mt-1.5 flex items-start gap-1.5 text-[12.5px] font-medium text-seal">
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden /> {versFehler}

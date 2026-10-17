@@ -4,7 +4,7 @@
 import type { Akte, Bundesland, Dokument, Frist, Kontakt, Rechtsschutz, Tenant, User } from "@/core/types";
 import { fmtDate, fmtEUR, nowLocal, today, uid } from "@/core/dates";
 import { VERSICHERUNGEN } from "@/core/seed/pools";
-import { nameSchluessel } from "@/core/kontaktpruefung";
+import { aktenVonKontakt, nameSchluessel } from "@/core/kontaktpruefung";
 import { useData } from "@/store/data";
 import { werktagIn } from "./helfer";
 
@@ -44,22 +44,85 @@ export function rsvAusEingabe(e: RsvEingabe): Rechtsschutz {
   };
 }
 
-/** Versicherer zur Auswahl: Kontakte mit Rolle „Versicherung“ und die bekannten Rechtsschutzversicherer (ohne Doppelung). */
+/**
+ * Versicherer zur Auswahl (I5-T04-01): Kontakte mit Rolle „Versicherung“ und die bekannten Rechtsschutzversicherer (ohne
+ * Doppelung) – jede Option nennt ihre Rollen aus dem Aktenbestand („RSV in 116/26 · Gegnerin in 131/26“). Mehrspartenversicherer
+ * sind je Akte etwas anderes; deshalb keine feste Unterart am Kontakt, sondern die Rollen je Akte.
+ * Reihenfolge: bekannte Rechtsschutzversicherer (RSV in mindestens einer Akte oder „Rechtsschutz“ im Namen) – darin zuerst die,
+ * die nirgends Gegner sind –, dann „Weitere Versicherer“, je Gruppe alphabetisch.
+ */
 export interface VersichererOption {
   name: string;
   kontakt?: Kontakt;
+  /** Aktenzeichen, in denen der Versicherer Rechtsschutzversicherer ist */
+  rsvAkten: string[];
+  /** Aktenzeichen, in denen der Versicherer Gegner ist */
+  gegnerAkten: string[];
+  gruppe: "rsv" | "weitere";
+  /** „RSV in 116/26 · Gegnerin in 131/26“ (höchstens zwei Aktenzeichen je Rolle, dann „…“) – leer ohne Akten */
+  rollen: string;
 }
-export function versichererOptionen(kontakte: Kontakt[]): VersichererOption[] {
-  const aus: VersichererOption[] = kontakte.filter((k) => k.rollen.includes("versicherung")).map((k) => ({ name: k.name, kontakt: k }));
+
+export const VERSICHERER_GRUPPE: Record<VersichererOption["gruppe"], string> = { rsv: "Rechtsschutzversicherer", weitere: "Weitere Versicherer" };
+
+/** „116/26“, „154/26, 150/26 …“ – höchstens zwei Aktenzeichen, dann „…“. */
+function azListe(az: string[]): string {
+  return az.length > 2 ? `${az.slice(0, 2).join(", ")} …` : az.join(", ");
+}
+
+/** Rollen-Zeile einer Option: „RSV in 116/26 · Gegnerin in 131/26“. */
+export function rollenText(rsvAkten: string[], gegnerAkten: string[]): string {
+  return [rsvAkten.length ? `RSV in ${azListe(rsvAkten)}` : "", gegnerAkten.length ? `Gegnerin in ${azListe(gegnerAkten)}` : ""].filter(Boolean).join(" · ");
+}
+
+const nachAz = (a: string, b: string) => b.localeCompare(a, "de", { numeric: true });
+
+function option(name: string, kontakt: Kontakt | undefined, akten: Akte[]): VersichererOption {
+  const schluessel = nameSchluessel(name);
+  const rsvAkten = akten.filter((a) => !!a.rsv?.versicherung && nameSchluessel(a.rsv.versicherung) === schluessel).map((a) => a.aktenzeichen).sort(nachAz);
+  const gegnerAkten = kontakt ? aktenVonKontakt(kontakt, akten).filter((x) => x.rolle === "Gegner").map((x) => x.akte.aktenzeichen).sort(nachAz) : [];
+  const gruppe = rsvAkten.length > 0 || /rechtsschutz/i.test(name) ? "rsv" : "weitere";
+  return { name, kontakt, rsvAkten, gegnerAkten, gruppe, rollen: rollenText(rsvAkten, gegnerAkten) };
+}
+
+export function versichererOptionen(kontakte: Kontakt[], akten: Akte[] = []): VersichererOption[] {
+  const aus: VersichererOption[] = kontakte.filter((k) => k.rollen.includes("versicherung")).map((k) => option(k.name, k, akten));
   const schluessel = new Set(aus.map((o) => nameSchluessel(o.name)));
   // Bekannte Rechtsschutzversicherer: als Kontakt vorhanden (auch ohne Rolle) oder als Vorschlag, der beim Speichern angelegt wird
   for (const n of VERSICHERUNGEN) {
     if (schluessel.has(nameSchluessel(n))) continue;
     schluessel.add(nameSchluessel(n));
     const vorhanden = kontakte.find((k) => nameSchluessel(k.name) === nameSchluessel(n));
-    aus.push(vorhanden ? { name: vorhanden.name, kontakt: vorhanden } : { name: n });
+    aus.push(vorhanden ? option(vorhanden.name, vorhanden, akten) : option(n, undefined, akten));
   }
-  return aus.sort((a, b) => a.name.localeCompare(b.name, "de"));
+  const rang = (o: VersichererOption) => (o.gruppe === "rsv" ? (o.gegnerAkten.length ? 1 : 0) : 2);
+  return aus.sort((a, b) => rang(a) - rang(b) || a.name.localeCompare(b.name, "de"));
+}
+
+/** Gegner der eigenen Akte (Nachtragen: `akte.gegnerId`) bzw. des neuen Mandats (Mandatsaufnahme: eingegebener Gegner). */
+export interface EigenerGegner {
+  kontaktId?: string;
+  name?: string;
+  /** Aktenzeichen der eigenen Akte (Nachtragen) – fehlt in der Mandatsaufnahme */
+  az?: string;
+}
+
+/**
+ * Pflichtbestätigung bei der Versicherer-Wahl (I5-T04-01) – nur in zwei Fällen:
+ * (a) Der Versicherer ist bisher nur als Gegner bekannt (nie RSV), z. B. die Hanseatische in 107/26;
+ * (b) er ist Gegner der eigenen Akte bzw. des neuen Mandats.
+ * Ein Mehrspartenversicherer, der woanders Gegner ist (Isarwerk, Elbtal), braucht in fremden Akten keine Bestätigung.
+ */
+export function versichererWarnung(name: string, kontakte: Kontakt[], akten: Akte[], eigenerGegner: EigenerGegner = {}): string | undefined {
+  const n = name.trim();
+  if (!n) return undefined;
+  const schluessel = nameSchluessel(n);
+  const kontakt = versichererKontakt(kontakte, n) ?? kontakte.find((k) => nameSchluessel(k.name) === schluessel);
+  const o = option(kontakt?.name ?? n, kontakt, akten);
+  const eigen = (!!eigenerGegner.kontaktId && eigenerGegner.kontaktId === kontakt?.id) || (!!eigenerGegner.name?.trim() && nameSchluessel(eigenerGegner.name) === schluessel);
+  if (eigen) return `${o.name} ist Gegnerin ${eigenerGegner.az ? `in ${eigenerGegner.az}` : "in diesem Mandat"} – eine Deckungsanfrage ginge an die Gegenseite.`;
+  if (o.gegnerAkten.length && !o.rsvAkten.length) return `${o.name} ist bisher nur als Gegnerin bekannt (${azListe(o.gegnerAkten)}) – eine Deckungsanfrage ginge an die Gegenseite.`;
+  return undefined;
 }
 
 /** Passt der eingetippte Name zu einem vorhandenen Kontakt (gleicher Name ohne Rechtsform)? */

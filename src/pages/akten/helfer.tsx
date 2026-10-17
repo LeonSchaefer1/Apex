@@ -97,10 +97,31 @@ export const QUELLE_LABEL: Record<Dokument["quelle"], string> = {
   bea: "beA",
   email: "E-Mail",
   upload: "Hochgeladen",
-  generiert: "Automatisch erstellt",
+  generiert: "Automatisch erstellt (38h-Motor)",
   scan: "Scan",
   migration: "Aus Umzug",
 };
+
+/**
+ * Herkunft eines Dokuments ehrlich benannt (I5-T19-01) – für Chip und Untertitel der E-Akte. Bei „generiert“ wird zwischen
+ * Mensch und Maschine unterschieden:
+ * - KI-Kennzeichen (`kiAnalyseVom` aus der Fallanalyse bzw. `ki` aus dem Schriftsatz-Entwurf) und Autor → „KI-Entwurf,
+ *   gespeichert von …“ (Chip im KI-Ton),
+ * - Autor ohne KI-Kennzeichen → „Aus Vorlage erstellt von …“ (eine eigene Notiz: „Erstellt von …“),
+ * - ohne Autor → „Automatisch erstellt (38h-Motor)“.
+ * Andere Quellen (beA, E-Mail, Hochgeladen, Scan, Umzug) unverändert.
+ */
+export function quelleLabel(
+  d: Pick<Dokument, "quelle" | "autorId" | "kiAnalyseVom" | "ki" | "art">,
+  team: Pick<User, "id" | "name">[],
+): { text: string; ki: boolean; mitAutor: boolean } {
+  if (d.quelle !== "generiert") return { text: QUELLE_LABEL[d.quelle], ki: false, mitAutor: false };
+  if (!d.autorId) return { text: QUELLE_LABEL.generiert, ki: false, mitAutor: false };
+  const name = team.find((u) => u.id === d.autorId)?.name ?? "einer Person aus dem Team";
+  if (d.kiAnalyseVom || d.ki) return { text: `KI-Entwurf, gespeichert von ${name}`, ki: true, mitAutor: true };
+  if (d.art === "notiz") return { text: `Erstellt von ${name}`, ki: false, mitAutor: true };
+  return { text: `Aus Vorlage erstellt von ${name}`, ki: false, mitAutor: true };
+}
 
 const ABKUERZUNGEN: Record<string, string> = { kschg: "KSchG", bgb: "BGB", zpo: "ZPO", stpo: "StPO", owig: "OWiG", stgb: "StGB", rvg: "RVG", rsv: "RSV", vob: "VOB", agb: "AGB", gmbh: "GmbH", bea: "beA", eeb: "eEB" };
 

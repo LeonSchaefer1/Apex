@@ -15,7 +15,7 @@ import { cn } from "@/lib/cn";
 // Erledigen, Wiederöffnen und Vier-Augen-Kontrolle laufen über dieselben Helfer wie im Fristenkalender –
 // damit gelten in Akte und Kalender dieselben Regeln (u. a. keine Selbstkontrolle der verantwortlichen Person).
 import { brauchtKontrolle } from "@/pages/fristen/logik";
-import { KontrolleAktion, KontrollStatus, KorrekturHinweis, NachweisZeile, QuelleChip, korrigierbar, useFristAktionen } from "@/pages/fristen/FristZeile";
+import { EebAbweichungChip, KontrolleAktion, KontrollStatus, KorrekturHinweis, NachweisZeile, QuelleChip, korrigierbar, useFristAktionen } from "@/pages/fristen/FristZeile";
 import { DateiDialog, type AusgabeDatei } from "@/pages/fristen/dateiAusgabe";
 import { erzeugeIcs, icsDateiname } from "@/pages/fristen/ics";
 import { TYP_META } from "@/pages/fristen/logik";
@@ -199,6 +199,7 @@ function FristKarte({ f, akte }: { f: Frist; akte: Akte }) {
               </span>
             )}
             <KontrollStatus f={f} team={team} />
+            <EebAbweichungChip f={f} />
             {istOffen && <KontrolleAktion f={f} user={user} kontrollieren={kontrolliere} verantwortlich={verantw} anfordern={korrekturAnfordern} />}
             {!istOffen && (
               <span className="text-[12.5px] text-fg-3">

@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
-import { Calculator, CalendarDays, ChevronDown, FilePlus2, Info, Minus, Plus, Table2, Users } from "lucide-react";
+import { AlertTriangle, Calculator, CalendarDays, ChevronDown, FilePlus2, Info, Minus, Plus, Table2, Users } from "lucide-react";
 import { AnimatedNumber, Button, Card, CardHeader, Checkbox, Chip, Field, Input, Modal, Select, Switch } from "@/components/ui";
 import { useCol } from "@/store/data";
 import type { Rechnung, RechnungsPosition } from "@/core/types";
@@ -12,7 +12,7 @@ import { fmtDate, fmtEUR, round2, today } from "@/core/dates";
 import { berechneRvg, fassungFuerAuftrag, gebuehr, RVG_TABELLE, RVG_TABELLE_2021, rvgRechnungsPositionen, VV_KATALOG, wertgebuehr, type RvgZeile, type VVPosition } from "@/core/rvg";
 import { cn } from "@/lib/cn";
 import { erstelleRechnungen } from "./aktionen";
-import { FASSUNG_LABEL, fmtSatz, parseBetrag, type TabKey } from "./lib";
+import { FASSUNG_LABEL, fmtSatz, pruefeBetragEingabe, type TabKey } from "./lib";
 import { useAbrechnungUI } from "./store";
 import { BeispielHinweis } from "./Zinsrechner";
 
@@ -156,7 +156,12 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
   const erstellenRef = useRef<HTMLButtonElement>(null);
   const [tabelleOffen, setTabelleOffen] = useState(false);
 
-  const wert = parseBetrag(wertText);
+  // Eingabeprüfung (I5-T07-01): leer, keine Zahl oder ≤ 0 → Meldung am Feld, kein Ergebnis – kein stilles Klemmen auf 0
+  const wertPruefung = pruefeBetragEingabe(wertText);
+  const gueltig = !wertPruefung.fehler;
+  const wert = wertPruefung.wert ?? 0;
+  const [beruehrt, setBeruehrt] = useState(false);
+  const wertFehler = !gueltig && (beruehrt || wertText.trim() !== "") ? wertPruefung.fehler : undefined;
   const fassung = fassungFuerAuftrag(auftrag || today());
   const tabelle = fassung === "2021" ? RVG_TABELLE_2021 : RVG_TABELLE;
   const erhoehung = Math.min(0.3 * (auftraggeber - 1), 2);
@@ -168,7 +173,7 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
     if (erhoehung > 0) positionen.push({ nr: "1008", satz: round2(erhoehung) });
     return berechneRvg({
       positionen,
-      gegenstandswert: Math.max(0, wert),
+      gegenstandswert: wert,
       anrechnung,
       auslagenpauschale: pauschale,
       ust,
@@ -176,8 +181,8 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
     });
   }, [pos, erhoehung, wert, anrechnung, pauschale, ust, fassung]);
 
-  const voll = wertgebuehr(Math.max(0, wert), fassung);
-  const hatPositionen = erg.zeilen.length > 0 && wert > 0;
+  const voll = wertgebuehr(wert, fassung);
+  const hatPositionen = erg.zeilen.length > 0 && gueltig;
   // Vorbem. 3 Abs. 4 (2300 → 3305 bzw. 3100) und Anm. zu Nr. 3305 (3305 → 3100)
   const an = (nr: string) => !!pos[nr]?.an;
   const anrechnungMoeglich = (an("2300") && (an("3100") || an("3305"))) || (an("3305") && an("3100"));
@@ -236,6 +241,9 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
   };
 
   const akteWeicht = akte && (akte.gegenstandswert !== wert || akte.createdAt.slice(0, 10) !== auftrag);
+  // Grund, warum „Als Rechnung für Akte erstellen“ gesperrt ist – sichtbar unter dem Knopf (wie im Fristenrechner)
+  const sperrGruende = [!gueltig ? "einen Gegenstandswert über 0 € eintragen" : "", !erg.zeilen.length ? "mindestens einen Gebührentatbestand wählen" : "", !akte ? "eine Akte wählen" : ""].filter(Boolean);
+  const sperrGrund = sperrGruende.length ? `Erst ${sperrGruende.join(" und ")}` : "";
 
   return (
     <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_400px]">
@@ -275,14 +283,24 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
                 id="rvg-wert"
                 inputMode="decimal"
                 value={wertText}
-                aria-describedby={beispiel ? "rvg-beispiel-hinweis" : undefined}
+                aria-invalid={wertFehler ? true : undefined}
+                aria-describedby={[wertFehler ? "rvg-wert-fehler" : "", beispiel ? "rvg-beispiel-hinweis" : ""].filter(Boolean).join(" ") || undefined}
                 onChange={(e) => {
                   eigen();
                   setWertText(e.target.value);
                 }}
-                onBlur={() => wert > 0 && setWertText(wert.toLocaleString("de-DE", { maximumFractionDigits: 2 }))}
+                onBlur={() => {
+                  setBeruehrt(true);
+                  if (gueltig) setWertText(wert.toLocaleString("de-DE", { maximumFractionDigits: 2 }));
+                }}
                 className="num !h-11 !text-[16px] font-semibold"
               />
+              {wertFehler && (
+                <p id="rvg-wert-fehler" className="mt-1.5 flex items-start gap-1.5 text-[12.5px] font-medium text-seal">
+                  <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                  {wertFehler}
+                </p>
+              )}
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {SCHNELL.map((v) => (
                   <button
@@ -335,9 +353,13 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
           </div>
           <div className="mt-4 flex items-start gap-2 rounded-[14px] bg-ink-softer px-3.5 py-2.5 text-[12.5px] text-fg-2">
             <Info className="mt-0.5 size-4 shrink-0 text-ink" />
-            <span>
-              Volle Gebühr (1,0) bei <span className="num font-semibold">{fmtEUR(Math.max(0, wert))}</span>: <span className="num font-semibold text-ink">{fmtEUR(voll)}</span> – {tabelle.stand}.
-            </span>
+            {gueltig ? (
+              <span>
+                Volle Gebühr (1,0) bei <span className="num font-semibold">{fmtEUR(wert)}</span>: <span className="num font-semibold text-ink">{fmtEUR(voll)}</span> – {tabelle.stand}.
+              </span>
+            ) : (
+              <span>Die volle Gebühr (1,0) erscheint, sobald ein gültiger Gegenstandswert eingetragen ist – {tabelle.stand}.</span>
+            )}
           </div>
         </Card>
 
@@ -349,14 +371,20 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
             type="button"
             data-rvg-summe
             onClick={() => document.getElementById("rvg-ergebnis")?.scrollIntoView({ behavior: "smooth", block: "start" })}
-            aria-label={`Gesamt brutto ${fmtEUR(erg.brutto)}, ${erg.zeilen.length} ${erg.zeilen.length === 1 ? "Position" : "Positionen"}, RVG ${fassung} – zum Ergebnis`}
+            aria-label={gueltig ? `Gesamt brutto ${fmtEUR(erg.brutto)}, ${erg.zeilen.length} ${erg.zeilen.length === 1 ? "Position" : "Positionen"}, RVG ${fassung} – zum Ergebnis` : "Noch kein Ergebnis – Gegenstandswert über 0 € eintragen – zum Ergebnis"}
             className="glass-strong tabbar-deckend fixed bottom-[calc(var(--tabbar-h)+env(safe-area-inset-bottom)+16px)] left-3 right-[84px] z-30 flex min-h-11 items-center gap-2 rounded-full py-1.5 pl-4 pr-2 text-left md:bottom-5 md:left-auto md:right-24 md:w-[min(460px,calc(100vw-10rem))] xl:hidden"
             style={{ boxShadow: "var(--glass-shadow-lg)" }}
           >
-            <span className="min-w-0 flex-1 text-[12.5px] text-fg-3">
-              Gesamt brutto · {erg.zeilen.length} {erg.zeilen.length === 1 ? "Position" : "Positionen"}
-            </span>
-            <AnimatedNumber value={erg.brutto} format={(n) => fmtEUR(n)} className="text-[16px] font-semibold" />
+            {gueltig ? (
+              <>
+                <span className="min-w-0 flex-1 text-[12.5px] text-fg-3">
+                  Gesamt brutto · {erg.zeilen.length} {erg.zeilen.length === 1 ? "Position" : "Positionen"}
+                </span>
+                <AnimatedNumber value={erg.brutto} format={(n) => fmtEUR(n)} className="text-[16px] font-semibold" />
+              </>
+            ) : (
+              <span className="min-w-0 flex-1 text-[12.5px] text-fg-2">Noch kein Ergebnis – Gegenstandswert eintragen</span>
+            )}
             <Chip tone={fassung === "2025" ? "ink" : "amber"}>RVG {fassung}</Chip>
           </button>,
           document.body,
@@ -389,7 +417,7 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
                               )}
                             </div>
                             {p.rahmen ? <SatzRegler p={p} satz={s.satz} onChange={(v) => setSatz(p.nr, v)} /> : <span className="num text-[13px] font-semibold text-fg-2">{fmtSatz(s.satz)}</span>}
-                            <span className={cn("num w-[92px] shrink-0 text-right text-[13px]", s.an ? "font-semibold" : "text-fg-3")}>{fmtEUR(gebuehr(Math.max(0, wert), s.satz, fassung))}</span>
+                            <span className={cn("num w-[92px] shrink-0 text-right text-[13px]", s.an ? "font-semibold" : "text-fg-3")}>{gueltig ? fmtEUR(gebuehr(wert, s.satz, fassung)) : "–"}</span>
                           </div>
                           <AnimatePresence initial={false}>
                             {ueberSchwelle && s.an && (
@@ -540,12 +568,19 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
                 Ergebnis
               </h2>
               <div className="mt-1 text-[12.5px] text-fg-3">
-                Gegenstandswert <span className="num font-medium text-fg-2">{fmtEUR(Math.max(0, wert))}</span>
+                Gegenstandswert <span className="num font-medium text-fg-2">{gueltig ? fmtEUR(wert) : "–"}</span>
               </div>
             </div>
             <Chip tone={fassung === "2025" ? "ink" : "amber"}>RVG {fassung}</Chip>
           </div>
 
+          {!gueltig ? (
+            <div role="status" className="mt-4 flex items-start gap-2 rounded-[16px] bg-ink-softer px-4 py-5 text-[13px] leading-relaxed text-fg-2">
+              <Info className="mt-0.5 size-4 shrink-0 text-fg-3" aria-hidden />
+              <span>Das Ergebnis erscheint, sobald ein gültiger Gegenstandswert eingetragen ist.</span>
+            </div>
+          ) : (
+          <>
           {/* Je Angelegenheit (§ 15 RVG): Gebühren, Anrechnung und eigene Auslagenpauschale */}
           <div className="mt-4 grid grid-cols-1 gap-3">
             {erg.angelegenheiten.map((a, i) => (
@@ -591,6 +626,8 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
             <span className="text-[13px] font-semibold">Gesamtbetrag brutto</span>
             <AnimatedNumber value={erg.brutto} format={(n) => fmtEUR(n)} className="text-[26px] font-semibold tracking-[-0.03em]" />
           </div>
+          </>
+          )}
 
           <div className="mt-5 border-t border-[var(--line)] pt-4">
             <Field label="Akte" htmlFor="rvg-akte">
@@ -612,9 +649,15 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
                 </motion.div>
               )}
             </AnimatePresence>
-            <Button ref={erstellenRef} variant="primary" className="mt-3 w-full" icon={<FilePlus2 className="size-4" />} disabled={!akte || !hatPositionen} onClick={() => alsRechnung()}>
+            <Button ref={erstellenRef} variant="primary" className="mt-3 w-full" icon={<FilePlus2 className="size-4" />} disabled={!akte || !hatPositionen} onClick={() => alsRechnung()} aria-describedby={sperrGrund ? "rvg-sperrgrund" : undefined}>
               Als Rechnung für Akte erstellen
             </Button>
+            {sperrGrund && (
+              <p id="rvg-sperrgrund" className="mt-2 flex items-start justify-center gap-1.5 text-center text-[12.5px] text-fg-2">
+                <Info className="mt-0.5 size-3.5 shrink-0 text-fg-3" aria-hidden />
+                {sperrGrund}
+              </p>
+            )}
             <p className="mt-2 text-center text-[12.5px] text-fg-3">Wird als Entwurf angelegt – Sie prüfen und stellen die Rechnung anschließend.</p>
           </div>
         </Card>

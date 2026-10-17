@@ -312,3 +312,60 @@ test("Doppelungsprüfung (I4-T20-01): „wv 137 in 3 tagen zeugenliste prüfen�
     mock.timers.reset();
   }
 }));
+
+test("beA-Notfall mit Begründungsfrist (I5-T12-01): zweiter Weg Verlängerungsantrag – je Gericht die passende Norm", still(async () => {
+  await vorbereiten();
+  // LAG: Berufungsbegründung → § 66 Abs. 1 S. 5 ArbGG neben § 46g, ohne ZPO-Verlängerungsnorm
+  const lag = await frag([{ role: "user", content: "Das beA ist gestört und die Berufungsbegründung zum LAG muss heute raus – was tun?" }]);
+  assert.match(lag.text, /§ 46g S\. 3, 4 ArbGG/);
+  assert.match(lag.text, /Verlängerungsantrag vor Fristablauf stellen – ebenfalls ersatzweise einreichen \(LAG: § 66 Abs\. 1 S\. 5 ArbGG\)/);
+  assert.match(lag.text, /Die Berufungsfrist selbst ist eine Notfrist und nicht verlängerbar\./);
+  assert.ok(!/§ 520 Abs\. 2 S\. 2, 3 ZPO/.test(lag.text));
+  // OLG: Berufungsbegründung → § 520 Abs. 2 S. 2, 3 ZPO neben § 130d
+  const olg = await frag([{ role: "user", content: "beA gestört – meine Berufungsbegründung zum OLG muss heute raus" }]);
+  assert.match(olg.text, /§ 130d S\. 2, 3 ZPO/);
+  assert.match(olg.text, /\(OLG: § 520 Abs\. 2 S\. 2, 3 ZPO\)/);
+  assert.ok(!/§ 66 Abs\. 1 S\. 5 ArbGG/.test(olg.text));
+  // Folgefrage nach der LAG-Antwort: Begründungsfrist bleibt Thema, Norm wechselt zum OLG
+  const folge = await frag([{ role: "user", content: "Das beA ist gestört und die Berufungsbegründung zum LAG muss heute raus – was tun?" }, { role: "assistant", content: lag.text }, { role: "user", content: "Und beim OLG?" }]);
+  assert.match(folge.text, /§ 520 Abs\. 2 S\. 2, 3 ZPO/);
+  // Ersatzeinreichung bleibt der erste Weg
+  assert.ok(lag.text.indexOf("Ersatzeinreichung:") < lag.text.indexOf("Verlängerungsantrag"));
+}));
+
+test("beA-Notfall ohne Begründungsfrist: kein Verlängerungssatz (die Berufungsfrist ist Notfrist)", still(async () => {
+  await vorbereiten();
+  const r = await frag([{ role: "user", content: "Das beA ist gestört und meine Berufung zum LAG muss heute raus – was tun?" }]);
+  assert.match(r.text, /§ 46g S\. 3, 4 ArbGG/);
+  assert.ok(!/Verlängerung/.test(r.text), r.text);
+  const { beaStoerungAntwort, begruendungsfristAus } = await import("./assistent");
+  assert.equal(begruendungsfristAus("Begründung muss heute raus"), "berufung");
+  assert.equal(begruendungsfristAus("Revisionsbegründung zum BAG"), "revision");
+  assert.equal(begruendungsfristAus("Berufung zum LAG"), undefined);
+  const ap = t.tenant.ansprechpartner!;
+  assert.match(beaStoerungAntwort("arbeit", ap, { begruendung: "revision" }), /\(BAG: § 74 Abs\. 1 S\. 3 ArbGG\)\. Die Revisionsfrist selbst ist eine Notfrist/);
+  assert.match(beaStoerungAntwort(undefined, ap, { begruendung: "berufung" }), /LAG: § 66 Abs\. 1 S\. 5 ArbGG; OLG: § 520 Abs\. 2 S\. 2, 3 ZPO/);
+}));
+
+test("„Öffne die Akte Schmidt.“ (I5-T20-02): Name in Originalschreibweise; Rückruf-Frage erkennt die Oberfläche", still(async () => {
+  const useData = await vorbereiten();
+  const st = useData.getState();
+  const ohneSchmidt = st.data.kontakte.filter((k) => /schmidt/i.test(k.name)).map((k) => k.id);
+  useData.setState({ data: { ...st.data, akten: st.data.akten.filter((a) => !/schmidt/i.test(a.titel) && !ohneSchmidt.includes(a.mandantId ?? "") && !ohneSchmidt.includes(a.gegnerId ?? "")) } });
+  const r = await frag([{ role: "user", content: "Öffne die Akte Schmidt." }]);
+  assert.equal(r.geoeffnet.length, 0);
+  assert.match(r.text, /„Schmidt“/);
+  assert.ok(!/„schmidt“/.test(r.text));
+  const { bietetRueckruf, RUECKRUF_ZUSTIMMUNG } = await import("./assistent");
+  assert.ok(bietetRueckruf("Ansprechpartnerin: Lena Vogt – direkt erreichbar … Soll ich einen Rückruf anfordern?"));
+  assert.ok(bietetRueckruf("… Rückruf frühestens Mo, 19.10. Soll ich einen Rückruf für dann anfordern?"));
+  assert.ok(!bietetRueckruf("Erledigt: Ich habe einen Rückruf angefordert."));
+  // Der Knopf sendet „Ja, bitte.“ – wirkt wie die getippte Zustimmung: Rückruf angefordert, im Prototyp simuliert
+  const frage = "Ich möchte lieber mit einem Menschen sprechen.";
+  const a1 = await frag([{ role: "user", content: frage }]);
+  assert.ok(bietetRueckruf(a1.text), a1.text);
+  const a2 = await frag([{ role: "user", content: frage }, { role: "assistant", content: a1.text }, { role: "user", content: RUECKRUF_ZUSTIMMUNG }]);
+  assert.match(a2.text, /Rückruf .* angefordert/);
+  assert.match(a2.text, /im Prototyp simuliert/);
+  assert.ok(a2.werkzeuge.some((w) => /Rückruf/.test(w)), a2.werkzeuge.join(", "));
+}));

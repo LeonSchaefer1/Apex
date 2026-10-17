@@ -46,8 +46,6 @@ function eingebettet(): boolean {
 const WACHHUND_MS = 3000;
 /** Einheitliche Meldung ohne Mikrofon bzw. Freigabe – mit nächstem Schritt. */
 export const KEIN_MIKROFON = "Kein Mikrofon gefunden oder Zugriff verweigert. Bitte tippen Sie Ihre Frage – oder erlauben Sie das Mikrofon in der Adressleiste.";
-/** Steht die Browser-Abfrage zur Mikrofonfreigabe noch aus, bekommt die Nutzerin mehr Zeit zum Bestätigen. */
-const WACHHUND_ABFRAGE_MS = 10000;
 const NICHT_VERFUEGBAR = "Spracheingabe ist in dieser Ansicht nicht verfügbar – bitte tippen Sie Ihre Frage.";
 
 /**
@@ -95,13 +93,21 @@ export function hoeren(cb: { onInterim: (t: string) => void; onFinal: (t: string
     cb.onFehler(msg, true);
     ende();
   };
+  /**
+   * Jeder Mikrofonfehler beendet die Spracheingabe sofort (I5-T20-01): Erkennung abbrechen, Meldung, Ende – auch wenn die
+   * Erkennung schon gestartet hat. So stehen „Ich höre zu …“ und die Fehlermeldung nie gleichzeitig da.
+   */
+  const fehlerEnde = (msg: string) => {
+    if (beendet) return;
+    abbrechen();
+    cb.onFehler(msg);
+    ende();
+  };
   const wachhundStellen = (ms: number, msg = KEIN_MIKROFON) => {
     clearTimeout(wachhund);
     wachhund = setTimeout(() => {
       if (gestartet || beendet) return;
-      abbrechen();
-      cb.onFehler(msg);
-      ende();
+      fehlerEnde(msg);
     }, ms);
   };
   const lebt = () => {
@@ -132,9 +138,9 @@ export function hoeren(cb: { onInterim: (t: string) => void; onFinal: (t: string
       "audio-capture": KEIN_MIKROFON,
       network: "Die Spracherkennung ist gerade nicht erreichbar – bitte tippen Sie Ihre Frage.",
     };
-    if (e.error !== "aborted") cb.onFehler(map[e.error] ?? "Spracheingabe fehlgeschlagen.");
-    // Manche Browser senden nach einem Fehler kein onend mehr – den Zustand trotzdem sicher beenden.
-    ende();
+    // Manche Browser senden nach einem Fehler kein onend mehr – den Zustand trotzdem sicher beenden (und die Erkennung abbrechen).
+    if (e.error !== "aborted") fehlerEnde(map[e.error] ?? "Spracheingabe fehlgeschlagen.");
+    else ende();
   };
   rec.onend = ende;
 
@@ -146,21 +152,27 @@ export function hoeren(cb: { onInterim: (t: string) => void; onFinal: (t: string
     return () => {};
   }
   wachhundStellen(WACHHUND_MS);
-  // Mikrofon bereits verweigert (z. B. Sandbox ohne Mikrofon) → sofort ehrlich melden statt zu warten;
-  // Abfrage noch offen → mehr Zeit, damit eine Freigabe im Browser nicht abgeschnitten wird.
+  // Kein Eingabegerät (z. B. Rechner ohne Mikrofon) → sofort ehrlich melden statt 3 s „Ich höre zu …“ (I5-T20-01).
+  // Vor der Freigabe nennt der Browser Geräte ohne Namen – fehlt jedes „audioinput“, gibt es keins.
+  try {
+    void navigator.mediaDevices
+      ?.enumerateDevices?.()
+      .then((geraete) => {
+        if (beendet || gestartet) return;
+        if (!geraete.some((g) => g.kind === "audioinput")) fehlerEnde(KEIN_MIKROFON);
+      })
+      .catch(() => {});
+  } catch {
+    /* Geräteliste nicht verfügbar */
+  }
+  // Mikrofon bereits verweigert (z. B. Sandbox ohne Mikrofon) → sofort ehrlich melden statt zu warten.
   try {
     void navigator.permissions
       ?.query({ name: "microphone" as PermissionName })
       .then((p) => {
         if (beendet || gestartet) return;
+        // Freigabe-Abfrage noch offen („prompt“): kein Fehler – ohne Lebenszeichen beendet der Wachhund nach 3 s die Eingabe vollständig
         if (p.state === "denied") sperren(eingebettet() ? NICHT_VERFUEGBAR : KEIN_MIKROFON);
-        else if (p.state === "prompt") {
-          // Freigabe-Abfrage offen: nach 3 s den Hinweis zeigen, aber noch bis 10 s auf die Freigabe warten
-          wachhundStellen(WACHHUND_ABFRAGE_MS);
-          setTimeout(() => {
-            if (!beendet && !gestartet) cb.onFehler(KEIN_MIKROFON);
-          }, WACHHUND_MS);
-        }
       })
       .catch(() => {});
   } catch {

@@ -18,6 +18,7 @@ import { AiChip, Button, Card, Chip, Field, Input, ProgressRing, Select, Textare
 import { cn } from "@/lib/cn";
 import { KiSchritte, usePipeline, type KiSchritt } from "./KiSchritte";
 import { standardAkte } from "./FallanalyseTab";
+import { ladeDokAnalyse, merkeDokAnalyse, sitzungsSchluessel, vergissDokAnalyse } from "./dokumentAnalyseStand";
 
 const SCHRITTE: KiSchritt[] = [
   { label: "Lesen", detail: "Text & Struktur", icon: <ScanText /> },
@@ -46,22 +47,42 @@ export function DokumentAnalyseTab({ akteParam, dokParam }: { akteParam?: string
   const quelle = useAiStatus((s) => s.quelle);
   const live = quelle !== "demo";
   const beispiele = useMemo(() => beispielDokumente(), []);
-  const [text, setText] = useState("");
-  const [betreff, setBetreff] = useState("");
-  const [von, setVon] = useState("");
-  const [beispielAktiv, setBeispielAktiv] = useState<number | null>(null);
+  // Letztes Ergebnis aus dieser Sitzung (I5-T19-02): zum Dokument bzw. zur Akte aus dem Deep-Link, sonst das zuletzt bearbeitete
+  const [gemerkt] = useState(() => ladeDokAnalyse({ dokId: dokParam, akteId: dokParam ? undefined : akteParam }));
+  const [text, setText] = useState(gemerkt?.text ?? "");
+  const [betreff, setBetreff] = useState(gemerkt?.betreff ?? "");
+  const [von, setVon] = useState(gemerkt?.von ?? "");
+  const [beispielAktiv, setBeispielAktiv] = useState<number | null>(gemerkt?.beispielAktiv ?? null);
   // Betreff/Absender stammen aus Beispiel oder Datei – beim Ersetzen des Texts wieder leeren
-  const [autoFelder, setAutoFelder] = useState(false);
+  const [autoFelder, setAutoFelder] = useState(gemerkt?.autoFelder ?? false);
   const textRef = useRef<HTMLTextAreaElement>(null);
-  const [analyse, setAnalyse] = useState<DokAnalyse | null>(null);
+  const [analyse, setAnalyse] = useState<DokAnalyse | null>(gemerkt?.analyse ?? null);
   const [fehler, setFehler] = useState<string | null>(null);
   const [laeuft, setLaeuft] = useState(false);
-  const [zielAkte, setZielAkte] = useState("");
+  const [zielAkte, setZielAkte] = useState(gemerkt?.zielAkte ?? "");
   const [uebernommen, setUebernommen] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const { aktiv, lauf, zuruecksetzen } = usePipeline(SCHRITTE.length, 480);
   /** Dokument aus der E-Akte, dessen Text analysiert wird (Akte steht damit fest). */
-  const [ausAkte, setAusAkte] = useState<{ akteId: string; dokId: string } | null>(null);
+  const [ausAkte, setAusAkte] = useState<{ akteId: string; dokId: string } | null>(gemerkt?.ausAkte ?? null);
+  /** Ausschlussfrist: eingegebene Fälligkeit und Anspruch – gehören zum gemerkten Ergebnis */
+  const [ausschluss, setAusschluss] = useState(gemerkt?.ausschluss ?? { faellig: "", anspruch: "" });
+  /** Ergebnis wird gehalten, bis es verworfen oder übernommen ist */
+  const [halten, setHalten] = useState(true);
+  const analyseSchluesselAkte = analyse ? sitzungsSchluessel({ ausAkte, analyse, zielAkte }) : undefined;
+  const vorigerSchluessel = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!analyse || !halten || uebernommen) return;
+    // Andere Akte gewählt: der Stand zieht mit um (kein veralteter Eintrag unter der vorigen Akte)
+    if (vorigerSchluessel.current && vorigerSchluessel.current !== analyseSchluesselAkte) vergissDokAnalyse(vorigerSchluessel.current);
+    vorigerSchluessel.current = analyseSchluesselAkte;
+    merkeDokAnalyse({ text, betreff, von, beispielAktiv, autoFelder, ausAkte, analyse, zielAkte, ausschluss });
+  }, [analyse, halten, uebernommen, text, betreff, von, beispielAktiv, autoFelder, ausAkte, zielAkte, ausschluss, analyseSchluesselAkte]);
+  /** Gemerkten Stand loslassen (Verwerfen, Neues Dokument, Übernehmen) */
+  const loslassen = () => {
+    if (analyseSchluesselAkte) vergissDokAnalyse(analyseSchluesselAkte);
+    setHalten(false);
+  };
   const [wahlOffen, setWahlOffen] = useState(false);
   const [wahlAkte, setWahlAkte] = useState(akteParam ?? "");
 
@@ -117,9 +138,13 @@ export function DokumentAnalyseTab({ akteParam, dokParam }: { akteParam?: string
     const v = eingabe ? (eingabe.von ?? "") : von;
     const quelleDok = eingabe ? (eingabe.quelle ?? null) : ausAkte;
     if (t.trim().length < 20) return;
+    // Neue Analyse ersetzt den gemerkten Stand derselben Akte; Fälligkeit gehört zum neuen Ergebnis
+    if (analyseSchluesselAkte) vergissDokAnalyse(analyseSchluesselAkte);
     setFehler(null);
     setAnalyse(null);
     setUebernommen(null);
+    setAusschluss({ faellig: "", anspruch: "" });
+    setHalten(true);
     setLaeuft(true);
     try {
       const daten = useData.getState().data;
@@ -185,6 +210,8 @@ export function DokumentAnalyseTab({ akteParam, dokParam }: { akteParam?: string
     }
     if (!neu.length) return;
     for (const f of neu) st.upsert("fristen", f);
+    // Übernommen: das gemerkte Ergebnis entfällt (I5-T19-02)
+    loslassen();
     const nF = analyse.fristen.length;
     const teil = [nF ? `${nF} ${nF === 1 ? "Frist" : "Fristen"}` : "", analyse.termin ? "1 Termin" : ""].filter(Boolean).join(" und ");
     st.log({ akteur: "ki", userId: user.id, akteId: akte.id, text: `${teil} aus ${herkunft} in Akte ${akte.aktenzeichen} übernommen (Fristenrechner, Kontrolle ausstehend)`, minutenGespart: 6 * neu.length });
@@ -206,6 +233,7 @@ export function DokumentAnalyseTab({ akteParam, dokParam }: { akteParam?: string
 
   /** „Neues Dokument“: Ergebnis und Eingabe (Text, Betreff, Absender) leeren. */
   const neuStarten = () => {
+    loslassen();
     setAnalyse(null);
     setFehler(null);
     setUebernommen(null);
@@ -221,6 +249,7 @@ export function DokumentAnalyseTab({ akteParam, dokParam }: { akteParam?: string
 
   /** „Vorschlag verwerfen“: Es wird nichts gespeichert – Akte, Fristen und Dokumente bleiben unverändert. */
   const verwerfen = () => {
+    loslassen();
     setAnalyse(null);
     setUebernommen(null);
     zuruecksetzen();
@@ -243,6 +272,11 @@ export function DokumentAnalyseTab({ akteParam, dokParam }: { akteParam?: string
   const geladen = useRef<string | null>(null);
   useEffect(() => {
     if (!dokParam || geladen.current === dokParam) return;
+    // Gemerktes Ergebnis zu diesem Dokument: nicht neu analysieren, sondern weiterzeigen (I5-T19-02)
+    if (gemerkt?.ausAkte?.dokId === dokParam) {
+      geladen.current = dokParam;
+      return;
+    }
     const d = useData.getState().data.dokumente.find((x) => x.id === dokParam);
     if (!d) return;
     geladen.current = dokParam;
@@ -416,6 +450,9 @@ export function DokumentAnalyseTab({ akteParam, dokParam }: { akteParam?: string
                 onUebernehmen={uebernehmen}
                 onNeu={neuStarten}
                 onAkte={(id) => nav(`/akten/${id}`)}
+                ausschluss={ausschluss}
+                setAusschluss={setAusschluss}
+                onAusschlussUebernommen={loslassen}
               />
             </motion.div>
           ) : (
@@ -468,9 +505,12 @@ export function DokumentAnalyseTab({ akteParam, dokParam }: { akteParam?: string
 }
 
 function Ergebnis({
-  analyse, erkannteAkte, sicherZugeordnet, offene, zielAkte, setZielAkte, kannUebernehmen, uebernommen, onUebernehmen, onNeu, onAkte, onVerwerfen,
+  analyse, erkannteAkte, sicherZugeordnet, offene, zielAkte, setZielAkte, kannUebernehmen, uebernommen, onUebernehmen, onNeu, onAkte, onVerwerfen, ausschluss, setAusschluss, onAusschlussUebernommen,
 }: {
   analyse: DokAnalyse;
+  ausschluss: { faellig: string; anspruch: string };
+  setAusschluss: (a: { faellig: string; anspruch: string }) => void;
+  onAusschlussUebernommen: () => void;
   onVerwerfen: () => void;
   erkannteAkte?: { id: string; aktenzeichen: string; titel: string };
   sicherZugeordnet: boolean;
@@ -567,7 +607,7 @@ function Ergebnis({
       {/* Vertragliche Ausschlussfrist: Fälligkeit erfragen, Ende berechnet der Fristenrechner */}
       {analyse.ausschlussfrist && (
         <motion.div {...stagger(2)}>
-          <AusschlussfristKarte klausel={analyse.ausschlussfrist} akteId={sicherZugeordnet && erkannteAkte ? erkannteAkte.id : zielAkte} onAkte={onAkte} />
+          <AusschlussfristKarte klausel={analyse.ausschlussfrist} akteId={sicherZugeordnet && erkannteAkte ? erkannteAkte.id : zielAkte} onAkte={onAkte} wert={ausschluss} onWert={setAusschluss} onUebernommen={onAusschlussUebernommen} />
         </motion.div>
       )}
 
@@ -660,12 +700,23 @@ function Ergebnis({
  * Ausschlussfrist aus einem Vertrag: Die Fälligkeit wird erfragt (nie erfunden), das Fristende berechnet der
  * Fristenrechner. Übernahme als Frist (Vier-Augen-Kontrolle offen) oder als Wiedervorlage.
  */
-function AusschlussfristKarte({ klausel, akteId, onAkte }: { klausel: Ausschlussklausel; akteId: string; onAkte: (id: string) => void }) {
+function AusschlussfristKarte({
+  klausel, akteId, onAkte, wert, onWert, onUebernommen,
+}: {
+  klausel: Ausschlussklausel;
+  akteId: string;
+  onAkte: (id: string) => void;
+  /** Fälligkeit und Anspruch – im gemerkten Ergebnis gehalten (I5-T19-02) */
+  wert: { faellig: string; anspruch: string };
+  onWert: (w: { faellig: string; anspruch: string }) => void;
+  onUebernommen: () => void;
+}) {
   const { tenant, user } = useKanzlei();
   const akten = useData((s) => s.data.akten);
   const akte: Akte | undefined = akten.find((a) => a.id === akteId);
-  const [faellig, setFaellig] = useState("");
-  const [anspruch, setAnspruch] = useState("");
+  const { faellig, anspruch } = wert;
+  const setFaellig = (v: string) => onWert({ ...wert, faellig: v });
+  const setAnspruch = (v: string) => onWert({ ...wert, anspruch: v });
   const [angelegt, setAngelegt] = useState<{ art: "frist" | "wiedervorlage"; ids: string[] } | null>(null);
   const gueltig = /^\d{4}-\d{2}-\d{2}$/.test(faellig);
   const vorschlag = useMemo(
@@ -694,6 +745,7 @@ function AusschlussfristKarte({ klausel, akteId, onAkte }: { klausel: Ausschluss
     }
     useData.getState().log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `Ausschlussfrist aus ${klausel.quelle} als ${art === "frist" ? "Frist" : "Wiedervorlage"} übernommen: ${fmtDate(art === "frist" ? vorschlag.ende : vorschlag.vorfrist)} (Fälligkeit ${fmtDate(faellig)})` });
     setAngelegt({ art, ids });
+    onUebernommen();
     toast(art === "frist" ? "Ausschlussfrist eingetragen" : "Wiedervorlage eingetragen", {
       text: `${akte.aktenzeichen} · ${fmtDateWd(art === "frist" ? vorschlag.ende : vorschlag.vorfrist)}${art === "frist" ? " · Vier-Augen-Kontrolle offen" : ""}`,
       ton: "erfolg",

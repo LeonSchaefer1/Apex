@@ -6,6 +6,7 @@ import { normalize } from "@/core/search";
 import type { Akte, Nachricht } from "@/core/types";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
+import { toast } from "@/store/ui";
 import { useMedia } from "@/lib/useMedia";
 import { einzeltasteErlaubt } from "@/lib/tastatur";
 import { cn } from "@/lib/cn";
@@ -137,8 +138,9 @@ export default function Posteingang() {
 
   const ansicht = useMemo(() => (sel ? kiAnsicht(sel, data, tenant.bundesland, ergebnisse[sel.id]) : null), [sel, data, tenant.bundesland, ergebnisse]);
 
-  // Einzeltasten-Kürzel (abschaltbar, WCAG 2.1.4): J/K nächste bzw. vorige Nachricht, U „Fristen übernehmen“, E eEB-Dialog.
-  // Die Aktionen lösen genau die sichtbaren Knöpfe aus (data-kuerzel) – gesperrte Knöpfe bleiben gesperrt.
+  // Einzeltasten-Kürzel (abschaltbar, WCAG 2.1.4): J/K nächste bzw. vorige Nachricht, U „Vorschlag übernehmen“ (Fristen samt
+  // Akte bzw. ohne Fristvorschlag die Akte zuordnen), E eEB-Dialog. Die Aktionen lösen genau die sichtbaren Knöpfe aus
+  // (data-kuerzel) – gesperrte Knöpfe bleiben gesperrt. Bleibt U wirkungslos, sagt eine Meldung warum (I5-T22-01).
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (!einzeltasteErlaubt(e)) return;
@@ -153,14 +155,32 @@ export default function Posteingang() {
         requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-nachricht="${CSS.escape(ziel.id)}"]`)?.focus({ preventScroll: false }));
       } else if ((k === "u" || k === "e") && selId) {
         const knopf = document.querySelector<HTMLButtonElement>(`[data-kuerzel="${k}"]:not(:disabled)`);
-        if (!knopf) return;
+        if (knopf) {
+          e.preventDefault();
+          knopf.click();
+          return;
+        }
+        if (k !== "u") return;
         e.preventDefault();
-        knopf.click();
+        const m = unwirksamesU(selId);
+        toast(m.titel, { text: m.text, ton: "info" });
       }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [sichtbar, selId, oeffnen]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sichtbar, selId, oeffnen, akten]);
+
+  /** Grund, warum U nichts übernimmt: Analyse läuft, Knopf gesperrt (dessen Titel), schon zugeordnet oder keine Akte erkannt. */
+  const unwirksamesU = (id: string): { titel: string; text?: string } => {
+    if (useAnalyse.getState().laufend[id] !== undefined) return { titel: "Die KI-Analyse läuft noch", text: "Gleich danach übernimmt U den Vorschlag." };
+    const gesperrt = document.querySelector<HTMLButtonElement>('[data-kuerzel="u"]:disabled');
+    if (gesperrt) return { titel: gesperrt.title || "Der Vorschlag ist noch nicht übernehmbar" };
+    const aktuell = useData.getState().data.nachrichten.find((x) => x.id === id);
+    const az = aktuell?.akteId ? akten.get(aktuell.akteId)?.aktenzeichen : undefined;
+    if (az) return { titel: "Nichts zu übernehmen", text: `Die Nachricht ist bereits ${az} zugeordnet.` };
+    return { titel: "Keine Akte erkannt", text: "Bitte eine Akte wählen – dann übernimmt U den Vorschlag." };
+  };
 
   const ausstehend = eingang.filter((n) => n.kiStatus === "ausstehend" || !n.ki);
   const fristenErkannt = eingang.filter((n) => n.ki?.frist && n.kiStatus === "analysiert").length;

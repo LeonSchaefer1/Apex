@@ -421,13 +421,26 @@ function vorfristVon(ende: ISODate, tage: number, land: Bundesland): ISODate {
 }
 
 /**
+ * Vorfrist nie vor dem fristauslösenden Ereignis (I5-T15-02): Vorfrist = max(Ereignistag, Fristende − Abstand, zurück auf
+ * Werktag). Liegt sie vor dem Ereignis (kurze Frist), gilt der Ereignistag – mit Hinweis im Rechenweg.
+ */
+function vorfristAbEreignis(ende: ISODate, tage: number, land: Bundesland, ereignis: ISODate): { vorfrist: ISODate; zeile: string } {
+  const berechnet = vorfristVon(ende, tage, land);
+  const abstand = `${tage} ${tage === 1 ? "Tag" : "Tagen"}`;
+  if (berechnet < ereignis) {
+    return { vorfrist: ereignis, zeile: `Vorfrist auf den Ereignistag gelegt (${fmtDateWd(ereignis)}) – die Frist ist kürzer als der Vorfrist-Abstand von ${abstand}.` };
+  }
+  return { vorfrist: berechnet, zeile: `Vorfrist ${tage} ${tage === 1 ? "Tag" : "Tage"} vorher, auf Werktag gelegt: ${fmtDateWd(berechnet)}` };
+}
+
+/**
  * Berechnet das Fristende.
  * - Ereignisfrist: Der Tag des Ereignisses wird nicht mitgerechnet (§ 187 Abs. 1 BGB i. V. m. § 222 Abs. 1 ZPO; §§ 42, 43 StPO).
  * - Tage: Ende = Ereignis + n Tage. Wochen/Monate: Ablauf mit dem Tag, der durch Benennung oder Zahl dem Ereignistag
  *   entspricht; fehlt er, Monatsletzter (§ 188 Abs. 2, 3 BGB bzw. § 43 Abs. 1 StPO).
  * - Fällt das Ende auf Samstag, Sonntag oder allgemeinen Feiertag: nächster Werktag (§ 222 Abs. 2 ZPO, § 43 Abs. 2 StPO, § 193 BGB).
  *   Maßgeblich sind die Feiertage am Ort, an dem die Handlung vorzunehmen ist (Gericht bzw. Behörde).
- * - Vorfrist: n Tage vor Fristende, zurückverlegt auf den vorherigen Werktag.
+ * - Vorfrist: n Tage vor Fristende, zurückverlegt auf den vorherigen Werktag – frühestens am Tag des Ereignisses (I5-T15-02).
  */
 export function berechneFrist(params: {
   ereignis: ISODate;
@@ -503,8 +516,8 @@ export function berechneFrist(params: {
   if (regional) warnungen.push(regional);
 
   const vt = params.vorfristTage ?? 7;
-  const vorfrist = vorfristVon(ende, vt, land);
-  rechenweg.push(`Vorfrist ${vt} Tage vorher, auf Werktag gelegt: ${fmtDateWd(vorfrist)}`);
+  const { vorfrist, zeile } = vorfristAbEreignis(ende, vt, land, ereignis);
+  rechenweg.push(zeile);
 
   return { ende, rohesEnde: roh, vorfrist, rechenweg, verschoben, verschiebungsNorm: n.verschiebung, land, feiertagsOrt, warnungen };
 }
@@ -605,9 +618,8 @@ export function berechneFestesEnde(params: {
   }
   const spanne = diffDays(ereignis, ende);
   const vt = params.vorfristTage ?? (spanne >= 21 ? 7 : spanne >= 8 ? 3 : 1);
-  let vorfrist = vorfristVon(ende, vt, land);
-  if (vorfrist < ereignis) vorfrist = ereignis;
-  rechenweg.push(`Vorfrist ${vt} ${vt === 1 ? "Tag" : "Tage"} vorher, auf Werktag gelegt: ${fmtDateWd(vorfrist)}`);
+  const { vorfrist, zeile } = vorfristAbEreignis(ende, vt, land, ereignis);
+  rechenweg.push(zeile);
   return { ende, rohesEnde: ende, vorfrist, rechenweg, verschoben: false, verschiebungsNorm: norm, land, feiertagsOrt, warnungen };
 }
 

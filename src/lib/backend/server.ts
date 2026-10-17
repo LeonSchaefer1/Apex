@@ -114,7 +114,7 @@ export function createServerBackend(): Backend {
     },
     team: {
       add: (input) => api("/team", { method: "POST", body: JSON.stringify(input) }, true),
-      remove: (id) => api(`/team/${encodeURIComponent(id)}`, { method: "DELETE" }, true),
+      remove: (id, fristen) => api(`/team/${encodeURIComponent(id)}`, { method: "DELETE", ...(fristen ? { body: JSON.stringify({ fristen }) } : {}) }, true),
       neuesPasswort: async (id) => (await api<{ passwort: string }>(`/team/${encodeURIComponent(id)}/passwort`, { method: "POST" }, true)).passwort,
       aendern: (id, a) => api(`/team/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(a) }, true),
     },

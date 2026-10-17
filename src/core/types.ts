@@ -489,6 +489,8 @@ export interface UmzugLauf {
     fristen: number;
     zusammengefuehrt: number;
     uebersprungen: number;
+    /** Aufteilung von `fristen` (Fristen mit Vier-Augen-Kontrolle, Wiedervorlagen, Termine) – bleibt nach „Rückgängig“ erhalten (I5-T11-01). */
+    fristenArt?: { fristen: number; wiedervorlagen: number; termine: number };
   };
   /** Angelegte Datensätze und vorheriger Stand aktualisierter Akten/Kontakte (nach dem Rückgängigmachen geleert). */
   undo: { erstellt: { col: CollectionKey; id: ID }[]; vorher: { col: "akten" | "kontakte"; doc: Akte | Kontakt }[] };

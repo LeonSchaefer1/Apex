@@ -334,11 +334,12 @@ export function ConfirmHost() {
       size="sm"
       footer={
         <>
-          {/* Bei gefährlichen Aktionen liegt der Anfangsfokus auf der sicheren Wahl – Enter verwirft nichts versehentlich. */}
-          <Button data-autofocus={req?.gefahr ? true : undefined} variant="ghost" onClick={() => close(false)}>
+          {/* Einheitlich in allen Rückfragen (I5-T07-02): Anfangsfokus auf der sicheren Wahl („Abbrechen“ bzw. opts.abbrechen),
+              der Bestätigungsknopf ist der nächste Tab-Stopp. Damit gilt überall: Enter = abbrechen, Tab + Enter = bestätigen. */}
+          <Button data-autofocus variant="ghost" onClick={() => close(false)}>
             {req?.abbrechen ?? "Abbrechen"}
           </Button>
-          <Button data-autofocus={req?.gefahr ? undefined : true} variant={req?.gefahr ? "danger" : "primary"} onClick={() => close(true)}>
+          <Button variant={req?.gefahr ? "danger" : "primary"} onClick={() => close(true)}>
             {req?.bestaetigen ?? "Bestätigen"}
           </Button>
         </>

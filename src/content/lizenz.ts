@@ -6,6 +6,13 @@
 export const PREIS_HINWEIS = "Preis auf Anfrage – verbindlich im Angebot";
 /** Wartung ohne Satz und ohne Betrag. */
 export const WARTUNG_HINWEIS = "Wartung: Umfang und Preis regelt das Angebot";
+/**
+ * Eine Aussage zur Wartung in Fließtexten – wortgleich mit der Landing („Wartung optional – Umfang und Preis regelt das Angebot“).
+ * Ob ein Wartungsjahr im Lizenzpreis enthalten ist, ist eine geschäftliche Zusage des Auftraggebers (I5-T13-01) und steht hier nicht.
+ */
+export const WARTUNG_OPTIONAL = "Wartung optional – Umfang und Preis regelt das Angebot";
+/** Kernaussage der Lifetime-Lizenz (Lizenz-Tab, Landing). */
+export const LIZENZ_KERN = "Einmal investiert, dauerhaft genutzt – keine Monatsgebühren";
 export const UEBERTRAGBARKEIT_HINWEIS = "Übertragbarkeit der Lizenz: im Angebot geregelt";
 export const ESCROW_HINWEIS = "Quellcode-Hinterlegung (Escrow): auf Anfrage";
 /** Verarbeitungsort der Live-KI (EU-Option) – Entscheidung des Auftraggebers. */
@@ -36,7 +43,8 @@ export const WARTUNG_TEXT = `${WARTUNG_HINWEIS}. Enthalten: ${WARTUNG_INHALT.ent
 
 /**
  * Gesamtkosten einer Lifetime-Lizenz über `jahre` Jahre: Lizenzpreis plus Wartung je Jahr (Werte aus dem eigenen Angebot).
- * `erstesJahrEnthalten` = die Wartung des ersten Jahres ist im Lizenzpreis enthalten.
+ * `erstesJahrEnthalten`: laut Angebot – ob die Wartung des ersten Jahres im Lizenzpreis enthalten ist, regelt allein das
+ * Angebot (keine Zusage im Produkt). Der Standardwert bleibt aus Kompatibilitätsgründen; Aufrufer übergeben die Angabe ausdrücklich.
  */
 export function kostenLifetime(lizenzpreis: number, wartungJahr: number, jahre: number, erstesJahrEnthalten = true): number {
   const j = Math.max(0, Math.floor(jahre));

@@ -263,7 +263,7 @@ function WartungKarte() {
         <span className="text-[13px] text-fg-3">{WARTUNG_HINWEIS}.</span>
       </div>
       <div className="mt-3 grid gap-4 sm:grid-cols-2">
-        <ul className="grid gap-1.5 text-[13px] text-fg-2" aria-label="In der Wartung enthalten">
+        <ul className="grid gap-1.5 text-[13px] text-fg-2" aria-label="Umfang der Wartung">
           {WARTUNG_INHALT.enthalten.map((x) => (
             <li key={x} className="flex gap-2">
               <Check className="mt-0.5 size-3.5 shrink-0 text-green" strokeWidth={3} />

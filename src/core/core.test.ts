@@ -541,46 +541,116 @@ test("Demodaten: letzter Lauf = jüngste Aktivität, Zeitpläne eingehalten, E-R
   }
 });
 
-test("Demodaten (SEED_VERSION 12, I4-T08-01): jeder Kontoumsatz mit Konto – Regulierungen der Versicherer auf dem Anderkonto, sonst unverändert", async () => {
+test("Demodaten (SEED_VERSION 13): Elbtal-Umsatz auf dem Anderkonto, Gerichtsdaten werktags, Gerichtsanschriften aus der Stammliste – sonst unverändert", async () => {
   const { createHash } = await import("node:crypto");
   const { generateTenantData, SEED_VERSION } = await import("./seed/generate");
   const { DEMO_TENANTS, publicUser } = await import("./seed/tenants");
-  assert.equal(SEED_VERSION, 12);
-  // Fingerabdruck des gesamten Datenbestands vor der Änderung (SEED_VERSION 11) – ohne das neue Feld `konto` und ohne die
-  // Versionsangabe in `meta`. Stichtage ohne „heute = Systemdatum“ (dort hängen Zeitstempel an der echten Uhrzeit).
+  const { istWerktag } = await import("./feiertage");
+  type Daten = ReturnType<typeof generateTenantData>;
+  assert.equal(SEED_VERSION, 13);
+  // Gewollte Änderungen seit SEED_VERSION 12 herausrechnen: neuer Elbtal-Umsatz (feste ID) samt Verweis an der Buchung,
+  // Gerichtsanschriften (Stammliste statt Zufallsstraße/-PLZ) und Datumstexte gerichtlicher Handlungen (Werktag statt Sa/So/Feiertag).
+  const ELBTAL = "hero-t-elbtal";
+  const normalisiert = (d: Daten) =>
+    JSON.stringify({
+      ...d,
+      meta: [],
+      transaktionen: d.transaktionen.filter((x) => x.id !== ELBTAL),
+      buchungen: d.buchungen.map((b) => {
+        if (b.transaktionId !== ELBTAL) return b;
+        const { transaktionId: _t, ...rest } = b;
+        return rest;
+      }),
+      kontakte: d.kontakte.map((k) => (k.rollen.includes("gericht") ? { ...k, strasse: "§", plz: "§", ort: "§" } : k)),
+    }).replace(/(Urteil vom|Vollstreckungsbescheid des Amtsgerichts Wedding vom|Strafbefehl des Amtsgerichts Hamburg vom|hat am) \d{2}\.\d{2}\.\d{4}/g, "$1 §");
+  // Fingerabdrücke des Datenbestands SEED_VERSION 12, gleich normalisiert. Stichtage ohne „heute = Systemdatum“
+  // (dort hängen Zeitstempel an der echten Uhrzeit); am 16.10. (Fr) und 19.10.2026 (Mo) fällt d(−7) ohnehin auf einen Werktag.
   const VORHER: Record<string, string> = {
-    "2026-10-16|t-hartmann": "1c67885e70e7742e",
-    "2026-10-16|t-lindner": "2be3743057a8371f",
-    "2026-10-16|t-demir": "981291f2770f1003",
-    "2026-10-19|t-hartmann": "29b0a3b9ebffc0ac",
-    "2026-10-19|t-lindner": "8667d264fed75091",
-    "2026-10-19|t-demir": "fe7b1bb7b5766002",
+    "2026-10-16|t-hartmann": "9f076bb3e13e0267",
+    "2026-10-16|t-lindner": "080b0c7668535e17",
+    "2026-10-16|t-demir": "43c1aa65d108dc90",
+    "2026-10-19|t-hartmann": "f5dd734e05cea8da",
+    "2026-10-19|t-lindner": "175461e5d9c95078",
+    "2026-10-19|t-demir": "b6aa57e4cc791777",
   };
   for (const heute of ["2026-10-16", "2026-10-19"]) {
     for (const t of DEMO_TENANTS) {
       const d = generateTenantData({ tenant: t.tenant, users: t.users.map(publicUser), profil: t.profil }, heute);
-      const ohneKonto = { ...d, meta: [], transaktionen: d.transaktionen.map(({ konto: _k, ...x }) => x) };
-      assert.equal(createHash("sha256").update(JSON.stringify(ohneKonto)).digest("hex").slice(0, 16), VORHER[`${heute}|${t.tenant.id}`], `${heute} ${t.tenant.kurzname}: nur „konto“ ist neu`);
+      assert.equal(createHash("sha256").update(normalisiert(d)).digest("hex").slice(0, 16), VORHER[`${heute}|${t.tenant.id}`], `${heute} ${t.tenant.kurzname}: nur die gewollten Änderungen`);
       // jeder Umsatz hat ein Konto
       assert.ok(d.transaktionen.length > 0);
       assert.deepEqual(d.transaktionen.filter((x) => x.konto !== "geschaeft" && x.konto !== "ander"), [], `${t.tenant.kurzname}: Umsätze ohne Konto`);
-      // Regulierungen der Versicherer für die Mandantschaft → Anderkonto; Miete, Telekom, Honorare → Geschäftskonto
+      // Regulierungen der Versicherer für die Mandantschaft → Anderkonto; Miete, Telekom, Honorare → Geschäftskonto.
+      // Hartmann & Partner: zusätzlich die Elbtal-Regulierung 131/26 (bereits zugeordnet) – sonst eine je Kanzlei.
       const regulierung = d.transaktionen.filter((x) => /Regulierung/.test(x.verwendungszweck) && /VERSICHERUNG/.test(x.gegenpartei));
-      assert.equal(regulierung.length, 1, t.tenant.kurzname);
+      assert.equal(regulierung.length, t.tenant.id === "t-hartmann" ? 2 : 1, t.tenant.kurzname);
       assert.ok(regulierung.every((x) => x.konto === "ander"));
       assert.ok(d.transaktionen.filter((x) => !regulierung.includes(x)).every((x) => x.konto === "geschaeft"));
       assert.equal(d.transaktionen.find((x) => /^Miete/.test(x.verwendungszweck))?.konto, "geschaeft");
       assert.equal(d.transaktionen.find((x) => /Telekommunikation/.test(x.gegenpartei))?.konto, "geschaeft");
+      // Kein neuer offener Umsatz: Der Elbtal-Umsatz ist zugeordnet (Ergebnis von „Abgleich starten“ bleibt gleich)
+      assert.ok(d.transaktionen.filter((x) => x.status === "offen").every((x) => x.id !== ELBTAL));
     }
   }
-  // Hartmann & Partner: Hanseatische Kraftfahrt-Versicherung 5.670,00 € für 107/26 liegt auf dem Anderkonto (Prüfwert T08)
   const h = generateTenantData({ tenant: DEMO_TENANTS[0].tenant, users: DEMO_TENANTS[0].users.map(publicUser), profil: DEMO_TENANTS[0].profil }, "2026-10-16");
+  // Hartmann & Partner: Hanseatische Kraftfahrt-Versicherung 5.670,00 € für 107/26 liegt weiter auf dem Anderkonto (Prüfwert T08)
   const hanse = h.transaktionen.find((x) => /HANSEATISCHE/.test(x.gegenpartei))!;
   assert.equal(hanse.betrag, 5670);
   assert.match(hanse.verwendungszweck, /107\/26/);
   assert.equal(hanse.konto, "ander");
-  // Elbtal 6.120 € (131/26) ist eine bereits gebuchte Fremdgeld-Zahlung ohne eigenen Kontoumsatz – unverändert
-  assert.ok(h.buchungen.some((b) => b.fremdgeld && b.betrag === 6120));
+  assert.equal(hanse.status, "offen");
+  // Elbtal 6.120 € (131/26): Kontoumsatz auf dem Anderkonto, bereits als Fremdgeld der Akte zugeordnet; die Buchung verweist darauf
+  const a131 = h.akten.find((a) => a.aktenzeichen === "131/26")!;
+  const elbtal = h.transaktionen.find((x) => x.id === ELBTAL)!;
+  assert.equal(elbtal.konto, "ander");
+  assert.equal(elbtal.betrag, 6120);
+  assert.equal(elbtal.datum, "2026-10-12");
+  assert.equal(elbtal.gegenpartei, "ELBTAL VERSICHERUNG AG");
+  assert.match(elbtal.verwendungszweck, /EV-2026-448812/);
+  assert.match(elbtal.verwendungszweck, /131\/26 Yilmaz/);
+  assert.equal(elbtal.status, "zugeordnet");
+  assert.equal(elbtal.zuordnung?.akteId, a131.id);
+  assert.equal(elbtal.zuordnung?.art, "fremdgeld");
+  assert.equal(elbtal.zuordnung?.durch, "auto");
+  assert.ok((elbtal.zuordnung?.sicherheit ?? 0) >= 0.95);
+  assert.match(elbtal.zuordnung?.grund ?? "", /EV-2026-448812.*131\/26/);
+  const erkannt = h.aktivitaeten.find((x) => x.akteId === a131.id && /Bankabgleich: Zahlung Elbtal .* als Fremdgeld erkannt/.test(x.text))!;
+  assert.equal(elbtal.zuordnung?.am, erkannt.zeit);
+  // gültige IBAN (Prüfziffer nach ISO 13616)
+  const iban = elbtal.iban.replace(/\s/g, "");
+  const ziffern = (iban.slice(4) + iban.slice(0, 4)).replace(/[A-Z]/g, (c) => String(c.charCodeAt(0) - 55));
+  assert.equal(BigInt(ziffern) % 97n, 1n, elbtal.iban);
+  const buchung = h.buchungen.filter((b) => b.akteId === a131.id && b.fremdgeld && b.betrag === 6120);
+  assert.equal(buchung.length, 1);
+  assert.equal(buchung[0].transaktionId, ELBTAL);
+  assert.equal(buchung[0].datum, elbtal.datum);
+  // Gerichtsanschriften aus der Stammliste: Kontakt und Terminsort aus derselben Quelle (I5-T17-01)
+  const arbg = h.kontakte.find((k) => k.name === "Arbeitsgericht Berlin")!;
+  assert.equal(`${arbg.strasse}, ${arbg.plz} ${arbg.ort}`, "Magdeburger Platz 1, 10785 Berlin");
+  const agCh = h.kontakte.find((k) => k.name === "Amtsgericht Charlottenburg")!;
+  assert.equal(`${agCh.strasse}, ${agCh.plz} ${agCh.ort}`, "Amtsgerichtsplatz 1, 14057 Berlin");
+  assert.equal(h.fristen.find((f) => f.id === "hero-guete-f2")?.ort, "Arbeitsgericht Berlin, Magdeburger Platz 1, Saal 3");
+  // Ohne sicher bekannte Anschrift nur der Ort – keine erfundene Straße oder PLZ (z. B. Mahngericht Coburg für die Münchner Kanzlei)
+  const l = generateTenantData({ tenant: DEMO_TENANTS[1].tenant, users: DEMO_TENANTS[1].users.map(publicUser), profil: DEMO_TENANTS[1].profil }, "2026-10-16");
+  const coburg = l.kontakte.find((k) => k.name === "Amtsgericht Coburg – Zentrales Mahngericht")!;
+  assert.deepEqual([coburg.strasse, coburg.plz, coburg.ort], [undefined, undefined, "Coburg"]);
+  // „Urteil vom“, Erlass- und Verkündungsdaten nie an Sa/So/Feiertag (Stichtage 16.–22.10.2026); Eingang und Fristen bleiben
+  for (let tag = 16; tag <= 22; tag++) {
+    const heute = `2026-10-${tag}`;
+    for (const t of DEMO_TENANTS) {
+      const d = generateTenantData({ tenant: t.tenant, users: t.users.map(publicUser), profil: t.profil }, heute);
+      const texte = [...d.nachrichten.map((n) => n.text), ...d.dokumente.map((x) => x.inhalt), ...d.akten.map((a) => `${a.beschreibung} ${a.forderung?.titel ?? ""}`)].join("\n");
+      for (const m of texte.matchAll(/(?:Urteil vom|Vollstreckungsbescheid des Amtsgerichts \S+ vom|Strafbefehl des Amtsgerichts \S+ vom|Verkündung(?:stermin)? am|verkündet am|hat am) (\d{2})\.(\d{2})\.(\d{4})/g)) {
+        const iso = `${m[3]}-${m[2]}-${m[1]}`;
+        assert.ok(istWerktag(iso, t.tenant.bundesland), `${t.tenant.kurzname} ${heute}: „${m[0]}“ fällt nicht auf einen Werktag`);
+      }
+    }
+  }
+  // Präsentationstag Sa 17.10.2026: Urteil 118/26 vom Fr 09.10.2026; Eingang heute, Fristen Di 17.11. und Do 17.12.2026 unverändert
+  const sa = generateTenantData({ tenant: DEMO_TENANTS[0].tenant, users: DEMO_TENANTS[0].users.map(publicUser), profil: DEMO_TENANTS[0].profil }, "2026-10-17");
+  const urteil = sa.nachrichten.find((n) => n.betreff.includes("Zustellung Urteil gegen eEB"))!;
+  assert.match(urteil.text, /das Urteil vom 09\.10\.2026 zugestellt/);
+  assert.equal(urteil.eingang.slice(0, 10), "2026-10-17");
 });
 
 test("Demodaten (SEED_VERSION 11): Zusatzakten am Ende – übrige Akten, Fristen und Nachrichten unverändert", async () => {
@@ -697,4 +767,27 @@ test("Demodaten (SEED_VERSION 11): Fremdgeld-Aufgabe 131/26 ist Wiedervorlage vo
   const deckung = d.dokumente.find((x) => x.akteId === weber.id && /^Deckungsanfrage/.test(x.name))!;
   assert.match(deckung.inhalt, /Schaden-Nr\. S26-88412 \(Schadenmeldung durch Ihren Versicherungsnehmer\)/);
   assert.match(deckung.inhalt, /Kündigungsschutzantrag 10\.200,00 € \(drei Bruttomonatsentgelte à 3\.400 €, § 42 Abs\. 2 S\. 1 GKG\) \+ Weiterbeschäftigungsantrag 3\.400,00 € = 13\.600,00 €/);
+});
+
+test("Typografie (I5-T00-01): Zahl und Einheit untrennbar – „26 €/Std.“, „48 Arbeitswochen“, „≈ 47.500 €“", async () => {
+  const { mitEinheit, schuetzeKennzahlen, NBSP } = await import("../lib/typografie");
+  const WJ = "⁠";
+  assert.equal(mitEinheit(26, "€/Std."), `26${NBSP}€/${WJ}Std.`);
+  assert.equal(mitEinheit("38", "Std."), `38${NBSP}Std.`);
+  const f = schuetzeKennzahlen("38 Std. × 48 Arbeitswochen × ≈ 19,74 € interner Kostensatz; mit ReFa-Vollkosten von ca. 26 €/Std. wären es ≈ 47.500 €.");
+  for (const teil of [`38${NBSP}Std.`, `48${NBSP}Arbeitswochen`, `≈${NBSP}19,74${NBSP}€`, `ca.${NBSP}26${NBSP}€/${WJ}Std.`, `≈${NBSP}47.500${NBSP}€`]) assert.ok(f.includes(teil), teil);
+  // keine Zahl am Zeilenende, deren Einheit in der nächsten Zeile stehen kann: zwischen Ziffer und Einheit nie ein normales Leerzeichen
+  assert.doesNotMatch(f, /\d (€|Std\.|Arbeitswochen)/);
+  // idempotent
+  assert.equal(schuetzeKennzahlen(f), f);
+});
+
+test("Apex Console (I5-T21-01): Kanzleien „4 · 3 aktiv · 1 im Test · 0 pausiert“ – die Teile ergeben die Gesamtzahl", async () => {
+  const { kanzleiStatusText, kanzleiStatusZahlen } = await import("./kennzahlen");
+  const z = kanzleiStatusZahlen([{}, { status: "aktiv" }, { status: "aktiv" }, { status: "test" }]);
+  assert.deepEqual(z, { gesamt: 4, aktiv: 3, imTest: 1, pausiert: 0, sonstige: 0 });
+  assert.equal(kanzleiStatusText(z), "3 aktiv · 1 im Test · 0 pausiert");
+  const mit = kanzleiStatusZahlen([{ status: "aktiv" }, { status: "pausiert" }, { status: "gekuendigt" }]);
+  assert.equal(mit.aktiv + mit.imTest + mit.pausiert + mit.sonstige, mit.gesamt);
+  assert.equal(kanzleiStatusText(mit), "1 aktiv · 0 im Test · 1 pausiert · 1 sonstige");
 });

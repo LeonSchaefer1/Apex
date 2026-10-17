@@ -261,7 +261,8 @@ export function AkteKopf({
               <span className="text-[12.5px] text-fg-3">angelegt am {fmtDate(akte.createdAt.slice(0, 10))}</span>
             </div>
           </div>
-          <div className="order-last flex w-full flex-wrap items-center gap-2 sm:order-none sm:w-auto">
+          {/* Telefon: Ist diese Knopfreihe aus dem Bild gescrollt, erscheint unten die Aktionsleiste „Notiz · Frist · Wiedervorlage“ (AkteDetail, I5-T14-01) */}
+          <div id="akte-kopf-aktionen" className="order-last flex w-full flex-wrap items-center gap-2 sm:order-none sm:w-auto">
             <Button variant="secondary" icon={<Mail className="size-4" />} onClick={onEmail} className="flex-1 max-sm:[--h:44px] sm:flex-none">
               <span className="sm:hidden">E-Mail</span>
               <span className="hidden sm:inline">E-Mail schreiben</span>
@@ -270,7 +271,8 @@ export function AkteKopf({
               <span className="sm:hidden">Frist</span>
               <span className="hidden sm:inline">Frist anlegen</span>
             </Button>
-            {/* Telefon: Schnellaktionen im Aktenkopf statt schwebender Leiste – nichts liegt über Termin, Gericht oder „KI-Analyse“ (I4-T14-01) */}
+            {/* Telefon: Schnellaktionen im Aktenkopf – nichts liegt über Termin, Gericht oder „KI-Analyse“ (I4-T14-01); nach dem
+                Scrollen dieselben Aktionen in der Leiste im Daumenbereich (I5-T14-01) */}
             {onNotiz && (
               <Button variant="secondary" icon={<StickyNote className="size-4" />} onClick={onNotiz} className="flex-1 [--h:44px] sm:!hidden">
                 Notiz

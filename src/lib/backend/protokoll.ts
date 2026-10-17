@@ -62,6 +62,9 @@ export const VORGANG = {
   sperreInaktivitaet: (name: string) => `Sperre wegen Inaktivität – ${name}`,
   fehlversucheWarnung: (name: string, n: number) => `${n} fehlgeschlagene Anmeldungen für ${name} innerhalb von 15 Minuten – bitte prüfen`,
   bundeslandGeaendert: (vorher: string, nachher: string) => `Bundesland geändert: ${vorher} → ${nachher}`,
+  /** I5-T23-01: „Zugang von Jonas Brandt deaktiviert – 7 offene Fristen nicht übertragen; Überwachung sichergestellt durch Dr. Julia Hartmann“ */
+  fristenNichtUebertragen: (name: string, anzahl: number, durch: string) =>
+    `Zugang von ${name} deaktiviert – ${anzahl === 1 ? "1 offene Frist" : `${anzahl} offene Fristen`} nicht übertragen; Überwachung sichergestellt durch ${durch}`,
 } as const;
 
 /**

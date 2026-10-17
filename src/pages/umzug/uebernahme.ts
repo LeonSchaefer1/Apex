@@ -1,6 +1,6 @@
 // Führt die Übernahme aus: Kontakte (zusammengeführt), Akten, Fristen (zur Vier-Augen-Kontrolle) und Datenblatt je Akte.
 // Jeder Lauf trägt eine `umzugLaufId` an allen angelegten Datensätzen und wird für „Rückgängig machen“ vorgemerkt.
-import type { Akte, Aktivitaet, Bundesland, CollectionKey, Dokument, Frist, Kontakt, User } from "@/core/types";
+import type { Akte, Aktivitaet, Bundesland, CollectionKey, Dokument, Frist, Kontakt, UmzugLauf, User } from "@/core/types";
 import { addDays, fmtDate, nowLocal, today, uid } from "@/core/dates";
 import { istWerktag } from "@/core/feiertage";
 import { useData } from "@/store/data";
@@ -188,6 +188,24 @@ export function fristenZaehlung(z: { fristen: number; wiedervorlagen: number; te
 
 /** Zählung aus dem Ergebnis einer Übernahme. */
 export const fristenAusErgebnis = (e: Pick<Ergebnis, "fristenKontrolle" | "wiedervorlagen" | "termine">) => ({ fristen: e.fristenKontrolle, wiedervorlagen: e.wiedervorlagen, termine: e.termine });
+
+/**
+ * Zahlen eines Protokolleintrags samt Aufteilung der Fristen (Fristen mit Vier-Augen-Kontrolle, Wiedervorlagen, Termine) –
+ * beim Lauf gespeichert, damit „Rückgängig machen“ (die Fristen sind dann gelöscht) dieselbe Zählung behält (I5-T11-01).
+ */
+export type LaufZahlen = UmzugLauf["zahlen"];
+
+/**
+ * Eine Zählweise für das Umzugsprotokoll – aktive und rückgängig gemachte Läufe gleich: gespeicherte Aufteilung, sonst
+ * (ältere Läufe) aus den noch vorhandenen Fristen des Laufs, sonst die Gesamtzahl.
+ */
+export function laufFristenText(l: Pick<UmzugLauf, "id" | "zahlen">, fristen: Pick<Frist, "umzugLaufId" | "typ">[]): string {
+  const art = l.zahlen.fristenArt;
+  if (art) return fristenZaehlung(art);
+  const z = fristenAusLauf(l.id, fristen);
+  if (z.fristen + z.wiedervorlagen + z.termine === l.zahlen.fristen) return fristenZaehlung(z);
+  return `${l.zahlen.fristen} ${l.zahlen.fristen === 1 ? "Frist bzw. Wiedervorlage" : "Fristen und Wiedervorlagen"}`;
+}
 
 /** Zählung aus den Fristen eines Umzugslaufs (Protokoll – auch nach dem Neuladen). */
 export function fristenAusLauf(laufId: string, fristen: Pick<Frist, "umzugLaufId" | "typ">[]) {

@@ -70,11 +70,10 @@ export function LiveFeed({ aktivitaeten, automationen, now, className, demo }: {
                     {ki ? <Sparkles className="size-3.5" /> : <Zap className="size-3.5" />}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="line-clamp-2 text-[13px] leading-snug text-fg">{e.text}</span>
-                    <span className="mt-0.5 block truncate text-[12px] text-fg-3">
-                      {relTime(e.zeit, now)}
-                      {e.automationKey && namen.get(e.automationKey) ? ` · ${namen.get(e.automationKey)}` : ""}
-                    </span>
+                    {/* Vollständig und umbrechend statt gekürzt (I5-T10-02): Hauptzeile, Zeit und Automatik je eigene Zeile */}
+                    <span className="block break-words text-[13px] leading-snug text-fg">{e.text}</span>
+                    <span className="mt-0.5 block break-words text-[12px] leading-snug text-fg-3">{relTime(e.zeit, now)}</span>
+                    {e.automationKey && namen.get(e.automationKey) ? <span className="block break-words text-[12px] leading-snug text-fg-3">{namen.get(e.automationKey)}</span> : null}
                   </span>
                   {e.minutenGespart ? <span className="num mt-0.5 shrink-0 text-[12px] font-semibold text-green">+{e.minutenGespart} Min.</span> : null}
                   {e.akteId && <ArrowUpRight className="mt-0.5 size-3.5 shrink-0 text-fg-3 opacity-0 transition-opacity group-hover:opacity-100" />}

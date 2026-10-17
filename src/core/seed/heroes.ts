@@ -5,7 +5,7 @@ import { berechneNachRegel } from "../fristen";
 import { berechneRvg, fassungFuerAuftrag } from "../rvg";
 import type { Akte, Aktivitaet, Dokument, Frist, Kontakt } from "../types";
 import { addDok, addFrist, addMsg, addRechnung, addRegelFrist, fristVerantwortung, nextAz, type Ctx } from "./generate";
-import { STAEDTE } from "./pools";
+import { GERICHTSANSCHRIFTEN, STAEDTE } from "./pools";
 
 function akte(ctx: Ctx, a: Omit<Akte, "id" | "updatedAt"> & { updatedAt?: string }): Akte {
   const full: Akte = { id: `hero-${ctx.id("a")}`, updatedAt: a.updatedAt ?? a.createdAt, ...a };
@@ -128,7 +128,18 @@ export function heroesBerlin(ctx: Ctx) {
   addDok(ctx, { akteId: a3.id, name: "Dashcam-Auswertung (Standbilder)", art: "anlage", ordner: "Anlagen", quelle: "upload", seiten: 4, createdAt: dt(-22), inhalt: "Standbilder 0:14–0:19: Ampel für Gegenverkehr zeigt Rot, Fahrzeug des Unfallgegners fährt mit ca. 40 km/h in die Kreuzung ein." });
   addDok(ctx, { akteId: a3.id, name: "Gutachten Kfz-Sachverständiger", art: "gutachten", ordner: "Anlagen", quelle: "email", seiten: 18, createdAt: dt(-20), inhalt: "Reparaturkosten netto 5.874,50 € (Stundenverrechnungssätze Markenwerkstatt), merkantiler Minderwert 650 €, Nutzungsausfall 12 Tage à 59 € = 708 €, Gutachterkosten 1.130 €." });
   addDok(ctx, { akteId: a3.id, name: "Abrechnung Elbtal Versicherung", art: "brief", ordner: "Korrespondenz", quelle: "email", createdAt: dt(-1), inhalt: "Schadennummer EV-2026-448812: Wir haben 6.120 € auf Ihr Anderkonto überwiesen. Eine weitere Zahlung lehnen wir ab, da die Reparatur in der gleichwertigen freien Fachwerkstatt Autoservice Ring GmbH um 1.284,50 € günstiger möglich ist." });
-  ctx.data.buchungen.push({ id: ctx.id("b"), akteId: a3.id, datum: d(-4), art: "fremdgeld", betrag: 6120, text: "Zahlung Elbtal Versicherung (Fremdgeld) – an Mandantin weiterzuleiten", fremdgeld: true });
+  // Kontoumsatz der Elbtal-Zahlung auf dem Anderkonto, vom Bankabgleich bereits als Fremdgeld der Akte zugeordnet (SEED_VERSION 13,
+  // Vorgabe der Projektleitung, Rest aus I4-T08-01). Feste ID und Uhrzeit ohne Zufallszug – IDs und Zufallsfolge des übrigen Bestands bleiben.
+  // Zeitpunkt der Zuordnung = Automatik-Eintrag „Bankabgleich: Zahlung Elbtal … als Fremdgeld erkannt“ im Verlauf.
+  const elbtalErkannt = dt(-4, 8, 5);
+  const elbtalUmsatz = "hero-t-elbtal";
+  ctx.data.transaktionen.push({
+    id: elbtalUmsatz, datum: d(-4), betrag: 6120, gegenpartei: "ELBTAL VERSICHERUNG AG", iban: "DE65 8504 0000 0448 8120 26",
+    verwendungszweck: `Schaden-Nr. EV-2026-448812 / Ihr Az. ${a3.aktenzeichen} Yilmaz – Regulierung Fahrzeugschaden`, status: "zugeordnet",
+    zuordnung: { akteId: a3.id, art: "fremdgeld", durch: "auto", sicherheit: 0.98, grund: `Schadennummer EV-2026-448812 und Aktenzeichen ${a3.aktenzeichen} im Verwendungszweck – Regulierung der Gegnerin für die Mandantin (Fremdgeld)`, am: elbtalErkannt },
+    konto: "ander",
+  });
+  ctx.data.buchungen.push({ id: ctx.id("b"), akteId: a3.id, datum: d(-4), art: "fremdgeld", betrag: 6120, text: "Zahlung Elbtal Versicherung (Fremdgeld) – an Mandantin weiterzuleiten", fremdgeld: true, transaktionId: elbtalUmsatz });
   // Büroaufgabe der Fachangestellten → Wiedervorlage (Vorgabe der Projektleitung, SEED_VERSION 11); echte Fristen tragen Berufsträger
   addFrist(ctx, { akteId: a3.id, titel: "Fremdgeld an Mandantin weiterleiten (§ 43a Abs. 7 BRAO)", typ: "wiedervorlage", datum: ctx.today, verantwortlichId: mia?.id ?? jonas.id, quelle: "automatisch" });
   addFrist(ctx, { akteId: a3.id, titel: "Wiedervorlage: Nachforderung Reparaturkosten", typ: "wiedervorlage", datum: ctx.werktag(14), verantwortlichId: jonas.id, quelle: "ki" });
@@ -151,7 +162,7 @@ export function heroesBerlin(ctx: Ctx) {
   addRechnung(ctx, a4, { positionen: ["2300", "3100", "3104"], datumOffset: -38, status: "gestellt" });
   addMsg(ctx, {
     kanal: "bea", von: G.lg, vonAdresse: "DE.Justiz.LG-Berlin-II", betreff: `${neumannAz} – Neumann ./. Arslan Autohaus GmbH – Zustellung Urteil gegen eEB`,
-    text: `In dem Rechtsstreit\nMichael Neumann ./. Arslan Autohaus GmbH\nAz.: ${neumannAz}\n\nwird Ihnen anliegend das Urteil vom ${fmtDate(d(-7))} zugestellt.\n\nDie Beklagte wird verurteilt, an den Kläger 14.250,00 € nebst Zinsen Zug um Zug gegen Rückgabe des Fahrzeugs zu zahlen. Im Übrigen wird die Klage abgewiesen (Nutzungsentschädigung 4.650,00 €). Die Kosten des Rechtsstreits tragen der Kläger zu 25 %, die Beklagte zu 75 %. Das Urteil ist gegen Sicherheitsleistung in Höhe von 110 % des jeweils zu vollstreckenden Betrags vorläufig vollstreckbar.\n\nSie werden gebeten, das elektronische Empfangsbekenntnis abzugeben.\n\nRechtsbehelfsbelehrung: Gegen dieses Urteil ist die Berufung zulässig. Sie ist binnen einer Notfrist von einem Monat ab Zustellung beim Kammergericht einzulegen und binnen zwei Monaten ab Zustellung zu begründen.`,
+    text: `In dem Rechtsstreit\nMichael Neumann ./. Arslan Autohaus GmbH\nAz.: ${neumannAz}\n\nwird Ihnen anliegend das Urteil vom ${fmtDate(ctx.gerichtstag(-7))} zugestellt.\n\nDie Beklagte wird verurteilt, an den Kläger 14.250,00 € nebst Zinsen Zug um Zug gegen Rückgabe des Fahrzeugs zu zahlen. Im Übrigen wird die Klage abgewiesen (Nutzungsentschädigung 4.650,00 €). Die Kosten des Rechtsstreits tragen der Kläger zu 25 %, die Beklagte zu 75 %. Das Urteil ist gegen Sicherheitsleistung in Höhe von 110 % des jeweils zu vollstreckenden Betrags vorläufig vollstreckbar.\n\nSie werden gebeten, das elektronische Empfangsbekenntnis abzugeben.\n\nRechtsbehelfsbelehrung: Gegen dieses Urteil ist die Berufung zulässig. Sie ist binnen einer Notfrist von einem Monat ab Zustellung beim Kammergericht einzulegen und binnen zwei Monaten ab Zustellung zu begründen.`,
     eingang: dt(0, 8, 12), akteId: undefined, status: "neu", zugeordnet: false, eebErforderlich: true, kiStatus: "ausstehend",
     anhaenge: [{ name: `Urteil_${neumannAz.replace(/\s/g, "").replace("/", "-")}.pdf`, groesseKb: 412 }, { name: "Zustellungsnachricht.xml", groesseKb: 6 }],
   });
@@ -166,7 +177,7 @@ export function heroesBerlin(ctx: Ctx) {
     beschreibung: "Werklohn aus Heizungsreparatur (Rechnung 4.860 €). Vollstreckungsbescheid erwirkt, Schuldner zahlt unregelmäßig in Raten. Verbraucher – Verzugszinsen 5 Prozentpunkte über Basiszinssatz.",
     schlagworte: ["forderung", "vollstreckungsbescheid", "teilzahlung", "forderungskonto", "verzug", "zwangsvollstreckung"],
     prioritaet: "normal", createdAt: dt(-170, 9, 0), updatedAt: dt(-15, 9, 0),
-    forderung: { hauptforderung: 4860, faelligAb: d(-182), verbraucher: true, schuldnerId: lenz.id, titel: `Vollstreckungsbescheid des Amtsgerichts Wedding vom ${fmtDate(d(-62))}` },
+    forderung: { hauptforderung: 4860, faelligAb: d(-182), verbraucher: true, schuldnerId: lenz.id, titel: `Vollstreckungsbescheid des Amtsgerichts Wedding vom ${fmtDate(ctx.gerichtstag(-62))}` },
   });
   // Kosten des Mahnverfahrens (im Vollstreckungsbescheid tituliert):
   // Gericht: 0,5-Gebühr Nr. 1100 KV GKG aus 4.860 € – GKG-Tabelle ab 01.06.2025: 1,0 = 170,50 € → 85,25 € (Mindestgebühr 38 €).
@@ -186,7 +197,7 @@ export function heroesBerlin(ctx: Ctx) {
   const drII = `DR II 2214/${ctx.yy}`;
   addMsg(ctx, {
     kanal: "bea", von: "Gerichtsvollzieherin Petra Lindemann (Amtsgericht Charlottenburg)", betreff: `Vermögensauskunft Rainer Lenz – ${drII} – Geschäftsnr. ${ctx.yy}-4471820-0-3`,
-    text: `Zwangsvollstreckungssache Berger Haustechnik GmbH ./. Rainer Lenz\nTitel: AG Wedding, ${ctx.yy}-4471820-0-3\nDienstregister: ${drII}\n\nDer Schuldner hat am ${fmtDate(d(-3))} die Vermögensauskunft nach § 802c ZPO abgegeben. Den Ausdruck des Vermögensverzeichnisses übersende ich Ihnen anliegend (§ 802f Abs. 6 ZPO). Das Verzeichnis ist beim zentralen Vollstreckungsgericht hinterlegt.\n\nLindemann\nGerichtsvollzieherin`,
+    text: `Zwangsvollstreckungssache Berger Haustechnik GmbH ./. Rainer Lenz\nTitel: AG Wedding, ${ctx.yy}-4471820-0-3\nDienstregister: ${drII}\n\nDer Schuldner hat am ${fmtDate(ctx.gerichtstag(-3))} die Vermögensauskunft nach § 802c ZPO abgegeben. Den Ausdruck des Vermögensverzeichnisses übersende ich Ihnen anliegend (§ 802f Abs. 6 ZPO). Das Verzeichnis ist beim zentralen Vollstreckungsgericht hinterlegt.\n\nLindemann\nGerichtsvollzieherin`,
     eingang: dt(-1, 16, 20), status: "neu", zugeordnet: false, kiStatus: "ausstehend", anhaenge: [{ name: `Vermoegensverzeichnis_DRII-2214-${ctx.yy}.pdf`, groesseKb: 212 }],
   });
 
@@ -264,7 +275,7 @@ export function heroesBerlin(ctx: Ctx) {
   ]);
   verlauf(ctx, a3, [
     { zeit: plusMin(a3.createdAt, 1), akteur: "automation", key: "mandatsaufnahme", text: "Mandatsaufnahme-Paket (Vollmacht, Mandatsbestätigung, Datenschutz) erstellt und zur Freigabe vorgelegt – 131/26" },
-    { zeit: dt(-4, 8, 5), akteur: "automation", key: "bankabgleich", text: "Bankabgleich: Zahlung Elbtal Versicherung (6.120,00 €) als Fremdgeld erkannt – Weiterleitung an die Mandantin vorgemerkt – 131/26" },
+    { zeit: elbtalErkannt, akteur: "automation", key: "bankabgleich", text: "Bankabgleich: Zahlung Elbtal Versicherung (6.120,00 €) als Fremdgeld erkannt – Weiterleitung an die Mandantin vorgemerkt – 131/26" },
     { zeit: dt(-1, 11, 23), akteur: "automation", key: "zuordnung", text: "Schreiben der Elbtal Versicherung der Akte 131/26 zugeordnet" },
     { zeit: dt(-1, 11, 24), akteur: "automation", key: "vorfristen", text: "Wiedervorlage „Nachforderung Reparaturkosten“ gesetzt – 131/26" },
   ]);
@@ -365,7 +376,7 @@ export function heroesHamburg(ctx: Ctx) {
     schlagworte: ["strafbefehl", "unfallflucht", "fahrerlaubnis", "einspruch", "bedeutender schaden"],
     prioritaet: "hoch", createdAt: dt(-3), updatedAt: dt(0, 8, 0),
   });
-  addDok(ctx, { akteId: a1.id, name: "Strafbefehl", art: "beschluss", ordner: "Gericht", quelle: "scan", createdAt: dt(-3), inhalt: `Strafbefehl des Amtsgerichts Hamburg vom ${fmtDate(d(-8))}, zugestellt am ${fmtDate(d(-4))}: 40 Tagessätze zu je 55 €, Entziehung der Fahrerlaubnis, Sperrfrist 8 Monate. Einspruch binnen zwei Wochen nach Zustellung.` });
+  addDok(ctx, { akteId: a1.id, name: "Strafbefehl", art: "beschluss", ordner: "Gericht", quelle: "scan", createdAt: dt(-3), inhalt: `Strafbefehl des Amtsgerichts Hamburg vom ${fmtDate(ctx.gerichtstag(-8))}, zugestellt am ${fmtDate(d(-4))}: 40 Tagessätze zu je 55 €, Entziehung der Fahrerlaubnis, Sperrfrist 8 Monate. Einspruch binnen zwei Wochen nach Zustellung.` });
   addRegelFrist(ctx, a1, "einspruch_strafbefehl", d(-4), { quelle: "ki", kontrolliertVon: greta?.id });
 
   const lehmann = ctx.person(["mandant"], { vorname: "Sarah", nachname: "Lehmann", weiblich: true });
@@ -378,7 +389,7 @@ export function heroesHamburg(ctx: Ctx) {
     schlagworte: ["umgang", "wechselmodell", "kindeswohl", "sorgerecht", "verfahrensbeistand"],
     prioritaet: "normal", createdAt: dt(-40), updatedAt: dt(-2),
   });
-  addFrist(ctx, { akteId: a2.id, titel: "Anhörungstermin Familiengericht", typ: "termin", datum: ctx.werktag(8), uhrzeit: "11:00", ort: "Amtsgericht Hamburg, Sievekingplatz 1, Raum 312", verantwortlichId: selin.id, quelle: "ki" });
+  addFrist(ctx, { akteId: a2.id, titel: "Anhörungstermin Familiengericht", typ: "termin", datum: ctx.werktag(8), uhrzeit: "11:00", ort: `Amtsgericht Hamburg, ${GERICHTSANSCHRIFTEN[G.fam].strasse}, Raum 312`, verantwortlichId: selin.id, quelle: "ki" });
   addMsg(ctx, {
     kanal: "bea", von: G.fam, betreff: `285 F 211/${ctx.yy} – Bericht Verfahrensbeistand`,
     text: "In der Kindschaftssache Lehmann wird der Bericht des Verfahrensbeistands zur Kenntnis- und Stellungnahme binnen zehn Tagen übersandt. Der Anhörungstermin bleibt bestehen.",
@@ -434,7 +445,11 @@ export function zusatzBerlin(ctx: Ctx) {
   const naechsteNr = () => nextAz(ctx, Math.max(100, ...ctx.usedAz) + 1);
 
   // 1) T14 „mobil am Gericht“: Kündigungsschutz Ostermann – Klage eingereicht, Gütetermin in den nächsten Tagen
-  const arbg = data.kontakte.find((k) => k.name === G.arbg) ?? festerKontakt(ctx, { id: "hero-guete-k-arbg", typ: "organisation", name: G.arbg, firma: G.arbg, rollen: ["gericht"], strasse: "Magdeburger Platz 1", plz: "10785", ort: "Berlin" });
+  // Anschrift des Arbeitsgerichts aus der Stammliste – dieselbe Quelle für Kontakt, Klageschrift, Ladung und Terminsort (I5-T17-01)
+  const arbgAdr = GERICHTSANSCHRIFTEN[G.arbg];
+  const arbgStrasse = arbgAdr.strasse ?? "";
+  const arbgOrt = [arbgAdr.plz, arbgAdr.ort].filter(Boolean).join(" ");
+  const arbg = data.kontakte.find((k) => k.name === G.arbg) ?? festerKontakt(ctx, { id: "hero-guete-k-arbg", typ: "organisation", name: G.arbg, firma: G.arbg, rollen: ["gericht"], strasse: arbgAdr.strasse, plz: arbgAdr.plz, ort: arbgAdr.ort });
   const ostermann = festerKontakt(ctx, {
     id: "hero-guete-k1", typ: "person", name: "Katrin Ostermann", vorname: "Katrin", nachname: "Ostermann", anrede: "Frau",
     email: "katrin.ostermann@posteo.de", telefon: "+49 157 3390 2716", strasse: "Gotzkowskystraße 17", plz: "10555", ort: "Berlin", rollen: ["mandant"], createdAt: dt(-24, 9, 40),
@@ -483,11 +498,11 @@ export function zusatzBerlin(ctx: Ctx) {
   dok(5, {
     name: "Klageschrift (Kündigungsschutzklage)", art: "schriftsatz", ordner: "Schriftsätze", format: "docx", quelle: "generiert", autorId: julia.id, seiten: 5, createdAt: dt(-12, 15, 5), status: "versandt",
     portal: { am: dt(-12, 15, 40), vonId: julia.id },
-    inhalt: `An das\nArbeitsgericht Berlin\nMagdeburger Platz 1\n10785 Berlin\n\nKlage\n\nder Frau Katrin Ostermann, Gotzkowskystraße 17, 10555 Berlin\n– Klägerin –\nProzessbevollmächtigte: Hartmann & Partner Rechtsanwälte\n\ngegen\n\ndie Havelbrück Pflegedienste GmbH, Havelchaussee 66, 14193 Berlin\n– Beklagte –\n\nwegen: Kündigungsschutz\nStreitwert (vorläufig): 11.700,00 € (drei Bruttomonatsentgelte, § 42 Abs. 2 S. 1 GKG)\n\nNamens und in Vollmacht der Klägerin erheben wir Klage und werden beantragen:\n\n1. Es wird festgestellt, dass das Arbeitsverhältnis der Parteien durch die Kündigung der Beklagten vom ${fmtDate(kuendigung)} nicht aufgelöst wird.\n2. Die Beklagte wird verurteilt, die Klägerin bis zum rechtskräftigen Abschluss des Verfahrens zu unveränderten Arbeitsbedingungen als Pflegefachkraft weiterzubeschäftigen.\n\nBegründung:\nDie Kündigung ist sozial ungerechtfertigt (§ 1 Abs. 2, 3 KSchG). Eine Weiterbeschäftigung am Standort Charlottenburg ist möglich; die Sozialauswahl ist fehlerhaft. Die ordnungsgemäße Anhörung des Betriebsrats (§ 102 BetrVG) wird mit Nichtwissen bestritten.\n\nDr. Julia Hartmann\nRechtsanwältin\n\nÜbermittelt per beA am ${fmtDate(klageAm)}.`,
+    inhalt: `An das\n${G.arbg}\n${arbgStrasse}\n${arbgOrt}\n\nKlage\n\nder Frau Katrin Ostermann, Gotzkowskystraße 17, 10555 Berlin\n– Klägerin –\nProzessbevollmächtigte: Hartmann & Partner Rechtsanwälte\n\ngegen\n\ndie Havelbrück Pflegedienste GmbH, Havelchaussee 66, 14193 Berlin\n– Beklagte –\n\nwegen: Kündigungsschutz\nStreitwert (vorläufig): 11.700,00 € (drei Bruttomonatsentgelte, § 42 Abs. 2 S. 1 GKG)\n\nNamens und in Vollmacht der Klägerin erheben wir Klage und werden beantragen:\n\n1. Es wird festgestellt, dass das Arbeitsverhältnis der Parteien durch die Kündigung der Beklagten vom ${fmtDate(kuendigung)} nicht aufgelöst wird.\n2. Die Beklagte wird verurteilt, die Klägerin bis zum rechtskräftigen Abschluss des Verfahrens zu unveränderten Arbeitsbedingungen als Pflegefachkraft weiterzubeschäftigen.\n\nBegründung:\nDie Kündigung ist sozial ungerechtfertigt (§ 1 Abs. 2, 3 KSchG). Eine Weiterbeschäftigung am Standort Charlottenburg ist möglich; die Sozialauswahl ist fehlerhaft. Die ordnungsgemäße Anhörung des Betriebsrats (§ 102 BetrVG) wird mit Nichtwissen bestritten.\n\nDr. Julia Hartmann\nRechtsanwältin\n\nÜbermittelt per beA am ${fmtDate(klageAm)}.`,
   });
   dok(6, {
     name: `Ladung zum Gütetermin am ${fmtDate(guete)}`, art: "beschluss", ordner: "Gericht", format: "pdf", quelle: "bea", seiten: 2, createdAt: dt(-8, 14, 12),
-    inhalt: `Arbeitsgericht Berlin\nGeschäftszeichen: ${gerichtsAz}\n\nIn dem Rechtsstreit Ostermann ./. Havelbrück Pflegedienste GmbH wird Termin zur Güteverhandlung (§ 54 ArbGG) bestimmt auf\n\n${fmtDateLong(guete)}, 09:00 Uhr, Saal 3,\nArbeitsgericht Berlin, Magdeburger Platz 1, 10785 Berlin.\n\nDas persönliche Erscheinen der Parteien wird angeordnet (§ 51 Abs. 1 ArbGG). Bleibt eine Partei aus, kann ein Ordnungsgeld festgesetzt werden.\n\nAuf Anordnung\nJustizbeschäftigte als Urkundsbeamtin der Geschäftsstelle`,
+    inhalt: `Arbeitsgericht Berlin\nGeschäftszeichen: ${gerichtsAz}\n\nIn dem Rechtsstreit Ostermann ./. Havelbrück Pflegedienste GmbH wird Termin zur Güteverhandlung (§ 54 ArbGG) bestimmt auf\n\n${fmtDateLong(guete)}, 09:00 Uhr, Saal 3,\n${G.arbg}, ${arbgStrasse}, ${arbgOrt}.\n\nDas persönliche Erscheinen der Parteien wird angeordnet (§ 51 Abs. 1 ArbGG). Bleibt eine Partei aus, kann ein Ordnungsgeld festgesetzt werden.\n\nAuf Anordnung\nJustizbeschäftigte als Urkundsbeamtin der Geschäftsstelle`,
     ki: { zusammenfassung: `Ladung zur Güteverhandlung am ${fmtDate(guete)}, 9:00 Uhr, Saal 3; persönliches Erscheinen angeordnet.` },
   });
   // Klagefrist (§ 4 S. 1 KSchG): rechtzeitig eingereicht – erledigt mit Nachweis
@@ -499,7 +514,7 @@ export function zusatzBerlin(ctx: Ctx) {
     erledigtNachweis: { art: "bea", text: "Kündigungsschutzklage per beA an das Arbeitsgericht Berlin übermittelt (Eingangsbestätigung liegt vor)", versandAm: dt(-12, 15, 18) },
   };
   const termin: Frist = {
-    id: "hero-guete-f2", akteId: ost.id, titel: "Gütetermin", typ: "termin", datum: guete, uhrzeit: "09:00", ort: "Arbeitsgericht Berlin, Magdeburger Platz 1, Saal 3",
+    id: "hero-guete-f2", akteId: ost.id, titel: "Gütetermin", typ: "termin", datum: guete, uhrzeit: "09:00", ort: `${G.arbg}, ${arbgStrasse}, Saal 3`,
     status: "offen", verantwortlichId: julia.id, quelle: "ki", createdAt: dt(-8, 14, 13), notiz: "Persönliches Erscheinen der Mandantin angeordnet (§ 51 Abs. 1 ArbGG).",
   };
   klagefrist.verantwortlichId = fristVerantwortung(ctx, klagefrist);

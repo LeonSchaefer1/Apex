@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { Bot, CalendarClock, CheckCircle2, ChevronDown, Clock, MapPin, MoreHorizontal, PanelRightOpen, PenLine, RotateCcw, ShieldAlert, Sparkles, Trash2, Undo2, UserCheck, Users } from "lucide-react";
+import { AlertTriangle, Bot, CalendarClock, CheckCircle2, ChevronDown, Clock, MapPin, MoreHorizontal, PanelRightOpen, PenLine, RotateCcw, ShieldAlert, Sparkles, Trash2, Undo2, UserCheck, Users } from "lucide-react";
 import { fmtDate, fmtDateShort, fmtDateWd, schuetzeLeerzeichen, today } from "@/core/dates";
 import { fristArtZu } from "@/core/fristen";
 import type { Akte, Frist, FristTyp, User } from "@/core/types";
@@ -10,7 +10,7 @@ import { useCol } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { Avatar, Chip, Menu } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { QUELLE_LABEL, QUELLE_TITEL, TYP_META, bestaetigeKontrolle, brauchtKontrolle, darfKontrollieren, durchAssistent, erfordertNachweis, erledigeFrist, nachweisText, oeffneFristWieder, streifenFarbe } from "./logik";
+import { QUELLE_LABEL, QUELLE_TITEL, TYP_META, bestaetigeKontrolle, brauchtKontrolle, darfKontrollieren, durchAssistent, eebAbweichungDerFrist, eebZurFrist, erfordertNachweis, erledigeFrist, nachweisText, oeffneFristWieder, streifenFarbe } from "./logik";
 import { ErledigenDialog } from "./ErledigenDialog";
 import { KorrekturAnfordernDialog, KorrekturDialog } from "./KorrekturDialog";
 
@@ -54,6 +54,31 @@ export function QuelleChip({ quelle, notiz }: { quelle: Frist["quelle"]; notiz?:
       {QUELLE_LABEL[quelle]}
     </Chip>
   );
+}
+
+/**
+ * „weicht vom eEB ab (eEB 17.10.2026)“ – solange das Ereignis der Frist vom Zustellungsdatum laut eEB abweicht (I5-T03-01).
+ * In Fristliste, Vier-Augen-Filter, Fristdetails und Akten-Reiter; später als das eEB rot, früher gelb.
+ */
+export function EebAbweichungChip({ f }: { f: Frist }) {
+  const nachrichten = useCol("nachrichten");
+  const abw = eebAbweichungDerFrist(f, nachrichten);
+  if (!abw) return null;
+  return (
+    <Chip
+      tone={abw.spaeter ? "seal" : "amber"}
+      icon={<AlertTriangle className="size-3" />}
+      title={`${abw.ereignis ? `Ereignis ${fmtDateWd(abw.ereignis)}` : "Fristende von Hand gesetzt"} – Zustellungsdatum laut eEB ${fmtDateWd(abw.eebDatum)} (${abw.nachricht.betreff}). Bitte bei der Vier-Augen-Kontrolle prüfen.`}
+    >
+      weicht vom eEB ab (eEB {fmtDate(abw.eebDatum)})
+    </Chip>
+  );
+}
+
+/** Zustellungsdatum laut eEB zur Frist (für die Gegenüberstellung mit dem Ereignis in den Details). */
+export function useEebDatum(f: Frist): string | undefined {
+  const nachrichten = useCol("nachrichten");
+  return eebZurFrist(f, nachrichten)?.eebZustellungsdatum;
 }
 
 /** „Erledigt“ mit animiertem Häkchen (Kreis füllt sich, Haken zeichnet sich). */
@@ -254,6 +279,7 @@ export function FristZeile({
   const art = f.typ === "notfrist" || f.typ === "frist" ? fristArtZu(f) : undefined;
   const letzteKorrektur = f.korrekturen?.[f.korrekturen.length - 1];
   const letzteKorrekturVon = letzteKorrektur ? team.find((u) => u.id === letzteKorrektur.vonId)?.name : undefined;
+  const eebDatum = useEebDatum(f);
   // Telefon: „Kontrolle bestätigen“ (falls erlaubt) bzw. „Erledigt“ sichtbar, alles Übrige im „⋯“-Menü (I3-T03-01)
   const kannKontrolle = f.status === "offen" && darfKontrollieren(f, user.id);
   const mobilMenue = [
@@ -349,6 +375,7 @@ export function FristZeile({
               )}
               <QuelleChip quelle={f.quelle} notiz={f.notiz} />
               <KontrollStatus f={f} team={team} />
+              <EebAbweichungChip f={f} />
               <NachweisZeile f={f} team={team} />
               {hatDetails && (
                 <button type="button" onClick={() => setOffen((o) => !o)} aria-expanded={offen} className="inline-flex h-7 items-center gap-1 rounded-full px-2 text-[12.5px] font-medium text-ink hover:bg-ink-softer">
@@ -433,7 +460,13 @@ export function FristZeile({
                 {f.ereignisDatum && (
                   <div>
                     <div className="eyebrow">Ereignis</div>
-                    <div className="num mt-0.5 font-medium">{fmtDateWd(f.ereignisDatum)}</div>
+                    <div className={cn("num mt-0.5 font-medium", eebDatum && eebDatum !== f.ereignisDatum && "text-seal")}>{fmtDateWd(f.ereignisDatum)}</div>
+                  </div>
+                )}
+                {eebDatum && (
+                  <div>
+                    <div className="eyebrow">Zustellung laut eEB</div>
+                    <div className="num mt-0.5 font-medium">{fmtDateWd(eebDatum)}</div>
                   </div>
                 )}
                 <div>
@@ -467,7 +500,7 @@ export function FristZeile({
               {f.korrekturen?.length ? (
                 <p className="mt-3 text-[12.5px] leading-relaxed text-fg-3">
                   {f.korrekturen.length === 1 ? "1 Korrektur" : `${f.korrekturen.length} Korrekturen`} – zuletzt: {letzteKorrektur?.grund} ({letzteKorrektur ? fmtDate(letzteKorrektur.vorher.datum) : ""} → {fmtDate(f.datum)}
-                  {letzteKorrekturVon ? `, ${letzteKorrekturVon}` : ""})
+                  {letzteKorrekturVon ? `, ${letzteKorrekturVon}` : ""}){eebDatum ? ` · Zustellungsdatum laut eEB ${fmtDate(eebDatum)}` : ""}
                 </p>
               ) : null}
               {brauchtKontrolle(f) && f.verantwortlichId === user.id && (

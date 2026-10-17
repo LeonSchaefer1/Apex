@@ -17,6 +17,20 @@ import { useAbrechnungUI } from "./store";
 import { AkteLabel, Betrag, FormatChip, StatusChip, TabKopf, useLookups } from "./ui";
 
 type Filter = "alle" | "offen" | "ueberfaellig" | "bezahlt" | "entwurf" | "storno";
+
+/**
+ * Sprungmarke „Zur Rechnungsliste“ und Filterwahl (I5-T07-04): Fokus auf die erste Zeile („Rechnung … öffnen“) – in der
+ * Tabelle das Öffnen-Ziel, am Telefon die Karte; ohne Treffer auf die Liste selbst.
+ */
+export function fokusErsteRechnung() {
+  requestAnimationFrame(() => {
+    const box = document.getElementById("rechnungsliste");
+    if (!box) return;
+    const ziel = box.querySelector<HTMLElement>("tbody button[data-zeile-oeffnen]") ?? box.querySelector<HTMLElement>("ul > li > button");
+    (ziel ?? box).focus({ preventScroll: true });
+    (ziel ?? box).scrollIntoView({ block: "nearest" });
+  });
+}
 const FILTER: Filter[] = ["alle", "offen", "ueberfaellig", "bezahlt", "entwurf", "storno"];
 
 /** Zeile der Rechnungsliste – Stornorechnungen erscheinen als eigene Zeile mit Bezug auf die stornierte Rechnung. */
@@ -186,7 +200,15 @@ export function RechnungenTab() {
         titel="Rechnungen"
         text="Alle Rechnungen mit Status, Fälligkeit und E-Rechnungsformat – Zahlungserinnerungen als Entwurf zur Freigabe, Zahlungseingänge direkt erfassen."
       />
+      {/* Sichtbare Sprungmarke wie im RVG-Rechner – vorbei an Sammelabrechnung, Suche und Filtern direkt zur ersten Rechnung */}
+      <nav aria-label="Sprungmarken in den Rechnungen" className="-mt-1 mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-[12.5px] text-fg-3">
+        <span>Springen zu:</span>
+        <button type="button" className="rounded-full px-1.5 py-0.5 font-medium text-ink hover:underline max-sm:min-h-11" onClick={fokusErsteRechnung}>
+          Rechnungsliste
+        </button>
+      </nav>
       <SammelBanner />
+      <div id="rechnungsliste" tabIndex={-1} aria-label="Rechnungsliste" role="region" className="scroll-mt-24 rounded-[22px] outline-none">
       <DataTable
         id="rechnungen"
         data={zeilen}
@@ -201,7 +223,16 @@ export function RechnungenTab() {
         toolbar={
           <div className="flex flex-wrap items-center gap-2">
             <SearchField id="rechnungen-suche" value={q} onChange={setQ} placeholder="Nummer, Akte, Empfänger …" className="w-full sm:w-[260px]" />
-            <Segmented size="sm" options={FILTER.map((f) => ({ value: f, label: labels[f], count: zaehler[f] }))} value={filter} onChange={setFilter} />
+            <Segmented
+              size="sm"
+              options={FILTER.map((f) => ({ value: f, label: labels[f], count: zaehler[f] }))}
+              value={filter}
+              onChange={(f) => {
+                setFilter(f);
+                // Nach der Filterwahl gleich zur ersten Rechnung der Ansicht (I5-T07-04)
+                fokusErsteRechnung();
+              }}
+            />
             {offenSumme > 0 && (
               <span className="ml-auto hidden text-[12.5px] text-fg-3 lg:inline">
                 offen in dieser Ansicht <Betrag n={offenSumme} className="font-semibold text-fg" />
@@ -288,6 +319,7 @@ export function RechnungenTab() {
           </motion.div>
         }
       />
+      </div>
     </>
   );
 }

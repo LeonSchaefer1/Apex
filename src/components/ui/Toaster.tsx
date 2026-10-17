@@ -96,6 +96,48 @@ function lageFuer(d: OffenerDialog, hoehe: number): DialogLage | null {
   return lageFuerRechteck(d.art, dialogRechteck(el), window.innerWidth, window.innerHeight, hoehe);
 }
 
+// ───────────── Ausweichen vor der fokussierten Zeile (I5-T03-02) ─────────────
+
+/** „Zeile“ des fokussierten Elements: die Einheit, die eine Meldung nicht verdecken soll (Tabellen-, Listen-, Fristzeile, Karte). */
+const ZEILE = "[role=row], tr, li, [data-frist], [data-frist-zeile], [data-nachricht], section";
+/** Abstand der Meldungen vom rechten Rand und über der Assistent-Kugel (wie die Klassen right-6, bottom-[96px] bzw. bottom-6). */
+const RECHTS = 24;
+const UNTEN_MIT_KUGEL = 96;
+const UNTEN_OHNE_KUGEL = 24;
+const MAX_BREITE = 420;
+
+type Rechteck = { left: number; top: number; right: number; bottom: number };
+const ueberlappt = (a: Rechteck, b: Rechteck) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+
+/** Zuletzt fokussiertes Element samt Zeile – falls der auslösende Knopf beim Bestätigen verschwindet (Fokus dann auf BODY). */
+let letzterFokus: { el: Element; zeile: Element | null; rect: Rechteck } | null = null;
+function merkeFokus(e: FocusEvent) {
+  const el = e.target instanceof Element ? e.target : null;
+  if (!el || el.closest("[data-meldungen]")) return;
+  const zeile = el.closest(ZEILE);
+  const r = (zeile ?? el).getBoundingClientRect();
+  letzterFokus = { el, zeile, rect: { left: r.left, top: r.top, right: r.right, bottom: r.bottom } };
+}
+
+/** Rechtecke, die eine neue Meldung nicht verdecken darf: fokussiertes Element und seine Zeile. */
+function fokusRechtecke(): Rechteck[] {
+  const akt = document.activeElement;
+  const fokus = akt && akt !== document.body && akt !== document.documentElement && !akt.closest("[data-meldungen]") ? akt : null;
+  if (fokus) {
+    const zeile = fokus.closest(ZEILE);
+    return [fokus.getBoundingClientRect(), ...(zeile ? [zeile.getBoundingClientRect()] : [])];
+  }
+  if (!letzterFokus) return [];
+  if (letzterFokus.el.isConnected) return [letzterFokus.el.getBoundingClientRect(), ...(letzterFokus.zeile?.isConnected ? [letzterFokus.zeile.getBoundingClientRect()] : [])];
+  return [letzterFokus.zeile?.isConnected ? letzterFokus.zeile.getBoundingClientRect() : letzterFokus.rect];
+}
+
+/** Würde der Meldungsstapel unten rechts (Breite × Höhe) das fokussierte Element oder seine Zeile überdecken? */
+export function verdecktFokus(breite: number, hoehe: number, unten: number, vw: number, vh: number, ziele: Rechteck[]): boolean {
+  const platz: Rechteck = { left: vw - RECHTS - breite, right: vw - RECHTS, top: vh - unten - hoehe, bottom: vh - unten };
+  return ziele.some((z) => z.bottom > z.top && z.right > z.left && ueberlappt(platz, z));
+}
+
 /** Lage für den obersten offenen Dialog – nachgeführt bei Größenänderung von Fenster und Dialog; ohne Dialog `null`. */
 function useDialogLage(hoehe: number): DialogLage | null {
   const oben = useObersterDialog();
@@ -131,6 +173,8 @@ function useDialogLage(hoehe: number): DialogLage | null {
  * weichen sie aus – über, unter oder neben den Dialog, nie über Kopf, Titel, Inhalt, Fuß oder Schließen (I4-T03-03); bereits
  * sichtbare Meldungen wandern mit. Meldungen nehmen nie den Fokus; × schließt nur die Meldung, Escape weiter den Dialog.
  * Der Zeitgeber pausiert, solange Maus oder Fokus in der Meldung sind.
+ * Ohne Dialog und nicht am Telefon prüft eine neue Meldung, ob sie unten rechts das fokussierte Element oder dessen Zeile
+ * überdecken würde – dann weicht der Stapel nach oben rechts unter die Kopfleiste aus, bis alle Meldungen weg sind (I5-T03-02).
  */
 export function Toaster() {
   const { toasts, dismiss, pause, weiter } = useToasts();
@@ -147,9 +191,50 @@ export function Toaster() {
     setHoehe((alt) => (Math.abs(alt - neu) > 4 ? neu : alt));
   }, [toasts.length]);
   const dialogLage = useDialogLage(hoehe);
+  // Ausweichen vor der fokussierten Zeile (I5-T03-02): beim Erscheinen einer Meldung geprüft, gilt bis der Stapel leer ist
+  const [ausgewichen, setAusgewichen] = useState(false);
+  const anzahlVorher = useRef(0);
+  useEffect(() => {
+    document.addEventListener("focusin", merkeFokus, true);
+    return () => document.removeEventListener("focusin", merkeFokus, true);
+  }, []);
+  useLayoutEffect(() => {
+    const neu = toasts.length > anzahlVorher.current;
+    anzahlVorher.current = toasts.length;
+    if (!toasts.length) {
+      setAusgewichen(false);
+      return;
+    }
+    if (!neu || ausgewichen || dialogLage || telefon) return;
+    const el = stapel.current;
+    const breite = Math.min(window.innerWidth * 0.92, el?.offsetWidth || MAX_BREITE);
+    const h = Math.max(MELDUNG_HOEHE, el?.offsetHeight ?? 0);
+    if (verdecktFokus(breite, h, kugel ? UNTEN_MIT_KUGEL : UNTEN_OHNE_KUGEL, window.innerWidth, window.innerHeight, fokusRechtecke())) setAusgewichen(true);
+  }, [toasts.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Wandert der Fokus, während Meldungen unten rechts stehen (z. B. nach „Kontrolle bestätigen“ auf die nächste Zeile),
+  // gilt dieselbe Prüfung mit dem tatsächlichen Rechteck des Stapels.
+  useEffect(() => {
+    if (!toasts.length || ausgewichen || dialogLage || telefon) return;
+    const pruefe = () => {
+      const el = stapel.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) return;
+      const platz = { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+      if (fokusRechtecke().some((z) => z.bottom > z.top && z.right > z.left && ueberlappt(platz, z))) setAusgewichen(true);
+    };
+    const beiFokus = () => requestAnimationFrame(pruefe);
+    document.addEventListener("focusin", beiFokus, true);
+    return () => document.removeEventListener("focusin", beiFokus, true);
+  }, [toasts.length, ausgewichen, dialogLage, telefon]);
   // Telefon ohne Dialog (I4-T14-01): oben unter der Kopfleiste, volle Breite – nicht unten über Schnellaktions- und Tab-Leiste
   const lage: DialogLage | null =
-    dialogLage ?? (telefon ? { stil: { top: "calc(max(12px, env(safe-area-inset-top)) + 64px)", left: RAND, right: RAND }, oben: true, ausrichtung: "voll", maxBreite: 0 } : null);
+    dialogLage ??
+    (telefon
+      ? { stil: { top: "calc(max(12px, env(safe-area-inset-top)) + 64px)", left: RAND, right: RAND }, oben: true, ausrichtung: "voll", maxBreite: 0 }
+      : ausgewichen
+        ? { stil: { top: KOPFLEISTE, right: RECHTS }, oben: true, ausrichtung: "rechts", maxBreite: MAX_BREITE }
+        : null);
   const klein = lage?.groesse && lage.groesse !== "voll" ? lage.groesse : undefined;
   return (
     <div
@@ -172,7 +257,7 @@ export function Toaster() {
             ),
       )}
       style={lage?.stil}
-      data-meldungen={dialogLage ? (dialogLage.oben ? "dialog-oben" : "dialog-neben") : telefon ? "oben" : "unten"}
+      data-meldungen={dialogLage ? (dialogLage.oben ? "dialog-oben" : "dialog-neben") : telefon ? "oben" : ausgewichen ? "ausgewichen" : "unten"}
     >
       <AnimatePresence initial={false}>
         {toasts.map((t) => (

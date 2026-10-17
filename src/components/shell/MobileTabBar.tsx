@@ -48,17 +48,17 @@ export function MobileTabBar() {
                 {isActive && (
                   <motion.span layoutId="tab-pill" transition={{ type: "spring", stiffness: 520, damping: 36 }} className="absolute inset-0 -z-10 rounded-full bg-ink-soft" />
                 )}
-                <span className="relative">
+                <span className="tab-symbol relative">
                   <t.icon className={cn("size-[21px]", isActive ? "text-ink" : "text-fg-2")} strokeWidth={isActive ? 2.3 : 1.9} />
                   {badge?.anzahl ? (
-                    <span className={cn("absolute -right-2.5 -top-1.5 grid h-[19px] min-w-[19px] place-items-center rounded-full px-1 text-[12px] font-bold leading-none text-white", badge.ton === "seal" ? "bg-seal" : "bg-ink")}>{badge.anzahl}</span>
+                    <span className={cn("tab-badge absolute -right-2.5 -top-1.5 grid h-[19px] min-w-[19px] place-items-center rounded-full px-1 text-[12px] font-bold leading-none text-white", badge.ton === "seal" ? "bg-seal" : "bg-ink")}>{badge.anzahl}</span>
                   ) : null}
                 </span>
                 <span className={cn("tab-text max-w-full truncate px-0.5", isActive ? "text-ink" : "text-fg-2")}>{t.kurz ?? t.label}</span>
               </NavLink>
             );
           })}
-          <button type="button" onClick={() => setMehr(true)} aria-label="Mehr – alle Bereiche" className="tabbar-tab relative flex h-[52px] flex-1 flex-col items-center justify-center gap-0.5 rounded-full text-[12px] font-medium">
+          <button type="button" data-tab="mehr" onClick={() => setMehr(true)} aria-label="Mehr – alle Bereiche" className="tabbar-tab relative flex h-[52px] flex-1 flex-col items-center justify-center gap-0.5 rounded-full text-[12px] font-medium">
             {mehrAktiv && <motion.span layoutId="tab-pill" className="absolute inset-0 -z-10 rounded-full bg-ink-soft" />}
             <MoreHorizontal className={cn("size-[21px]", mehrAktiv ? "text-ink" : "text-fg-2")} />
             <span className={cn("tab-text", mehrAktiv ? "text-ink" : "text-fg-2")}>Mehr</span>

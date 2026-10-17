@@ -11,7 +11,7 @@ import { addDays, fmtDate, fmtDateShort, fmtDateWd, fmtEUR, relDays, round2, tod
 import type { Zeiteintrag } from "@/core/types";
 import { cn } from "@/lib/cn";
 import { erstelleRechnungen } from "./aktionen";
-import { fmtDauer, fmtStunden, hatVerguetungsvereinbarung, isoWoche, parseBetrag, satzFuerAbrechnung, satzFuerEintrag, STANDARD_STUNDENSATZ, stundenPositionen, summen, wertEintrag, type TabKey } from "./lib";
+import { fmtDauer, fmtDauerAusMenge, hatVerguetungsvereinbarung, isoWoche, parseBetrag, satzFuerAbrechnung, satzFuerEintrag, STANDARD_STUNDENSATZ, stundenPositionen, summen, wertEintrag, type TabKey } from "./lib";
 import { useAbrechnungUI } from "./store";
 import { TabKopf, useLookups } from "./ui";
 
@@ -250,7 +250,7 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
       akteur: "nutzer",
       userId: user.id,
       akteId: abrAkteObj.id,
-      text: `Rechnungsentwurf aus ${fmtStunden(abrEintraege.reduce((s, z) => s + z.minuten, 0))} Std. (${abrEintraege.length} ${abrEintraege.length === 1 ? "Eintrag" : "Einträge"}) erstellt (${r.nummer}) ${satzWahl.quelle === "person" ? "zum Satz der jeweiligen Person (kein vereinbarter Stundensatz hinterlegt)" : `zu ${fmtEUR(satzWahl.satz)}/Std.${satzWahl.quelle === "vereinbarung" ? " lt. Vergütungsvereinbarung" : " (abweichend für diese Abrechnung)"}`}${offenBleiben ? ` – ${offenBleiben} ${offenBleiben === 1 ? "Eintrag bleibt" : "Einträge bleiben"} offen` : ""} – ${abrAkteObj.aktenzeichen}`,
+      text: `Rechnungsentwurf aus ${fmtDauer(abrEintraege.reduce((s, z) => s + z.minuten, 0))} (${abrEintraege.length} ${abrEintraege.length === 1 ? "Eintrag" : "Einträge"}) erstellt (${r.nummer}) ${satzWahl.quelle === "person" ? "zum Satz der jeweiligen Person (kein vereinbarter Stundensatz hinterlegt)" : `zu ${fmtEUR(satzWahl.satz)}/Std.${satzWahl.quelle === "vereinbarung" ? " lt. Vergütungsvereinbarung" : " (abweichend für diese Abrechnung)"}`}${offenBleiben ? ` – ${offenBleiben} ${offenBleiben === 1 ? "Eintrag bleibt" : "Einträge bleiben"} offen` : ""} – ${abrAkteObj.aktenzeichen}`,
     });
     setAbrAkte("");
     toast("Rechnungsentwurf aus Zeiten erstellt", {
@@ -526,7 +526,7 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                   <Select id="ze-abr-akte" value={abrAkteObj?.id ?? ""} onChange={(e) => setAbrAkte(e.target.value)}>
                     {abrechenbareAkten.map((x) => (
                       <option key={x.akte!.id} value={x.akte!.id}>
-                        {x.akte!.aktenzeichen} · {fmtStunden(x.min)} Std. · {x.akte!.titel}
+                        {x.akte!.aktenzeichen} · {fmtDauer(x.min)} · {x.akte!.titel}
                       </option>
                     ))}
                   </Select>
@@ -584,7 +584,7 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                   {abrPositionen.map((p, i) => (
                     <li key={i} className="flex items-baseline justify-between gap-3 text-[12.5px]">
                       <span className="min-w-0 text-fg-2">
-                        <span className="num font-semibold text-fg">{fmtStunden((p.menge ?? 0) * 60)} Std.</span> ·{" "}
+                        <span className="num font-semibold text-fg">{fmtDauerAusMenge(p.menge ?? 0)}</span> ·{" "}
                         {p.bezeichnung.replace(/^Tätigkeit /, "").replace(/ (lt\. Vergütungsvereinbarung( vom [\d.]+)?|nach Zeitaufwand)/, "")}
                       </span>
                       <span className="num shrink-0 font-medium">{fmtEUR(p.betrag)}</span>

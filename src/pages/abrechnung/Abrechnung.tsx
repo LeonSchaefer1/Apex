@@ -8,7 +8,7 @@ import { useCol } from "@/store/data";
 import { BankabgleichTab } from "./Bankabgleich";
 import { ForderungskontoTab } from "./Forderungskonto";
 import { TAB_KEYS, type TabKey } from "./lib";
-import { RechnungenTab } from "./Rechnungen";
+import { RechnungenTab, fokusErsteRechnung } from "./Rechnungen";
 import { RechnungVorschau } from "./RechnungVorschau";
 import { RvgRechnerTab } from "./RvgRechner";
 import { Sammelabrechnung } from "./Sammelabrechnung";
@@ -96,6 +96,17 @@ export default function Abrechnung() {
 
   return (
     <>
+      {/* Rechnungen: erste Sprungmarke der Seite (nur bei Tastaturfokus sichtbar) – von „Zum Inhalt springen“ in zwei Schritten
+          zur ersten Rechnung statt über Kopf, sieben Reiter, Sammelabrechnung, Suche und Filter (I5-T07-04) */}
+      {tab === "rechnungen" && (
+        <button
+          type="button"
+          onClick={fokusErsteRechnung}
+          className="sr-only rounded-full bg-[var(--surface)] px-4 py-2 text-[14px] font-semibold text-ink shadow-[var(--glass-shadow)] ring-2 ring-[var(--focus)] focus:not-sr-only focus:mb-3 focus:inline-flex focus:min-h-11 focus:items-center focus:px-4 focus:py-2"
+        >
+          Zur Rechnungsliste springen
+        </button>
+      )}
       <PageHeader
         title="Abrechnung"
         hilfe="abrechnung"

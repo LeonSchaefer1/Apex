@@ -228,6 +228,17 @@ export function istNotiert(p: FristVorschlag, akteId: string | undefined, friste
   return fristen.some((f) => f.akteId === akteId && f.typ !== "vorfrist" && f.datum === p.ende && (f.regelKey === p.regelKey || f.titel === p.titel));
 }
 
+/**
+ * Ist der Fristvorschlag in der Akte notiert? Wie `istNotiert` (gleiches Fristende) – oder eine aus dieser Nachricht übernommene
+ * Frist derselben Fristart wurde inzwischen korrigiert (z. B. Ereignis laut Empfangsprotokoll, I5-T03-01; das Fristende weicht
+ * dann ab). Sonst böten KI-Karte und Taste U „Fristen übernehmen“ erneut an und `fristenUebernehmen` legte eine zweite Frist an.
+ */
+export function istNotiertAusNachricht(p: FristVorschlag, n: Pick<Nachricht, "betreff">, akteId: string | undefined, fristen: Frist[]): boolean {
+  if (istNotiert(p, akteId, fristen)) return true;
+  if (!akteId || !p.regelKey) return false;
+  return fristenAusNachricht(n, akteId, fristen).haupt.some((f) => f.regelKey === p.regelKey && !!f.korrekturen?.length);
+}
+
 export function istGerichtspost(n: Nachricht): boolean {
   return n.kanal === "bea" && /gericht|justiz|kammergericht|staatsanwaltschaft|gerichtsvollzieher/i.test(`${n.von} ${n.vonAdresse ?? ""}`);
 }
@@ -451,7 +462,7 @@ export function fristenUebernehmen(n: Nachricht, akte: Akte, user: User, ansicht
   let anzahl = 0;
   const neu: string[] = [];
   for (const p of ansicht.fristen) {
-    if (istNotiert(p, akte.id, fristen)) continue;
+    if (istNotiertAusNachricht(p, n, akte.id, fristen)) continue;
     const r = legeFristAn({
       akteId: akte.id,
       titel: p.titel,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import {
@@ -16,12 +16,13 @@ import { AiChip, Button, Chip, Field, Input, Modal, ProgressRing, Select, Textar
 import { cn } from "@/lib/cn";
 import {
   EEB_ERKLAERUNG, SCHRITTE, ablegbareAnhaenge, alsErledigt, anhaengeAblegen, anhaengeAbgelegt, anhaengeText, darfEebAbgeben, eebAbgeben, eebProtokoll, eebVorlegen, fristAenderungText,
-  fristenAusNachricht, fristenUebernehmen, fristenZumZustellungsdatum, gerichtsAzKonflikt, istGerichtspost, istNotiert, terminEintragen, zuordnen, type KiAnsicht, type ZuordnenOptionen,
+  fristenAusNachricht, fristenUebernehmen, fristenZumZustellungsdatum, gerichtsAzKonflikt, istGerichtspost, istNotiertAusNachricht, terminEintragen, zuordnen, type KiAnsicht, type ZuordnenOptionen,
 } from "./analyse";
 import { istAbwesend, vertretungFuer } from "@/core/vertretung";
 import { TYP_META } from "@/pages/fristen/logik";
 import { fristArtZu } from "@/core/fristen";
 import { AktenSuchauswahl } from "@/pages/akten/AktenSuchauswahl";
+import { merkeVorZuordnung } from "./zuordnungRueckgaengig";
 
 const spring = { type: "spring", stiffness: 460, damping: 36 } as const;
 /** Empfehlung „Empfangsbekenntnis abgeben …“ bzw. „eEB …“ */
@@ -194,6 +195,9 @@ function FristVorschlagKarte({ p, notiert, index, rechtsmittel }: { p: FristVors
   );
 }
 
+/** Ist der Fristvorschlag in der Akte notiert – auch als korrigierte Frist aus dieser Nachricht (`istNotiertAusNachricht`, I5-T03-01)? */
+const notiertInAkte = (p: FristVorschlag, n: Nachricht, akteId: string | undefined, fristen: Frist[]) => istNotiertAusNachricht(p, n, akteId, fristen);
+
 function Abschnitt({ titel, icon, children, className, delay = 0 }: { titel: string; icon: React.ReactNode; children: React.ReactNode; className?: string; delay?: number }) {
   return (
     <motion.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ ...spring, delay }} className={className}>
@@ -224,6 +228,21 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
     setWahl(vorschlagId);
     setAndere(false);
   }, [n.id, vorschlagId]);
+  // Fokusziele nach dem Schließen der Aktenwahl (Escape) und Aktionszeile (nach der Wahl ins Bild)
+  const zuordnenKnopf = useRef<HTMLButtonElement>(null);
+  const andereKnopf = useRef<HTMLButtonElement>(null);
+  const konfliktHaken = useRef<HTMLInputElement>(null);
+  const aktionenZeile = useRef<HTMLDivElement>(null);
+  const auswahlSchliessen = () => {
+    setAndere(false);
+    // Zuordnen- bzw. Umhängen-Knopf; ist er wegen eines Widerspruchs gesperrt, das Pflichthäkchen; sonst „Andere Akte wählen“
+    requestAnimationFrame(() => [zuordnenKnopf.current, konfliktHaken.current, andereKnopf.current].find((el) => !!el && !el.disabled && el.isConnected)?.focus());
+  };
+  // Akte in der aufgeklappten Auswahl gewählt → „Zuordnen“ bzw. „Umhängen“ darunter ins Bild
+  useEffect(() => {
+    if (andere && wahl && wahl !== vorschlagId) requestAnimationFrame(() => aktionenZeile.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wahl]);
   useEffect(() => setKonfliktOk(false), [n.id, wahl]);
 
   const offeneAkten = useMemo(() => akten.filter((a) => a.status !== "abgeschlossen").sort((a, b) => b.aktenzeichen.localeCompare(a.aktenzeichen, "de", { numeric: true })), [akten]);
@@ -232,9 +251,11 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
   const laeuft = schritt !== undefined;
 
   const zugeordnet = !!n.akteId && n.akteId === wahl;
-  const notiert = ansicht ? ansicht.fristen.map((p) => istNotiert(p, ziel?.id, fristen)) : [];
+  const notiert = ansicht ? ansicht.fristen.map((p) => notiertInAkte(p, n, ziel?.id, fristen)) : [];
   const alleNotiert = !!ansicht && ansicht.fristen.length > 0 && notiert.every(Boolean);
   const eebFrei = !!ansicht && (ansicht.fristen.length === 0 || alleNotiert);
+  /** Taste U am Knopf „Akte zuordnen“, wenn es keine offenen Fristvorschläge gibt (sonst trägt „Fristen übernehmen“ das U) */
+  const uZuordnen = !!ansicht && (ansicht.fristen.length === 0 || alleNotiert);
   const terminDa = !!ansicht?.termin && !!ziel && fristen.some((f) => f.akteId === ziel.id && f.typ === "termin" && f.datum === ansicht.termin!.datum);
   const mandatsanfrage = !!ansicht && !ansicht.akteId && !n.akteId && /mandat/i.test(ansicht.typ);
   /** Allgemeine Post ohne Mandatsbezug (z. B. Kammer-Newsletter): keine Aktenauswahl verlangen – Zuordnen bleibt optional. */
@@ -303,9 +324,23 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
   const zuordnenKlick = (opts: Pick<ZuordnenOptionen, "fristen"> = {}) => {
     if (!ziel || konfliktOffen) return;
     if (brauchtRueckfrage && !opts.fristen) return setUmhaengen({ danach: "zuordnen" });
+    const zuruecknehmen = merkeVorZuordnung(n, user);
     const r = zuordnen(n, ziel, user, ansicht, { ...opts, ...konfliktOpt() });
     setAndere(false);
+    const az = ziel.aktenzeichen;
     toast(r.vorher ? "Zuordnung geändert" : "Akte zugeordnet", {
+      // Erste Zuordnung (auch per Taste U): mit „Rückgängig“ – ein Umhängen nimmt man durch erneutes Umhängen zurück
+      ...(r.vorher
+        ? {}
+        : {
+            aktion: {
+              label: "Rückgängig",
+              onClick: () => {
+                if (zuruecknehmen()) toast("Zuordnung zurückgenommen", { text: `Die Nachricht ist wieder ohne Akte; die Ablage in ${az} ist entfernt.`, ton: "info" });
+                else toast("Rückgängig nicht mehr möglich", { ton: "warnung", text: "Inzwischen wurden Fristen übernommen oder das eEB abgegeben – bitte bei Bedarf umhängen." });
+              },
+            },
+          }),
       text: r.vorher
         ? `Jetzt ${ziel.aktenzeichen}${r.vorher.akte ? ` statt ${r.vorher.akte.aktenzeichen}` : ""} · ${r.vorher.dokumente} ${r.vorher.dokumente === 1 ? "Dokument" : "Dokumente"} verschoben${r.vorher.fristen ? `, ${r.vorher.fristen} ${r.vorher.fristen === 1 ? "Frist" : "Fristen"} mit umgezogen` : ""}${r.vorher.fristenBelassen ? `, ${r.vorher.fristenBelassen} ${r.vorher.fristenBelassen === 1 ? "Frist bleibt" : "Fristen bleiben"} in ${r.vorher.akte?.aktenzeichen ?? "der bisherigen Akte"}` : ""} – in beiden Verläufen protokolliert.`
         : `In ${ziel.aktenzeichen} · Ordner „${r.ordner}“ abgelegt${n.anhaenge.length ? ` · ${anhaengeText(n, r.anhangOrdner)}` : ""}.`,
@@ -461,7 +496,20 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
                       {(andere || !ziel) && (
                         <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="mt-3 overflow-hidden">
                           {/* Suchauswahl statt langer Liste (I4-T02-01): „Weber“, „142“ oder „28 O 211“ tippen, Enter übernimmt */}
-                          <AktenSuchauswahl id={`akte-wahl-${n.id}`} akten={offeneAkten} kontakte={kontakteListe} value={wahl} onChange={setWahl} vorschlagId={vorgeschlagen?.id} userId={user.id} hoehe={260} />
+                          {/* Ausdrücklich aufgeklappt („Andere Akte wählen“): Fokus sofort ins Suchfeld, Escape schließt (I5-T02-01).
+                              Ohne erkannte Akte ist die Auswahl immer offen – dann kein Autofokus, J/K bleiben nutzbar. */}
+                          <AktenSuchauswahl
+                            id={`akte-wahl-${n.id}`}
+                            akten={offeneAkten}
+                            kontakte={kontakteListe}
+                            value={wahl}
+                            onChange={setWahl}
+                            vorschlagId={vorgeschlagen?.id}
+                            userId={user.id}
+                            hoehe={260}
+                            autoFokus={andere}
+                            onEscape={andere && ziel ? auswahlSchliessen : undefined}
+                          />
                         </motion.div>
                       )}
                       {konflikt && ziel && (
@@ -476,7 +524,7 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
                             </span>
                           </div>
                           <label className="flex items-start gap-2 font-medium">
-                            <input type="checkbox" className="mt-0.5 size-4 accent-[var(--seal)]" checked={konfliktOk} onChange={(e) => setKonfliktOk(e.target.checked)} />
+                            <input ref={konfliktHaken} type="checkbox" className="mt-0.5 size-4 accent-[var(--seal)]" checked={konfliktOk} onChange={(e) => setKonfliktOk(e.target.checked)} />
                             <span>Geprüft: Die Nachricht gehört trotzdem zu {ziel.aktenzeichen}.</span>
                           </label>
                           {!zugeordnet && (
@@ -486,14 +534,25 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
                           )}
                         </div>
                       )}
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <div ref={aktionenZeile} className="mt-3 flex scroll-my-3 flex-wrap items-center gap-2">
                         {ziel && !zugeordnet && (
-                          <Button size="sm" variant={ansicht.fristen.length ? "secondary" : "primary"} icon={<FolderInput className="size-4" />} onClick={() => zuordnenKlick()} disabled={konfliktOffen} title={konfliktOffen ? "Erst den Widerspruch zum Gerichtsaktenzeichen bestätigen" : undefined}>
+                          <Button
+                            ref={zuordnenKnopf}
+                            size="sm"
+                            variant={ansicht.fristen.length ? "secondary" : "primary"}
+                            icon={<FolderInput className="size-4" />}
+                            onClick={() => zuordnenKlick()}
+                            disabled={konfliktOffen}
+                            // U = „Vorschlag übernehmen“ (I5-T22-01): ohne offene Fristvorschläge ordnet U die Akte zu – nie zwei Knöpfe mit U
+                            {...(uZuordnen ? { "data-kuerzel": "u", "aria-keyshortcuts": "U" } : {})}
+                            title={konfliktOffen ? "Erst den Widerspruch zum Gerichtsaktenzeichen bestätigen" : uZuordnen ? `${bisher ? `Nach ${ziel.aktenzeichen} umhängen` : "Akte zuordnen"} (Taste U)` : undefined}
+                          >
                             {bisher ? `Nach ${ziel.aktenzeichen} umhängen` : "Akte zuordnen"}
+                            {uZuordnen && <kbd className="kbd ml-1 hidden sm:inline-flex">U</kbd>}
                           </Button>
                         )}
                         {!andere && ziel && (
-                          <Button size="sm" variant="ghost" onClick={() => setAndere(true)}>
+                          <Button ref={andereKnopf} size="sm" variant="ghost" onClick={() => setAndere(true)}>
                             Andere Akte wählen
                           </Button>
                         )}
@@ -542,7 +601,7 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
                             disabled={!ziel || konfliktOffen}
                             data-kuerzel="u"
                             aria-keyshortcuts="U"
-                            title={konfliktOffen ? "Erst den Widerspruch zum Gerichtsaktenzeichen bestätigen" : "Fristen übernehmen (Taste U)"}
+                            title={!ziel ? "Keine Akte erkannt – bitte Akte wählen" : konfliktOffen ? "Erst den Widerspruch zum Gerichtsaktenzeichen bestätigen" : "Fristen übernehmen (Taste U)"}
                           >
                             {ansicht.fristen.length === 1 ? "Frist übernehmen" : "Fristen übernehmen"}
                             <kbd className="kbd ml-1 hidden sm:inline-flex">U</kbd>
@@ -918,7 +977,7 @@ function AbgabeDialog({ open, onClose, n, ansicht, ziel, offeneKontrollen, land 
     if (!kannAbgeben) return;
     // Während des Dialogs kann sich der Stand geändert haben (z. B. „Rückgängig“ im Toast) – Fristen erneut prüfen.
     const st = useData.getState().data;
-    const nochNotiert = ansicht.fristen.every((p) => istNotiert(p, ziel?.id, st.fristen));
+    const nochNotiert = ansicht.fristen.every((p) => notiertInAkte(p, n, ziel?.id, st.fristen));
     if (!nochNotiert) {
       toast("Erst Frist notieren, dann eEB", { ton: "warnung", text: "Die erkannten Fristen stehen nicht (mehr) im Kalender. Bitte zuerst übernehmen." });
       onClose();

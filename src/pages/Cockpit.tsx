@@ -5,6 +5,7 @@ import { FristAutomatikHinweis } from "@/components/FristAutomatikHinweis";
 import { darfAbrechnung } from "@/lib/backend";
 import { fmtDateLong, today, wochentagName } from "@/core/dates";
 import { Briefing } from "./cockpit/Briefing";
+import { VerwaisteFristenHinweis } from "./cockpit/VerwaisteFristen";
 import { AktenKarte, FristenKarte, PosteingangKarte, TermineKarte } from "./cockpit/KartenArbeit";
 import { FinanzenKarte, KiKarte, MotorKarte, Schnellaktionen } from "./cockpit/KartenKanzlei";
 import { begruessung, useCockpitDaten, type Ansicht } from "./cockpit/daten";
@@ -67,6 +68,8 @@ export default function Cockpit() {
       <div className="grid gap-4">
         {/* Pausierte Fristautomatik: Hinweis mit Zeitpunkt und Person über allem anderen (I3-T10-01) */}
         <FristAutomatikHinweis />
+        {/* Offene Fristen eines deaktivierten Zugangs: Hinweis, bis die Verantwortung übertragen ist (I5-T23-01) */}
+        <VerwaisteFristenHinweis />
         <Briefing saetze={d.briefing} warnungen={d.warnungen} erstellt={erstellt} />
         <Schnellaktionen />
 

@@ -1,6 +1,6 @@
 // Abwesenheit und Vertretung (§ 53 BRAO) – reine Fachlogik ohne React.
 import { addDays, wochentagName } from "./dates";
-import { zaehltAlsFrist } from "./fristenLage";
+import { offeneVerantwortung, zaehltAlsFrist, type OffeneVerantwortung } from "./fristenLage";
 import type { Frist, ID, ISODate, User } from "./types";
 
 /** Ist die Person am Tag `heute` laut eingetragener Abwesenheit abwesend? (von und bis jeweils einschließlich) */
@@ -127,4 +127,63 @@ export function vertretungVorabText(v: KuenftigeVertretung, aktenzeichen: (akteI
   const erste = v.fristen[0];
   const az = aktenzeichen(erste.akteId);
   return `${kopf} – ${vertretungUmfangText(v.fristen)} im Zeitraum, die erste ${tagKurz(erste.datum)}: ${erste.titel}${az ? ` (${az})` : ""}`;
+}
+
+// ───────────── Deaktivieren bzw. Entfernen eines Zugangs: wer übernimmt die offenen Fristen? (I5-T23-01) ─────────────
+
+/** Bewusste Wahl im Feld „Bearbeitung und Fristverantwortung übertragen an …“: „Nicht übertragen – ich stelle die Überwachung selbst sicher“. */
+export const NICHT_UEBERTRAGEN = "nicht-uebertragen";
+
+/**
+ * Vorbelegung des Felds „Bearbeitung und Fristverantwortung übertragen an …“ – in dieser Reihenfolge:
+ * 1. die eingetragene Vertretung der Person, wenn sie aktiv ist und übernehmen darf (Partner/Anwalt),
+ * 2. sonst die angemeldete Person, wenn sie übernehmen darf,
+ * 3. sonst leer – dann ist die Wahl Pflicht („Bitte wählen …“).
+ * Fristen eines gesperrten Zugangs bleiben so nie still ohne aktive verantwortliche Person (Organisationspflicht).
+ */
+export function uebertragungVorbelegung(person: Pick<User, "id" | "abwesenheit">, angemeldet: Pick<User, "id">, kandidaten: Pick<User, "id" | "rolle" | "deaktiviert">[]): ID | "" {
+  const darf = (id: ID | undefined): id is ID => !!id && id !== person.id && kandidaten.some((k) => k.id === id && !k.deaktiviert && istBerufstraeger(k));
+  const vertretung = person.abwesenheit?.vertretungId;
+  if (darf(vertretung)) return vertretung;
+  if (darf(angemeldet.id)) return angemeldet.id;
+  return "";
+}
+
+/**
+ * Warum „Deaktivieren“ bzw. „Zugang entfernen“ noch gesperrt ist – `undefined` = ausführbar.
+ * Ohne offene Fristen bleibt der Ablauf frei; sonst ist eine Person zu wählen oder „Nicht übertragen“ mit Pflichthäkchen.
+ */
+export function uebertragungSperrgrund(o: { offeneFristen: number; wahl: string; bestaetigt: boolean; name: string }): string | undefined {
+  if (o.offeneFristen <= 0) return undefined;
+  const fristen = o.offeneFristen === 1 ? "die offene Frist" : `die ${o.offeneFristen} offenen Fristen`;
+  if (!o.wahl) return `Bitte wählen Sie, wer ${fristen} von ${o.name} übernimmt.`;
+  if (o.wahl === NICHT_UEBERTRAGEN && !o.bestaetigt) return `Bitte bestätigen Sie, dass Sie die Überwachung für ${fristen} von ${o.name} sicherstellen.`;
+  return undefined;
+}
+
+/** „7 offene Fristen, dazu 1 Wiedervorlage und 1 Termin“ – Fristen zuerst, übrige Einträge getrennt genannt (Zählweise wie `fristenLage`). */
+export function verantwortungText(v: OffeneVerantwortung): string {
+  const dazu = [
+    v.wiedervorlagen.length ? zahlWort(v.wiedervorlagen.length, "Wiedervorlage", "Wiedervorlagen") : "",
+    v.termine.length ? zahlWort(v.termine.length, "Termin", "Termine") : "",
+    v.vorfristen.length ? zahlWort(v.vorfristen.length, "Vorfrist", "Vorfristen") : "",
+  ].filter(Boolean);
+  const liste = (x: string[]) => (x.length > 1 ? `${x.slice(0, -1).join(", ")} und ${x[x.length - 1]}` : x[0] ?? "");
+  if (!v.fristen.length) return dazu.length ? liste(dazu) : "keine offenen Einträge";
+  return `${zahlWort(v.fristen.length, "offene Frist", "offene Fristen")}${dazu.length ? `, dazu ${liste(dazu)}` : ""}`;
+}
+
+export interface VerwaisteVerantwortung {
+  /** deaktivierter Zugang */
+  person: User;
+  offen: OffeneVerantwortung;
+}
+
+/** Offene Einträge, die auf einen deaktivierten Zugang zeigen – je Person, mit den meisten Fristen zuerst (Cockpit-Hinweis). */
+export function fristenDeaktivierterZugaenge(fristen: Frist[], team: User[]): VerwaisteVerantwortung[] {
+  return team
+    .filter((u) => u.deaktiviert)
+    .map((person) => ({ person, offen: offeneVerantwortung(fristen, person.id) }))
+    .filter((x) => x.offen.alle.length > 0)
+    .sort((a, b) => b.offen.fristen.length - a.offen.fristen.length || b.offen.alle.length - a.offen.alle.length);
 }

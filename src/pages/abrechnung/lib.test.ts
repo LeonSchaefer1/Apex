@@ -1,21 +1,27 @@
 // Zeithonorar: ein Stundensatz je Eintrag – Zeitliste, Abrechnungsvorschau, Rechnung und Tätigkeitsnachweis stimmen überein (I2-T07-01).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { Akte, Rechnung, User, Zeiteintrag } from "@/core/types";
+import type { Akte, Aktivitaet, Rechnung, Tenant, User, Zeiteintrag } from "@/core/types";
 import {
   auswahlFuerAbrechnung,
   auswahlFuerFilter,
   betragFuerMinuten,
   fehlendKurz,
+  fmtDauer,
+  fmtDauerAusMenge,
+  GEGENSTANDSWERT_FEHLER,
   istReineZeitrechnung,
   kopfUmschalten,
   kopfZustand,
   leistungszeitraum,
   naechsteNummern,
+  pruefeBetragEingabe,
+  pruefeZinssatzEingabe,
   satzAusPosition,
   satzFuerEintrag,
   sichtbareVorschlaege,
   stellenErlaubt,
+  unterzeichnerVon,
   stellenTitel,
   stundenPositionen,
   summen,
@@ -159,4 +165,72 @@ test("Rückfrage „Rechnung stellen“: nächste Nummer(n), Pflichtangaben einm
   assert.equal(stellenErlaubt(fehlend, false, true), false, "Kundenkanzlei: gesperrt, auch mit Häkchen");
   assert.equal(stellenErlaubt(fehlend, true, false), false, "Präsentationskanzlei: nur mit Häkchen");
   assert.equal(stellenErlaubt(fehlend, true, true), true);
+});
+
+// ───────────── Eingabeprüfung (I5-T07-01) und ein Zeitformat je Ansicht (I5-T07-05) ─────────────
+
+test("Gegenstandswert: „-500“, „0“, „abc“, leer → Meldung, kein Wert; gültige deutsche Eingaben → Wert", () => {
+  for (const ein of ["-500", "−500", "0", "0,00", "abc", "12abc", "", "  "]) {
+    const r = pruefeBetragEingabe(ein);
+    assert.equal(r.fehler, GEGENSTANDSWERT_FEHLER, `„${ein}“`);
+    assert.equal(r.wert, undefined, `„${ein}“ ohne Wert – kein stilles Klemmen auf 0`);
+  }
+  assert.equal(GEGENSTANDSWERT_FEHLER, "Bitte einen Gegenstandswert über 0 € eingeben.");
+  assert.deepEqual(pruefeBetragEingabe("10.000"), { wert: 10000 });
+  assert.deepEqual(pruefeBetragEingabe("10.000,50"), { wert: 10000.5 });
+  assert.deepEqual(pruefeBetragEingabe("5000 €"), { wert: 5000 });
+  assert.deepEqual(pruefeBetragEingabe("35.000"), { wert: 35000 });
+  assert.equal(pruefeBetragEingabe("-1", "Bitte einen Betrag über 0 € eingeben.").fehler, "Bitte einen Betrag über 0 € eingeben.");
+});
+
+test("Zinsrechner: fester Zinssatz über 0 und bis 30 %, „4,5“ wie „4.5“", () => {
+  assert.deepEqual(pruefeZinssatzEingabe("4"), { wert: 4 });
+  assert.deepEqual(pruefeZinssatzEingabe("4,5"), { wert: 4.5 });
+  assert.deepEqual(pruefeZinssatzEingabe("4.5 %"), { wert: 4.5 });
+  for (const ein of ["0", "-3", "abc", "", "31", "120"]) assert.ok(pruefeZinssatzEingabe(ein).fehler, `„${ein}“ unplausibel`);
+});
+
+test("Zeitformat Std:Min in der Zeiterfassung: Einträge, Summen, Aktenwähler und Positionen gleich", () => {
+  assert.equal(fmtDauer(36), "0:36 Std.");
+  assert.equal(fmtDauer(138), "2:18 Std.");
+  assert.equal(fmtDauerAusMenge(0.6), "0:36 Std.");
+  assert.equal(fmtDauerAusMenge(0.2), "0:12 Std.");
+  assert.equal(fmtDauerAusMenge(2.3), "2:18 Std.");
+  assert.equal(fmtDauerAusMenge(1.5), "1:30 Std.");
+  // 7 Min. → Menge 0,12 Std. (gerundet) → wieder 0:07
+  assert.equal(fmtDauerAusMenge(Math.round((7 / 60) * 100) / 100), "0:07 Std.");
+});
+
+// ───────────── Korrekturrechnung: Leistungszeitraum und Bearbeitung der stornierten Rechnung (I5-T07-03) ─────────────
+
+test("Korrekturentwurf zu RE-2026-0024: Zeitraum 22.08.–15.10.2026 und Bearbeitung Jonas Brandt wie das Original – auch im XML", async () => {
+  const { xrechnungXml, zugferdXml } = await import("./erechnung");
+  const akte = { id: "a150", aktenzeichen: "150/26", createdAt: "2026-08-22T10:00:00", bearbeiterId: "u-jh" } as Akte;
+  const original = {
+    id: "r24", nummer: "RE-2026-0024", akteId: "a150", empfaengerId: "k", datum: "2026-10-15", faellig: "2026-10-29", status: "storniert",
+    stornoNummer: "RE-2026-0027", positionen: [{ vv: "2300", bezeichnung: "Geschäftsgebühr", betrag: 1000 }], netto: 1000, ust: 190, brutto: 1190, bezahlt: 0,
+  } as unknown as Rechnung;
+  const entwurf = { ...original, id: "r-k", nummer: "Entwurf-002", datum: "2026-10-17", faellig: "2026-10-31", status: "entwurf", stornoNummer: undefined, korrekturVon: "r24" } as unknown as Rechnung;
+  const rechnungen = [original, entwurf];
+  assert.deepEqual(leistungszeitraum(akte, entwurf, [], rechnungen), ["2026-08-22", "2026-10-15"]);
+  assert.deepEqual(leistungszeitraum(akte, entwurf), ["2026-08-22", "2026-10-17"], "ohne Rechnungsbestand wie bisher bis zum Rechnungsdatum");
+  // Kette ohne Schleife: Korrektur einer Korrektur
+  const zweite = { ...entwurf, id: "r-k2", korrekturVon: "r-k" } as Rechnung;
+  assert.deepEqual(leistungszeitraum(akte, zweite, [], [...rechnungen, zweite]), ["2026-08-22", "2026-10-15"]);
+  const zyklisch = { ...entwurf, id: "r-x", korrekturVon: "r-x" } as Rechnung;
+  assert.deepEqual(leistungszeitraum(akte, zyklisch, [], [zyklisch]), ["2026-08-22", "2026-10-17"]);
+
+  const julia = users[0];
+  const aktivitaeten = [
+    { id: "x1", zeit: "2026-10-15T11:00:00", akteur: "nutzer", userId: "u-jb", akteId: "a150", text: "Rechnung RE-2026-0024 gestellt – 150/26" },
+  ] as Aktivitaet[];
+  assert.equal(unterzeichnerVon(entwurf, aktivitaeten, usersById, julia, usersById.get("u-jh"), rechnungen)?.name, "Jonas Brandt");
+  assert.equal(unterzeichnerVon(entwurf, aktivitaeten, usersById, julia, usersById.get("u-jh"))?.name, "Dr. Julia Hartmann", "ohne Bestand: angemeldete Person (bisheriges Verhalten)");
+  assert.equal(unterzeichnerVon({ ...entwurf, korrekturVon: undefined }, aktivitaeten, usersById, julia, undefined, rechnungen)?.name, "Dr. Julia Hartmann", "gewöhnlicher Entwurf unverändert");
+
+  const tenant = { id: "t", name: "Hartmann & Partner", adresse: "Kurfürstendamm 186, 10707 Berlin" } as unknown as Tenant;
+  const ubl = xrechnungXml(entwurf, { akte, tenant, rechnungen });
+  assert.match(ubl, /<cbc:StartDate>2026-08-22<\/cbc:StartDate><cbc:EndDate>2026-10-15<\/cbc:EndDate>/);
+  const cii = zugferdXml(entwurf, { akte, tenant, rechnungen });
+  assert.match(cii, /<ram:StartDateTime><udt:DateTimeString format="102">20260822<\/udt:DateTimeString><\/ram:StartDateTime><ram:EndDateTime><udt:DateTimeString format="102">20261015</);
 });

@@ -61,10 +61,22 @@ export function entwurfZuKontakt(e: KontaktEntwurf, rollen: KontaktRolle[]): Kon
   };
 }
 
-/** Eingabefelder für Person oder Organisation. */
-export function KontaktFelder({ value, onChange, idPrefix, typWaehlbar = true }: { value: KontaktEntwurf; onChange: (v: KontaktEntwurf) => void; idPrefix: string; typWaehlbar?: boolean }) {
+/**
+ * Eingabefelder für Person oder Organisation. `zeigePflicht`: nach dem ersten Speicherversuch – fehlender Name als Fehler am
+ * Feld (aria-invalid, aria-describedby); vorher nur das Sternchen im Label (I5-T17-02).
+ */
+export function KontaktFelder({ value, onChange, idPrefix, typWaehlbar = true, zeigePflicht = false }: { value: KontaktEntwurf; onChange: (v: KontaktEntwurf) => void; idPrefix: string; typWaehlbar?: boolean; zeigePflicht?: boolean }) {
   const set = (p: Partial<KontaktEntwurf>) => onChange({ ...value, ...p });
   const id = (s: string) => `${idPrefix}-${s}`;
+  const nameFehlt = zeigePflicht && !entwurfGueltig(value);
+  const nameFehler = value.typ === "person" ? "Bitte den Nachnamen eintragen." : "Bitte den Firmennamen eintragen.";
+  const nameAttr = nameFehlt ? { "aria-invalid": true as const, "aria-describedby": id("name-fehler") } : {};
+  const nameMeldung = nameFehlt ? (
+    <p id={id("name-fehler")} className="mt-1.5 text-[12.5px] font-medium text-seal">
+      {nameFehler}
+    </p>
+  ) : null;
+  const mailFalsch = emailUngueltig(value.email);
   return (
     <div className="grid grid-cols-1 gap-3.5">
       {typWaehlbar && (
@@ -91,17 +103,19 @@ export function KontaktFelder({ value, onChange, idPrefix, typWaehlbar = true }:
             <Input id={id("vorname")} value={value.vorname} onChange={(e) => set({ vorname: e.target.value })} autoComplete="off" />
           </Field>
           <Field label="Nachname *" htmlFor={id("nachname")}>
-            <Input id={id("nachname")} value={value.nachname} onChange={(e) => set({ nachname: e.target.value })} autoComplete="off" />
+            <Input id={id("nachname")} value={value.nachname} onChange={(e) => set({ nachname: e.target.value })} autoComplete="off" {...nameAttr} />
+            {nameMeldung}
           </Field>
         </div>
       ) : (
         <Field label="Firmenname *" htmlFor={id("firma")}>
-          <Input id={id("firma")} value={value.firma} onChange={(e) => set({ firma: e.target.value })} placeholder="z. B. Berger Haustechnik GmbH" autoComplete="off" />
+          <Input id={id("firma")} value={value.firma} onChange={(e) => set({ firma: e.target.value })} placeholder="z. B. Berger Haustechnik GmbH" autoComplete="off" {...nameAttr} />
+          {nameMeldung}
         </Field>
       )}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label="E-Mail" htmlFor={id("email")} hint={emailUngueltig(value.email) ? <span className="text-seal">Bitte eine gültige E-Mail-Adresse eingeben.</span> : undefined}>
-          <Input id={id("email")} type="email" value={value.email} onChange={(e) => set({ email: e.target.value })} autoComplete="off" />
+        <Field label="E-Mail" htmlFor={id("email")} hint={mailFalsch ? <span id={id("email-fehler")} className="text-seal">Bitte eine gültige E-Mail-Adresse eingeben.</span> : undefined}>
+          <Input id={id("email")} type="email" value={value.email} onChange={(e) => set({ email: e.target.value })} autoComplete="off" aria-invalid={mailFalsch || undefined} aria-describedby={mailFalsch ? id("email-fehler") : undefined} />
         </Field>
         <Field label="Telefon" htmlFor={id("telefon")}>
           <Input id={id("telefon")} type="tel" value={value.telefon} onChange={(e) => set({ telefon: e.target.value })} autoComplete="off" />

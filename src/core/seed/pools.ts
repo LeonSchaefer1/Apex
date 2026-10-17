@@ -259,6 +259,75 @@ export function stadtDatenFuer(stadt: string | undefined, bundesland: Bundesland
   return ausStandort({ land: bundesland, ort: name, vorwahl: basis.vorwahl, plz: basis.plz }, false);
 }
 
+// ───────────── Gerichtsanschriften (SEED_VERSION 13, I5-T17-01) ─────────────
+
+export interface Gerichtsanschrift {
+  /** Straße und Hausnummer – nur, wenn die Anschrift öffentlich bekannt und sicher ist */
+  strasse?: string;
+  plz?: string;
+  ort: string;
+}
+
+/**
+ * Stammliste mit den öffentlich bekannten Anschriften der Gerichte in den Demodaten (Präsentationskanzleien und
+ * Paderborner Testzugang). Ist eine Anschrift nicht sicher bekannt, steht nur der Ort – nie eine erfundene Straße oder PLZ.
+ * Kontaktanschrift, Terminsort und Schriftsatzkopf kommen aus dieser einen Quelle.
+ */
+export const GERICHTSANSCHRIFTEN: Record<string, Gerichtsanschrift> = {
+  // Berlin
+  "Arbeitsgericht Berlin": { strasse: "Magdeburger Platz 1", plz: "10785", ort: "Berlin" },
+  "Landesarbeitsgericht Berlin-Brandenburg": { strasse: "Magdeburger Platz 1", plz: "10785", ort: "Berlin" },
+  "Amtsgericht Charlottenburg": { strasse: "Amtsgerichtsplatz 1", plz: "14057", ort: "Berlin" },
+  "Amtsgericht Mitte": { strasse: "Littenstraße 12–17", plz: "10179", ort: "Berlin" },
+  "Amtsgericht Neukölln": { strasse: "Karl-Marx-Straße 77/79", plz: "12043", ort: "Berlin" },
+  "Amtsgericht Tempelhof-Kreuzberg": { strasse: "Möckernstraße 130", plz: "10963", ort: "Berlin" },
+  "Amtsgericht Tempelhof-Kreuzberg – Familiengericht": { strasse: "Hallesches Ufer 62", plz: "10963", ort: "Berlin" },
+  "Amtsgericht Schöneberg – Nachlassgericht": { strasse: "Grunewaldstraße 66–67", plz: "10823", ort: "Berlin" },
+  "Amtsgericht Tiergarten": { strasse: "Turmstraße 91", plz: "10559", ort: "Berlin" },
+  "Amtsgericht Wedding – Zentrales Mahngericht": { strasse: "Brunnenplatz 1", plz: "13357", ort: "Berlin" },
+  "Landgericht Berlin II": { strasse: "Tegeler Weg 17–21", plz: "10589", ort: "Berlin" },
+  "Kammergericht": { strasse: "Elßholzstraße 30–33", plz: "10781", ort: "Berlin" },
+  "Verwaltungsgericht Berlin": { strasse: "Kirchstraße 7", plz: "10557", ort: "Berlin" },
+  // München
+  "Landgericht München I": { strasse: "Prielmayerstraße 7", plz: "80335", ort: "München" },
+  "Oberlandesgericht München": { strasse: "Prielmayerstraße 5", plz: "80335", ort: "München" },
+  "Arbeitsgericht München": { strasse: "Winzererstraße 104", plz: "80797", ort: "München" },
+  "Verwaltungsgericht München": { strasse: "Bayerstraße 30", plz: "80335", ort: "München" },
+  "Amtsgericht Coburg – Zentrales Mahngericht": { ort: "Coburg" },
+  // Hamburg
+  "Amtsgericht Hamburg": { strasse: "Sievekingplatz 1", plz: "20355", ort: "Hamburg" },
+  "Amtsgericht Hamburg – Familiengericht": { strasse: "Sievekingplatz 1", plz: "20355", ort: "Hamburg" },
+  "Amtsgericht Hamburg – Strafgericht": { strasse: "Sievekingplatz 3", plz: "20355", ort: "Hamburg" },
+  "Amtsgericht Hamburg-Altona": { strasse: "Max-Brauer-Allee 89", plz: "22765", ort: "Hamburg" },
+  "Amtsgericht Hamburg-Wandsbek": { strasse: "Schädlerstraße 28", plz: "22041", ort: "Hamburg" },
+  "Landgericht Hamburg": { strasse: "Sievekingplatz 1", plz: "20355", ort: "Hamburg" },
+  "Hanseatisches Oberlandesgericht": { strasse: "Sievekingplatz 2", plz: "20355", ort: "Hamburg" },
+  "Arbeitsgericht Hamburg": { strasse: "Osterbekstraße 96", plz: "22083", ort: "Hamburg" },
+  "Verwaltungsgericht Hamburg": { strasse: "Lübeckertordamm 4", plz: "20099", ort: "Hamburg" },
+  // Paderborn (Testzugang) und Nordrhein-Westfalen
+  "Amtsgericht Paderborn": { strasse: "Am Bogen 2–4", plz: "33098", ort: "Paderborn" },
+  "Landgericht Paderborn": { strasse: "Am Bogen 2–4", plz: "33098", ort: "Paderborn" },
+  "Arbeitsgericht Paderborn": { ort: "Paderborn" },
+  "Amtsgericht Paderborn – Familiengericht": { ort: "Paderborn" },
+  "Amtsgericht Paderborn – Strafgericht": { ort: "Paderborn" },
+  "Oberlandesgericht Hamm": { strasse: "Heßlerstraße 53", plz: "59065", ort: "Hamm" },
+  "Landesarbeitsgericht Hamm": { strasse: "Marker Allee 94", plz: "59071", ort: "Hamm" },
+  "Oberlandesgericht Düsseldorf": { strasse: "Cecilienallee 3", plz: "40474", ort: "Düsseldorf" },
+  "Amtsgericht Hagen – Zentrales Mahngericht": { strasse: "Heinitzstraße 42", plz: "58097", ort: "Hagen" },
+};
+
+/**
+ * Anschrift eines Gerichts für die Demodaten: aus der Stammliste, sonst nur der Ort – aus dem Gerichtsnamen
+ * („Amtsgericht Hagen – Zentrales Mahngericht“ → Hagen) oder, ohne Ort im Namen, der Kanzleiort.
+ */
+export function gerichtsAnschrift(name: string, kanzleiOrt: string): Gerichtsanschrift {
+  const bekannt = GERICHTSANSCHRIFTEN[name];
+  if (bekannt) return bekannt;
+  const m = name.match(/^(?:Amtsgericht|Landgericht|Arbeitsgericht|Landesarbeitsgericht|Oberlandesgericht|Verwaltungsgericht|Sozialgericht|Finanzgericht) (.+?)(?: – .*)?$/);
+  const ort = m?.[1].replace(/\s+I{1,3}$/, "").replace(/-(Altona|Wandsbek|Bremerhaven|Fürth)$/, "").trim();
+  return { ort: ort || kanzleiOrt };
+}
+
 /** Höchste Kammer- bzw. Abteilungsnummer je Gericht nach Gerichtsgröße (Großstädte wie bisher). */
 export const KAMMERN: Record<Gerichtsgroesse, { arbg: [number, number]; ag: [number, number]; fam: [number, number]; lg: [number, number]; straf: [number, number]; sta: [number, number] }> = {
   gross: { arbg: [1, 60], ag: [1, 240], fam: [270, 290], lg: [2, 35], straf: [200, 290], sta: [200, 290] },

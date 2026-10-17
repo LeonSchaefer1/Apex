@@ -198,3 +198,38 @@ test("feiertagsortFuerFrist: gespeicherter Ort vor Gericht der Akte vor Kanzleis
   const handR = berechneNachRegel("berufung", "2026-10-16", hand.land, undefined, { feiertagsOrt: hand.feiertagsOrt, kanzleiLand: "NW" });
   assert.ok(handR.rechenweg.includes("Feiertage am Gerichtsort geprüft: Bayern (von Hand gewählt)"), handR.rechenweg.join(" | "));
 });
+
+test("Vorfrist nie vor dem fristauslösenden Ereignis (I5-T15-02): kurze Frist → Vorfrist am Ereignistag mit Hinweis", () => {
+  // Frei bestimmte Frist: Ereignis Mo 05.10.2026 + 2 Tage → Mi 07.10.2026; 3 Tage vorher wäre Fr 02.10. (vor dem Ereignis)
+  const kurz = berechneNachRegel("frei_tage", "2026-10-05", "BE", 2);
+  assert.equal(kurz.ende, "2026-10-07");
+  assert.equal(kurz.vorfrist, "2026-10-05");
+  assert.ok(kurz.rechenweg.includes("Vorfrist auf den Ereignistag gelegt (Mo, 05.10.2026) – die Frist ist kürzer als der Vorfrist-Abstand von 3 Tagen."), kurz.rechenweg.join(" | "));
+  assert.ok(!kurz.rechenweg.some((s) => s.includes("02.10.2026")));
+  // Zustellung Sa 17.10.2026 + 2 Tage → Mo 19.10.2026; die Vorfrist liegt nicht vor dem 17.10.
+  const sa = berechneNachRegel("frei_tage", "2026-10-17", "BE", 2);
+  assert.equal(sa.ende, "2026-10-19");
+  assert.ok(sa.vorfrist >= "2026-10-17", sa.vorfrist);
+  assert.ok(sa.vorfrist <= sa.ende);
+  // Normaler Abstand bleibt unverändert – auch die Rechenweg-Zeile
+  const lang = berechneNachRegel("frei_tage", "2026-10-05", "BE", 14);
+  assert.ok(lang.rechenweg.some((s) => /^Vorfrist \d+ Tage vorher, auf Werktag gelegt: /.test(s)), lang.rechenweg.join(" | "));
+  assert.ok(lang.vorfrist > "2026-10-05");
+});
+
+test("Vorfristen der Präsentations- und Prüffristen unverändert (I5-T15-02)", () => {
+  // T02/T03: Urteil 118/26 zugestellt Sa 17.10.2026 – Berufung Di 17.11. (Vorfrist Di 10.11.), Begründung Do 17.12. (Vorfrist Do 03.12.)
+  const ber = berechneNachRegel("berufung", "2026-10-17", "BE");
+  assert.deepEqual([ber.ende, ber.vorfrist], ["2026-11-17", "2026-11-10"]);
+  const begr = berechneNachRegel("berufungsbegruendung", "2026-10-17", "BE");
+  assert.deepEqual([begr.ende, begr.vorfrist], ["2026-12-17", "2026-12-03"]);
+  // T18 Fall 3b: Hessisches LAG, Kanzlei in NRW – Mo 01.11.2027, Vorfrist Mo 25.10.2027
+  const lag = berechneNachRegel("berufung_arbg", "2027-10-01", "HE", undefined, { feiertagsOrt: "Hessisches LAG", kanzleiLand: "NW" });
+  assert.deepEqual([lag.ende, lag.vorfrist], ["2027-11-01", "2027-10-25"]);
+  // T04: Klagefrist 155/26 (Zugang Mo 12.10.2026) – Mo 02.11.2026, Vorfrist Mo 26.10.2026
+  const klage = berechneNachRegel("kschg_klage", "2026-10-12", "BE");
+  assert.deepEqual([klage.ende, klage.vorfrist], ["2026-11-02", "2026-10-26"]);
+  // T14: Widerruf des Vergleichs 151/26 (Gütetermin Di 20.10.2026 + 2 Wochen) – Di 03.11.2026, Vorfrist Fr 30.10.2026
+  const widerruf = berechneNachRegel("widerruf_vergleich", "2026-10-20", "BE", 2, { einheit: "wochen" });
+  assert.deepEqual([widerruf.ende, widerruf.vorfrist], ["2026-11-03", "2026-10-30"]);
+});

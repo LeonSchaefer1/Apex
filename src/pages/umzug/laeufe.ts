@@ -3,7 +3,7 @@
 // jedem Arbeitsplatz möglich bleibt. Dazu der Zwischenstand des Assistenten (sessionStorage).
 import type { ISODateTime, UmzugLauf } from "@/core/types";
 import { useData } from "@/store/data";
-import type { Ergebnis } from "./uebernahme";
+import { fristenAusErgebnis, type Ergebnis, type LaufZahlen } from "./uebernahme";
 import type { CsvErgebnis, DateiInfo } from "./csv";
 import type { DateiDublettenAktion, DublettenAktion, OhneDatumAktion, QuellSystem, Umfang, ZielFeld } from "./zuordnung";
 
@@ -32,29 +32,30 @@ export function uebernehmeAlteLaeufe(tenantId: string): void {
 }
 
 export function laufAusErgebnis(e: Ergebnis, p: { datum: ISODateTime; system: string; datei: string; userId: string }): UmzugLauf {
-  return {
-    id: e.laufId,
-    ...p,
-    zahlen: {
-      aktenNeu: e.aktenNeu,
-      aktenAktualisiert: e.aktenAktualisiert,
-      archiviert: e.archiviert,
-      kontakteNeu: e.kontakteNeu,
-      fristen: e.fristen,
-      zusammengefuehrt: e.zusammengefuehrt,
-      uebersprungen: e.uebersprungen,
-    },
-    undo: e.undo,
+  // Aufteilung der Fristen mitspeichern – das Protokoll zählt nach „Rückgängig“ gleich (I5-T11-01)
+  const zahlen: LaufZahlen = {
+    aktenNeu: e.aktenNeu,
+    aktenAktualisiert: e.aktenAktualisiert,
+    archiviert: e.archiviert,
+    kontakteNeu: e.kontakteNeu,
+    fristen: e.fristen,
+    zusammengefuehrt: e.zusammengefuehrt,
+    uebersprungen: e.uebersprungen,
+    fristenArt: fristenAusErgebnis(e),
   };
+  return { id: e.laufId, ...p, zahlen, undo: e.undo };
 }
 
 export function speichereLauf(lauf: UmzugLauf): void {
   useData.getState().upsert("umzugLaeufe", lauf);
 }
 
-export function markiereRueckgaengig(id: string, p: { am: ISODateTime; von: string }): void {
-  // Rückgängig-Daten werden nach dem Rückgängigmachen nicht mehr gebraucht – nur das Protokoll bleibt
-  useData.getState().patch("umzugLaeufe", id, { rueckgaengig: p, undo: { erstellt: [], vorher: [] } });
+export function markiereRueckgaengig(id: string, p: { am: ISODateTime; von: string }, fristenArt?: LaufZahlen["fristenArt"]): void {
+  // Rückgängig-Daten werden nach dem Rückgängigmachen nicht mehr gebraucht – nur das Protokoll bleibt. Ältere Läufe ohne
+  // gespeicherte Aufteilung erhalten sie hier (vor dem Löschen gezählt), damit der Eintrag gleich zählt (I5-T11-01).
+  const lauf = useData.getState().data.umzugLaeufe.find((l) => l.id === id);
+  const zahlen = lauf && fristenArt && !lauf.zahlen.fristenArt ? ({ ...lauf.zahlen, fristenArt } satisfies LaufZahlen) : undefined;
+  useData.getState().patch("umzugLaeufe", id, { rueckgaengig: p, undo: { erstellt: [], vorher: [] }, ...(zahlen ? { zahlen } : {}) });
 }
 
 /**

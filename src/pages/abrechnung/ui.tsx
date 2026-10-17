@@ -140,9 +140,10 @@ export function Briefkopf({ tenant, absenderZeile = true }: { tenant: Tenant; ab
           <span className="grid size-10 shrink-0 place-items-center rounded-[11px] text-[13px] font-bold tracking-[0.02em] text-white" style={{ background: tenant.farbe }}>
             {kanzleiInitialen(tenant)}
           </span>
+          {/* Voller Name und alle Schwerpunkte – umbrechen statt kürzen, wie die Vorschau im Kanzleiprofil (I5-T16-01) */}
           <div className="min-w-0">
-            <div className="truncate text-[15px] font-semibold leading-tight tracking-[-0.01em]">{tenant.name}</div>
-            <div className="mt-0.5 truncate text-[12.5px] tracking-[0.04em] opacity-55">{tenant.schwerpunkte.join(" · ")}</div>
+            <div className="text-[15px] font-semibold leading-snug tracking-[-0.01em] [overflow-wrap:anywhere]">{tenant.name}</div>
+            <div className="mt-0.5 text-[12.5px] leading-snug tracking-[0.04em] opacity-55 [overflow-wrap:anywhere]">{tenant.schwerpunkte.join(" · ")}</div>
           </div>
         </div>
         <div className="hidden shrink-0 text-right text-[12.5px] leading-snug opacity-60 sm:block">
@@ -153,7 +154,7 @@ export function Briefkopf({ tenant, absenderZeile = true }: { tenant: Tenant; ab
       </div>
       <div className="mt-4 h-[2px] rounded-full" style={{ background: `linear-gradient(90deg, ${tenant.farbe}, transparent)` }} />
       {absenderZeile && (
-        <div className="mt-6 truncate text-[12.5px] underline decoration-black/20 underline-offset-2 opacity-60">
+        <div className="mt-6 text-[12.5px] leading-snug underline decoration-black/20 underline-offset-2 opacity-60 [overflow-wrap:anywhere]">
           {tenant.name} · {strasse} · {ort}
         </div>
       )}

@@ -115,3 +115,25 @@ test("Alle Anhänge beim Namen: abgelegte und nicht abgelegte Strukturdaten (I3-
   assert.equal(anhaengeText(n, "Gericht"), "2 Anhänge: Urteil_28O211-26.pdf in ‚Gericht‘ abgelegt · Zustellungsnachricht.xml (Strukturdaten) nicht abgelegt");
   assert.equal(anhaengeText({ anhaenge: [] }, "Gericht"), "");
 });
+
+test("Korrigierte Frist aus der Nachricht gilt als notiert – „Fristen übernehmen“ legt keine zweite an (I5-T03-01)", async () => {
+  const { useData, urteil, neumann, ansicht } = await vorbereiten();
+  const { fristenUebernehmen, fristenAusNachricht, istNotiert, istNotiertAusNachricht } = await import("./analyse");
+  fristenUebernehmen(urteil, neumann, user, ansicht, useData.getState().data.fristen);
+  let st = useData.getState().data;
+  const vorher = fristenAusNachricht(urteil, neumann.id, st.fristen);
+  assert.equal(vorher.haupt.length, ansicht.fristen.length);
+  // Berufungsfrist korrigiert: anderes Fristende, Korrektur vermerkt
+  const berufung = vorher.haupt.find((f) => f.typ === "notfrist")!;
+  const vorschlag = ansicht.fristen.find((p) => p.regelKey === berufung.regelKey)!;
+  useData.getState().patch("fristen", berufung.id, {
+    datum: "2026-11-19",
+    korrekturen: [{ am: nowLocal(), vonId: user.id, grund: "Probe", vorher: { datum: berufung.datum, titel: berufung.titel } }],
+  });
+  st = useData.getState().data;
+  assert.equal(istNotiert(vorschlag, neumann.id, st.fristen), false, "über das Fristende allein nicht mehr erkannt");
+  assert.equal(istNotiertAusNachricht(vorschlag, urteil, neumann.id, st.fristen), true, "über Nachricht und Fristart erkannt");
+  const r = fristenUebernehmen(st.nachrichten.find((n) => n.id === urteil.id)!, neumann, user, ansicht, st.fristen);
+  assert.equal(r.anzahl, 0, "keine doppelte Frist");
+  assert.equal(fristenAusNachricht(urteil, neumann.id, useData.getState().data.fristen).alle.length, vorher.alle.length);
+});

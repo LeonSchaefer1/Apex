@@ -6,7 +6,7 @@ import { fristArtZu } from "@/core/fristen";
 import type { Akte, Frist, User } from "@/core/types";
 import { Avatar, Button, Drawer } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { ErledigtKnopf, KontrolleAktion, KontrollStatus, KorrekturHinweis, NachweisZeile, QuelleChip, RechenwegListe, TypChip, korrigierbar, useFristAktionen } from "./FristZeile";
+import { EebAbweichungChip, ErledigtKnopf, KontrolleAktion, KontrollStatus, KorrekturHinweis, NachweisZeile, QuelleChip, RechenwegListe, TypChip, korrigierbar, useEebDatum, useFristAktionen } from "./FristZeile";
 import { TYP_META, kalenderMeta } from "./logik";
 import { DateiDialog, type AusgabeDatei } from "./dateiAusgabe";
 import { erzeugeIcs, icsDateiname } from "./ics";
@@ -15,12 +15,13 @@ import { erzeugeIcs, icsDateiname } from "./ics";
  * Korrektur-Historie: „17.10.2026, 05:42 Uhr · Dr. Julia Hartmann · 17.11.2026 → 17.11.2026 · Grund: …“ – der neue Wert ist das
  * Datum vor der nächsten Korrektur bzw. das aktuelle Fristende (I4-T03-04).
  */
-export function korrekturVerlauf(f: Pick<Frist, "datum" | "titel" | "korrekturen">, team: Pick<User, "id" | "name">[]) {
+export function korrekturVerlauf(f: Pick<Frist, "datum" | "titel" | "korrekturen" | "ereignisDatum">, team: Pick<User, "id" | "name">[], eebDatum?: string) {
   const liste = f.korrekturen ?? [];
   return liste.map((k, i) => {
     const naechste = liste[i + 1];
     const neuDatum = naechste ? naechste.vorher.datum : f.datum;
     const neuTitel = naechste ? naechste.vorher.titel : f.titel;
+    const neuEreignis = naechste ? naechste.vorher.ereignisDatum : f.ereignisDatum;
     return {
       am: k.am,
       zeit: `${fmtDate(k.am.slice(0, 10))}, ${fmtTime(k.am)} Uhr`,
@@ -28,6 +29,9 @@ export function korrekturVerlauf(f: Pick<Frist, "datum" | "titel" | "korrekturen
       alt: fmtDate(k.vorher.datum),
       neu: fmtDate(neuDatum),
       titelAlt: k.vorher.titel && k.vorher.titel !== neuTitel ? k.vorher.titel : undefined,
+      // Ereignis alt → neu und das Zustellungsdatum laut eEB daneben (I5-T03-01)
+      ereignis: k.vorher.ereignisDatum && neuEreignis && k.vorher.ereignisDatum !== neuEreignis ? `Ereignis ${fmtDate(k.vorher.ereignisDatum)} → ${fmtDate(neuEreignis)}` : undefined,
+      eeb: eebDatum ? `eEB ${fmtDate(eebDatum)}` : undefined,
       grund: k.grund,
     };
   });
@@ -74,12 +78,14 @@ function DetailInhalt({ f, akte, team, user, onClose }: { f: Frist; akte?: Akte;
   const v = team.find((u) => u.id === f.verantwortlichId);
   const art = f.typ === "notfrist" || f.typ === "frist" ? fristArtZu(f) : undefined;
   const kritisch = !!art?.kritisch;
+  const eebDatum = useEebDatum(f);
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-1.5">
         <TypChip typ={f.typ} regelKey={f.regelKey} />
         <QuelleChip quelle={f.quelle} notiz={f.notiz} />
         <KontrollStatus f={f} team={team} />
+        <EebAbweichungChip f={f} />
         <NachweisZeile f={f} team={team} />
       </div>
       <KorrekturHinweis f={f} team={team} />
@@ -115,16 +121,29 @@ function DetailInhalt({ f, akte, team, user, onClose }: { f: Frist; akte?: Akte;
             </dd>
           </div>
         )}
-        {f.grundlage && (
+        {f.grundlage && !eebDatum && (
           <div>
             <dt className="eyebrow">Grundlage</dt>
             <dd className="mt-0.5 font-medium">{f.grundlage}</dd>
           </div>
         )}
+        {/* Mit eEB: Ereignis und Zustellungsdatum laut eEB nebeneinander (Vier-Augen-Kontrolle, I5-T03-01) */}
         {f.ereignisDatum && (
           <div>
             <dt className="eyebrow">Ereignis</dt>
-            <dd className="num mt-0.5 font-medium">{fmtDateWd(f.ereignisDatum)}</dd>
+            <dd className={cn("num mt-0.5 font-medium", eebDatum && eebDatum !== f.ereignisDatum && "text-seal")}>{fmtDateWd(f.ereignisDatum)}</dd>
+          </div>
+        )}
+        {eebDatum && (
+          <div>
+            <dt className="eyebrow">Zustellung laut eEB</dt>
+            <dd className="num mt-0.5 font-medium">{fmtDateWd(eebDatum)}</dd>
+          </div>
+        )}
+        {f.grundlage && eebDatum && (
+          <div>
+            <dt className="eyebrow">Grundlage</dt>
+            <dd className="mt-0.5 font-medium">{f.grundlage}</dd>
           </div>
         )}
         {f.vorfrist && f.typ !== "vorfrist" && (
@@ -170,10 +189,11 @@ function DetailInhalt({ f, akte, team, user, onClose }: { f: Frist; akte?: Akte;
           <div className="eyebrow mb-1.5">Korrekturen</div>
           {/* Vollständige Historie: Zeitpunkt, Person, alt → neu, Grund (I4-T03-04) */}
           <ul className="grid gap-1.5 text-[12.5px] text-fg-2">
-            {korrekturVerlauf(f, team).map((k) => (
+            {korrekturVerlauf(f, team, eebDatum).map((k) => (
               <li key={k.am} className="break-words rounded-[10px] bg-[var(--ink-softer)] px-2.5 py-1.5">
                 <span className="num">{k.zeit}</span> · {k.person} · <span className="num">{k.alt} → {k.neu}</span>
-                {k.titelAlt ? <span className="text-fg-3"> (vorher „{k.titelAlt}“)</span> : null} · Grund: {k.grund}
+                {k.titelAlt ? <span className="text-fg-3"> (vorher „{k.titelAlt}“)</span> : null}
+                {k.ereignis ? <span className="num"> · {k.ereignis}{k.eeb ? ` (${k.eeb})` : ""}</span> : k.eeb ? <span className="num"> · {k.eeb}</span> : null} · Grund: {k.grund}
               </li>
             ))}
           </ul>

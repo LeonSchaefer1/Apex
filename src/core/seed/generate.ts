@@ -9,7 +9,7 @@ import type {
   Akte, Aktivitaet, Automation, Dokument, Frist, Kontakt, KontaktRolle, Nachricht,
   Rechnung, Sachgebiet, Tenant, TenantData, Transaktion, User, Zeiteintrag,
 } from "../types";
-import { KAMMERN, stadtDatenFuer, type StadtDaten, type StadtKey, VORNAMEN_M, VORNAMEN_W, NACHNAMEN, BRANCHEN, HAUSVERWALTUNGEN, GEGNERANWAELTE, VERSICHERUNGEN, KFZ_VERSICHERER } from "./pools";
+import { gerichtsAnschrift, KAMMERN, stadtDatenFuer, type StadtDaten, type StadtKey, VORNAMEN_M, VORNAMEN_W, NACHNAMEN, BRANCHEN, HAUSVERWALTUNGEN, GEGNERANWAELTE, VERSICHERUNGEN, KFZ_VERSICHERER } from "./pools";
 import { createRng, hashString, type Rng } from "./rng";
 import { vorlagenFuer, type FallVorlage, type Parteien } from "./vorlagen";
 import { heroesBerlin, heroesMuenchen, heroesHamburg, zusatzBerlin } from "./heroes";
@@ -20,8 +20,11 @@ import { heroesBerlin, heroesMuenchen, heroesHamburg, zusatzBerlin } from "./her
  * 11: Fristverantwortung (Vorgabe der Projektleitung): Notfristen und Fristen tragen immer Berufsträger; „Fremdgeld an
  * Mandantin weiterleiten“ (131/26) ist eine Wiedervorlage von Mia Becker. 142/26: Herkunft der Schaden-Nr. (Notiz, Verlauf),
  * Deckungsanfrage mit Antragsbestandteilen (10.200 € + 3.400 € = 13.600 €).
+ * 12: Konto je Kontoumsatz (Geschäftskonto/Anderkonto, I4-T08-01).
+ * 13: Elbtal-Zahlung 6.120 € (131/26) mit Kontoumsatz auf dem Anderkonto (Vorgabe der Projektleitung); Gerichtsdaten
+ * (Verkündung, Erlass, Vermögensauskunft) auf Werktagen (I5-T02-02); Gerichtsanschriften aus der Stammliste (I5-T17-01).
  */
-export const SEED_VERSION = 12;
+export const SEED_VERSION = 13;
 
 export interface SeedInput {
   tenant: Tenant;
@@ -50,6 +53,11 @@ export interface Ctx {
   firma: (name: string, rollen: KontaktRolle[], extra?: Partial<Kontakt>) => Kontakt;
   gericht: (name: string) => Kontakt;
   werktag: (offset: number) => string;
+  /**
+   * Datum einer gerichtlichen Handlung relativ zu heute (Verkündung, Erlass, Termin des Gerichtsvollziehers):
+   * fällt der Tag auf Sa, So oder einen Feiertag am Gerichtsort, gilt der vorherige Werktag (I5-T02-02).
+   */
+  gerichtstag: (offset: number) => string;
 }
 
 function emptyData(): TenantData {
@@ -159,6 +167,12 @@ export function createCtx(input: SeedInput, today: string): Ctx {
       const hit = gerichte.get(name);
       if (hit) return hit;
       const k = ctx.firma(name, ["gericht"], { email: undefined, safeId: `DE.Justiz.${rng.int(10000000, 99999999)}.${rng.int(1000, 9999)}` });
+      // Anschrift aus der Stammliste (SEED_VERSION 13, I5-T17-01) statt Zufallsstraße und -PLZ; die Zufallszüge oben bleiben,
+      // damit der übrige Bestand unverändert ist. Unbekannte Anschrift: nur der Ort.
+      const adr = gerichtsAnschrift(name, s.ort);
+      k.strasse = adr.strasse;
+      k.plz = adr.plz;
+      k.ort = adr.ort;
       gerichte.set(name, k);
       return k;
     },
@@ -166,6 +180,13 @@ export function createCtx(input: SeedInput, today: string): Ctx {
       let dd = addDays(today, o);
       let guard = 0;
       while (!istWerktag(dd, input.tenant.bundesland) && guard++ < 7) dd = addDays(dd, o >= 0 ? 1 : -1);
+      return dd;
+    },
+    // Gerichte der Demodaten liegen im Bundesland der Kanzlei (auch die zentralen Mahngerichte) – ohne Zufallszug
+    gerichtstag: (o) => {
+      let dd = addDays(today, o);
+      let guard = 0;
+      while (!istWerktag(dd, input.tenant.bundesland) && guard++ < 7) dd = addDays(dd, -1);
       return dd;
     },
   };

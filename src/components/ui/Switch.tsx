@@ -4,9 +4,10 @@ import { cn } from "@/lib/cn";
 /**
  * Ein/Aus-Schalter (iOS-Stil) – genau ein Tab-Stopp (I4-T03-01): Der Knopf trägt Rolle, Namen und Fokusrahmen; der Daumen ist
  * reine Darstellung (aria-hidden, nicht fokussierbar). Der Tipp-Effekt läuft per CSS (`:active`), nicht über `whileTap` –
- * motion macht Elemente mit Tipp-Geste sonst per tabindex="0" fokussierbar.
+ * motion macht Elemente mit Tipp-Geste sonst per tabindex="0" fokussierbar. `describedBy` verweist auf einen sichtbaren Hinweis
+ * (z. B. fehlende Rechte) und landet als aria-describedby am Knopf.
  */
-export function Switch({ checked, onChange, label, disabled, id }: { checked: boolean; onChange: (v: boolean) => void; label?: string; disabled?: boolean; id?: string }) {
+export function Switch({ checked, onChange, label, disabled, id, describedBy }: { checked: boolean; onChange: (v: boolean) => void; label?: string; disabled?: boolean; id?: string; describedBy?: string }) {
   return (
     <button
       id={id}
@@ -14,6 +15,7 @@ export function Switch({ checked, onChange, label, disabled, id }: { checked: bo
       role="switch"
       aria-checked={checked}
       aria-label={label}
+      aria-describedby={describedBy}
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(

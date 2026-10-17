@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import { useSearchParams } from "react-router";
 import { ArrowRightLeft, CalendarOff, Check, Info, KeyRound, Minus, MoreHorizontal, Power, PowerOff, ShieldCheck, ShieldOff, Trash2, UserPlus, Users, Infinity as InfinityIcon } from "lucide-react";
 import type { Rolle, User } from "@/core/types";
 import { darfLizenzSehen, darfVerwalten, getBackend, istConsole } from "@/lib/backend";
@@ -10,7 +11,8 @@ import { Avatar, Button, Chip, Field, Input, Menu, Modal, Select } from "@/compo
 import { StartpasswortKarte } from "@/components/StartpasswortKarte";
 import { cn } from "@/lib/cn";
 import { addDays, fmtDate, today } from "@/core/dates";
-import { istAbwesend, istBerufstraeger, tagKurz, vertretungUmfangText } from "@/core/vertretung";
+import { NICHT_UEBERTRAGEN, istAbwesend, istBerufstraeger, tagKurz, uebertragungSperrgrund, uebertragungVorbelegung, verantwortungText, vertretungUmfangText } from "@/core/vertretung";
+import { offeneVerantwortung } from "@/core/fristenLage";
 import type { Frist } from "@/core/types";
 import { Abschnitt } from "./teile";
 import { ROLLE_AUSWAHL, ROLLE_SPALTE, rollenLabel } from "@/lib/rollen";
@@ -131,8 +133,19 @@ function TeamVerwaltung() {
   const [einladen, setEinladen] = useState(false);
   const [neuPw, setNeuPw] = useState<{ user: User; passwort: string } | null>(null);
   const [abwFuer, setAbwFuer] = useState<User | null>(null);
-  const [folgen, setFolgen] = useState<{ user: User; art: "deaktivieren" | "entfernen" } | null>(null);
+  const [folgen, setFolgen] = useState<{ user: User; art: FolgenArt } | null>(null);
   const plaetze = tenant.lizenz.arbeitsplaetze;
+  // Deep-Link aus dem Cockpit-Hinweis „… offene Fristen eines deaktivierten Zugangs“: ?uebertragen=<Nutzer-ID> (I5-T23-01)
+  const [params, setParams] = useSearchParams();
+  const uebertragenFuer = params.get("uebertragen");
+  useEffect(() => {
+    if (!uebertragenFuer) return;
+    const ziel = team.find((x) => x.id === uebertragenFuer);
+    if (ziel?.deaktiviert && (ziel.rolle !== "partner" || user.rolle === "partner")) setFolgen({ user: ziel, art: "uebertragen" });
+    const rest = new URLSearchParams(params);
+    rest.delete("uebertragen");
+    setParams(rest, { replace: true });
+  }, [uebertragenFuer]); // eslint-disable-line react-hooks/exhaustive-deps
   const voll = team.length >= plaetze;
   const sortiert = [...team].sort((a, b) => REIHENFOLGE.indexOf(a.rolle) - REIHENFOLGE.indexOf(b.rolle));
 
@@ -241,6 +254,7 @@ function TeamVerwaltung() {
                               u.deaktiviert
                                 ? { label: "Reaktivieren", icon: <Power />, onClick: () => reaktivieren(u) }
                                 : { label: "Deaktivieren (umkehrbar)", icon: <PowerOff />, onClick: () => setFolgen({ user: u, art: "deaktivieren" }) },
+                              ...(u.deaktiviert ? [{ label: "Akten und Fristen übertragen …", icon: <ArrowRightLeft />, onClick: () => setFolgen({ user: u, art: "uebertragen" }) }] : []),
                               { label: "Zugang entfernen", icon: <Trash2 />, danger: true, onClick: () => setFolgen({ user: u, art: "entfernen" }) },
                             ]
                           : []),
@@ -567,33 +581,68 @@ function AbwesenheitModal({ ziel, onClose }: { ziel: User | null; onClose: () =>
   );
 }
 
+type FolgenArt = "deaktivieren" | "entfernen" | "uebertragen";
+
 /**
  * Rückfrage vor Deaktivieren bzw. Entfernen: nennt offene Akten (Bearbeiter oder Sachbearbeiter) und offene Fristen (verantwortlich)
  * und bietet „jetzt übertragen an …“ – jede Akte erhält den Verlaufseintrag „Bearbeitung von … an … übergeben“.
+ * Offene Fristen bleiben nie still ohne aktive verantwortliche Person (I5-T23-01): Das Feld ist mit der Vertretung bzw. der
+ * angemeldeten Person vorbelegt oder Pflicht; „Nicht übertragen“ geht nur mit Pflichthäkchen und Protokolleintrag.
+ * Art „uebertragen“: nachträglich für einen bereits deaktivierten Zugang (Cockpit-Hinweis → Einstellungen → Team).
  */
-function FolgenModal({ daten, onClose }: { daten: { user: User; art: "deaktivieren" | "entfernen" } | null; onClose: () => void }) {
+function FolgenModal({ daten, onClose }: { daten: { user: User; art: FolgenArt } | null; onClose: () => void }) {
   const { team, user } = useKanzlei();
   const akten = useData((s) => s.data.akten);
   const fristen = useData((s) => s.data.fristen);
   const [ziel, setZiel] = useState("");
   const [sbZiel, setSbZiel] = useState("");
+  const [bestaetigt, setBestaetigt] = useState(false);
   const [laedt, setLaedt] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
   const u = daten?.user;
   const offen = useMemo(() => (u ? akten.filter((a) => a.status !== "abgeschlossen") : []), [akten, u]);
   const bearbAkten = useMemo(() => (u ? offen.filter((a) => a.bearbeiterId === u.id) : []), [offen, u]);
   const sachAkten = useMemo(() => (u ? offen.filter((a) => a.sachbearbeiterId === u.id) : []), [offen, u]);
-  const offeneFristen = useMemo(() => (u ? fristen.filter((f) => f.status === "offen" && f.verantwortlichId === u.id) : []), [fristen, u]);
+  // Zählweise wie überall (fristenLage): Fristen = Notfristen und Fristen; Wiedervorlagen und Termine getrennt genannt.
+  // Übertragen werden alle offenen Einträge der Person.
+  const verantwortung = useMemo(() => (u ? offeneVerantwortung(fristen, u.id) : undefined), [fristen, u]);
+  const offeneEintraege = verantwortung?.alle ?? [];
+  const anzFristen = verantwortung?.fristen.length ?? 0;
+  const weitere = verantwortung ? offeneEintraege.length - anzFristen : 0;
   // Bearbeitung und Fristverantwortung nur an Berufsträger; Fachangestellte nur als Sachbearbeitung
   const aktiv = team.filter((x) => u && x.id !== u.id && !x.deaktiviert);
   const kandidaten = aktiv.filter(istBerufstraeger);
   const sbKandidaten = [...aktiv.filter((x) => x.rolle === "refa"), ...kandidaten];
   const entfernen = daten?.art === "entfernen";
-  const bearbUndFristen = bearbAkten.length > 0 || offeneFristen.length > 0;
+  const nachtraeglich = daten?.art === "uebertragen";
+  const bearbUndFristen = bearbAkten.length > 0 || offeneEintraege.length > 0;
+  // Pflichtentscheidung, sobald offene Fristen beim Zugang liegen; ohne Fristen bleibt der Ablauf wie bisher („nicht übertragen“ frei)
+  const pflicht = anzFristen > 0;
+  const ohneUebertragung = ziel === NICHT_UEBERTRAGEN;
+
+  // Vorbelegung beim Öffnen: Vertretung der Person, sonst die angemeldete Person – sonst leer und Pflicht
+  useEffect(() => {
+    if (!u) return;
+    setZiel(pflicht || nachtraeglich ? uebertragungVorbelegung(u, user, kandidaten) : "");
+    setSbZiel("");
+    setBestaetigt(false);
+    setFehler(null);
+    // nur beim Öffnen für eine Person, nicht bei jeder Datenänderung
+  }, [u?.id, daten?.art]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const sperrgrund = !u
+    ? undefined
+    : nachtraeglich
+      ? !kandidaten.some((x) => x.id === ziel) && !sbKandidaten.some((x) => x.id === sbZiel)
+        ? `Bitte wählen Sie, wer ${anzFristen === 1 ? "die offene Frist" : anzFristen ? `die ${anzFristen} offenen Fristen` : "die offenen Einträge"} von ${u.name} übernimmt.`
+        : undefined
+      : uebertragungSperrgrund({ offeneFristen: anzFristen, wahl: ziel, bestaetigt, name: u.name });
+  const grundId = "folgen-sperrgrund";
 
   const schliessen = () => {
     setZiel("");
     setSbZiel("");
+    setBestaetigt(false);
     setFehler(null);
     onClose();
   };
@@ -609,37 +658,48 @@ function FolgenModal({ daten, onClose }: { daten: { user: User; art: "deaktivier
       if (patch.bearbeiterId) st.log({ akteur: "nutzer", userId: user.id, akteId: a.id, text: `Bearbeitung von ${alt.name} an ${neu!.name} übergeben` });
       if (patch.sachbearbeiterId) st.log({ akteur: "nutzer", userId: user.id, akteId: a.id, text: `Sachbearbeitung von ${alt.name} an ${neuSb!.name} übergeben` });
     }
-    if (neu) for (const f of offeneFristen) st.patch("fristen", f.id, { verantwortlichId: neu.id });
+    if (neu) for (const f of offeneEintraege) st.patch("fristen", f.id, { verantwortlichId: neu.id });
   };
 
   const ausfuehren = async () => {
-    if (!u || !daten) return;
+    if (!u || !daten || sperrgrund) return;
     setFehler(null);
     setLaedt(true);
     try {
       const neu = kandidaten.find((x) => x.id === ziel);
       const neuSb = sbKandidaten.find((x) => x.id === sbZiel);
-      if (neu || neuSb) uebertragen(u, neu, neuSb);
       const teile = [
         neu && `Bearbeitung und Fristen an ${neu.name}`,
         neuSb && `Sachbearbeitung an ${neuSb.name}`,
       ].filter(Boolean) as string[];
       const nachsatz = teile.length ? ` – ${teile.join(", ")} übertragen` : "";
-      if (entfernen) {
-        await getBackend().team.remove(u.id);
+      // Ohne Übertragung: Protokolleintrag mit Zahl der Fristen und handelnder Person (I5-T23-01)
+      const selbstUeberwacht = pflicht && ohneUebertragung && bestaetigt;
+      const ohneText = selbstUeberwacht ? ` – ${anzFristen === 1 ? "1 offene Frist" : `${anzFristen} offene Fristen`} nicht übertragen; Überwachung sichergestellt durch ${user.name}` : "";
+      // Erst das Backend entscheiden lassen (Rechte, Fristregel), dann übertragen – lehnt es ab, bleibt alles unverändert
+      if (nachtraeglich) {
+        if (neu || neuSb) uebertragen(u, neu, neuSb);
+        useData.getState().log({ akteur: "nutzer", userId: user.id, text: `Offene Einträge des deaktivierten Zugangs von ${u.name}${nachsatz}` });
+      } else if (entfernen) {
+        await getBackend().team.remove(u.id, neu ? { uebertragenAn: neu.id } : undefined);
+        if (neu || neuSb) uebertragen(u, neu, neuSb);
         aktualisiereTeam((t) => t.filter((x) => x.id !== u.id));
         useData.getState().log({ akteur: "nutzer", userId: user.id, text: `Zugang von ${u.name} entfernt${nachsatz}` });
       } else {
-        const geaendert = await getBackend().team.aendern(u.id, { deaktiviert: true });
+        const geaendert = await getBackend().team.aendern(u.id, {
+          deaktiviert: true,
+          ...(neu ? { fristen: { uebertragenAn: neu.id } } : selbstUeberwacht ? { fristen: { ueberwachungBestaetigt: true } } : {}),
+        });
+        if (neu || neuSb) uebertragen(u, neu, neuSb);
         aktualisiereTeam((t) => t.map((x) => (x.id === u.id ? geaendert : x)));
-        useData.getState().log({ akteur: "nutzer", userId: user.id, text: `Zugang von ${u.name} deaktiviert (umkehrbar)${nachsatz}` });
+        useData.getState().log({ akteur: "nutzer", userId: user.id, text: `Zugang von ${u.name} deaktiviert (umkehrbar)${nachsatz}${ohneText}` });
       }
       const zahlen = [
-        neu && `${bearbAkten.length} Akten und ${offeneFristen.length} Fristen an ${neu.name}`,
+        neu && `${bearbAkten.length} Akten und ${verantwortungText(verantwortung!)} an ${neu.name}`,
         neuSb && `Sachbearbeitung in ${sachAkten.length} Akten an ${neuSb.name}`,
       ].filter(Boolean) as string[];
-      toast(entfernen ? "Zugang entfernt" : "Zugang deaktiviert", {
-        text: `${u.name}${zahlen.length ? ` · ${zahlen.join(" · ")} übertragen` : ""}`,
+      toast(nachtraeglich ? "Verantwortung übertragen" : entfernen ? "Zugang entfernt" : "Zugang deaktiviert", {
+        text: `${u.name}${zahlen.length ? ` · ${zahlen.join(" · ")} übertragen` : selbstUeberwacht ? ` · ${anzFristen === 1 ? "1 offene Frist" : `${anzFristen} offene Fristen`} bleiben beim Zugang – Überwachung durch Sie` : ""}`,
         ton: "info",
       });
       schliessen();
@@ -650,22 +710,34 @@ function FolgenModal({ daten, onClose }: { daten: { user: User; art: "deaktivier
     }
   };
 
+  const titel = !u ? "" : nachtraeglich ? `Offene Einträge von ${u.name} übertragen` : entfernen ? `Zugang von ${u.name} entfernen?` : `Zugang von ${u.name} deaktivieren?`;
+  const unter = nachtraeglich
+    ? "Der Zugang ist deaktiviert – übertragen Sie Bearbeitung und Fristverantwortung an eine aktive Person."
+    : entfernen
+      ? "Endgültig – die Person kann sich nicht mehr anmelden. Akten, Fristen und Protokolle bleiben erhalten."
+      : "Umkehrbar – Anmeldung und laufende Sitzungen sind gesperrt, bis Sie „Reaktivieren“ wählen.";
+
   return (
     <Modal
       open={!!daten}
       onClose={schliessen}
       size="sm"
-      icon={entfernen ? <Trash2 className="size-5" /> : <PowerOff className="size-5" />}
-      title={u ? (entfernen ? `Zugang von ${u.name} entfernen?` : `Zugang von ${u.name} deaktivieren?`) : ""}
-      subtitle={entfernen ? "Endgültig – die Person kann sich nicht mehr anmelden. Akten, Fristen und Protokolle bleiben erhalten." : "Umkehrbar – Anmeldung und laufende Sitzungen sind gesperrt, bis Sie „Reaktivieren“ wählen."}
+      icon={nachtraeglich ? <ArrowRightLeft className="size-5" /> : entfernen ? <Trash2 className="size-5" /> : <PowerOff className="size-5" />}
+      title={titel}
+      subtitle={unter}
       footer={
         <>
           <Button variant="ghost" onClick={schliessen}>
             Abbrechen
           </Button>
-          <Button variant={entfernen ? "danger" : "primary"} loading={laedt} onClick={() => void ausfuehren()}>
-            {entfernen ? "Zugang entfernen" : "Deaktivieren"}
+          <Button variant={entfernen ? "danger" : "primary"} loading={laedt} disabled={!!sperrgrund} aria-describedby={sperrgrund ? grundId : undefined} onClick={() => void ausfuehren()}>
+            {nachtraeglich ? "Übertragen" : entfernen ? "Zugang entfernen" : "Deaktivieren"}
           </Button>
+          {sperrgrund && (
+            <p id={grundId} className="basis-full text-right text-[12.5px] leading-snug text-fg-3">
+              {sperrgrund}
+            </p>
+          )}
         </>
       }
     >
@@ -682,27 +754,53 @@ function FolgenModal({ daten, onClose }: { daten: { user: User; art: "deaktivier
                 <div className="text-[13px] text-fg-3">offene Akten (Sachbearbeitung)</div>
               </div>
             )}
-            <div className={cn("rounded-[14px] p-3 ring-1 ring-[var(--line)]", offeneFristen.length ? "bg-amber-soft" : "bg-[var(--ink-softer)]")}>
-              <div className="num text-[22px] font-semibold">{offeneFristen.length}</div>
+            <div className={cn("rounded-[14px] p-3 ring-1 ring-[var(--line)]", anzFristen ? "bg-amber-soft" : "bg-[var(--ink-softer)]")}>
+              <div className="num text-[22px] font-semibold">{anzFristen}</div>
               <div className="text-[13px] text-fg-3">offene Fristen (verantwortlich)</div>
+              {weitere > 0 && verantwortung && (
+                <div className="mt-0.5 text-[12.5px] text-fg-3">dazu {verantwortungText({ ...verantwortung, fristen: [] })}</div>
+              )}
             </div>
           </div>
           {bearbUndFristen && (
             <Field
-              label="Bearbeitung und Fristverantwortung übertragen an …"
+              label={pflicht || nachtraeglich ? "Bearbeitung und Fristverantwortung übertragen an … (Pflicht)" : "Bearbeitung und Fristverantwortung übertragen an …"}
               htmlFor="folgen-ziel"
-              hint="Nur Partner und Anwälte. Jede Akte erhält im Verlauf den Eintrag „Bearbeitung von … an … übergeben“."
+              hint={
+                entfernen && pflicht
+                  ? "Beim Entfernen Pflicht – ein entfernter Zugang kann keine Fristen behalten. Sollen sie beim Zugang bleiben, wählen Sie „Deaktivieren“. Nur Partner und Anwälte."
+                  : "Nur Partner und Anwälte. Jede Akte erhält im Verlauf den Eintrag „Bearbeitung von … an … übergeben“."
+              }
             >
-              <Select id="folgen-ziel" value={ziel} onChange={(e) => setZiel(e.target.value)}>
-                <option value="">nicht übertragen</option>
+              <Select id="folgen-ziel" value={ziel} aria-required={pflicht || nachtraeglich || undefined} onChange={(e) => {
+                setZiel(e.target.value);
+                setBestaetigt(false);
+              }}>
+                {pflicht || nachtraeglich ? (
+                  <option value="" disabled>
+                    Bitte wählen …
+                  </option>
+                ) : (
+                  <option value="">nicht übertragen</option>
+                )}
                 {kandidaten.map((x) => (
                   <option key={x.id} value={x.id}>
                     {x.name} · {rollenLabel(x)}
                     {istAbwesend(x, today()) ? " · abwesend" : ""}
                   </option>
                 ))}
+                {pflicht && !nachtraeglich && !entfernen && <option value={NICHT_UEBERTRAGEN}>Nicht übertragen – ich stelle die Überwachung selbst sicher</option>}
               </Select>
             </Field>
+          )}
+          {pflicht && ohneUebertragung && (
+            <label htmlFor="folgen-bestaetigt" className="flex items-start gap-2.5 rounded-[12px] bg-amber-soft px-3 py-2.5 text-[13px] leading-snug text-fg">
+              <input id="folgen-bestaetigt" type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[var(--seal)]" checked={bestaetigt} onChange={(e) => setBestaetigt(e.target.checked)} />
+              <span>
+                Ich stelle sicher, dass {anzFristen === 1 ? "die offene Frist" : `die ${anzFristen} offenen Fristen`} von {u.name} überwacht {anzFristen === 1 ? "wird" : "werden"}.
+                <span className="mt-0.5 block text-[12.5px] text-fg-2">Die Fristen bleiben beim deaktivierten Zugang; das Cockpit weist darauf hin, bis sie übertragen sind. Der Vorgang wird mit Ihrem Namen protokolliert.</span>
+              </span>
+            </label>
           )}
           {sachAkten.length > 0 && (
             <Field label="Sachbearbeitung übertragen an …" htmlFor="folgen-sb" hint="Die Sachbearbeitung können auch Fachangestellte übernehmen.">
@@ -716,11 +814,6 @@ function FolgenModal({ daten, onClose }: { daten: { user: User; art: "deaktivier
                 ))}
               </Select>
             </Field>
-          )}
-          {!ziel && offeneFristen.length > 0 && (
-            <p className="flex gap-2 rounded-[12px] bg-amber-soft px-3 py-2 text-[13px] text-fg-2">
-              <ArrowRightLeft className="mt-0.5 size-3.5 shrink-0 text-amber" /> Ohne Übertragung bleiben {offeneFristen.length} Fristen bei {u.name}. Bitte stellen Sie sicher, dass jemand sie überwacht.
-            </p>
           )}
           {fehler && (
             <div role="alert" className="rounded-[12px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal">

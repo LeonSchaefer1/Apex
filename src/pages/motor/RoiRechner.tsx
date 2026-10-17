@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { motion } from "motion/react";
 import { Calculator, Infinity as InfinityIcon, Info, Printer, RotateCcw, Save, TrendingUp } from "lucide-react";
 import { fmtDate, fmtEUR, fmtNum, nowLocal, round2, today } from "@/core/dates";
-import { automationDef } from "@/core/automationen";
+import { automationDef, ZIEL_EURO_JAHR } from "@/core/automationen";
 import type { Automation } from "@/core/types";
 import { kostenLifetime, LIZENZ_KENNZEICHNUNG, PREIS_HINWEIS, WARTUNG_HINWEIS, WARTUNG_INHALT } from "@/content/lizenz";
 import { AnimatedNumber, Button, Card, Chip, Field, Input, Modal, Switch } from "@/components/ui";
@@ -28,6 +28,8 @@ interface RoiWerte {
   abo: string;
   lizenz: string;
   wartungJahr: string;
+  /** Angabe aus dem Angebot: Wartung des ersten Jahres im Lizenzpreis enthalten (Standard aus – keine Annahme, I5-T13-01). */
+  erstesJahr?: boolean;
   steigerung: boolean;
   gespeichertAm?: string;
 }
@@ -91,14 +93,16 @@ export function RoiRechner({ startSatz, startArbeitsplaetze, automationen, menge
   // Lizenzpreis und Wartung: keine Vorbelegung – die Werte stehen im Angebot des Auftraggebers
   const [lizenz, setLizenz] = useState(start?.lizenz ?? "");
   const [wartungJahr, setWartungJahr] = useState(start?.wartungJahr ?? "");
+  // Ob das erste Wartungsjahr im Lizenzpreis enthalten ist, regelt allein das Angebot – Standard aus (keine stille Annahme)
+  const [erstesJahr, setErstesJahr] = useState(start?.erstesJahr ?? false);
   const [steigerung, setSteigerung] = useState(start?.steigerung ?? true);
   const [druck, setDruck] = useState(false);
 
-  const werte: RoiWerte = { anzahl, personal, jahresstunden, anwaltStd, satz, plaetze, abo, lizenz, wartungJahr, steigerung };
+  const werte: RoiWerte = { anzahl, personal, jahresstunden, anwaltStd, satz, plaetze, abo, lizenz, wartungJahr, erstesJahr, steigerung };
   // Eingaben überstehen einen Seitenwechsel (Cockpit und zurück) und ein Neuladen innerhalb der Sitzung
   useEffect(() => {
     schreibe("session", key, werte);
-  }, [anzahl, personal, jahresstunden, anwaltStd, satz, plaetze, abo, lizenz, wartungJahr, steigerung]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [anzahl, personal, jahresstunden, anwaltStd, satz, plaetze, abo, lizenz, wartungJahr, erstesJahr, steigerung]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const meineWerteSpeichern = () => {
     const v = { ...werte, gespeichertAm: nowLocal() };
@@ -117,6 +121,7 @@ export function RoiRechner({ startSatz, startArbeitsplaetze, automationen, menge
     setAbo(String(ABO_START));
     setLizenz("");
     setWartungJahr("");
+    setErstesJahr(false);
     setSteigerung(true);
     try {
       localStorage.removeItem(key);
@@ -150,19 +155,21 @@ export function RoiRechner({ startSatz, startArbeitsplaetze, automationen, menge
     const jahre = Array.from({ length: JAHRE }, (_, j) => ap * aboPreis * 12 * Math.pow(1 + g, j));
     const aboSumme = jahre.reduce((x, y) => x + y, 0);
     const lizenzSumme = ap * ltPreis;
-    // Gesamtkosten aus den Angebotswerten (Wartung des ersten Jahres im Lizenzpreis enthalten)
-    const ltSumme = ap * kostenLifetime(ltPreis, wtPreis, JAHRE);
+    // Gesamtkosten aus den Angebotswerten; ob die Wartung des ersten Jahres im Lizenzpreis steckt, gibt der Schalter an (laut Angebot)
+    const ltSumme = ap * kostenLifetime(ltPreis, wtPreis, JAHRE, erstesJahr);
     const wartungSumme = ltSumme - lizenzSumme;
     let kumAbo = 0;
     let breakEven: number | null = null;
     jahre.forEach((x, j) => {
       kumAbo += x;
-      const kumLt = ap * kostenLifetime(ltPreis, wtPreis, j + 1);
+      const kumLt = ap * kostenLifetime(ltPreis, wtPreis, j + 1, erstesJahr);
       if (breakEven === null && kumAbo >= kumLt) breakEven = j + 1;
     });
     const max = Math.max(aboSumme, ltSumme, 1);
     return { jahre, aboSumme, ltSumme, lizenz: lizenzSumme, wartungSumme, breakEven: breakEven as number | null, max, diff: aboSumme - ltSumme };
-  }, [ap, aboPreis, ltPreis, wtPreis, steigerung]);
+  }, [ap, aboPreis, ltPreis, wtPreis, erstesJahr, steigerung]);
+  /** Wartungsjahre im Vergleich – „Jahr 1–5“ bzw. „Jahr 2–5“, wenn das Angebot das erste Jahr einschließt. */
+  const wartungJahre = erstesJahr ? `Jahr 2–${JAHRE}` : `Jahr 1–${JAHRE}`;
 
   return (
     <Card padded={false}>
@@ -292,7 +299,7 @@ export function RoiRechner({ startSatz, startArbeitsplaetze, automationen, menge
             </div>
           )}
           <p className="text-[12.5px] leading-snug text-fg-3">
-            Rechenbeispiel, kaufmännisch gerundet. Zielwert des 38h-Motors: Ø {ZIEL_STUNDEN} Std. pro Woche ≈ 36.000 € pro Jahr (interner Richtwert {fmtEUR(WERT_PRO_STUNDE)}/Std.) – Ihr Wert ergibt sich aus Ihren Mengen.
+            Rechenbeispiel, kaufmännisch gerundet. {zielwertText(k)} Ihr Wert ergibt sich aus Ihren Mengen.
           </p>
         </div>
 
@@ -315,8 +322,15 @@ export function RoiRechner({ startSatz, startArbeitsplaetze, automationen, menge
             <ZahlFeld id="roi-plaetze" label="Arbeitsplätze" value={plaetze} onChange={setPlaetze} />
             <ZahlFeld id="roi-abo" label="Abo je Platz/Monat" value={abo} onChange={setAbo} suffix="€" hint="Marktspanne ca. 50–110 € (Preislisten gängiger Kanzleisoftware)" />
             <ZahlFeld id="roi-lizenz" label="Lizenzpreis je Platz laut Angebot" value={lizenz} onChange={setLizenz} suffix="€" placeholder="aus Ihrem Angebot" hint="einmalig" step={100} />
-            <ZahlFeld id="roi-wartung" label="Wartung pro Jahr laut Angebot" value={wartungJahr} onChange={setWartungJahr} suffix="€" placeholder="aus Ihrem Angebot" hint="je Platz, ab Jahr 2 – leer = ohne Wartung" step={10} />
+            <ZahlFeld id="roi-wartung" label="Wartung pro Jahr laut Angebot" value={wartungJahr} onChange={setWartungJahr} suffix="€" placeholder="aus Ihrem Angebot" hint={erstesJahr ? "je Platz und Jahr, ab Jahr 2 – leer = ohne Wartung" : "je Platz und Jahr – leer = ohne Wartung"} step={10} />
           </div>
+          <label className="flex items-center justify-between gap-3 text-[13px]" htmlFor="roi-erstes-jahr">
+            <span className="min-w-0">
+              <span className="font-medium">Wartung im ersten Jahr im Lizenzpreis enthalten (laut Angebot)</span>
+              <span className="block text-[12.5px] text-fg-3">Nur einschalten, wenn Ihr Angebot das so regelt – sonst rechnet der Vergleich die Wartung ab Jahr 1.</span>
+            </span>
+            <Switch id="roi-erstes-jahr" checked={erstesJahr} onChange={setErstesJahr} label="Wartung im ersten Jahr im Lizenzpreis enthalten (laut Angebot)" />
+          </label>
           <p className="text-[12.5px] text-fg-3">
             {PREIS_HINWEIS}. {WARTUNG_HINWEIS}.
           </p>
@@ -360,16 +374,16 @@ export function RoiRechner({ startSatz, startArbeitsplaetze, automationen, menge
                 ))}
               </div>
             </BalkenZeile>
-            <BalkenZeile label={wtPreis > 0 ? "Lifetime-Lizenz · einmalig + Wartung ab Jahr 2 (laut Angebot)" : "Lifetime-Lizenz · einmalig (laut Angebot)"} summe={vergleich.ltSumme}>
+            <BalkenZeile label={wtPreis > 0 ? `Lifetime-Lizenz · einmalig + Wartung ${wartungJahre} (laut Angebot)` : "Lifetime-Lizenz · einmalig (laut Angebot)"} summe={vergleich.ltSumme}>
               <div className="flex h-7 gap-[2px]" style={{ width: `${(vergleich.ltSumme / vergleich.max) * 100}%` }}>
                 <motion.div className={cn("h-full bg-ink", !(vergleich.wartungSumme > 0) && "rounded-r-[4px]")} initial={false} animate={{ flexGrow: vergleich.lizenz }} style={{ flexBasis: 0 }} title={`Lizenz: ${fmtEUR(vergleich.lizenz, { cents: false })}`} />
                 {vergleich.wartungSumme > 0 && (
-                  <motion.div className="h-full rounded-r-[4px] bg-[color-mix(in_oklab,var(--ink)_45%,transparent)]" initial={false} animate={{ flexGrow: vergleich.wartungSumme }} style={{ flexBasis: 0 }} title={`Wartung Jahr 2–5: ${fmtEUR(vergleich.wartungSumme, { cents: false })}`} />
+                  <motion.div className="h-full rounded-r-[4px] bg-[color-mix(in_oklab,var(--ink)_45%,transparent)]" initial={false} animate={{ flexGrow: vergleich.wartungSumme }} style={{ flexBasis: 0 }} title={`Wartung ${wartungJahre}: ${fmtEUR(vergleich.wartungSumme, { cents: false })}`} />
                 )}
               </div>
               {vergleich.wartungSumme > 0 && (
                 <div className="mt-1 text-[12px] text-fg-3">
-                  Lizenz {fmtEUR(vergleich.lizenz, { cents: false })} + Wartung Jahr 2–5 {fmtEUR(vergleich.wartungSumme, { cents: false })} (Ihre Angebotswerte)
+                  Lizenz {fmtEUR(vergleich.lizenz, { cents: false })} + Wartung {wartungJahre} {fmtEUR(vergleich.wartungSumme, { cents: false })} (Ihre Angebotswerte)
                 </div>
               )}
             </BalkenZeile>
@@ -414,13 +428,25 @@ export function RoiRechner({ startSatz, startArbeitsplaetze, automationen, menge
         s={s}
         potenzial={potenzial}
         demo={!!demo}
-        vergleich={mitAngebot ? { ap, aboPreis, ltPreis, wtPreis, aboSumme: vergleich.aboSumme, ltSumme: vergleich.ltSumme } : undefined}
+        vergleich={mitAngebot ? { ap, aboPreis, ltPreis, wtPreis, erstesJahr, aboSumme: vergleich.aboSumme, ltSumme: vergleich.ltSumme } : undefined}
       />
     </Card>
   );
 }
 
 /** Druckansicht des Rechners – papierweiß, schwarz, mit Herleitung und Kennzeichnung als Rechenbeispiel. */
+/**
+ * Zielwert des 38h-Motors zum eingestellten Kostensatz (I5-T10-01) – derselbe Satz wie Kopf und Rechner, sinngemäß wie
+ * Fußnote ² der Landing: „Ø 38 Std. pro Woche – zu Ihrem Kostensatz von 26,04 €/Std. ≈ 47.500 € pro Jahr (38 × 48 × 26,04 € =
+ * 47.496,96 €). Unser veröffentlichter Zielwert ≈ 36.000 € rechnet bewusst niedrig mit 19,74 €/Std.“ Gerundet auf volle
+ * Hundert wie die Landing (47.496,96 € → 47.500 €); Zahl und Einheit mit geschütztem Leerzeichen.
+ */
+function zielwertText(k: number): string {
+  const exakt = round2(ZIEL_STUNDEN * ARBEITSWOCHEN * k);
+  const gerundet = Math.round(exakt / 100) * 100;
+  return `Zielwert des 38h-Motors: Ø\u00a0${ZIEL_STUNDEN}\u00a0Std. pro Woche – zu Ihrem Kostensatz von ${fmtEUR(k)}/Std. ≈ ${fmtEUR(gerundet, { cents: false })} pro Jahr (${ZIEL_STUNDEN} × ${ARBEITSWOCHEN} × ${fmtEUR(k)} = ${fmtEUR(exakt)}). Unser veröffentlichter Zielwert ≈ ${fmtEUR(ZIEL_EURO_JAHR, { cents: false })} rechnet bewusst niedrig mit ${fmtEUR(WERT_PRO_STUNDE)}/Std.`;
+}
+
 function RoiDruck({
   open, onClose, kanzleiName, zeilen, h, pk, js, k, jahresWert, anw, s, potenzial, demo, vergleich,
 }: {
@@ -437,7 +463,7 @@ function RoiDruck({
   s: number;
   potenzial: number;
   demo: boolean;
-  vergleich?: { ap: number; aboPreis: number; ltPreis: number; wtPreis: number; aboSumme: number; ltSumme: number };
+  vergleich?: { ap: number; aboPreis: number; ltPreis: number; wtPreis: number; erstesJahr: boolean; aboSumme: number; ltSumme: number };
 }) {
   const blatt = (
     <div className="roi-blatt">
@@ -471,6 +497,7 @@ function RoiDruck({
         <strong>Herleitung:</strong> Summe {fmtNum(h, 2)} Std./Woche × {ARBEITSWOCHEN} Arbeitswochen × interner Kostensatz {fmtEUR(k)}/Std. ({fmtEUR(pk, { cents: false })} Personalkosten ÷ {fmtNum(js)} Jahresarbeitsstunden) ={" "}
         <strong>{fmtEUR(jahresWert)}</strong> pro Jahr.
       </p>
+      <p>{zielwertText(k)}</p>
       {anw > 0 && (
         <p>
           Umsatzpotenzial: {fmtNum(anw, 2)} Std./Woche anwaltliche Zeit × {ARBEITSWOCHEN} × {fmtEUR(s)}/Std. = {fmtEUR(potenzial)} pro Jahr – nur, soweit abrechenbar.
@@ -479,7 +506,7 @@ function RoiDruck({
       {vergleich ? (
         <p>
           <strong>Lifetime-Lizenz oder Abo – Kosten über {JAHRE} Jahre</strong> bei {vergleich.ap} Arbeitsplätzen: Abo {fmtEUR(vergleich.aboSumme, { cents: false })} ({fmtEUR(vergleich.aboPreis, { cents: false })} je Platz/Monat) · Lifetime-Lizenz laut Angebot{" "}
-          {fmtEUR(vergleich.ltSumme, { cents: false })} ({fmtEUR(vergleich.ltPreis, { cents: false })} je Platz{vergleich.wtPreis ? ` + Wartung ${fmtEUR(vergleich.wtPreis, { cents: false })} je Platz und Jahr ab Jahr 2` : ""}).
+          {fmtEUR(vergleich.ltSumme, { cents: false })} ({fmtEUR(vergleich.ltPreis, { cents: false })} je Platz{vergleich.wtPreis ? ` + Wartung ${fmtEUR(vergleich.wtPreis, { cents: false })} je Platz und Jahr${vergleich.erstesJahr ? " ab Jahr 2 (erstes Jahr laut Angebot im Lizenzpreis)" : " ab Jahr 1"}` : ""}).
         </p>
       ) : (
         <p>Preis und Wartung regelt Ihr Angebot – ohne Angebotswerte kein Kostenvergleich.</p>

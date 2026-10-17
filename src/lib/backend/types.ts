@@ -1,5 +1,6 @@
-import type { Aktivitaet, CollectionKey, ConsoleSession, SessionInfo, Tenant, TenantData, User, Rolle, Sachgebiet, Bundesland } from "@/core/types";
+import type { Aktivitaet, CollectionKey, ConsoleSession, Frist, ID, SessionInfo, Tenant, TenantData, User, Rolle, Sachgebiet, Bundesland } from "@/core/types";
 import { istBerufstraeger } from "../../core/vertretung";
+import { offeneVerantwortung } from "../../core/fristenLage";
 import type { Rechnungsangaben } from "../../core/abrechnung";
 import type { ConsolePasswortAnlass } from "./protokoll";
 export type { Rechnungsangaben } from "../../core/abrechnung";
@@ -67,6 +68,11 @@ export interface TeamAenderung {
   deaktiviert?: boolean;
   /** Zwei-Faktor-Anmeldung zurücksetzen (z. B. Telefon verloren) – die Person richtet sie danach neu ein. */
   zweiFaktorZuruecksetzen?: boolean;
+  /**
+   * Entscheidung über die offenen Fristen beim Deaktivieren (I5-T23-01): übertragen an eine aktive Rechtsanwältin bzw. einen
+   * aktiven Rechtsanwalt – oder ausdrücklich nicht übertragen mit Bestätigung „ich stelle die Überwachung selbst sicher“.
+   */
+  fristen?: { uebertragenAn?: ID; ueberwachungBestaetigt?: boolean };
 }
 
 /** Zwei-Faktor-Anmeldung (TOTP) der angemeldeten Person. */
@@ -282,6 +288,43 @@ export function pruefeTeamAenderung(t: { users: User[] }, ich: User, ziel: User,
   }
 }
 
+/**
+ * Fristen eines gesperrten Zugangs bleiben nie still ohne aktive verantwortliche Person (I5-T23-01, Organisationspflicht):
+ * Wer einen Zugang mit offenen Fristen deaktiviert, überträgt sie oder bestätigt ausdrücklich, die Überwachung selbst
+ * sicherzustellen. Gleiche Regel in Oberfläche, Demo-Backend und Server. Gibt die Zahl der offenen Fristen zurück,
+ * die ohne Übertragung beim Zugang bleiben (für den Protokolleintrag), sonst 0.
+ */
+export function pruefeFristEntscheidung(team: User[], ziel: User, a: TeamAenderung, fristen: Frist[]): number {
+  if (!a.deaktiviert) return 0;
+  const offen = offeneVerantwortung(fristen, ziel.id).fristen.length;
+  const an = a.fristen?.uebertragenAn;
+  if (an) {
+    const neu = team.find((x) => x.id === an);
+    if (!neu || neu.id === ziel.id || neu.deaktiviert || !istBerufstraeger(neu)) {
+      throw new Error("Die Fristverantwortung kann nur eine aktive Rechtsanwältin oder ein aktiver Rechtsanwalt der Kanzlei übernehmen.");
+    }
+    return 0;
+  }
+  if (!offen) return 0;
+  if (a.fristen?.ueberwachungBestaetigt) return offen;
+  throw new Error(`${ziel.name} ist für ${offen === 1 ? "eine offene Frist" : `${offen} offene Fristen`} verantwortlich. Bitte übertragen Sie die Fristverantwortung – oder bestätigen Sie, dass Sie die Überwachung selbst sicherstellen.`);
+}
+
+/**
+ * Entfernen eines Zugangs (endgültig, I5-T23-01): Offene Fristen brauchen vorher eine aktive verantwortliche Person. Anders als
+ * beim umkehrbaren Deaktivieren gibt es danach keinen Zugang mehr, bei dem die Fristen sichtbar blieben (kein Cockpit-Hinweis) –
+ * „selbst überwachen“ reicht deshalb nicht. Gleiche Regel in Oberfläche, Demo-Backend und Server.
+ */
+export function pruefeFristEntscheidungEntfernen(team: User[], ziel: User, f: TeamAenderung["fristen"], fristen: Frist[]): void {
+  if (f?.uebertragenAn) {
+    pruefeFristEntscheidung(team, ziel, { deaktiviert: true, fristen: { uebertragenAn: f.uebertragenAn } }, fristen);
+    return;
+  }
+  const offen = offeneVerantwortung(fristen, ziel.id).fristen.length;
+  if (!offen) return;
+  throw new Error(`${ziel.name} ist für ${offen === 1 ? "eine offene Frist" : `${offen} offene Fristen`} verantwortlich. Bitte übertragen Sie die Fristverantwortung, bevor Sie den Zugang entfernen – oder deaktivieren Sie ihn (umkehrbar).`);
+}
+
 export interface SchreibOptionen {
   /** Hintergrund- bzw. Systemschreibvorgang: zählt nicht als Änderung durch die Kanzlei (Demodaten werden weiter täglich neu erzeugt). */
   system?: boolean;
@@ -355,7 +398,8 @@ export interface Backend {
   };
   team: {
     add(input: NeuerNutzer): Promise<{ user: User; passwort: string }>;
-    remove(id: string): Promise<void>;
+    /** Entfernt einen Zugang endgültig; offene Fristen nur mit Übertragung (`fristen.uebertragenAn`, I5-T23-01). */
+    remove(id: string, fristen?: TeamAenderung["fristen"]): Promise<void>;
     /** Vergibt ein neues Startpasswort – die Person legt bei der nächsten Anmeldung ein eigenes fest. */
     neuesPasswort(id: string): Promise<string>;
     /** Abwesenheit & Vertretung, Deaktivieren/Reaktivieren, Zwei-Faktor zurücksetzen. */

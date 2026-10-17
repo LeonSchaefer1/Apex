@@ -11,7 +11,7 @@ import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypt
 import { mkdirSync, existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
-import { COLLECTIONS, type Aktivitaet, type Bundesland, type CollectionKey, type Rolle, type Sachgebiet, type Tenant, type TenantData, type User } from "../src/core/types";
+import { COLLECTIONS, type Aktivitaet, type Bundesland, type CollectionKey, type Frist, type Rolle, type Sachgebiet, type Tenant, type TenantData, type User } from "../src/core/types";
 import { DEMO_TENANTS, DEMO_PASSWORT, publicUser } from "../src/core/seed/tenants";
 import { generateTenantData, SEED_VERSION, type SeedInput } from "../src/core/seed/generate";
 import { baueKunde, baueNutzer, profilFuer } from "../src/core/seed/kunde";
@@ -19,7 +19,7 @@ import { fmtDate, heuteBerlin, today } from "../src/core/dates";
 import { neuerSchluessel, neueWiederherstellungscodes, otpauthUri, pruefeTotp, wiederherstellungNormal } from "../src/core/totp";
 import {
   ALTES_PASSWORT_FALSCH, ANMELDUNG_FALSCH, AZUBI_GESPERRT, AZUBI_KEIN_ZUGRIFF, BUNDESLAENDER, CODE_SITZUNG_GEWECHSELT, FRIST_AUTOMATIK_GESPERRT, PASSWORT_MAX, ROLLEN, SACHGEBIETE_ALLE, SPERRE_MINUTEN, VERWALTUNGS_ROLLEN, ZUGANG_DEAKTIVIERT,
-  darfSammlung, istEmail, kanzleiSicherheit, pruefeNeuesPasswort, pruefeTeamAenderung, type KanzleiSitzung, type SperreMinuten, type TeamAenderung,
+  darfSammlung, istEmail, kanzleiSicherheit, pruefeFristEntscheidung, pruefeFristEntscheidungEntfernen, pruefeNeuesPasswort, pruefeTeamAenderung, type KanzleiSitzung, type SperreMinuten, type TeamAenderung,
 } from "../src/lib/backend/types";
 import { geaenderteRechnungsangaben, normalisiereRechnungsangaben, pruefeRechnungsangaben } from "../src/core/abrechnung";
 import { istFristAutomatik } from "../src/core/automationen";
@@ -1078,7 +1078,7 @@ function teamZiel(c: Context, s: TenantSess, me: KanzleiSitzung, id: string): Us
   return ziel;
 }
 
-app.delete("/api/team/:id", (c) => {
+app.delete("/api/team/:id", async (c) => {
   const s = kanzleiZugriff(c);
   if (s instanceof Response) return s;
   const me = sessionInfo(s);
@@ -1088,6 +1088,16 @@ app.delete("/api/team/:id", (c) => {
   const ziel = teamZiel(c, s, me, id);
   if (ziel instanceof Response) return ziel;
   if (ziel.rolle === "partner" && me.team.filter((u) => u.rolle === "partner" && !u.deaktiviert).length <= 1) return fehler(c, 400, "Mindestens ein aktiver Partner-Zugang muss bestehen bleiben.");
+  // Offene Fristen nur mit Übertragung (I5-T23-01) – gezählt nur über die Fristen dieser Kanzlei
+  const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  const x = b.fristen && typeof b.fristen === "object" ? (b.fristen as Record<string, unknown>) : {};
+  const uebertragenAn = text(x.uebertragenAn, 80);
+  try {
+    const fristen = (db.prepare("SELECT json FROM docs WHERE tenant_id = ? AND col = 'fristen'").all(s.tenantId) as { json: string }[]).map((r) => JSON.parse(r.json) as Frist);
+    pruefeFristEntscheidungEntfernen(me.team, ziel, uebertragenAn ? { uebertragenAn } : undefined, fristen);
+  } catch (e) {
+    return fehler(c, 400, e instanceof Error ? e.message : "Der Zugang kann nicht entfernt werden.");
+  }
   // Sitzungen sofort beenden – die Person verliert den Zugriff nicht erst nach Ablauf (S1)
   db.prepare("DELETE FROM sessions WHERE user_id = ? AND tenant_id = ?").run(id, s.tenantId);
   db.prepare("DELETE FROM users WHERE id = ? AND tenant_id = ?").run(id, s.tenantId);
@@ -1136,8 +1146,18 @@ app.patch("/api/team/:id", async (c) => {
   }
   if (typeof b.deaktiviert === "boolean") a.deaktiviert = b.deaktiviert;
   if (b.zweiFaktorZuruecksetzen === true) a.zweiFaktorZuruecksetzen = true;
+  if (b.fristen && typeof b.fristen === "object") {
+    const x = b.fristen as Record<string, unknown>;
+    a.fristen = { ...(text(x.uebertragenAn, 80) ? { uebertragenAn: text(x.uebertragenAn, 80) } : {}), ...(x.ueberwachungBestaetigt === true ? { ueberwachungBestaetigt: true } : {}) };
+  }
+  // Offene Fristen des Zugangs: übertragen oder ausdrücklich selbst überwachen (I5-T23-01) – nur Fristen dieser Kanzlei
+  let ohneUebertragung = 0;
   try {
     pruefeTeamAenderung({ users: me.team }, me.user, ziel, a);
+    const fristen = a.deaktiviert
+      ? (db.prepare("SELECT json FROM docs WHERE tenant_id = ? AND col = 'fristen'").all(s.tenantId) as { json: string }[]).map((r) => JSON.parse(r.json) as Frist)
+      : [];
+    ohneUebertragung = pruefeFristEntscheidung(me.team, ziel, a, fristen);
   } catch (e) {
     return fehler(c, 400, e instanceof Error ? e.message : "Die Änderung ist nicht zulässig.");
   }
@@ -1152,6 +1172,7 @@ app.patch("/api/team/:id", async (c) => {
   }
   db.prepare("UPDATE users SET json = ? WHERE id = ? AND tenant_id = ?").run(JSON.stringify(neu), id, s.tenantId);
   if (a.deaktiviert) db.prepare("DELETE FROM sessions WHERE user_id = ? AND tenant_id = ?").run(id, s.tenantId);
+  if (ohneUebertragung) protokolliere(s.tenantId, vorgang(VORGANG.fristenNichtUebertragen(ziel.name, ohneUebertragung, me.user.name), { akteur: "nutzer", userId: s.userId }));
   if (a.zweiFaktorZuruecksetzen) {
     db.prepare("UPDATE users SET mfa_secret = NULL, mfa_aktiv = 0, mfa_codes = NULL, mfa_seit = NULL, mfa_schritt = NULL WHERE id = ?").run(id);
     protokolliere(s.tenantId, vorgang(VORGANG.zweiFaktorZurueckgesetzt(ziel.name, me.user.name), { akteur: "nutzer", userId: s.userId }));

@@ -5,7 +5,7 @@ import { ArrowUp, Mic, MicOff, Volume2, VolumeX, X, RotateCcw, Square, Phone, Wr
 import { useUI } from "@/store/ui";
 import { useKanzlei } from "@/store/session";
 import { DEMO_KI_NAME, useAiStatus } from "@/ai/status";
-import { ansprechBitte, doppelterEintrag, frageAssistent, pruefeDatum, vorschlaege, vorschlagArtName, vorschlagEintragen, vorschlagZuruecknehmen, type AssistentLink, type AuswahlKnopf, type Eintragung, type SchreibVorschlag } from "@/ai/assistent";
+import { RUECKRUF_ZUSTIMMUNG, ansprechBitte, bietetRueckruf, doppelterEintrag, frageAssistent, pruefeDatum, vorschlaege, vorschlagArtName, vorschlagEintragen, vorschlagZuruecknehmen, type AssistentLink, type AuswahlKnopf, type Eintragung, type SchreibVorschlag } from "@/ai/assistent";
 import { fmtDateWd } from "@/core/dates";
 import { RUECKRUF_SIMULIERT } from "@/core/rueckruf";
 import { gruss } from "@/lib/rollen";
@@ -325,7 +325,8 @@ export function AssistantDock() {
         setZustand((z) => (z === "hoert" ? "ruhe" : z));
       },
       onFehler: (msg, dauerhaft) => {
-        // Kein Mikrofon bzw. kein Zugriff: „Ich höre zu …“ verschwindet sofort – Kopf und Zeile widersprechen der Meldung nicht
+        // Jeder Mikrofonfehler (kein Gerät, kein Zugriff, nichts gehört – auch nach dem Start): Pegelzeile sofort weg, Knopf zurück
+        // auf „Per Sprache fragen“, Erkennung abgebrochen – Kopf, Zeile und Knopf widersprechen der Meldung nie (I5-T20-01)
         stopHoeren.current?.();
         setInterim("");
         setZustand((z) => (z === "hoert" ? "ruhe" : z));
@@ -575,7 +576,7 @@ export function AssistantDock() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-[minmax(0,1fr)] gap-3">
-                    {msgs.map((m) => (
+                    {msgs.map((m, mi) => (
                       <motion.div key={m.id} initial={{ opacity: 0, y: 8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: 420, damping: 32 }} className={cn("flex min-w-0", m.rolle === "nutzer" ? "justify-end" : "justify-start")}>
                         {m.rolle === "nutzer" ? (
                           <div className="min-w-0 max-w-[85%] rounded-[20px] rounded-br-[6px] bg-ink px-3.5 py-2 text-[13.5px] leading-snug text-white [overflow-wrap:anywhere]">{m.text}</div>
@@ -614,6 +615,26 @@ export function AssistantDock() {
                                 ))}
                               </div>
                             )}
+                            {/* „Soll ich einen Rückruf … anfordern?“ – Knopf wirkt wie „Ja, bitte.“; getipptes „Ja“ bleibt möglich (I5-T20-02) */}
+                            {mi === msgs.length - 1 && !m.laedt && !m.fehler && bietetRueckruf(m.text) && (
+                              <button
+                                type="button"
+                                disabled={beschaeftigt}
+                                onClick={() => void senden(RUECKRUF_ZUSTIMMUNG)}
+                                className="mt-2 flex min-h-[44px] w-full items-center gap-2.5 rounded-[14px] bg-[var(--surface)] px-3 py-2 text-left ring-1 ring-[var(--line)] transition-colors hover:bg-ink-softer disabled:opacity-50"
+                              >
+                                <span className="grid size-8 shrink-0 place-items-center rounded-full bg-green-soft text-green">
+                                  <Phone className="size-4" aria-hidden />
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                  <span className="block text-[13px] font-semibold">Rückruf anfordern</span>
+                                  <span className="block text-[12.5px] leading-snug text-fg-3">
+                                    {ap.name} {RUECKRUF_SIMULIERT}
+                                  </span>
+                                </span>
+                                <ArrowRight className="size-3.5 shrink-0 text-fg-3" aria-hidden />
+                              </button>
+                            )}
                             {m.vorschlag && m.karte && (
                               <BestaetigungsKarte
                                 v={m.vorschlag}
@@ -650,15 +671,18 @@ export function AssistantDock() {
                 )}
               </div>
 
-              {/* Zuhören */}
-              <AnimatePresence>
-                {zustand === "hoert" && (
-                  <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }} className="mx-4 mb-2 flex items-center gap-3 rounded-[18px] bg-[var(--ink-softer)] p-3 ring-1 ring-[var(--line)]">
-                    <Wellen />
-                    <div className="min-w-0 flex-1 text-[13px] text-fg-2">{interim || "Ich höre zu – sprechen Sie einfach."}</div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              {/* Zuhören – bei einem Mikrofonfehler sofort weg, nie zugleich mit der Meldung (I5-T20-01): Mit der Meldung wird die
+                  ganze Animationsgruppe ausgehängt – die Pegelzeile verschwindet im selben Schritt, ohne Ausblendanimation. */}
+              {!hinweis && (
+                <AnimatePresence>
+                  {zustand === "hoert" && (
+                    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }} className="mx-4 mb-2 flex items-center gap-3 rounded-[18px] bg-[var(--ink-softer)] p-3 ring-1 ring-[var(--line)]">
+                      <Wellen />
+                      <div className="min-w-0 flex-1 text-[13px] text-fg-2">{interim || "Ich höre zu – sprechen Sie einfach."}</div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              )}
               {hinweis && (
                 <div role="status" className="mx-4 mb-2 rounded-[14px] bg-amber-soft px-3 py-2 text-[13px] text-fg-2">
                   {hinweis}

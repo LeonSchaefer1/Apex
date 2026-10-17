@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import {
-  FileText, Files, FolderInput, Gavel, Globe, Mail, MoreHorizontal, Paperclip, PenLine, Receipt, Send, StickyNote, Trash2, Upload, FileSignature, FileSearch, X, FileUp,
+  Check, FileText, Files, Sparkles, FolderInput, Gavel, Globe, Mail, MoreHorizontal, Paperclip, PenLine, Receipt, Send, StickyNote, Trash2, Upload, FileSignature, FileSearch, X, FileUp,
 } from "lucide-react";
 import type { Akte, Dokument } from "@/core/types";
 import { fmtDate, nowLocal, uid } from "@/core/dates";
@@ -11,11 +11,11 @@ import { search, snippet } from "@/core/search";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
-import { AiChip, Button, Card, Checkbox, Chip, Empty, Menu, SearchField, confirmDialog } from "@/components/ui";
+import { AiChip, Button, Card, Chip, Empty, Menu, SearchField, confirmDialog } from "@/components/ui";
 import { Highlight } from "@/components/Highlight";
 import { cn } from "@/lib/cn";
 import { useMedia } from "@/lib/useMedia";
-import { DOK_ART_LABEL, DOK_STATUS_INFO, MOBIL_TREFFER, ORDNER, ORDNER_ICON, QUELLE_LABEL, beruehreAkte, fmtKb } from "./helfer";
+import { DOK_ART_LABEL, DOK_STATUS_INFO, MOBIL_TREFFER, ORDNER, ORDNER_ICON, beruehreAkte, fmtKb, quelleLabel, useTeam } from "./helfer";
 import { DokumentVorschau } from "./DokumentVorschau";
 import { imPortal, portalSperrgrund, setzePortal } from "./Mandantenportal";
 
@@ -65,6 +65,7 @@ function leseText(f: File): Promise<string> {
 
 export function TabDokumente({ akte }: { akte: Akte }) {
   const { user } = useKanzlei();
+  const { team } = useTeam();
   const alle = useCol("dokumente");
   const [params, setParams] = useSearchParams();
   const dokId = params.get("dok");
@@ -482,7 +483,7 @@ export function TabDokumente({ akte }: { akte: Akte }) {
 
         {sichtbar.length > 0 && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-1 pt-3 text-[12.5px] text-fg-3">
-            <Checkbox
+            <AuswahlKaestchen
               checked={alleGewaehlt}
               indeterminate={einige}
               label="Alle auswählen"
@@ -555,7 +556,7 @@ export function TabDokumente({ akte }: { akte: Akte }) {
                         }}
                         className="contents"
                       >
-                        <Checkbox checked={gewaehlt} onChange={() => toggle(d.id)} label={`${d.name} auswählen`} />
+                        <AuswahlKaestchen checked={gewaehlt} onChange={() => toggle(d.id)} label={`${d.name} auswählen`} />
                       </span>
                       <DokIcon d={d} />
                       <div className="min-w-0 flex-1">
@@ -618,8 +619,18 @@ export function TabDokumente({ akte }: { akte: Akte }) {
                       </div>
                       <div className="hidden shrink-0 items-center gap-1.5 lg:flex">
                         {(ordner === "alle" || q.trim()) && <Chip tone="outline">{d.ordner}</Chip>}
-                        <Chip tone={d.quelle === "bea" ? "ink" : d.quelle === "generiert" ? "green" : "neutral"}>{QUELLE_LABEL[d.quelle]}</Chip>
-                        {d.ki?.zusammenfassung && <AiChip />}
+                        {(() => {
+                          // Herkunft ehrlich benannt: KI-Entwurf (KI-Ton), aus Vorlage bzw. vom 38h-Motor (I5-T19-01)
+                          const herkunft = quelleLabel(d, team);
+                          return (
+                            <>
+                              <Chip tone={herkunft.ki ? "violet" : d.quelle === "bea" ? "ink" : d.quelle === "generiert" ? "green" : "neutral"} icon={herkunft.ki ? <Sparkles className="size-3" /> : undefined}>
+                                {herkunft.text}
+                              </Chip>
+                              {d.ki?.zusammenfassung && !herkunft.ki && <AiChip />}
+                            </>
+                          );
+                        })()}
                       </div>
                       <Menu
                         trigger={({ toggle: t }) => (
@@ -720,5 +731,36 @@ export function TabDokumente({ akte }: { akte: Akte }) {
         onUmbenennen={(d, n) => benenneUm(d, n)}
       />
     </div>
+  );
+}
+
+/**
+ * Auswahlkästchen der E-Akte (I5-T14-02): sichtbar 18 px, Trefferfläche über Polster 44 × 44 px am Telefon bzw. 24 × 24 px
+ * sonst – ohne den Zeilenaufbau zu verschieben (negativer Rand gleicht das Polster aus).
+ */
+function AuswahlKaestchen({ checked, indeterminate, onChange, label }: { checked: boolean; indeterminate?: boolean; onChange: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={indeterminate && !checked ? "mixed" : checked}
+      aria-label={label}
+      onClick={(e) => {
+        e.stopPropagation();
+        onChange();
+      }}
+      className="group/kasten -m-[13px] grid shrink-0 place-items-center rounded-[10px] p-[13px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] sm:-m-[3px] sm:p-[3px]"
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "grid size-[18px] place-items-center rounded-[6px] border transition-all duration-200",
+          checked || indeterminate ? "border-transparent bg-ink text-white" : "border-[var(--line-strong)] bg-[var(--surface)] group-hover/kasten:border-ink",
+        )}
+      >
+        {checked && <Check className="size-3" strokeWidth={3} />}
+        {!checked && indeterminate && <span className="h-0.5 w-2 rounded bg-white" />}
+      </span>
+    </button>
   );
 }

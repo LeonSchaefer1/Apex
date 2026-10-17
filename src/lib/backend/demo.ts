@@ -8,7 +8,7 @@ import type { Aktivitaet, CollectionKey, TenantData, Tenant, User } from "@/core
 import { neuerSchluessel, neueWiederherstellungscodes, otpauthUri, pruefeTotp, wiederherstellungNormal } from "@/core/totp";
 import {
   ALTES_PASSWORT_FALSCH, ANMELDUNG_FALSCH, AZUBI_GESPERRT, AZUBI_KEIN_ZUGRIFF, BUNDESLAENDER, FRIST_AUTOMATIK_GESPERRT, PASSWORT_MAX, PasswortWechselNoetig, SPERRE_MINUTEN, ZUGANG_DEAKTIVIERT, ZweiFaktorNoetig,
-  darfSammlung, darfVerwalten, feldFehler, istEmail, kanzleiSicherheit, pruefeNeuesPasswort, pruefeTeamAenderung,
+  darfSammlung, darfVerwalten, feldFehler, istEmail, kanzleiSicherheit, pruefeNeuesPasswort, pruefeFristEntscheidung, pruefeFristEntscheidungEntfernen, pruefeTeamAenderung,
   type Backend, type ConsoleKunde, type KanzleiProfil, type KanzleiSicherheit, type NeuerKunde, type Rechnungsangaben, type Sitzung, type TeamAenderung,
 } from "./types";
 import { geaenderteRechnungsangaben, normalisiereRechnungsangaben, pruefeRechnungsangaben } from "@/core/abrechnung";
@@ -768,7 +768,7 @@ export function createDemoBackend(): Backend {
         setzePasswortWechsel(user.id, true);
         return { user: publicUser(user), passwort };
       },
-      async remove(id) {
+      async remove(id, fristen) {
         // Nur innerhalb der eigenen Kanzlei und nie den eigenen Zugang – wie auf dem Server.
         const { t, u } = kanzleiSitzung(true);
         if (id === u.id) throw new Error("Sie können sich nicht selbst entfernen.");
@@ -776,6 +776,8 @@ export function createDemoBackend(): Backend {
         if (!ziel) throw new Error("Dieser Zugang gehört nicht zu Ihrer Kanzlei.");
         if (ziel.rolle === "partner" && u.rolle !== "partner") throw new Error("Partner-Zugänge können nur Partner verwalten.");
         if (ziel.rolle === "partner" && t.users.filter((x) => x.rolle === "partner" && !x.deaktiviert).length <= 1) throw new Error("Mindestens ein aktiver Partner-Zugang muss bestehen bleiben.");
+        // Offene Fristen nur mit Übertragung an eine aktive Berufsträgerin bzw. einen aktiven Berufsträger (I5-T23-01) – wie auf dem Server
+        pruefeFristEntscheidungEntfernen(t.users, ziel, fristen, current?.tenantId === t.tenant.id ? current.stored.data.fristen : []);
         const extra = lsGet<DemoTenant[]>(LS_REGISTRY) ?? [];
         for (const x of extra) if (x.tenant.id === t.tenant.id) x.users = x.users.filter((y) => y.id !== id);
         lsSet(LS_REGISTRY, extra);
@@ -813,12 +815,15 @@ export function createDemoBackend(): Backend {
         const ziel = t.users.find((x) => x.id === id);
         if (!ziel) throw new Error("Dieser Zugang gehört nicht zu Ihrer Kanzlei.");
         pruefeTeamAenderung(t, u, ziel, a);
+        // Offene Fristen des Zugangs: übertragen oder ausdrücklich selbst überwachen (I5-T23-01) – wie auf dem Server
+        const ohneUebertragung = pruefeFristEntscheidung(t.users, ziel, a, current?.tenantId === t.tenant.id ? current.stored.data.fristen : []);
         const aend = lsGet<Record<string, NutzerAenderung>>(LS_NUTZER_AENDERUNG) ?? {};
         const neu: NutzerAenderung = { ...(aend[id] ?? { abwesenheit: ziel.abwesenheit, deaktiviert: ziel.deaktiviert }) };
         if (a.abwesenheit !== undefined) neu.abwesenheit = a.abwesenheit ?? undefined;
         if (a.deaktiviert !== undefined) neu.deaktiviert = a.deaktiviert || undefined;
         aend[id] = neu;
         lsSet(LS_NUTZER_AENDERUNG, aend);
+        if (ohneUebertragung) protokolliere(t.tenant.id, vorgang(VORGANG.fristenNichtUebertragen(ziel.name, ohneUebertragung, u.name), { akteur: "nutzer", userId: u.id }));
         if (a.zweiFaktorZuruecksetzen) {
           zfSetzen(id, null);
           protokolliere(t.tenant.id, vorgang(VORGANG.zweiFaktorZurueckgesetzt(ziel.name, u.name), { akteur: "nutzer", userId: u.id }));

@@ -1,7 +1,7 @@
 // Fachliche Hilfen der Abrechnung: offene Posten, Rechnungsnummern, Abrechnungsvorschläge je Akte.
 import { addDays, fmtDate, fromISO, round2, today } from "@/core/dates";
 import { berechnetePauschalen, berechneRvg, fassungFuerAuftrag, rvgRechnungsPositionen, type RvgFassung, type RvgZeile } from "@/core/rvg";
-import type { Akte, AktenPhase, Dokument, Frist, ISODate, Kontakt, Rechnung, RechnungsPosition, User, Zeiteintrag } from "@/core/types";
+import type { Akte, AktenPhase, Aktivitaet, Dokument, Frist, ISODate, Kontakt, Rechnung, RechnungsPosition, User, Zeiteintrag } from "@/core/types";
 import { summen, type Summen } from "@/core/abrechnung";
 
 export type TabKey = "uebersicht" | "rechnungen" | "rvg" | "bank" | "forderung" | "zinsen" | "zeit";
@@ -62,6 +62,35 @@ export function parseBetrag(s: string): number {
   return Number(clean) || 0;
 }
 
+/** Meldung am Feld Gegenstandswert (RVG-Rechner) – I5-T07-01. */
+export const GEGENSTANDSWERT_FEHLER = "Bitte einen Gegenstandswert über 0 € eingeben.";
+
+/**
+ * Eingabeprüfung für Beträge (Gegenstandswert, Kapital): leer, keine Zahl („abc“, „12x“) oder ≤ 0 („-500“, „0“) → Meldung
+ * am Feld, kein Wert – kein stilles Klemmen auf 0 (I5-T07-01). „10.000“, „10.000,50“, „5000 €“ sind gültig.
+ */
+export function pruefeBetragEingabe(text: string, meldung = GEGENSTANDSWERT_FEHLER): { wert?: number; fehler?: string } {
+  const roh = text.replace(/€|EUR/gi, "").replace(/[\s\u00a0\u202f]/g, "").replace(/\u2212/g, "-");
+  if (!roh || !/^-?\d[\d.,]*$/.test(roh)) return { fehler: meldung };
+  const wert = parseBetrag(roh);
+  if (!Number.isFinite(wert) || !(wert > 0)) return { fehler: meldung };
+  return { wert };
+}
+
+/** Höchster plausibler fester Jahreszinssatz im Zinsrechner (Prozent) */
+export const ZINSSATZ_MAX = 30;
+
+/** Fester Jahreszinssatz: Zahl über 0 und höchstens 30 % – sonst Meldung am Feld (I5-T07-01). */
+export function pruefeZinssatzEingabe(text: string): { wert?: number; fehler?: string } {
+  const roh = text.replace(/%/g, "").replace(/[\s\u00a0\u202f]/g, "").replace(/\u2212/g, "-");
+  const fehler = `Bitte einen Zinssatz über 0 und bis ${ZINSSATZ_MAX} % eingeben, z. B. 4.`;
+  if (!roh || !/^-?\d[\d.,]*$/.test(roh)) return { fehler };
+  // „4,5“ wie „4.5“ – bei einem Zinssatz ist der Punkt ein Dezimalpunkt, kein Tausenderpunkt
+  const wert = Number(roh.includes(",") ? roh.replace(/\./g, "").replace(",", ".") : roh);
+  if (!Number.isFinite(wert) || !(wert > 0) || wert > ZINSSATZ_MAX) return { fehler };
+  return { wert };
+}
+
 export const fmtSatz = (n: number) => n.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 2 });
 export const fmtProzent = (n: number, digits = 2) => `${n.toLocaleString("de-DE", { minimumFractionDigits: digits, maximumFractionDigits: digits })} %`;
 
@@ -72,6 +101,13 @@ export function fmtDauer(min: number): string {
   return `${h}:${String(m).padStart(2, "0")} Std.`;
 }
 
+/**
+ * Menge einer Zeitposition (Stunden, auf 2 Stellen gerundet) im Format Std:Min: 0.6 → „0:36 Std.“, 2.3 → „2:18 Std.“ –
+ * ein Zeitformat je Ansicht in der Zeiterfassung (I5-T07-05). Auf der Rechnung bleibt die Dezimalangabe („1,5 Std.“).
+ */
+export const fmtDauerAusMenge = (menge: number) => fmtDauer(Math.round(menge * 60));
+
+/** Dezimalstunden („1,5“) – nur für Rechnungen bzw. Positionen auf dem Papier, nicht in der Zeiterfassung. */
 export const fmtStunden = (min: number) => (min / 60).toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 2 });
 
 /** ISO-Kalenderwoche (Montag als Wochenbeginn). */
@@ -397,13 +433,50 @@ export function kopfUmschalten<V extends SammelZeile>(vorschlaege: V[], auswahl:
 
 /**
  * Leistungszeitraum einer Rechnung (§ 14 Abs. 4 S. 1 Nr. 6 UStG): bei einer Zeitrechnung vom ersten bis zum letzten
- * abgerechneten Eintrag, sonst vom Auftrag bis zum Rechnungsdatum.
+ * abgerechneten Eintrag, sonst vom Auftrag bis zum Rechnungsdatum. Eine Korrekturrechnung (`korrekturVon`) übernimmt den
+ * Zeitraum der stornierten Ursprungsrechnung – dieselbe Leistung, nicht bis zum Datum des Entwurfs (I5-T07-03).
  */
-export function leistungszeitraum(akte: Akte | undefined, r: Rechnung, zeiten: Pick<Zeiteintrag, "id" | "datum">[] = []): [string, string] {
+export function leistungszeitraum(akte: Akte | undefined, r: Rechnung, zeiten: Pick<Zeiteintrag, "id" | "datum">[] = [], rechnungen: Rechnung[] = []): [string, string] {
+  if (r.korrekturVon) {
+    const ursprung = rechnungen.find((x) => x.id === r.korrekturVon && x.id !== r.id);
+    // Kette (Korrektur einer Korrektur) ohne Schleife: die aktuelle Rechnung aus der Suche nehmen
+    if (ursprung) return leistungszeitraum(akte, ursprung, zeiten, rechnungen.filter((x) => x.id !== r.id));
+  }
   const tage = r.zeitIds?.length ? zeiten.filter((z) => r.zeitIds!.includes(z.id)).map((z) => z.datum).sort() : [];
   if (tage.length) return [tage[0], tage[tage.length - 1]];
   const von = akte?.createdAt.slice(0, 10) ?? r.datum;
   return [von < r.datum ? von : r.datum, r.datum];
+}
+
+/** Berufsträger (Rechtsanwältin, Rechtsanwalt) – zeichnen Rechnungen. */
+const istBerufstraeger = (u?: User) => !!u && (u.rolle === "partner" || u.rolle === "anwalt");
+
+/**
+ * Unterzeichner bzw. „Bearbeitung“: wer die Rechnung gestellt hat (Protokoll), bei Entwürfen die abrechnende angemeldete
+ * Person – jeweils nur Berufsträger; sonst die Bearbeiterin bzw. der Bearbeiter der Akte. Ein Korrekturentwurf übernimmt die
+ * Bearbeitung der stornierten Rechnung (I5-T07-03) – nicht die gerade angemeldete Person.
+ */
+export function unterzeichnerVon(r: Rechnung, aktivitaeten: Aktivitaet[], users: Map<string, User>, angemeldet: User, bearbeiter?: User, rechnungen: Rechnung[] = []): User | undefined {
+  const gestelltVon = r.status !== "entwurf"
+    ? aktivitaeten
+        .filter((a) => a.akteur === "nutzer" && a.userId && a.akteId === r.akteId && a.text.includes(`${r.nummer} gestellt`))
+        .sort((a, b) => b.zeit.localeCompare(a.zeit))
+        .map((a) => users.get(a.userId!))
+        .find(istBerufstraeger)
+    : undefined;
+  if (gestelltVon) return gestelltVon;
+  if (r.korrekturVon) {
+    const ursprung = rechnungen.find((x) => x.id === r.korrekturVon && x.id !== r.id);
+    const vonUrsprung = ursprung ? unterzeichnerVon(ursprung, aktivitaeten, users, angemeldet, bearbeiter, rechnungen.filter((x) => x.id !== r.id)) : undefined;
+    if (vonUrsprung) return vonUrsprung;
+  }
+  if (r.status === "entwurf" && istBerufstraeger(angemeldet)) return angemeldet;
+  const erstelltVon = aktivitaeten
+    .filter((a) => a.akteur === "nutzer" && a.userId && a.akteId === r.akteId && a.text.includes(`(${r.nummer})`))
+    .sort((a, b) => b.zeit.localeCompare(a.zeit))
+    .map((a) => users.get(a.userId!))
+    .find(istBerufstraeger);
+  return erstelltVon ?? bearbeiter;
 }
 
 /** Reine Zeitrechnung: nur Positionen nach Zeitaufwand (und ggf. Auslagen), keine Wertgebühr – dann kein Gegenstandswert im Kopf. */

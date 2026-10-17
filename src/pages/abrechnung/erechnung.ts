@@ -54,11 +54,13 @@ interface Kontext {
   hinweise?: string[];
   /** Zeiten der Kanzlei – Leistungszeitraum einer Zeitrechnung vom ersten bis zum letzten abgerechneten Eintrag */
   zeiten?: Zeiteintrag[];
+  /** Rechnungen der Kanzlei – eine Korrekturrechnung übernimmt den Leistungszeitraum der stornierten Rechnung */
+  rechnungen?: Rechnung[];
 }
 
 /** XRechnung (UBL 2.1) – als XML-Datei abrufbar. */
-export function xrechnungXml(r: Rechnung, { akte, empfaenger, tenant, hinweise = [], zeiten = [] }: Kontext): string {
-  const [von, bis] = leistungszeitraum(akte, r, zeiten);
+export function xrechnungXml(r: Rechnung, { akte, empfaenger, tenant, hinweise = [], zeiten = [], rechnungen = [] }: Kontext): string {
+  const [von, bis] = leistungszeitraum(akte, r, zeiten, rechnungen);
   const st = steuerKennungen(tenant);
   const kt = konto(tenant);
   const sitz = adresse(tenant.adresse);
@@ -139,8 +141,8 @@ ${zeilen
 }
 
 /** ZUGFeRD / Factur-X (CII, Profil EN 16931) – das XML, das in die PDF/A-3 eingebettet wird. */
-export function zugferdXml(r: Rechnung, { akte, empfaenger, tenant, hinweise = [], zeiten = [] }: Kontext): string {
-  const [von, bis] = leistungszeitraum(akte, r, zeiten);
+export function zugferdXml(r: Rechnung, { akte, empfaenger, tenant, hinweise = [], zeiten = [], rechnungen = [] }: Kontext): string {
+  const [von, bis] = leistungszeitraum(akte, r, zeiten, rechnungen);
   const st = steuerKennungen(tenant);
   const kt = konto(tenant);
   const sitz = adresse(tenant.adresse);

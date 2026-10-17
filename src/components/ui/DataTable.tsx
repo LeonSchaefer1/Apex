@@ -343,6 +343,10 @@ function KartenKnopf({ label, onClick, className, children }: { label?: string; 
   );
 }
 
+/**
+ * Kontrollkästchen mit Trefferfläche über Polster (wie die E-Akte, I5-T14-02): sichtbar 18 px, getroffen 44×44 px am Telefon
+ * und 24×24 px ab sm – die negativen Ränder halten das Layout unverändert.
+ */
 export function Checkbox({ checked, indeterminate, onChange, label }: { checked: boolean; indeterminate?: boolean; onChange: () => void; label?: string }) {
   return (
     <button
@@ -354,13 +358,18 @@ export function Checkbox({ checked, indeterminate, onChange, label }: { checked:
         e.stopPropagation();
         onChange();
       }}
-      className={cn(
-        "grid size-[18px] place-items-center rounded-[6px] border transition-all duration-200",
-        checked || indeterminate ? "border-transparent bg-ink text-white" : "border-[var(--line-strong)] bg-[var(--surface)] hover:border-ink",
-      )}
+      className="group/kasten -m-[13px] grid shrink-0 place-items-center rounded-[10px] p-[13px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] sm:-m-[3px] sm:p-[3px]"
     >
-      {checked && <Check className="size-3" strokeWidth={3} />}
-      {!checked && indeterminate && <span className="h-0.5 w-2 rounded bg-white" />}
+      <span
+        aria-hidden
+        className={cn(
+          "grid size-[18px] place-items-center rounded-[6px] border transition-all duration-200",
+          checked || indeterminate ? "border-transparent bg-ink text-white" : "border-[var(--line-strong)] bg-[var(--surface)] group-hover/kasten:border-ink",
+        )}
+      >
+        {checked && <Check className="size-3" strokeWidth={3} />}
+        {!checked && indeterminate && <span className="h-0.5 w-2 rounded bg-white" />}
+      </span>
     </button>
   );
 }

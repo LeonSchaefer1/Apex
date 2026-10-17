@@ -53,8 +53,13 @@ interface LaufStand {
   fremd: number;
   keine: number;
   gespart: number;
-  /** false = Seite während des Laufs verlassen (Seitenwechsel, Neuladen) – die Buchungen sind trotzdem vollständig */
+  /** false = Anzeige-Animation lief beim Seitenwechsel noch – die Buchungen sind trotzdem vollständig */
   angezeigt: boolean;
+  /**
+   * Buchung des Laufs abgeschlossen (I5-T08-01). Nur `false`, wenn die Buchung selbst beim Verlassen noch lief; ältere
+   * Einträge ohne Feld wurden erst nach der Buchung gespeichert und gelten als abgeschlossen.
+   */
+  abgeschlossen?: boolean;
 }
 const laufKey = (tenantId: string) => `apex.bankabgleich.lauf.${tenantId}`;
 function ladeLauf(tenantId: string): LaufStand | null {
@@ -272,6 +277,8 @@ export function BankabgleichTab() {
       toast("Keine offenen Kontoumsätze", { text: "Alle Umsätze sind bereits zugeordnet.", ton: "info" });
       return;
     }
+    // Lauf beginnt: als „Buchung läuft“ vermerken – nur wenn sie nicht zu Ende kommt, nennt die Statuszeile das Verlassen
+    speichereLauf(tenant.id, { am: nowLocal(), gebucht: 0, vorschlaege: 0, kosten: 0, fremd: 0, keine: 0, gespart: 0, angezeigt: false, abgeschlossen: false });
     const treffer = gleicheAb({ transaktionen: offeneT, rechnungen: st.data.rechnungen, akten: st.data.akten, kontakte: st.data.kontakte });
     let gebucht = 0;
     let vorschlaege = 0;
@@ -313,7 +320,7 @@ export function BankabgleichTab() {
       text: `Bankabgleich: ${plural(gebucht, "Zahlung", "Zahlungen")} automatisch gebucht, ${plural(vorschlaege, "Vorschlag", "Vorschläge")} zur Prüfung, ${kosten} Kanzleikosten erfasst${fremd ? `, ${fremd} Fremdgeld markiert` : ""}`,
       ...(gespart ? { minutenGespart: gespart } : {}),
     });
-    const stand: LaufStand = { am: nowLocal(), gebucht, vorschlaege, kosten, fremd, keine, gespart, angezeigt: false };
+    const stand: LaufStand = { am: nowLocal(), gebucht, vorschlaege, kosten, fremd, keine, gespart, angezeigt: false, abgeschlossen: true };
     speichereLauf(tenant.id, stand);
     setLetzterLauf(stand);
     setGespartLauf(gespart);
@@ -902,13 +909,24 @@ export function BankabgleichTab() {
             <div role="status" className="flex flex-wrap items-start gap-2.5 rounded-[16px] bg-ink-softer px-4 py-2.5 text-[12.5px] leading-relaxed text-fg-2 ring-1 ring-inset ring-[var(--line)]">
               <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-green" aria-hidden />
               <span className="min-w-0 flex-1">
-                <strong className="font-semibold text-fg">
-                  Letzter Abgleich {fmtDate(letzterLauf.am.slice(0, 10))}, {fmtTime(letzterLauf.am)} Uhr:
-                </strong>{" "}
-                {letzterLauf.gebucht} gebucht · {plural(letzterLauf.vorschlaege, "Vorschlag", "Vorschläge")} · {letzterLauf.kosten} Kanzleikosten
-                {letzterLauf.fremd ? ` · ${letzterLauf.fremd} Fremdgeld` : ""}.{" "}
-                {/* Nur wenn die Seite während des Laufs wirklich verlassen wurde – neutral, kein „unterbrochen“ (I4-T08-02) */}
-                {letzterLauf.angezeigt ? "Offene Vorschläge stehen unten bis zu Ihrer Entscheidung." : "Sie haben die Seite während des Abgleichs verlassen – alle Buchungen und Vorschläge sind gespeichert."}
+                {/* „Verlassen“ nur, wenn die Buchung selbst noch lief – nicht, wenn nur die Anzeige noch lief (I5-T08-01, I4-T08-02) */}
+                {letzterLauf.abgeschlossen === false ? (
+                  <>
+                    <strong className="font-semibold text-fg">
+                      Abgleich vom {fmtDate(letzterLauf.am.slice(0, 10))}, {fmtTime(letzterLauf.am)} Uhr nicht abgeschlossen.
+                    </strong>{" "}
+                    Sie haben die Seite während des Abgleichs verlassen – die bis dahin gebuchten Umsätze und Vorschläge sind gespeichert; offene Umsätze gleicht ein neuer Lauf ab.
+                  </>
+                ) : (
+                  <>
+                    <strong className="font-semibold text-fg">
+                      Abgleich abgeschlossen am {fmtDate(letzterLauf.am.slice(0, 10))}, {fmtTime(letzterLauf.am)} Uhr
+                    </strong>{" "}
+                    – {letzterLauf.gebucht} gebucht · {plural(letzterLauf.vorschlaege, "Vorschlag", "Vorschläge")} · {letzterLauf.kosten} Kanzleikosten
+                    {letzterLauf.fremd ? ` · ${letzterLauf.fremd} Fremdgeld` : ""}.
+                    {letzterLauf.vorschlaege + letzterLauf.fremd > 0 ? " Offene Vorschläge stehen unten bis zu Ihrer Entscheidung." : ""}
+                  </>
+                )}
                 {letzterLauf.gespart > 0 && (
                   <span className="mt-1 block">
                     <GespartSchaetzung minuten={letzterLauf.gespart} />

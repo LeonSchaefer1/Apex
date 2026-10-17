@@ -585,16 +585,23 @@ function Zeile({ icon, label, wert, mono }: { icon: ReactNode; label: string; we
   );
 }
 
-export function RollenWahl({ value, onChange }: { value: KontaktRolle[]; onChange: (r: KontaktRolle[]) => void }) {
+/**
+ * Rollen als Umschaltknöpfe. `labelId`/`beschreibungId`: Gruppe mit Namen und Hinweis bzw. Fehler; `ungueltig` markiert die
+ * Knöpfe nach einem Speicherversuch ohne Rolle (aria-invalid) – der erste Knopf bekommt `erstesId` für den Fokus.
+ */
+export function RollenWahl({ value, onChange, labelId, beschreibungId, ungueltig, erstesId }: { value: KontaktRolle[]; onChange: (r: KontaktRolle[]) => void; labelId?: string; beschreibungId?: string; ungueltig?: boolean; erstesId?: string }) {
   return (
-    <div className="flex flex-wrap gap-1.5">
-      {ALLE_ROLLEN.map((r) => {
+    <div className="flex flex-wrap gap-1.5" role={labelId ? "group" : undefined} aria-labelledby={labelId} aria-describedby={beschreibungId}>
+      {ALLE_ROLLEN.map((r, i) => {
         const an = value.includes(r);
         return (
           <button
             key={r}
+            id={i === 0 ? erstesId : undefined}
             type="button"
             aria-pressed={an}
+            aria-invalid={ungueltig || undefined}
+            aria-describedby={ungueltig ? beschreibungId : undefined}
             onClick={() => onChange(an ? value.filter((x) => x !== r) : [...value, r])}
             className={cn(
               "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-medium transition-all duration-200",

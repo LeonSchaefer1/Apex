@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
@@ -51,6 +51,20 @@ export default function AkteDetail() {
   useEffect(() => {
     if (akte?.id) merkeAkteGeoeffnet(user.id, akte.id);
   }, [akte?.id, user.id]);
+  // Telefon (< sm): Aktionsleiste „Notiz · Frist · Wiedervorlage“ im Daumenbereich, sobald die Knopfreihe des Aktenkopfs aus
+  // dem Bild gescrollt ist – verschwindet wieder, wenn der Kopf sichtbar ist (I5-T14-01)
+  const telefon = useMedia("(max-width: 639px)");
+  const [kopfAktionenWeg, setKopfAktionenWeg] = useState(false);
+  useEffect(() => {
+    if (!telefon) return setKopfAktionenWeg(false);
+    const el = document.getElementById("akte-kopf-aktionen");
+    const root = document.getElementById("haupt-scroll");
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    // Nur „nach oben weggescrollt“ zählt (Reihe liegt über dem sichtbaren Bereich), nicht „noch unterhalb“
+    const io = new IntersectionObserver(([e]) => setKopfAktionenWeg(!e.isIntersecting && e.boundingClientRect.top < (e.rootBounds?.top ?? 0) + 1), { root, threshold: 0 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [akte?.id, telefon]);
   // Kompakter Kurzkopf, sobald der Aktenkopf aus dem Bild gescrollt ist
   const kopfRef = useRef<HTMLDivElement>(null);
   const [kompakt, setKompakt] = useState(false);
@@ -242,9 +256,58 @@ export default function AkteDetail() {
       <FristAnlegen akte={akte} open={!!fristOffen} startModus={fristOffen || "regel"} onClose={() => setFristOffen(false)} />
       <NotizDialog akte={akte} open={notizOffen} onClose={() => setNotizOffen(false)} />
 
-      {/* Mobil: Notiz, Frist und Wiedervorlage liegen im Aktenkopf (44 px) – keine schwebende Leiste mehr über dem Inhalt (I4-T14-01) */}
+      {/* Telefon: Notiz, Frist und Wiedervorlage im Aktenkopf (44 px, I4-T14-01) – nach dem Scrollen zusätzlich als schmale Leiste
+          im Daumenbereich über der Tab-Leiste, rechts frei für die Assistent-Kugel (wie die Ergebnisleiste des RVG-Rechners).
+          Der untere Innenabstand des Inhalts (Tab-Leiste + 76 px) hält das letzte Dokument darüber scrollbar. */}
+      {telefon &&
+        createPortal(
+          <AnimatePresence>
+            {kopfAktionenWeg && (
+              <motion.div
+                key="akte-aktionsleiste"
+                role="group"
+                aria-label={`Schnellaktionen ${akte.aktenzeichen}`}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 16 }}
+                transition={{ type: "spring", stiffness: 480, damping: 36 }}
+                data-akte-aktionsleiste
+                className="glass-strong tabbar-deckend fixed bottom-[calc(var(--tabbar-h)+env(safe-area-inset-bottom)+12px)] left-3 right-[84px] z-30 flex items-center gap-1 rounded-full p-1 sm:hidden"
+                style={{ boxShadow: "var(--glass-shadow-lg)" }}
+              >
+                <AktionsKnopf icon={<StickyNote className="size-4" />} onClick={() => setNotizOffen(true)}>
+                  Notiz
+                </AktionsKnopf>
+                <AktionsKnopf icon={<CalendarPlus className="size-4" />} onClick={() => setFristOffen("regel")}>
+                  Frist
+                </AktionsKnopf>
+                <AktionsKnopf icon={<CalendarClock className="size-4" />} onClick={() => setFristOffen("frei")}>
+                  <span className="min-[380px]:hidden" aria-hidden>
+                    WV
+                  </span>
+                  <span className="max-[379px]:sr-only">Wiedervorlage</span>
+                </AktionsKnopf>
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          document.body,
+        )}
       <EmailComposer akte={akte} open={emailOffen} onClose={() => setEmailOffen(false)} onGesendet={(dokId) => setTab("dokumente", { dok: dokId })} />
     </div>
+  );
+}
+
+/** Knopf der Aktionsleiste am Telefon: 44 px hoch, Symbol und sichtbare Beschriftung. */
+function AktionsKnopf({ icon, onClick, children }: { icon: ReactNode; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex min-h-11 min-w-0 flex-auto items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-2 text-[13px] font-medium text-fg transition-colors hover:bg-ink-softer active:bg-ink-soft"
+    >
+      <span className="shrink-0 text-ink">{icon}</span>
+      <span className="min-w-0 truncate">{children}</span>
+    </button>
   );
 }
 

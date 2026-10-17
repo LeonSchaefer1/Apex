@@ -950,12 +950,33 @@ export function istBeaStoerung(text: string): boolean {
   return BEA_STOERUNG.test(normalize(text));
 }
 
+/** Geht es um eine Begründungsfrist (Berufungs- bzw. Revisionsbegründung, „Begründung muss heute raus“)? */
+export function begruendungsfristAus(text: string): "berufung" | "revision" | undefined {
+  const t = normalize(text);
+  if (!/begruend/.test(t)) return undefined;
+  return /revision/.test(t) ? "revision" : "berufung";
+}
+
+/**
+ * Zweiter Weg bei einer Begründungsfrist (I5-T12-01) – nur zusätzlich zur Ersatzeinreichung: Verlängerungsantrag vor Fristablauf,
+ * ebenfalls ersatzweise einzureichen. Je Gericht nur die passende Norm; die Rechtsmittelfrist selbst ist Notfrist.
+ */
+function verlaengerungsSatz(g: Gerichtsbarkeit | undefined, art: "berufung" | "revision"): string {
+  const norm =
+    art === "revision"
+      ? g === "arbeit" ? "BAG: § 74 Abs. 1 S. 3 ArbGG" : g === "zivil" ? "BGH: § 551 Abs. 2 S. 5, 6 ZPO" : g ? "" : "BGH: § 551 Abs. 2 S. 5, 6 ZPO; BAG: § 74 Abs. 1 S. 3 ArbGG"
+      : g === "arbeit" ? "LAG: § 66 Abs. 1 S. 5 ArbGG" : g === "zivil" ? "OLG: § 520 Abs. 2 S. 2, 3 ZPO" : g ? "" : "LAG: § 66 Abs. 1 S. 5 ArbGG; OLG: § 520 Abs. 2 S. 2, 3 ZPO";
+  const frist = art === "revision" ? "Die Revisionsfrist selbst ist eine Notfrist und nicht verlängerbar." : "Die Berufungsfrist selbst ist eine Notfrist und nicht verlängerbar.";
+  if (!norm) return `Ist die Begründung nicht fertig: rechtzeitig vor Fristablauf Verlängerung beantragen, soweit das Verfahrensrecht sie zulässt – ebenfalls ersatzweise einreichen. ${frist}`;
+  return `Ist die Begründung nicht fertig: Verlängerungsantrag vor Fristablauf stellen – ebenfalls ersatzweise einreichen (${norm}). ${frist}`;
+}
+
 /**
  * Notfallantwort zur beA-Störung – nach Gerichtsbarkeit, mit Normen, Ersatzeinreichung, Glaubhaftmachung und Dokumentation.
  * Die Ansprechperson nennt sie ehrlich nach Servicezeit (I4-T12-02): außerhalb „jetzt nicht erreichbar (wieder …) – warten Sie
  * nicht, reichen Sie jetzt ersatzweise ein“; keine erfundene Notfallnummer.
  */
-export function beaStoerungAntwort(g: Gerichtsbarkeit | undefined, ap: Ansprechpartner, opts: { jetzt?: Date; land?: Bundesland } = {}): string {
+export function beaStoerungAntwort(g: Gerichtsbarkeit | undefined, ap: Ansprechpartner, opts: { jetzt?: Date; land?: Bundesland; begruendung?: "berufung" | "revision" } = {}): string {
   const jetzt = opts.jetzt ?? new Date();
   const land = opts.land ?? "BE";
   const erreichbar = inServicezeit(jetzt, ap.verfuegbar, land);
@@ -981,6 +1002,7 @@ export function beaStoerungAntwort(g: Gerichtsbarkeit | undefined, ap: Ansprechp
     kopf,
     liste([
       `Ersatzeinreichung: Ist das beA vorübergehend aus technischen Gründen nicht nutzbar, bleibt die Einreichung nach den allgemeinen Vorschriften zulässig – per Telefax, auf Papier oder per Bote (${g ? n.erlaubt : "§ 130d S. 2 ZPO bzw. § 46g S. 3 ArbGG"}).`,
+      ...(opts.begruendung ? [verlaengerungsSatz(g, opts.begruendung)] : []),
       `Glaubhaftmachung: Die vorübergehende Unmöglichkeit bei der Ersatzeinreichung oder unverzüglich danach glaubhaft machen – mit anwaltlicher Versicherung und einer geschlossenen Schilderung der Abläufe (${g ? n.glaubhaft : "§ 130d S. 3 ZPO bzw. § 46g S. 4 ArbGG"}).`,
       "Dokumentation: Störung sofort dokumentieren – Screenshot mit Uhrzeit, Fehlermeldung, Störungsmeldung der BRAK bzw. beA-Status, Uhrzeiten Ihrer Versuche.",
       "Auf Anforderung des Gerichts das elektronische Dokument nachreichen.",
@@ -1253,6 +1275,14 @@ function rueckfrageIn(text: string | undefined): Rueckfrage | undefined {
   if (!text) return undefined;
   return RUECKFRAGEN.find(([, re]) => re.test(text.trim()))?.[0];
 }
+
+/** Endet die Antwort mit „Soll ich einen Rückruf … anfordern?“ – dann bietet die Oberfläche den Knopf „Rückruf anfordern“ (I5-T20-02). */
+export function bietetRueckruf(text: string | undefined): boolean {
+  return rueckfrageIn(text) === "rueckruf";
+}
+
+/** Was der Knopf „Rückruf anfordern“ sendet – wirkt wie die getippte Zustimmung. */
+export const RUECKRUF_ZUSTIMMUNG = "Ja, bitte.";
 
 const ZUSTIMMUNG = /^(ja|jo|jep|jawohl|gern|gerne|bitte|ok|okay|klar|genau|einverstanden|unbedingt|auf jeden fall|mach das|mach mal|machen sie das|sehr gerne?|ja bitte|ja gerne|ja gern|bitte ja|ja klar|ja mach das|ja das waere toll|ja das wäre toll|ja bitte gerne)$/;
 const ABLEHNUNG = /^(nein|nee|ne|nö|noe|nicht noetig|nicht nötig|lieber nicht|nein danke|danke nein|nein danke nicht noetig|kein bedarf|spaeter|später|jetzt nicht|nein jetzt nicht)$/;
@@ -1535,7 +1565,10 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
   if (istBeaStoerung(frage) || folgefrage) {
     if (!ctx.werkzeuge.includes("notfall_bea")) ctx.werkzeuge.push("notfall_bea");
     ctx.links.push({ label: "beA-Status (Systemstatus)", to: "/hilfe#status" }, { label: "Wissenskarte beA-Störung", to: "/hilfe?wiki=bea-stoerung" });
-    return beaStoerungAntwort(gerichtsbarkeitAus(frage), ap, { land: ctx.sitzung.tenant.bundesland });
+    // Begründungsfrist (auch aus der Vorfrage, z. B. „Und beim OLG?“ nach „Berufungsbegründung muss heute raus“): zweiter Weg Verlängerung
+    const vorfragen = verlauf.filter((m) => m.role === "user").map((m) => m.content);
+    const begruendung = begruendungsfristAus(frage) ?? (folgefrage ? vorfragen.map(begruendungsfristAus).find(Boolean) : undefined);
+    return beaStoerungAntwort(gerichtsbarkeitAus(frage), ap, { land: ctx.sitzung.tenant.bundesland, begruendung });
   }
 
   // ── Nur ein Bereichsname („Einstellungen“, „Bankabgleich“) → Bereich öffnen; danach Mensch / Ansprechpartner ──
@@ -1718,19 +1751,17 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
   const navMatch = q.match(/(öffne|oeffne|zeig|zeige|geh|gehe|wechsle|navigiere|bring mich)\s+(mir\s+)?(zu[mr]?\s+|in\s+(den|die|das)\s+|die\s+|den\s+|das\s+)?(.+)/);
   if (navMatch) {
     const ziel = navMatch[5].replace(/[?.!]+$/, "").replace(/^akte\s+/, "");
+    // Suchbegriff so zeigen, wie er eingegeben wurde („Schmidt“, nicht „schmidt“ – I5-T20-02)
+    const begriff = ziel.replace(/^akte\s+/i, "");
+    const i = frage.toLowerCase().lastIndexOf(begriff);
+    const original = i >= 0 ? frage.slice(i, i + begriff.length) : begriff;
     try {
       const r = (await run("navigiere", { ziel })) as { geoeffnet?: string; titel?: string; mehrdeutig?: boolean; treffer?: string[] };
-      if (r.mehrdeutig) {
-        // Suchbegriff so zeigen, wie er eingegeben wurde („Schneider“, nicht „schneider“)
-        const begriff = ziel.replace(/^akte\s+/i, "");
-        const i = frage.toLowerCase().lastIndexOf(begriff);
-        const original = i >= 0 ? frage.slice(i, i + begriff.length) : begriff;
-        return `Zu „${original}“ passen ${r.treffer?.length ?? 0} Akten. Welche soll ich öffnen?`;
-      }
+      if (r.mehrdeutig) return `Zu „${original}“ passen ${r.treffer?.length ?? 0} Akten. Welche soll ich öffnen?`;
       return r.titel ? `Ich habe die ${r.geoeffnet} (${r.titel}) für Sie geöffnet.` : `Ich habe „${r.geoeffnet}“ für Sie geöffnet.`;
     } catch {
       if (/akte/.test(q) || azAus(q)) {
-        return `Eine Akte ${azAus(q) ?? `„${ziel}“`} habe ich in Ihrer Kanzlei nicht gefunden. Versuchen Sie es mit einem anderen Aktenzeichen, z. B. „Öffne die Akte ${beispielAz()}“, oder suchen Sie nach dem Namen des Mandanten.`;
+        return `Eine Akte ${azAus(q) ?? `„${original}“`} habe ich in Ihrer Kanzlei nicht gefunden. Versuchen Sie es mit einem anderen Aktenzeichen, z. B. „Öffne die Akte ${beispielAz()}“, oder suchen Sie nach dem Namen des Mandanten.`;
       }
     }
   }

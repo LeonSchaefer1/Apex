@@ -8,7 +8,7 @@ import { telHref } from "@/lib/telefon";
 import { CopyButton } from "@/pages/hilfe/kopieren";
 import { cn } from "@/lib/cn";
 import { festeAnsprechBezeichnung } from "@/lib/rollen";
-import { ESCROW_HINWEIS, LIZENZ_KENNZEICHNUNG, PREIS_HINWEIS, UEBERTRAGBARKEIT_HINWEIS, WARTUNG_HINWEIS, WARTUNG_INHALT } from "@/content/lizenz";
+import { ESCROW_HINWEIS, LIZENZ_KENNZEICHNUNG, LIZENZ_KERN, PREIS_HINWEIS, UEBERTRAGBARKEIT_HINWEIS, WARTUNG_HINWEIS, WARTUNG_INHALT, WARTUNG_OPTIONAL } from "@/content/lizenz";
 import { Abschnitt } from "./teile";
 
 export function LizenzTab() {
@@ -50,9 +50,10 @@ export function LizenzTab() {
               <div className="eyebrow">{test ? "Ihr Zugang" : "Ihre Lizenz"}</div>
               <h2 className="title-lg mt-1">{test ? (testBis ? `Testzugang bis ${fmtDate(testBis)}` : "Testzugang") : "Lifetime-Lizenz"}</h2>
               <p className="mt-1 text-[13.5px] text-fg-2">
+                {/* Eine Aussage zur Wartung in beiden Zweigen – wortgleich mit der Landing (I5-T13-01, src/content/lizenz.ts) */}
                 {test
-                  ? `In der Testphase sind alle Funktionen freigeschaltet. ${testBis ? "Danach" : "Wenn Sie überzeugt sind,"} erwerben Sie die Lifetime-Lizenz – einmal investiert, dauerhaft genutzt.`
-                  : "Einmal investiert, dauerhaft genutzt – keine Monatsgebühren. Die Wartung ist optional; das erste Jahr ist enthalten."}
+                  ? `In der Testphase sind alle Funktionen freigeschaltet. ${testBis ? "Danach" : "Wenn Sie überzeugt sind,"} erwerben Sie die Lifetime-Lizenz – einmal investiert, dauerhaft genutzt. ${WARTUNG_OPTIONAL}.`
+                  : `${LIZENZ_KERN}. ${WARTUNG_OPTIONAL}.`}
               </p>
             </div>
           </div>

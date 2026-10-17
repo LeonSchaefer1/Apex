@@ -335,3 +335,29 @@ export function naechsteTermine(fristen: Frist[], heute: ISODate, nurFuer?: ID):
 export function briefingText(s: BriefingSatz, gesprochen = false): string {
   return s.map((p) => (gesprochen ? p.s ?? p.t : p.t)).join("");
 }
+
+// ───────────── Apex Console: Kanzleien nach Status ─────────────
+
+export interface KanzleiStatusZahlen {
+  gesamt: number;
+  aktiv: number;
+  /** Testzugänge (Status „test“, auch abgelaufene – die Teile ergeben zusammen die Gesamtzahl) */
+  imTest: number;
+  pausiert: number;
+  /** jeder weitere Status (künftig ergänzt), damit die Summe aufgeht */
+  sonstige: number;
+}
+
+/** Aufteilung der Kanzleien in der Apex Console (I5-T21-01): aktiv + im Test + pausiert (+ sonstige) = gesamt. Ohne Status = aktiv. */
+export function kanzleiStatusZahlen(tenants: { status?: string }[]): KanzleiStatusZahlen {
+  const status = (t: { status?: string }) => t.status ?? "aktiv";
+  const aktiv = tenants.filter((t) => status(t) === "aktiv").length;
+  const imTest = tenants.filter((t) => status(t) === "test").length;
+  const pausiert = tenants.filter((t) => status(t) === "pausiert").length;
+  return { gesamt: tenants.length, aktiv, imTest, pausiert, sonstige: tenants.length - aktiv - imTest - pausiert };
+}
+
+/** „3 aktiv · 1 im Test · 0 pausiert“ (weitere Status nur, wenn vorhanden). */
+export function kanzleiStatusText(z: KanzleiStatusZahlen): string {
+  return [`${z.aktiv} aktiv`, `${z.imTest} im Test`, `${z.pausiert} pausiert`, ...(z.sonstige ? [`${z.sonstige} sonstige`] : [])].join(" · ");
+}

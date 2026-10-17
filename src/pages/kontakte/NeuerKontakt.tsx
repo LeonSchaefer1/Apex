@@ -31,6 +31,8 @@ export function NeuerKontakt({ open, onClose, rolle, onAngelegt }: { open: boole
   const [begruendung, setBegruendung] = useState("");
   const [geprueft, setGeprueft] = useState(false);
   const [zeigeFehler, setZeigeFehler] = useState(false);
+  // Pflichtangaben: vor dem ersten Speicherversuch nur neutrale Hinweise, danach Fehler am Feld mit Fokus (I5-T17-02)
+  const [versucht, setVersucht] = useState(false);
   const [entwurf, setEntwurf] = useState<KontaktEntwurf>(leererEntwurf());
   const [rollen, setRollen] = useState<KontaktRolle[]>(rolle ? [rolle] : []);
   const [notiz, setNotiz] = useState("");
@@ -46,6 +48,7 @@ export function NeuerKontakt({ open, onClose, rolle, onAngelegt }: { open: boole
     setBegruendung("");
     setGeprueft(false);
     setZeigeFehler(false);
+    setVersucht(false);
   }, [open, rolle]);
 
   const name = entwurfName(entwurf);
@@ -62,6 +65,13 @@ export function NeuerKontakt({ open, onClose, rolle, onAngelegt }: { open: boole
   };
 
   const anlegen = async () => {
+    if (!gueltig) {
+      setVersucht(true);
+      // Fokus ins erste fehlerhafte Feld: Name, E-Mail, Rollen
+      const ziel = !entwurfGueltig(entwurf) ? (entwurf.typ === "person" ? "nk-nachname" : "nk-firma") : emailUngueltig(entwurf.email) ? "nk-email" : "nk-rolle-erste";
+      window.setTimeout(() => document.getElementById(ziel)?.focus(), 0);
+      return;
+    }
     if (dublette && !trotzdemOk) {
       setZeigeFehler(true);
       window.setTimeout(() => document.getElementById(!begruendungOk ? "nk-begruendung" : "nk-geprueft")?.focus(), 0);
@@ -113,7 +123,7 @@ export function NeuerKontakt({ open, onClose, rolle, onAngelegt }: { open: boole
           </Button>
           {dublette ? (
             <>
-              <Button variant="secondary" disabled={!gueltig} onClick={() => void anlegen()} icon={<UserPlus className="size-4" />} aria-describedby="nk-trotzdem-hinweis">
+              <Button variant="secondary" onClick={() => void anlegen()} icon={<UserPlus className="size-4" />} aria-describedby="nk-trotzdem-hinweis">
                 Trotzdem neu anlegen
               </Button>
               <Button variant="primary" onClick={() => bestehendenOeffnen(dublette.kontakt.id)} icon={<UserCheck className="size-4" />}>
@@ -121,7 +131,7 @@ export function NeuerKontakt({ open, onClose, rolle, onAngelegt }: { open: boole
               </Button>
             </>
           ) : (
-            <Button variant="primary" disabled={!gueltig} onClick={() => void anlegen()} icon={<UserPlus className="size-4" />}>
+            <Button variant="primary" onClick={() => void anlegen()} icon={<UserPlus className="size-4" />}>
               Kontakt anlegen
             </Button>
           )}
@@ -129,7 +139,7 @@ export function NeuerKontakt({ open, onClose, rolle, onAngelegt }: { open: boole
       }
     >
       <div className="grid grid-cols-1 gap-5">
-        <KontaktFelder idPrefix="nk" value={entwurf} onChange={setEntwurf} />
+        <KontaktFelder idPrefix="nk" value={entwurf} onChange={setEntwurf} zeigePflicht={versucht} />
         <AnimatePresence initial={false}>
           {dublette && (
             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
@@ -194,8 +204,17 @@ export function NeuerKontakt({ open, onClose, rolle, onAngelegt }: { open: boole
           <div className="label" id="nk-rollen-label">
             Rollen <span className="text-fg-3">(Pflicht)</span>
           </div>
-          <RollenWahl value={rollen} onChange={setRollen} />
-          {rollen.length === 0 && <p className="mt-1.5 text-[12.5px] text-fg-3">Bitte mindestens eine Rolle wählen – sie bestimmt, wo der Kontakt in Akten auswählbar ist.</p>}
+          <RollenWahl value={rollen} onChange={setRollen} labelId="nk-rollen-label" beschreibungId={versucht && rollen.length === 0 ? "nk-rollen-fehler" : "nk-rollen-hinweis"} ungueltig={versucht && rollen.length === 0} erstesId="nk-rolle-erste" />
+          {versucht && rollen.length === 0 ? (
+            <p id="nk-rollen-fehler" className="mt-1.5 flex items-start gap-1.5 text-[12.5px] font-medium text-seal">
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              Bitte mindestens eine Rolle wählen – sie bestimmt, wo der Kontakt in Akten auswählbar ist.
+            </p>
+          ) : (
+            <p id="nk-rollen-hinweis" className="mt-1.5 text-[12.5px] text-fg-3">
+              Mindestens eine Rolle – sie bestimmt, wo der Kontakt in Akten auswählbar ist.
+            </p>
+          )}
         </div>
         {rollen.includes("versicherung") && <VersicherungsFelder idPrefix="nk" value={versicherung} onChange={setVersicherung} />}
         <Field label="Notiz" htmlFor="nk-notiz">

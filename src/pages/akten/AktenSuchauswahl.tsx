@@ -1,7 +1,9 @@
 // Aktenwahl mit Suche (I4-T02-01) – wie „Bestehender Kontakt“ in der Mandatsaufnahme: ein Eingabefeld (Combobox mit
 // aria-activedescendant), Treffer nach Aktenzeichen, Mandant bzw. Gegner, Gerichtsaktenzeichen und Titel (Volltext über
 // `search`), KI-Vorschlag und zuletzt geöffnete Akten oben. ↑/↓ markiert, Enter übernimmt, Escape leert die Suche.
-import { useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+// `autoFokus` (I5-T02-01): Wird die Auswahl ausdrücklich aufgeklappt („Andere Akte wählen“), liegt der Fokus sofort im
+// Suchfeld – Tippen landet dort, Einzeltasten-Kürzel ruhen – und Feld samt Trefferliste scrollen ins Bild.
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Check, History, Sparkles } from "lucide-react";
 import type { Akte, Kontakt } from "@/core/types";
 import { search } from "@/core/search";
@@ -46,6 +48,8 @@ export function AktenSuchauswahl({
   userId,
   hoehe = 280,
   label = "Akte wählen",
+  autoFokus = false,
+  onEscape,
 }: {
   id: string;
   akten: Akte[];
@@ -58,8 +62,22 @@ export function AktenSuchauswahl({
   userId?: string;
   hoehe?: number;
   label?: string;
+  /** Fokus beim Erscheinen ins Suchfeld, danach Feld und Liste ins Bild (nur bei ausdrücklich aufgeklappter Auswahl) */
+  autoFokus?: boolean;
+  /** Escape bei leerer Suche – z. B. Auswahl schließen und den Fokus zurückgeben */
+  onEscape?: () => void;
 }) {
   const [q, setQ] = useState("");
+  const rahmen = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!autoFokus) return;
+    document.getElementById(id)?.focus({ preventScroll: true });
+    // Nach dem Aufklappen (Höhenanimation) Feld und Trefferliste ins Bild – bei reduzierter Bewegung sofort
+    const ruhig = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const t = window.setTimeout(() => rahmen.current?.scrollIntoView({ block: "nearest", behavior: ruhig ? "auto" : "smooth" }), ruhig ? 0 : 360);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [markiert, setMarkiert] = useState(-1);
   const kMap = useMemo(() => (kontakte instanceof Map ? kontakte : new Map(kontakte.map((k) => [k.id, k]))), [kontakte]);
   const name = (kid?: string) => (kid ? kMap.get(kid)?.name ?? "" : "");
@@ -116,6 +134,10 @@ export function AktenSuchauswahl({
       e.stopPropagation();
       setQ("");
       setMarkiert(-1);
+    } else if (e.key === "Escape" && onEscape) {
+      e.preventDefault();
+      e.stopPropagation();
+      onEscape();
     }
   };
 
@@ -123,7 +145,7 @@ export function AktenSuchauswahl({
   let letzteGruppe = "";
 
   return (
-    <div className="grid grid-cols-1 gap-2">
+    <div ref={rahmen} className="grid grid-cols-1 gap-2 scroll-my-3">
       <label htmlFor={id} className="label !mb-0">
         {label}
       </label>
@@ -152,7 +174,7 @@ export function AktenSuchauswahl({
             Gewählt: <span className="mono font-medium text-fg-2">{gewaehlt.aktenzeichen}</span> {gewaehlt.titel} ·{" "}
           </>
         ) : null}
-        ↑/↓ wählt, Enter übernimmt{q.trim() ? " – ohne Auswahl den ersten Treffer" : ""}, Escape leert die Suche.
+        ↑/↓ wählt, Enter übernimmt{q.trim() ? " – ohne Auswahl den ersten Treffer" : ""}, Escape {q || markiert >= 0 || !onEscape ? "leert die Suche" : "schließt die Auswahl"}.
       </p>
       {optionen.length === 0 ? (
         <div role="status" className="rounded-[16px] bg-ink-softer px-4 py-6 text-center text-[13px] text-fg-3 shadow-[inset_0_0_0_1px_var(--line)]">

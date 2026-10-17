@@ -91,14 +91,17 @@ export function ApexIsland() {
         <span className="shrink-0 rounded-full bg-white/14 px-1.5 py-0.5 text-[12px] font-semibold leading-none text-white/90 ring-1 ring-white/15">Beispiel</span>
       </button>
       {/* Ausblenden direkt an der Island (1 Aktion) – wieder einschalten unter Einstellungen → Darstellung */}
+      {/* Trefferfläche 24×24 px (WCAG 2.5.8), sichtbar bleibt der 20-px-Kreis */}
       <button
         type="button"
         onClick={islandAusblenden}
-        className="absolute -right-1.5 -top-1.5 z-10 grid size-5 place-items-center rounded-full bg-[var(--surface)] text-fg-2 opacity-0 shadow ring-1 ring-[var(--line-strong)] transition-opacity hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"
+        className="absolute -right-2 -top-2 z-10 grid size-6 place-items-center rounded-full text-fg-2 opacity-0 transition-opacity hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"
         aria-label="Apex Island ausblenden"
         title="Apex Island ausblenden"
       >
-        <X className="size-3" />
+        <span aria-hidden className="grid size-5 place-items-center rounded-full bg-[var(--surface)] shadow ring-1 ring-[var(--line-strong)]">
+          <X className="size-3" />
+        </span>
       </button>
       <span
         id="apex-island-tipp"

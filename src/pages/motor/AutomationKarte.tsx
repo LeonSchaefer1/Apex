@@ -51,6 +51,15 @@ function FreigabeZeile({ k }: { k: string }) {
 export const FRIST_AUTOMATIK_RECHT = "Fristautomatiken schalten Partner und Administration";
 
 /**
+ * Schalter einer Automatik (I5-T10-03): fester zugänglicher Name „Automatik „Name““ in Karte und Detail – der Zustand steht nur
+ * in aria-checked (und im sichtbaren Zustandstext), nicht im Namen. Fehlende Rechte nennt aria-describedby (sichtbarer Hinweis
+ * mit `rechtId`) über die Prop `describedBy` des Basis-Schalters.
+ */
+function AutomatikSchalter({ a, darf, onChange, rechtId }: { a: Automation; darf: boolean; onChange: (v: boolean) => void; rechtId: string }) {
+  return <Switch checked={a.aktiv} disabled={!darf} onChange={onChange} label={`Automatik „${a.name}“`} describedBy={darf ? undefined : rechtId} />;
+}
+
+/**
  * Ein- bzw. Ausschalten einer Automatik. Fristautomatiken (Fristerkennung, Vorfristen, eEB) nur mit Recht (Partner,
  * Administration) und vor dem Pausieren mit Rückfrage samt Folge (Fokus auf „Abbrechen“); übrige Automatiken bei einem Klick.
  * Pausieren merkt Zeitpunkt und Person, das Protokoll nennt die Folge; Aktivieren löscht die Pausenangaben.
@@ -171,11 +180,11 @@ export function AutomationKarte({ a, onOpen, now, ausFeed }: { a: Automation; on
           </div>
         </div>
         <div className="relative z-[2]">
-          <Switch checked={a.aktiv} disabled={!darf} onChange={(v) => void umschalten(a, v)} label={`${a.name} ${a.aktiv ? "pausieren" : "aktivieren"}${darf ? "" : ` – ${FRIST_AUTOMATIK_RECHT}`}`} />
+          <AutomatikSchalter a={a} darf={darf} onChange={(v) => void umschalten(a, v)} rechtId={`${a.key}-recht-karte`} />
         </div>
       </div>
       {!darf && (
-        <p className="-mt-2 flex items-center gap-1.5 text-[12.5px] text-fg-3">
+        <p id={`${a.key}-recht-karte`} className="-mt-2 flex items-center gap-1.5 text-[12.5px] text-fg-3">
           <Lock className="size-3.5 shrink-0" aria-hidden /> {FRIST_AUTOMATIK_RECHT}
         </p>
       )}
@@ -287,12 +296,12 @@ export function AutomationDrawer({ a: aktuell, onClose, aktivitaeten, now }: { a
               <div className="text-[13.5px] font-semibold" aria-live="polite">{a.aktiv ? "Automatik ist aktiv" : "Automatik ist pausiert"}</div>
               <div className="text-[12.5px] text-fg-3">{a.aktiv ? `Freigabe: ${freigabeVon(a.key)}.` : "Es werden keine Vorgänge bearbeitet."}</div>
               {!darfDrawer && (
-                <div className="mt-1 flex items-center gap-1.5 text-[12.5px] text-fg-3">
+                <div id={`${a.key}-recht-detail`} className="mt-1 flex items-center gap-1.5 text-[12.5px] text-fg-3">
                   <Lock className="size-3.5 shrink-0" aria-hidden /> {FRIST_AUTOMATIK_RECHT}
                 </div>
               )}
             </div>
-            <Switch checked={a.aktiv} disabled={!darfDrawer} onChange={(v) => void umschalten(a, v)} label={`${a.aktiv ? "Automatik pausieren" : "Automatik aktivieren"}${darfDrawer ? "" : ` – ${FRIST_AUTOMATIK_RECHT}`}`} />
+            <AutomatikSchalter a={a} darf={darfDrawer} onChange={(v) => void umschalten(a, v)} rechtId={`${a.key}-recht-detail`} />
           </div>
 
           <p className="text-[14px] leading-relaxed text-fg-2">{a.beschreibung}</p>

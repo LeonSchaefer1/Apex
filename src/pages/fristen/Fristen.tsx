@@ -91,11 +91,13 @@ export default function Fristen() {
   const pDatum = params.get("datum");
   const pAkte = params.get("rechner") === "1" ? null : params.get("akte");
   const pQuelle = params.get("quelle");
+  // ?verantwortlich=<userId> (Cockpit-Hinweis „offene Fristen eines deaktivierten Zugangs“, I5-T23-01): Fristen einer Person
+  const pVerantwortlich = params.get("verantwortlich");
   const quelleFilter = pQuelle && (QUELLEN as string[]).includes(pQuelle) ? (pQuelle as Frist["quelle"]) : null;
   const dlFokus = (pFilter && FILTER_PARAM[pFilter]) || null;
   const dlDatum = istDatum(pDatum) ? pDatum : null;
 
-  const [ansicht, setAnsichtRaw] = useState<Ansicht>(() => (dlFokus || params.get("nur") === "meine" || params.get("vertretung") === "vorab" ? "liste" : dlDatum ? "woche" : ladeAnsicht()));
+  const [ansicht, setAnsichtRaw] = useState<Ansicht>(() => (dlFokus || pVerantwortlich || params.get("nur") === "meine" || params.get("vertretung") === "vorab" ? "liste" : dlDatum ? "woche" : ladeAnsicht()));
   const [typ, setTyp] = useState<"alle" | FristTyp>("alle");
   // ?nur=meine (z. B. aus dem Cockpit-Hinweis „Sie vertreten heute …“): eigene Fristen samt Vertretung
   const pNur = params.get("nur");
@@ -124,6 +126,8 @@ export default function Fristen() {
   }, [kuenftig]);
   /** Deep-Link-Filter auf eine Akte (`?akte=` ohne Rechner) */
   const [akteFilter, setAkteFilterRaw] = useState<string | null>(pAkte);
+  /** Deep-Link-Filter auf die verantwortliche Person (`?verantwortlich=`) */
+  const [personFilter, setPersonFilterRaw] = useState<string | null>(pVerantwortlich);
   /** Per Deep-Link angesprungener Tag (`?datum=`), wird im Kalender hervorgehoben */
   const [markiert, setMarkiert] = useState<string | null>(dlDatum);
 
@@ -134,6 +138,10 @@ export default function Fristen() {
       setAnsichtRaw("liste");
     }
     if (pAkte) setAkteFilterRaw(pAkte);
+    if (pVerantwortlich) {
+      setPersonFilterRaw(pVerantwortlich);
+      if (!dlDatum) setAnsichtRaw("liste");
+    }
     if (pNur === "meine") {
       setNurMeineRaw(true);
       if (!dlDatum) setAnsichtRaw("liste");
@@ -150,7 +158,7 @@ export default function Fristen() {
       setMarkiert(dlDatum);
       if (!dlFokus) setAnsichtRaw("woche");
     }
-  }, [dlFokus, pAkte, dlDatum, pNur, pVertretung]);
+  }, [dlFokus, pAkte, dlDatum, pNur, pVertretung, pVerantwortlich]);
 
   /** Entfernt Deep-Link-Parameter, sobald der Nutzer den Filter selbst ändert. */
   const entferneParam = (...keys: string[]) => {
@@ -174,6 +182,10 @@ export default function Fristen() {
   const setAkteFilter = (a: string | null) => {
     setAkteFilterRaw(a);
     if (params.get("rechner") !== "1") entferneParam("akte");
+  };
+  const setPersonFilter = (id: string | null) => {
+    setPersonFilterRaw(id);
+    entferneParam("verantwortlich");
   };
 
   const setAnsicht = (a: Ansicht) => {
@@ -233,6 +245,7 @@ export default function Fristen() {
       if (typ !== "alle" && f.typ !== typ) return false;
       if (nurMeine && f.verantwortlichId !== user.id && !vertretene.includes(f.verantwortlichId) && !(vorab && vorabFuer.has(f.id))) return false;
       if (akteFilter && f.akteId !== akteFilter) return false;
+      if (personFilter && f.verantwortlichId !== personFilter) return false;
       if (quelleFilter && f.quelle !== quelleFilter) return false;
       // Kennzahl-Filter zeigen Fristen und die getrennt genannten Einträge (Wiedervorlagen, Vorfristen, Termine) mit Typ
       if (fokus === "heute" && !(f.status === "offen" && f.datum <= heute && f.typ !== "termin")) return false;
@@ -241,7 +254,7 @@ export default function Fristen() {
       if (fokus === "unkontrolliert" && !brauchtKontrolle(f)) return false;
       return true;
     });
-  }, [fristen, erledigte, typ, nurMeine, user.id, fokus, heute, akteFilter, quelleFilter, vertretene, vorab, vorabFuer]);
+  }, [fristen, erledigte, typ, nurMeine, user.id, fokus, heute, akteFilter, personFilter, quelleFilter, vertretene, vorab, vorabFuer]);
 
   /** „Meine Fristen als .ics“: offene Einträge, für die ich verantwortlich bin (inkl. Vertretung) */
   const meineIcs = () => {
@@ -265,7 +278,7 @@ export default function Fristen() {
     setAnsicht("liste");
   };
 
-  const istGefiltert = typ !== "alle" || nurMeine || !!fokus || !!akteFilter || !!quelleFilter;
+  const istGefiltert = typ !== "alle" || nurMeine || !!fokus || !!akteFilter || !!personFilter || !!quelleFilter;
   const dazu = (teile: string[]) => (teile.length ? `dazu ${teile.join(" und ")}` : "");
   const subHeute = [
     kpi.ueberfaellig ? `davon ${kpi.ueberfaellig} überfällig` : "",
@@ -279,6 +292,7 @@ export default function Fristen() {
     ? [kpi.kontrolleKi ? `davon ${kpi.kontrolleKi} von der KI erkannt` : "", kpi.kontrolleUmzug ? `${kpi.kontrolleUmzug} aus Umzug` : ""].filter(Boolean).join(", ") || "Bestätigung durch zweite Person"
     : "Alle Fristen kontrolliert";
   const filterAkte = akteFilter ? akten.get(akteFilter) : undefined;
+  const filterPerson = personFilter ? team.find((u) => u.id === personFilter) : undefined;
   const kennzahlen = [
     { key: "heute", label: "Heute fällig", kurz: "Heute", icon: <AlarmClock className="size-4" />, tone: kpi.heute ? "seal" : "green", wert: kpi.heute, sub: subHeute },
     { key: "woche", label: "Nächste 7 Tage", kurz: "7 Tage", icon: <CalendarRange className="size-4" />, tone: "amber", wert: kpi.woche, sub: subWoche },
@@ -443,7 +457,7 @@ export default function Fristen() {
       </div>
 
       <AnimatePresence>
-        {(fokus || akteFilter || quelleFilter) && (
+        {(fokus || akteFilter || personFilter || quelleFilter) && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
             <div className="mb-3 flex flex-wrap items-center gap-2 text-[13px] text-fg-2 sm:mb-4">
               {fokus && (
@@ -462,6 +476,18 @@ export default function Fristen() {
                     {filterAkte ? ` ${filterAkte.titel}` : ""} · {gefiltert.length}
                   </span>
                   <button type="button" onClick={() => setAkteFilter(null)} className="grid size-6 shrink-0 place-items-center rounded-full hover:bg-[var(--ink-soft)]" aria-label="Aktenfilter entfernen">
+                    <X className="size-3.5" />
+                  </button>
+                </span>
+              )}
+              {personFilter && (
+                <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full bg-ink-soft py-1 pl-3 pr-1 font-medium text-ink">
+                  <span className="min-w-0 break-words">
+                    Verantwortlich: {filterPerson?.name ?? "unbekannter Zugang"}
+                    {filterPerson?.deaktiviert ? " (deaktiviert)" : ""}
+                    {!akteFilter && ` · ${aufschluesselung(gefiltert)}`}
+                  </span>
+                  <button type="button" onClick={() => setPersonFilter(null)} className="grid size-6 shrink-0 place-items-center rounded-full hover:bg-[var(--ink-soft)]" aria-label="Personenfilter entfernen">
                     <X className="size-3.5" />
                   </button>
                 </span>
@@ -527,7 +553,7 @@ export default function Fristen() {
               heute={heute}
               land={tenant.bundesland}
               gefiltert={istGefiltert}
-              ohneHorizont={!!akteFilter || !!quelleFilter || fokus === "unkontrolliert" || fokus === "kritisch"}
+              ohneHorizont={!!akteFilter || !!personFilter || !!quelleFilter || fokus === "unkontrolliert" || fokus === "kritisch"}
               markiert={markiert ?? undefined}
               vertretungFuer={vertretungFuer}
               vertretungVorab={vorab ? vorabFuer : undefined}

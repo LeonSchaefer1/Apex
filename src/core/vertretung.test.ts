@@ -177,3 +177,69 @@ test("vertretungVorabText (I4-T18-04): Hinweis vor dem ersten Abwesenheitstag mi
   assert.equal(vertretungUmfangText([frist("a", "2026-10-20"), frist("b", "2026-10-21", { typ: "wiedervorlage" })]), "1 Frist, dazu 1 Wiedervorlage");
   assert.equal(vertretungUmfangText([frist("b", "2026-10-21", { typ: "wiedervorlage" }), frist("c", "2026-10-22", { typ: "vorfrist" })]), "keine Frist, aber 1 Wiedervorlage und 1 Vorfrist");
 });
+
+test("uebertragungVorbelegung (I5-T23-01): Vertretung vor angemeldeter Person, sonst leer", async () => {
+  const { uebertragungVorbelegung } = await import("./vertretung");
+  const hartmann = person("hartmann", { rolle: "partner" });
+  const brandt = person("brandt", { abwesenheit: { von: "2026-10-12", bis: "2026-10-23", vertretungId: "kaya" } });
+  const kaya = person("kaya");
+  const becker = person("becker", { rolle: "refa" });
+  const admin = person("admin", { rolle: "admin" });
+  // 1. eingetragene Vertretung, wenn aktiv und Kandidatin
+  assert.equal(uebertragungVorbelegung(brandt, hartmann, [hartmann, kaya, becker]), "kaya");
+  // Vertretung deaktiviert oder keine Kandidatin → angemeldete Person
+  assert.equal(uebertragungVorbelegung(brandt, hartmann, [hartmann, { ...kaya, deaktiviert: true }]), "hartmann");
+  assert.equal(uebertragungVorbelegung({ ...brandt, abwesenheit: { von: "2026-10-12", bis: "2026-10-23", vertretungId: "becker" } }, hartmann, [hartmann, becker]), "hartmann");
+  // 2. ohne Vertretung: angemeldete Person, wenn Partner/Anwalt
+  assert.equal(uebertragungVorbelegung(person("x"), hartmann, [hartmann, kaya]), "hartmann");
+  // 3. angemeldet ist die Administration (keine Kandidatin) und keine Vertretung → leer (Pflichtwahl)
+  assert.equal(uebertragungVorbelegung(person("x"), admin, [kaya, becker]), "");
+  // nie die Person selbst
+  assert.equal(uebertragungVorbelegung(hartmann, hartmann, [hartmann]), "");
+});
+
+test("uebertragungSperrgrund: ohne Wahl oder ohne Häkchen gesperrt, ohne offene Fristen frei", async () => {
+  const { NICHT_UEBERTRAGEN, uebertragungSperrgrund } = await import("./vertretung");
+  assert.equal(uebertragungSperrgrund({ offeneFristen: 0, wahl: "", bestaetigt: false, name: "Jonas Brandt" }), undefined);
+  assert.equal(uebertragungSperrgrund({ offeneFristen: 8, wahl: "", bestaetigt: false, name: "Jonas Brandt" }), "Bitte wählen Sie, wer die 8 offenen Fristen von Jonas Brandt übernimmt.");
+  assert.equal(uebertragungSperrgrund({ offeneFristen: 8, wahl: NICHT_UEBERTRAGEN, bestaetigt: false, name: "Jonas Brandt" }), "Bitte bestätigen Sie, dass Sie die Überwachung für die 8 offenen Fristen von Jonas Brandt sicherstellen.");
+  assert.equal(uebertragungSperrgrund({ offeneFristen: 8, wahl: NICHT_UEBERTRAGEN, bestaetigt: true, name: "Jonas Brandt" }), undefined);
+  assert.equal(uebertragungSperrgrund({ offeneFristen: 1, wahl: "hartmann", bestaetigt: false, name: "Jonas Brandt" }), undefined);
+});
+
+test("fristenDeaktivierterZugaenge: offene Einträge eines deaktivierten Zugangs, Text mit Zählweise wie fristenLage", async () => {
+  const { fristenDeaktivierterZugaenge, verantwortungText } = await import("./vertretung");
+  const f = (id: string, typ: Frist["typ"], wer: string, status: Frist["status"] = "offen"): Frist => ({ id, akteId: "a", titel: id, typ, datum: "2026-10-20", status, verantwortlichId: wer, quelle: "manuell" }) as Frist;
+  const team = [person("hartmann", { rolle: "partner" }), person("brandt", { deaktiviert: true }), person("kaya", { deaktiviert: true })];
+  const fristen = [f("1", "frist", "brandt"), f("2", "notfrist", "brandt"), f("3", "wiedervorlage", "brandt"), f("4", "termin", "brandt"), f("5", "frist", "brandt", "erledigt"), f("6", "frist", "hartmann")];
+  const v = fristenDeaktivierterZugaenge(fristen, team);
+  assert.equal(v.length, 1);
+  assert.equal(v[0].person.id, "brandt");
+  assert.equal(v[0].offen.fristen.length, 2);
+  assert.equal(v[0].offen.alle.length, 4);
+  assert.equal(verantwortungText(v[0].offen), "2 offene Fristen, dazu 1 Wiedervorlage und 1 Termin");
+  assert.equal(verantwortungText({ fristen: [fristen[0]], wiedervorlagen: [], termine: [], vorfristen: [], alle: [fristen[0]] }), "1 offene Frist");
+  assert.deepEqual(fristenDeaktivierterZugaenge(fristen, team.map((u) => ({ ...u, deaktiviert: undefined }))), []);
+});
+
+test("Fristregel im Backend (I5-T23-01): Deaktivieren mit Übertragung oder Bestätigung, Entfernen nur mit Übertragung", async () => {
+  const { pruefeFristEntscheidung, pruefeFristEntscheidungEntfernen } = await import("../lib/backend/types");
+  const f = (id: string, typ: Frist["typ"], wer: string): Frist => ({ id, akteId: "a", titel: id, typ, datum: "2026-10-20", status: "offen", verantwortlichId: wer, quelle: "manuell" }) as Frist;
+  const hartmann = person("hartmann", { rolle: "partner" });
+  const brandt = person("brandt");
+  const becker = person("becker", { rolle: "refa" });
+  const team = [hartmann, brandt, becker];
+  const fristen = [f("1", "notfrist", "brandt"), f("2", "frist", "brandt"), f("3", "wiedervorlage", "brandt")];
+  // Deaktivieren: ohne Entscheidung abgelehnt, mit Bestätigung erlaubt (Zahl für das Protokoll), mit Übertragung 0
+  assert.throws(() => pruefeFristEntscheidung(team, brandt, { deaktiviert: true }, fristen), /2 offene Fristen/);
+  assert.equal(pruefeFristEntscheidung(team, brandt, { deaktiviert: true, fristen: { ueberwachungBestaetigt: true } }, fristen), 2);
+  assert.equal(pruefeFristEntscheidung(team, brandt, { deaktiviert: true, fristen: { uebertragenAn: "hartmann" } }, fristen), 0);
+  assert.throws(() => pruefeFristEntscheidung(team, brandt, { deaktiviert: true, fristen: { uebertragenAn: "becker" } }, fristen), /Rechtsanwältin/);
+  // Entfernen: Bestätigung reicht nicht, nur Übertragung an eine aktive Berufsträgerin bzw. einen aktiven Berufsträger
+  assert.throws(() => pruefeFristEntscheidungEntfernen(team, brandt, undefined, fristen), /bevor Sie den Zugang entfernen/);
+  assert.throws(() => pruefeFristEntscheidungEntfernen(team, brandt, { ueberwachungBestaetigt: true }, fristen), /bevor Sie den Zugang entfernen/);
+  assert.doesNotThrow(() => pruefeFristEntscheidungEntfernen(team, brandt, { uebertragenAn: "hartmann" }, fristen));
+  assert.throws(() => pruefeFristEntscheidungEntfernen(team, brandt, { uebertragenAn: "brandt" }, fristen), /Rechtsanwältin/);
+  // ohne offene Fristen (nur Wiedervorlage) frei
+  assert.doesNotThrow(() => pruefeFristEntscheidungEntfernen(team, brandt, undefined, [fristen[2]]));
+});

@@ -14,7 +14,7 @@ import { toast } from "@/store/ui";
 import { AiChip, Button, Chip, Drawer, IconButton, PapierSchalter, Textarea, useDunkelModus, usePapierGedimmt } from "@/components/ui";
 import { Highlight } from "@/components/Highlight";
 import { kopiere } from "@/pages/kontakte/kontaktHelfer";
-import { DOK_ART_LABEL, DOK_STATUS_INFO, QUELLE_LABEL, beruehreAkte, eigenesSchreiben, fmtKb, offenePlatzhalter, useTeam } from "./helfer";
+import { DOK_ART_LABEL, DOK_STATUS_INFO, beruehreAkte, eigenesSchreiben, fmtKb, offenePlatzhalter, quelleLabel, useTeam } from "./helfer";
 import { imPortal, portalSperrgrund, setzePortal } from "./Mandantenportal";
 
 /** Eingangsvermerk außerhalb des Blattes: „Eingang 14.10.2026 · Scan“ */
@@ -103,6 +103,8 @@ export function DokumentVorschau({
   };
 
   const autor = d?.autorId ? byId.get(d.autorId) : undefined;
+  // Herkunft ehrlich benannt (I5-T19-01): „KI-Entwurf, gespeichert von …“, „Aus Vorlage erstellt von …“, „Automatisch erstellt (38h-Motor)“
+  const herkunft = d ? quelleLabel(d, [...byId.values()]) : undefined;
   const seiten = d?.seiten ?? 1;
   const eigen = !!d && eigenesSchreiben(d);
   const platzhalter = d && eigen && d.status !== "versandt" ? offenePlatzhalter(d.inhalt) : [];
@@ -179,7 +181,7 @@ export function DokumentVorschau({
           </span>
         )
       }
-      subtitle={d ? `${d.ordner} · ${fmtDate(d.createdAt.slice(0, 10))}${fmtTime(d.createdAt) ? `, ${fmtTime(d.createdAt)} Uhr` : ""} · ${QUELLE_LABEL[d.quelle]}${autor ? ` · ${autor.name}` : ""}` : undefined}
+      subtitle={d ? `${d.ordner} · ${fmtDate(d.createdAt.slice(0, 10))}${fmtTime(d.createdAt) ? `, ${fmtTime(d.createdAt)} Uhr` : ""} · ${herkunft!.text}${autor && !herkunft!.mitAutor ? ` · ${autor.name}` : ""}` : undefined}
       footer={
         d && (
           <>

@@ -540,9 +540,44 @@
     height: 36px !important;
   }
 }
-/* Unter 500 px Höhe: Tab-Leiste nur mit Symbolen (die zugänglichen Namen bleiben erhalten) */
+/* Unter 500 px Höhe (z. B. 200 % Zoom, 720 × 450 CSS-px – I5-T15-01): Beschriftung neben dem Symbol statt darunter, einzeilig
+   in mindestens 12,5 px – gerade wer vergrößert, braucht die Wörter. Die Leiste bleibt 40 px hoch; die Zahl am Symbol folgt
+   der Beschriftung („Post 6“). Zugängliche Namen bleiben unverändert. !important, weil die Tab-Klassen Utilities sind. */
 @media (max-height: 499px) {
+  .tabbar-zone .tabbar-tab {
+    flex-direction: row !important;
+    gap: 5px !important;
+    padding-inline: 6px !important;
+    min-width: 0;
+  }
+  .tabbar-zone .tab-symbol {
+    display: contents !important;
+  }
+  .tabbar-zone .tabbar-tab svg {
+    width: 18px !important;
+    height: 18px !important;
+    flex: none;
+  }
+  .tabbar-zone .tab-badge {
+    position: static !important;
+    order: 2;
+    flex: none;
+    height: 17px !important;
+    min-width: 17px !important;
+  }
   .tabbar-zone .tab-text {
+    order: 1;
+    min-width: 0;
+    padding-inline: 0 !important;
+    font-size: 12.5px !important;
+    line-height: 1.15 !important;
+    white-space: nowrap;
+  }
+}
+/* Geringe Höhe und schmal (unter 600 px): nur die aktive Seite und „Mehr“ beschriftet, die übrigen Tabs mit Symbol
+   (Name für Screenreader erhalten). */
+@media (max-height: 499px) and (max-width: 599px) {
+  .tabbar-zone .tabbar-tab:not([aria-current="page"]):not([data-tab="mehr"]) .tab-text {
     position: absolute;
     width: 1px;
     height: 1px;

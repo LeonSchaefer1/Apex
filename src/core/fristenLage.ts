@@ -142,3 +142,28 @@ export function fristenJeAkte(fristen: Frist[], bis?: ISODate): Map<ID, AkteFris
 export function aktenMitFrist(fristen: Frist[], heute: ISODate, tage = FENSTER_TAGE): Map<ID, AkteFristen> {
   return fristenJeAkte(fristen, addDays(heute, tage));
 }
+
+export interface OffeneVerantwortung {
+  /** offene Notfristen und Fristen der Person (Zählweise wie `fristenLage`) */
+  fristen: Frist[];
+  wiedervorlagen: Frist[];
+  termine: Frist[];
+  vorfristen: Frist[];
+  /** alle offenen Einträge der Person – das, was bei einer Übertragung mitgeht */
+  alle: Frist[];
+}
+
+/**
+ * Offene Einträge, für die eine Person verantwortlich ist (z. B. vor dem Deaktivieren eines Zugangs, I5-T23-01):
+ * Fristen (Notfristen und Fristen) getrennt von Wiedervorlagen, Terminen und Vorfristen.
+ */
+export function offeneVerantwortung(fristen: Frist[], personId: ID): OffeneVerantwortung {
+  const alle = fristen.filter((f) => f.status === "offen" && f.verantwortlichId === personId).sort(nachDringlichkeit);
+  return {
+    fristen: alle.filter(zaehltAlsFrist),
+    wiedervorlagen: alle.filter((f) => f.typ === "wiedervorlage"),
+    termine: alle.filter((f) => f.typ === "termin"),
+    vorfristen: alle.filter((f) => f.typ === "vorfrist"),
+    alle,
+  };
+}

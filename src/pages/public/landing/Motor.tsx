@@ -7,6 +7,7 @@ import { fmtEUR, fmtNum } from "@/core/dates";
 import { cn } from "@/lib/cn";
 import { useMedia } from "@/lib/useMedia";
 import { Abschnitt, Kopf, Reveal } from "./basis";
+import { NBSP, mitEinheit, schuetzeKennzahlen } from "@/lib/typografie";
 
 /** Zielwert der Werbeaussage: Ø 38 Std. gesparte Routine pro Kanzlei und Woche ≈ 36.000 € pro Jahr (mit 19,74 €/Std.). */
 const RICHTWERT_STUNDEN = 38;
@@ -39,7 +40,7 @@ export function MotorAbschnitt() {
             <br /> <span className="text-fg-3">Sie bleiben beim Mandat.</span>
           </>
         }
-        text="Jede Automatik misst, wie viel Zeit sie je bearbeitetem Vorgang spart. Nach außen geht nichts ohne Ihre Freigabe. Unser Ziel: Ø 38 Stunden Routinearbeit pro Woche und Kanzlei – fast eine volle Stelle, die wieder für Mandate frei wird."
+        text={schuetzeKennzahlen("Jede Automatik misst, wie viel Zeit sie je bearbeitetem Vorgang spart. Nach außen geht nichts ohne Ihre Freigabe. Unser Ziel: Ø 38 Stunden Routinearbeit pro Woche und Kanzlei – fast eine volle Stelle, die wieder für Mandate frei wird.")}
       />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
         <Reveal className="sheet relative overflow-hidden rounded-[28px] p-6 sm:p-7">
@@ -103,8 +104,8 @@ function Rechner() {
           max={120}
           schritt={1}
           onChange={setStunden}
-          anzeige={`${fmtNum(stunden)} Std.`}
-          hinweis="Zielwert Ø 38 Std. je Kanzlei – an Ihre Kanzleigröße anpassen."
+          anzeige={mitEinheit(fmtNum(stunden), "Std.")}
+          hinweis={schuetzeKennzahlen("Zielwert Ø 38 Std. je Kanzlei – an Ihre Kanzleigröße anpassen.")}
         />
         <div>
           <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 max-[359px]:flex-col max-[359px]:items-start">
@@ -120,7 +121,7 @@ function Rechner() {
             value={modus}
             onChange={setModus}
             options={[
-              { value: "ziel", label: "Zielwert 19,74 €/Std." },
+              { value: "ziel", label: schuetzeKennzahlen("Zielwert 19,74 €/Std.") },
               { value: "personal", label: "Aus Personalkosten" },
             ]}
           />
@@ -130,10 +131,10 @@ function Rechner() {
                 Personalkosten pro Jahr (Arbeitgeber-Brutto, €)
                 <Input id="roi-personal" inputMode="numeric" value={personal} onChange={(e) => setPersonal(e.target.value)} className="num" />
               </label>
-              <span className="pb-2.5 text-[13px] text-fg-3">÷ {fmtNum(JAHRESARBEITSSTUNDEN)} Std. = {satzText}</span>
+              <span className="pb-2.5 text-[13px] text-fg-3">÷ {mitEinheit(fmtNum(JAHRESARBEITSSTUNDEN), "Std.")} = {satzText}</span>
             </div>
           ) : (
-            <p className="mt-2 text-[13px] leading-relaxed text-fg-3">36.000 € ÷ (38 Std. × 48 Wochen) – ein bewusst niedrig angesetzter Zielwert.</p>
+            <p className="mt-2 text-[13px] leading-relaxed text-fg-3">{schuetzeKennzahlen("36.000 € ÷ (38 Std. × 48 Wochen) – ein bewusst niedrig angesetzter Zielwert.")}</p>
           )}
         </div>
       </div>
@@ -141,12 +142,12 @@ function Rechner() {
       <div className="relative mt-7 rounded-[22px] bg-[var(--ink-softer)] p-5 shadow-[inset_0_0_0_1px_var(--line)] max-[359px]:p-4">
         <div className="text-[13px] font-medium text-fg-3">Wert der gesparten Zeit pro Jahr</div>
         <div className="mt-1 text-[clamp(38px,5vw,56px)] font-bold leading-none tracking-[-0.045em] text-green">
-          ≈ <AnimatedNumber value={jahr} format={(n) => fmtEUR(Math.round(n / 100) * 100, { cents: false })} />
+          ≈{NBSP}<AnimatedNumber value={jahr} format={(n) => fmtEUR(Math.round(n / 100) * 100, { cents: false })} />
         </div>
         <div className="num mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-fg-2">
-          <span className="rounded-full bg-[var(--surface)] px-2.5 py-1 shadow-[inset_0_0_0_1px_var(--line)]">{fmtNum(stunden)} Std./Woche</span>
+          <span className="rounded-full bg-[var(--surface)] px-2.5 py-1 shadow-[inset_0_0_0_1px_var(--line)]">{mitEinheit(fmtNum(stunden), "Std./Woche")}</span>
           <span className="text-fg-4">×</span>
-          <span className="rounded-full bg-[var(--surface)] px-2.5 py-1 shadow-[inset_0_0_0_1px_var(--line)]">{WOCHEN_PRO_JAHR} Arbeitswochen</span>
+          <span className="rounded-full bg-[var(--surface)] px-2.5 py-1 shadow-[inset_0_0_0_1px_var(--line)]">{mitEinheit(WOCHEN_PRO_JAHR, "Arbeitswochen")}</span>
           <span className="text-fg-4">×</span>
           <span className="rounded-full bg-[var(--surface)] px-2.5 py-1 shadow-[inset_0_0_0_1px_var(--line)]">{satzText}</span>
         </div>
@@ -154,22 +155,24 @@ function Rechner() {
           <div className="rounded-[16px] bg-[var(--surface)] p-3.5 shadow-[inset_0_0_0_1px_var(--line)]">
             <Timer className="size-4 text-ink" />
             <div className="num mt-2 whitespace-nowrap text-[clamp(18px,4.8vw,22px)] font-semibold leading-none tracking-[-0.03em]">
-              <AnimatedNumber value={stundenJahr} /> Std.
+              <AnimatedNumber value={stundenJahr} />{NBSP}Std.
             </div>
             <div className="mt-1 text-[12.5px] text-fg-3">pro Jahr zurückgewonnen</div>
           </div>
           <div className="rounded-[16px] bg-[var(--surface)] p-3.5 shadow-[inset_0_0_0_1px_var(--line)]">
             <UsersRound className="size-4 text-ink" />
-            <div className="num mt-2 whitespace-nowrap text-[clamp(18px,4.8vw,22px)] font-semibold leading-none tracking-[-0.03em]">≈ {fmtNum(stellen, stellen < 10 ? 2 : 1)}</div>
-            <div className="mt-1 text-[12.5px] text-fg-3">Vollzeitstellen ({STUNDEN_JE_STELLE} Std.) frei für Mandate</div>
+            <div className="num mt-2 whitespace-nowrap text-[clamp(18px,4.8vw,22px)] font-semibold leading-none tracking-[-0.03em]">≈{NBSP}{fmtNum(stellen, stellen < 10 ? 2 : 1)}</div>
+            <div className="mt-1 text-[12.5px] text-fg-3">Vollzeitstellen ({mitEinheit(STUNDEN_JE_STELLE, "Std.")}) frei für Mandate</div>
           </div>
         </div>
       </div>
       <p className="relative mt-4 text-[13px] leading-relaxed text-fg-2">
-        Unser Zielwert von ≈ 36.000 € rechnet bewusst mit 19,74 €/Std.; mit ReFa-Vollkosten von ca. 26 €/Std. wären es ≈ {fmtEUR(Math.round(jahreswert(RICHTWERT_STUNDEN, REFA_VOLLKOSTEN_STUNDE) / 100) * 100, { cents: false })} (38 × 48 × {fmtEUR(REFA_VOLLKOSTEN_STUNDE)}).
+        {schuetzeKennzahlen(
+          `Unser Zielwert von ≈ 36.000 € rechnet bewusst mit 19,74 €/Std.; mit ReFa-Vollkosten von ca. 26 €/Std. wären es ≈ ${fmtEUR(Math.round(jahreswert(RICHTWERT_STUNDEN, REFA_VOLLKOSTEN_STUNDE) / 100) * 100, { cents: false })} (38 × 48 × ${fmtEUR(REFA_VOLLKOSTEN_STUNDE)}).`,
+        )}
       </p>
       <p className="relative mt-2 text-[13px] leading-relaxed text-fg-3">
-        Beispielrechnung: Stunden pro Woche × {WOCHEN_PRO_JAHR} Arbeitswochen × interner Kostensatz. ReFa-Vollkosten als Annahme: {fmtEUR(PERSONALKOSTEN_JAHR, { cents: false })} Personalkosten ÷ {fmtNum(JAHRESARBEITSSTUNDEN)} Jahresarbeitsstunden. Kein garantiertes Ergebnis: Die tatsächliche Ersparnis hängt von Fallzahlen, Sachgebieten und Abläufen ab – der 38h-Motor misst sie in Ihrer Kanzlei je bearbeitetem Vorgang.
+        Beispielrechnung: Stunden pro Woche × {mitEinheit(WOCHEN_PRO_JAHR, "Arbeitswochen")} × interner Kostensatz. ReFa-Vollkosten als Annahme: {fmtEUR(PERSONALKOSTEN_JAHR, { cents: false })} Personalkosten ÷ {mitEinheit(fmtNum(JAHRESARBEITSSTUNDEN), "Jahresarbeitsstunden")}. Kein garantiertes Ergebnis: Die tatsächliche Ersparnis hängt von Fallzahlen, Sachgebieten und Abläufen ab – der 38h-Motor misst sie in Ihrer Kanzlei je bearbeitetem Vorgang.
       </p>
     </Reveal>
   );

@@ -167,3 +167,41 @@ test("Zählung der Fristen: Fristen, Wiedervorlagen und Termine getrennt und ohn
   assert.equal(fristenZaehlung({ fristen: 0, wiedervorlagen: 0, termine: 0 }), "keine Fristen");
   assert.equal(weitereText({ wiedervorlagen: 2, termine: 1 }), "2 Wiedervorlagen und 1 Termin");
 });
+
+test("Umzugsprotokoll zählt nach „Rückgängig“ gleich – auch ältere Läufe ohne gespeicherte Aufteilung (I5-T11-01)", async () => {
+  const { useData, zeilen } = await vorbereiten();
+  const { fuehreUmzugAus, macheRueckgaengig, laufFristenText, fristenAusLauf, fristenZaehlung, fristenAusErgebnis } = await import("./uebernahme");
+  const { laufAusErgebnis, speichereLauf, markiereRueckgaengig } = await import("./laeufe");
+  const regeln = { aktionFuer: () => "skip" as const, dateiAktionFuer: () => "merge" as const, umfang: "sechsJahre" as const, heute: today() };
+  const lauf = async () => {
+    const laufId = uid("uz");
+    const e = await fuehreUmzugAus({ zeilen, ...regeln, laufId, system: "RA-MICRO", user, team, bundesland: t.tenant.bundesland, onFortschritt: () => {}, onZwischenstand: () => {} });
+    const l = laufAusErgebnis({ ...e, undo: structuredClone(e.undo) }, { datum: nowLocal(), system: "RA-MICRO", datei: "export.csv", userId: user.id });
+    speichereLauf(l);
+    return { e, l };
+  };
+  const finde = (id: string) => useData.getState().data.umzugLaeufe.find((x) => x.id === id)!;
+
+  // Neuer Lauf: Aufteilung gespeichert – Meldung, aktiver Eintrag und rückgängig gemachter Eintrag sagen dasselbe
+  const { e, l } = await lauf();
+  const meldung = fristenZaehlung(fristenAusErgebnis(e));
+  const aktiv = laufFristenText(finde(l.id), useData.getState().data.fristen);
+  assert.equal(aktiv, meldung);
+  assert.match(aktiv, /Wiedervorlage/, aktiv);
+  const vorher = fristenAusLauf(l.id, useData.getState().data.fristen);
+  macheRueckgaengig(finde(l.id).undo, "RA-MICRO", user.id, l.id);
+  markiereRueckgaengig(l.id, { am: nowLocal(), von: user.id }, vorher);
+  assert.equal(fristenAusLauf(l.id, useData.getState().data.fristen).fristen, 0, "Fristen des Laufs entfernt");
+  assert.equal(laufFristenText(finde(l.id), useData.getState().data.fristen), aktiv, "nach Rückgängig dieselbe Zählung");
+  assert.doesNotMatch(laufFristenText(finde(l.id), useData.getState().data.fristen), /Fristen und Wiedervorlagen$/);
+
+  // Älterer Lauf ohne gespeicherte Aufteilung: beim Rückgängigmachen vor dem Löschen gezählt
+  const zwei = await lauf();
+  const alt = { ...finde(zwei.l.id), zahlen: { ...finde(zwei.l.id).zahlen, fristenArt: undefined } };
+  useData.getState().upsert("umzugLaeufe", alt);
+  const altAktiv = laufFristenText(finde(zwei.l.id), useData.getState().data.fristen);
+  const altVorher = fristenAusLauf(zwei.l.id, useData.getState().data.fristen);
+  macheRueckgaengig(finde(zwei.l.id).undo, "RA-MICRO", user.id, zwei.l.id);
+  markiereRueckgaengig(zwei.l.id, { am: nowLocal(), von: user.id }, altVorher);
+  assert.equal(laufFristenText(finde(zwei.l.id), useData.getState().data.fristen), altAktiv);
+});

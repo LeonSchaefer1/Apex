@@ -42,7 +42,7 @@ export const POSTEINGANG_KUERZEL: Kuerzel[] = [
   { tasten: ["J"], was: "Nächste Nachricht" },
   { tasten: ["K"], was: "Vorige Nachricht" },
   { tasten: ["Enter"], was: "Nachricht öffnen" },
-  { tasten: ["U"], was: "Erkannte Fristen übernehmen" },
+  { tasten: ["U"], was: "Vorschlag übernehmen", wo: "Mit Fristvorschlag: Fristen samt Akte übernehmen · ohne Fristvorschlag: Akte zuordnen · sonst nennt eine Meldung den Grund" },
   { tasten: ["E"], was: "eEB-Dialog öffnen" },
 ];
 
