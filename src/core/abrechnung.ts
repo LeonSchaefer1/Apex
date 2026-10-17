@@ -131,25 +131,42 @@ export interface Rechnungsangaben {
   steuernummer?: string;
   ustIdNr?: string;
   geschaeftskonto?: { iban: string; bic?: string; bank?: string };
+  /** Anderkonto für Fremdgeld (§ 4 BORA) – Auftraggeberkonto der Fremdgeld-Weiterleitung, steht nicht auf Rechnungen. */
+  anderkonto?: { iban: string; bank?: string };
 }
+
+export type RechnungsangabenFeld = "steuernummer" | "ustIdNr" | "iban" | "bic" | "bank" | "anderIban" | "anderBank";
+
+const ibanFehler = (iban: string) =>
+  /^[A-Za-z]{2}/.test(iban.replace(/\s+/g, ""))
+    ? "Die Prüfziffer der IBAN stimmt nicht – meist ist eine Ziffer vertauscht. Bitte vergleichen Sie mit Ihrem Kontoauszug (deutsche IBAN: 22 Stellen)."
+    : "Eine IBAN beginnt mit dem Ländercode, z. B. DE89 3704 0044 0532 0130 00.";
 
 /**
  * Prüft die Rechnungsangaben aus dem Kanzleiprofil feldgenau – Rückgabe: Fehlermeldung je Feld (leer = alles gültig).
  * Leere Felder sind erlaubt (dann fehlen sie, siehe `fehlendeRechnungsangaben`); was eingegeben ist, muss stimmen.
  */
-export function pruefeRechnungsangaben(a: Rechnungsangaben): Partial<Record<"steuernummer" | "ustIdNr" | "iban" | "bic" | "bank", string>> {
-  const f: Partial<Record<"steuernummer" | "ustIdNr" | "iban" | "bic" | "bank", string>> = {};
+export function pruefeRechnungsangaben(a: Rechnungsangaben): Partial<Record<RechnungsangabenFeld, string>> {
+  const f: Partial<Record<RechnungsangabenFeld, string>> = {};
   const st = a.steuernummer?.trim() ?? "";
   if (st && !steuernummerGueltig(st)) f.steuernummer = "Die Steuernummer hat 10, 11 oder 13 Ziffern, z. B. 12/345/67890 – bitte prüfen Sie den Bescheid Ihres Finanzamts.";
   const ust = a.ustIdNr?.trim() ?? "";
   if (ust && !ustIdNrGueltig(ust)) f.ustIdNr = ustIdNrKompakt(ust) === "DE000000000" ? "„DE000000000“ ist nur der Platzhalter – bitte die USt-IdNr. Ihrer Kanzlei eingeben." : "Die USt-IdNr. besteht aus „DE“ und 9 Ziffern, z. B. DE123456789 – bitte prüfen Sie die Eingabe.";
   const konto = a.geschaeftskonto;
   const iban = konto?.iban?.trim() ?? "";
-  if (iban && !ibanGueltig(iban)) f.iban = /^[A-Za-z]{2}/.test(iban.replace(/\s+/g, "")) ? "Die Prüfziffer der IBAN stimmt nicht – meist ist eine Ziffer vertauscht. Bitte vergleichen Sie mit Ihrem Kontoauszug (deutsche IBAN: 22 Stellen)." : "Eine IBAN beginnt mit dem Ländercode, z. B. DE89 3704 0044 0532 0130 00.";
+  if (iban && !ibanGueltig(iban)) f.iban = ibanFehler(iban);
   if (!iban && (konto?.bic?.trim() || konto?.bank?.trim())) f.iban = "Bitte die IBAN des Geschäftskontos ergänzen – BIC und Bank allein genügen nicht.";
   const bic = konto?.bic?.trim() ?? "";
   if (bic && !bicGueltig(bic)) f.bic = "Die BIC hat 8 oder 11 Zeichen, z. B. COBADEFFXXX.";
   if ((konto?.bank?.length ?? 0) > 120) f.bank = "Bitte höchstens 120 Zeichen.";
+  // Anderkonto (§ 4 BORA): eigenes Konto – nie dasselbe wie das Geschäftskonto
+  const ander = a.anderkonto;
+  const anderIban = ander?.iban?.trim() ?? "";
+  if (anderIban && !ibanGueltig(anderIban)) f.anderIban = ibanFehler(anderIban);
+  else if (anderIban && iban && ibanGueltig(iban) && ibanFormatiert(anderIban) === ibanFormatiert(iban))
+    f.anderIban = "Anderkonto und Geschäftskonto müssen verschiedene Konten sein – Fremdgeld gehört auf ein eigenes Anderkonto (§ 4 BORA).";
+  if (!anderIban && ander?.bank?.trim()) f.anderIban = "Bitte die IBAN des Anderkontos ergänzen – die Bank allein genügt nicht.";
+  if ((ander?.bank?.length ?? 0) > 120) f.anderBank = "Bitte höchstens 120 Zeichen.";
   return f;
 }
 
@@ -166,6 +183,11 @@ export function normalisiereRechnungsangaben(a: Rechnungsangaben): Rechnungsanga
     const bank = a.geschaeftskonto?.bank?.trim();
     out.geschaeftskonto = { iban, ...(bic ? { bic } : {}), ...(bank ? { bank } : {}) };
   }
+  const anderIban = a.anderkonto?.iban ? ibanFormatiert(a.anderkonto.iban) : "";
+  if (anderIban) {
+    const bank = a.anderkonto?.bank?.trim();
+    out.anderkonto = { iban: anderIban, ...(bank ? { bank } : {}) };
+  }
   return out;
 }
 
@@ -177,6 +199,8 @@ export function geaenderteRechnungsangaben(vorher: Rechnungsangaben, nachher: Re
     ["IBAN", vorher.geschaeftskonto?.iban, nachher.geschaeftskonto?.iban],
     ["BIC", vorher.geschaeftskonto?.bic, nachher.geschaeftskonto?.bic],
     ["Bank", vorher.geschaeftskonto?.bank, nachher.geschaeftskonto?.bank],
+    ["Anderkonto-IBAN", vorher.anderkonto?.iban, nachher.anderkonto?.iban],
+    ["Anderkonto-Bank", vorher.anderkonto?.bank, nachher.anderkonto?.bank],
   ];
   return felder.filter(([, a, b]) => (a ?? "") !== (b ?? "")).map(([n]) => n);
 }

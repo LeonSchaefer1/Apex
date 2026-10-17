@@ -541,13 +541,54 @@ test("Demodaten: letzter Lauf = jüngste Aktivität, Zeitpläne eingehalten, E-R
   }
 });
 
-test("Demodaten (SEED_VERSION 11): Zusatzakten am Ende – übrige Akten, Fristen und Nachrichten unverändert", async () => {
+test("Demodaten (SEED_VERSION 12, I4-T08-01): jeder Kontoumsatz mit Konto – Regulierungen der Versicherer auf dem Anderkonto, sonst unverändert", async () => {
   const { createHash } = await import("node:crypto");
   const { generateTenantData, SEED_VERSION } = await import("./seed/generate");
   const { DEMO_TENANTS, publicUser } = await import("./seed/tenants");
+  assert.equal(SEED_VERSION, 12);
+  // Fingerabdruck des gesamten Datenbestands vor der Änderung (SEED_VERSION 11) – ohne das neue Feld `konto` und ohne die
+  // Versionsangabe in `meta`. Stichtage ohne „heute = Systemdatum“ (dort hängen Zeitstempel an der echten Uhrzeit).
+  const VORHER: Record<string, string> = {
+    "2026-10-16|t-hartmann": "1c67885e70e7742e",
+    "2026-10-16|t-lindner": "2be3743057a8371f",
+    "2026-10-16|t-demir": "981291f2770f1003",
+    "2026-10-19|t-hartmann": "29b0a3b9ebffc0ac",
+    "2026-10-19|t-lindner": "8667d264fed75091",
+    "2026-10-19|t-demir": "fe7b1bb7b5766002",
+  };
+  for (const heute of ["2026-10-16", "2026-10-19"]) {
+    for (const t of DEMO_TENANTS) {
+      const d = generateTenantData({ tenant: t.tenant, users: t.users.map(publicUser), profil: t.profil }, heute);
+      const ohneKonto = { ...d, meta: [], transaktionen: d.transaktionen.map(({ konto: _k, ...x }) => x) };
+      assert.equal(createHash("sha256").update(JSON.stringify(ohneKonto)).digest("hex").slice(0, 16), VORHER[`${heute}|${t.tenant.id}`], `${heute} ${t.tenant.kurzname}: nur „konto“ ist neu`);
+      // jeder Umsatz hat ein Konto
+      assert.ok(d.transaktionen.length > 0);
+      assert.deepEqual(d.transaktionen.filter((x) => x.konto !== "geschaeft" && x.konto !== "ander"), [], `${t.tenant.kurzname}: Umsätze ohne Konto`);
+      // Regulierungen der Versicherer für die Mandantschaft → Anderkonto; Miete, Telekom, Honorare → Geschäftskonto
+      const regulierung = d.transaktionen.filter((x) => /Regulierung/.test(x.verwendungszweck) && /VERSICHERUNG/.test(x.gegenpartei));
+      assert.equal(regulierung.length, 1, t.tenant.kurzname);
+      assert.ok(regulierung.every((x) => x.konto === "ander"));
+      assert.ok(d.transaktionen.filter((x) => !regulierung.includes(x)).every((x) => x.konto === "geschaeft"));
+      assert.equal(d.transaktionen.find((x) => /^Miete/.test(x.verwendungszweck))?.konto, "geschaeft");
+      assert.equal(d.transaktionen.find((x) => /Telekommunikation/.test(x.gegenpartei))?.konto, "geschaeft");
+    }
+  }
+  // Hartmann & Partner: Hanseatische Kraftfahrt-Versicherung 5.670,00 € für 107/26 liegt auf dem Anderkonto (Prüfwert T08)
+  const h = generateTenantData({ tenant: DEMO_TENANTS[0].tenant, users: DEMO_TENANTS[0].users.map(publicUser), profil: DEMO_TENANTS[0].profil }, "2026-10-16");
+  const hanse = h.transaktionen.find((x) => /HANSEATISCHE/.test(x.gegenpartei))!;
+  assert.equal(hanse.betrag, 5670);
+  assert.match(hanse.verwendungszweck, /107\/26/);
+  assert.equal(hanse.konto, "ander");
+  // Elbtal 6.120 € (131/26) ist eine bereits gebuchte Fremdgeld-Zahlung ohne eigenen Kontoumsatz – unverändert
+  assert.ok(h.buchungen.some((b) => b.fremdgeld && b.betrag === 6120));
+});
+
+test("Demodaten (SEED_VERSION 11): Zusatzakten am Ende – übrige Akten, Fristen und Nachrichten unverändert", async () => {
+  const { createHash } = await import("node:crypto");
+  const { generateTenantData } = await import("./seed/generate");
+  const { DEMO_TENANTS, publicUser } = await import("./seed/tenants");
   const { fristenLage } = await import("./fristenLage");
   const { posteingangZahlen } = await import("./kennzahlen");
-  assert.equal(SEED_VERSION, 11);
   // Fingerabdrücke vor der Änderung (SEED_VERSION 9, 16.10.2026): IDs und Aktenzeichen der Akten, IDs/Akte/Datum/Typ der Fristen, IDs/Akte/Eingangstag der Nachrichten.
   // EINE gewollte Abweichung seit SEED_VERSION 11 (Vorgabe der Projektleitung): „Fremdgeld an Mandantin weiterleiten“ in 131/26
   // ist eine Wiedervorlage statt einer Frist – für den Fingerabdruck wird ihr früherer Typ „frist“ eingesetzt, alles andere bleibt gleich.

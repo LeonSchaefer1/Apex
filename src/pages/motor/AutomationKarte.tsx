@@ -16,6 +16,12 @@ import { darfAutomatikSchalten } from "@/lib/rollen";
 import { FLOW_SEGMENT_S, KATEGORIE_ICON, fmtStd, vorgaengeVon } from "./shared";
 
 /** „Freigabe: …“ – aus der Definition der Automatik (Paket A, A-17). */
+/**
+ * Weiche Trennstellen in langen Zusammensetzungen („Rechtsschutz­versicherung“) – bei 360 px passt der Titel neben den Schalter,
+ * auch wo der Browser kein deutsches Trennwörterbuch hat (I4-T10-01).
+ */
+const weichGetrennt = (name: string) => name.replace(/(\p{L}{5,})(versicherung|zuordnung|kontrolle|erfassung|abrechnung|anfrage)/gu, "$1\u00AD$2");
+
 export function freigabeVon(key: string): string {
   return automationDef(key)?.freigabe ?? "nach Ihrer Freigabe";
 }
@@ -150,7 +156,7 @@ export function AutomationKarte({ a, onOpen, now, ausFeed }: { a: Automation; on
           <Icon className="size-[18px]" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="title-md line-clamp-2">{a.name}</div>
+          <div className="title-md line-clamp-3 hyphens-auto break-words">{weichGetrennt(a.name)}</div>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <Chip>{a.kategorie}</Chip>
             <span aria-live="polite" className="inline-flex">
@@ -174,7 +180,8 @@ export function AutomationKarte({ a, onOpen, now, ausFeed }: { a: Automation; on
         </p>
       )}
 
-      <p className="line-clamp-3 text-[13px] leading-relaxed text-fg-3">{a.beschreibung}</p>
+      {/* Das „Was“ vollständig – nicht gekürzt, in Fließtextgröße (I4-T10-01) */}
+      <p className="text-[14px] leading-relaxed text-fg-2">{a.beschreibung}</p>
 
       <div className="grid gap-1.5">
         <div className="flex items-start gap-2 rounded-[12px] bg-[var(--ink-softer)] px-3 py-2 text-[12.5px]">

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { AlertTriangle, BrainCircuit, ChevronRight, Database, FolderInput, RotateCcw, Scale, Sparkles, Square } from "lucide-react";
+import { AlertTriangle, BrainCircuit, ChevronRight, CircleDashed, Database, FolderInput, RotateCcw, Scale, Sparkles, Square } from "lucide-react";
 import { useData } from "@/store/data";
 import { DEMO_KI_NAME, useAiStatus } from "@/ai/status";
 import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
@@ -186,12 +186,21 @@ export function KiRecherche({ startText, onOpen }: { startText?: string; onOpen:
                         <span className="block text-[14.5px] font-semibold leading-snug">{t.entscheidung.titel}</span>
                         <span className="mono mt-0.5 block truncate text-[12.5px] text-fg-3">{zitat(t.entscheidung)}</span>
                       </span>
-                      <span className="w-[64px] shrink-0 text-right">
-                        <span className="num block text-[12px] font-semibold text-ink">{t.relevanz} %</span>
-                        <span className="bar mt-1 block !h-1">
-                          <motion.span initial={{ width: 0 }} animate={{ width: `${t.relevanz}%` }} transition={{ delay: 0.2 + i * 0.07, duration: 0.7, ease: [0.16, 1, 0.3, 1] }} style={{ transition: "none" }} />
+                      {t.schwach ? (
+                        // Schwacher Treffer: kein Prozentbalken, sondern der Grund in Worten (I4-T06-03)
+                        <span className="shrink-0">
+                          <Chip tone="amber" icon={<CircleDashed className="size-3" aria-hidden />} className="max-w-[180px] !whitespace-normal !text-left leading-tight" title="Passt nur über ein allgemeines Merkmal – vor Verwendung genau prüfen">
+                            {t.schwach.grund}
+                          </Chip>
                         </span>
-                      </span>
+                      ) : (
+                        <span className="w-[64px] shrink-0 text-right">
+                          <span className="num block text-[12px] font-semibold text-ink">{t.relevanz} %</span>
+                          <span className="bar mt-1 block !h-1">
+                            <motion.span initial={{ width: 0 }} animate={{ width: `${t.relevanz}%` }} transition={{ delay: 0.2 + i * 0.07, duration: 0.7, ease: [0.16, 1, 0.3, 1] }} style={{ transition: "none" }} />
+                          </span>
+                        </span>
+                      )}
                     </span>
                     <span className="relative z-[1] flex items-start gap-2 rounded-[14px] bg-violet-soft px-3 py-2.5 text-[13px] leading-snug text-fg-2">
                       <Sparkles className="mt-0.5 size-3.5 shrink-0 text-violet" />

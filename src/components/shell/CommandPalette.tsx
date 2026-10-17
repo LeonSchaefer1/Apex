@@ -11,12 +11,20 @@ import type { Ansprechpartner } from "@/core/types";
 import { darfLizenzSehen, darfVerwalten, istConsole } from "@/lib/backend";
 import type { Rolle } from "@/core/types";
 import { akteAusKontext, oeffneZeiterfassung } from "./Tastenkuerzel";
-import { search, snippet } from "@/core/search";
+import { search, snippet, sucheRechnungen } from "@/core/search";
+import { istUeberfaellig } from "@/pages/abrechnung/lib";
+import { STATUS_META } from "@/pages/abrechnung/ui";
 import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
-import { fmtDate } from "@/core/dates";
+import { fmtDate, fmtEUR, today } from "@/core/dates";
 import { Highlight } from "@/components/Highlight";
 import { istReineAnsicht, obersterDialog, fokussierbareIn } from "@/components/ui/Modal";
-import type { Akte } from "@/core/types";
+import type { Akte, Rechnung } from "@/core/types";
+
+/** Status einer Rechnung in der Suche – wie der Status-Chip der Rechnungsliste. */
+function rechnungsStatus(r: Rechnung, heute: string): string {
+  if (istUeberfaellig(r, heute)) return r.status === "teilbezahlt" ? "Teilbezahlt (überfällig)" : "Überfällig";
+  return STATUS_META[r.status].label;
+}
 
 /** Sprungziel der Suche: Schnellaktion, Bereich (Navigation) oder Unterbereich (Reiter). */
 interface Ziel {
@@ -237,6 +245,10 @@ export function CommandPalette() {
       { get: (n) => n.von, weight: 2 },
       { get: (n) => n.text, weight: 1 },
     ], 4);
+    // Rechnungen und Entwürfe (I4-T07-01) – nur, wer die Abrechnung öffnen darf
+    const rechnungen = bereichErlaubt("/abrechnung", rolle)
+      ? sucheRechnungen(data.rechnungen, q, { akte: (id) => data.akten.find((a) => a.id === id), empfaenger: kontaktName }, 6)
+      : [];
     const urteile = search(ENTSCHEIDUNGEN, q, [
       { get: (e) => e.az, weight: 4 },
       { get: (e) => e.titel, weight: 3 },
@@ -259,9 +271,9 @@ export function CommandPalette() {
       .slice(0, 5);
     // Passt der Name eines Bereichs, steht er ganz oben – sonst hinter den Inhalten.
     const zieleZuerst = ziele.length > 0 && search([ziele[0].item], q, [{ get: (z) => `${z.label} ${z.stichworte ?? ""}`, weight: 1 }]).length > 0;
-    const total = ziele.length + akten.length + dokumente.length + kontakte.length + fristen.length + nachrichten.length + urteile.length;
-    return { ziele, zieleZuerst, akten, dokumente, kontakte, fristen, nachrichten, urteile, total, ms: performance.now() - t0 };
-  }, [q, data, aktionen, bereiche, unterbereiche]);
+    const total = ziele.length + akten.length + dokumente.length + kontakte.length + fristen.length + nachrichten.length + rechnungen.length + urteile.length;
+    return { ziele, zieleZuerst, akten, dokumente, kontakte, fristen, nachrichten, rechnungen, urteile, total, ms: performance.now() - t0 };
+  }, [q, data, aktionen, bereiche, unterbereiche, rolle]);
 
   const go = (path: string) => {
     setPalette(false);
@@ -286,6 +298,7 @@ export function CommandPalette() {
     </Command.Group>
   );
 
+  const kontaktName = (id?: string) => data.kontakte.find((k) => k.id === id)?.name ?? "";
   const akteTitel = (id: string) => {
     const a = data.akten.find((x) => x.id === id);
     return a ? `${a.aktenzeichen} · ${a.titel}` : "";
@@ -374,6 +387,31 @@ export function CommandPalette() {
                     {res.nachrichten.map(({ item: n }) => (
                       <Item key={n.id} icon={<Inbox />} onSelect={() => go(`/posteingang?id=${n.id}`)} title={<Highlight text={n.betreff} q={q} />} sub={`${n.kanal === "bea" ? "beA" : "E-Mail"} · ${n.von}`} />
                     ))}
+                  </Command.Group>
+                )}
+                {res && res.rechnungen.length > 0 && (
+                  <Command.Group heading="Rechnungen">
+                    {res.rechnungen.map(({ rechnung: r, storno }) => {
+                      const heute = today();
+                      const nummer = storno ? (r.stornoNummer ?? "") : r.nummer;
+                      const betrag = storno ? -r.brutto : r.brutto;
+                      const status = storno ? `Storno zu ${r.nummer}` : rechnungsStatus(r, heute);
+                      return (
+                        <Item
+                          key={`${r.id}${storno ? "#storno" : ""}`}
+                          icon={<Receipt />}
+                          onSelect={() => go(`/abrechnung?tab=rechnungen&rechnung=${encodeURIComponent(r.id)}`)}
+                          title={
+                            <>
+                              <span className="mono mr-2"><Highlight text={nummer} q={q} /></span>
+                              <Highlight text={kontaktName(r.empfaengerId)} q={q} />
+                            </>
+                          }
+                          sub={`${status} · ${fmtEUR(betrag)}${r.status === "entwurf" ? " · noch nicht gestellt" : ` · ${fmtDate(r.datum)}`}`}
+                          meta={akteTitel(r.akteId)}
+                        />
+                      );
+                    })}
                   </Command.Group>
                 )}
                 {res && res.urteile.length > 0 && (

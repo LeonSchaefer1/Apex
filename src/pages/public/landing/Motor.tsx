@@ -5,6 +5,7 @@ import { AnimatedNumber, Input, Segmented } from "@/components/ui";
 import { AUTOMATION_DEFS, JAHRESARBEITSSTUNDEN, PERSONALKOSTEN_JAHR, REFA_VOLLKOSTEN_STUNDE, WERT_PRO_STUNDE, WOCHEN_PRO_JAHR, jahreswert, kostensatz } from "@/core/automationen";
 import { fmtEUR, fmtNum } from "@/core/dates";
 import { cn } from "@/lib/cn";
+import { useMedia } from "@/lib/useMedia";
 import { Abschnitt, Kopf, Reveal } from "./basis";
 
 /** Zielwert der Werbeaussage: Ø 38 Std. gesparte Routine pro Kanzlei und Woche ≈ 36.000 € pro Jahr (mit 19,74 €/Std.). */
@@ -83,15 +84,17 @@ function Rechner() {
   const jahr = jahreswert(stunden, satz);
   const stellen = stunden / STUNDEN_JE_STELLE;
   const satzText = fmtEUR(satz);
+  const schmal = useMedia("(max-width: 359px)");
   return (
-    <Reveal delay={0.06} className="sheet relative flex flex-col overflow-hidden rounded-[28px] p-6 sm:p-7">
+    // Unter 360 px (Reflow 320 px, WCAG 1.4.10): Innenabstand 16 px, Werte unter dem Etikett, Skala und Umschalter umbrechend
+    <Reveal delay={0.06} className="sheet relative flex min-w-0 flex-col overflow-hidden rounded-[28px] p-4 min-[360px]:p-6 sm:p-7">
       <div aria-hidden className="pointer-events-none absolute -right-20 -top-24 size-72 rounded-full opacity-60 blur-3xl" style={{ background: "radial-gradient(circle, var(--green-soft), transparent 70%)" }} />
       <div className="relative flex items-center justify-between gap-3">
         <h3 className="title-lg">Ihre Ersparnis</h3>
         <span className="chip chip-outline">Beispielrechnung</span>
       </div>
 
-      <div className="relative mt-6 grid gap-6">
+      <div className="relative mt-6 grid grid-cols-[minmax(0,1fr)] gap-6">
         <Regler
           id="roi-stunden"
           label="Gesparte Routine pro Woche"
@@ -104,7 +107,7 @@ function Rechner() {
           hinweis="Zielwert Ø 38 Std. je Kanzlei – an Ihre Kanzleigröße anpassen."
         />
         <div>
-          <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-3">
+          <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 max-[359px]:flex-col max-[359px]:items-start">
             <span className="text-[13.5px] font-medium text-fg-2" id="roi-satz-label">
               Interner Kostensatz je Stunde
             </span>
@@ -112,6 +115,7 @@ function Rechner() {
           </div>
           <Segmented<SatzModus>
             full
+            wrap={schmal}
             size="sm"
             value={modus}
             onChange={setModus}
@@ -134,7 +138,7 @@ function Rechner() {
         </div>
       </div>
 
-      <div className="relative mt-7 rounded-[22px] bg-[var(--ink-softer)] p-5 shadow-[inset_0_0_0_1px_var(--line)]">
+      <div className="relative mt-7 rounded-[22px] bg-[var(--ink-softer)] p-5 shadow-[inset_0_0_0_1px_var(--line)] max-[359px]:p-4">
         <div className="text-[13px] font-medium text-fg-3">Wert der gesparten Zeit pro Jahr</div>
         <div className="mt-1 text-[clamp(38px,5vw,56px)] font-bold leading-none tracking-[-0.045em] text-green">
           ≈ <AnimatedNumber value={jahr} format={(n) => fmtEUR(Math.round(n / 100) * 100, { cents: false })} />
@@ -146,7 +150,7 @@ function Rechner() {
           <span className="text-fg-4">×</span>
           <span className="rounded-full bg-[var(--surface)] px-2.5 py-1 shadow-[inset_0_0_0_1px_var(--line)]">{satzText}</span>
         </div>
-        <div className="mt-5 grid grid-cols-2 gap-3">
+        <div className="mt-5 grid grid-cols-2 gap-3 max-[359px]:grid-cols-1">
           <div className="rounded-[16px] bg-[var(--surface)] p-3.5 shadow-[inset_0_0_0_1px_var(--line)]">
             <Timer className="size-4 text-ink" />
             <div className="num mt-2 whitespace-nowrap text-[clamp(18px,4.8vw,22px)] font-semibold leading-none tracking-[-0.03em]">
@@ -177,7 +181,7 @@ function Regler({ id, label, wert, min, max, schritt, onChange, anzeige, hinweis
   const hid = useId();
   return (
     <div>
-      <div className="mb-2.5 flex items-baseline justify-between gap-3">
+      <div className="mb-2.5 flex items-baseline justify-between gap-x-3 gap-y-0.5 max-[359px]:flex-col max-[359px]:items-start">
         <label htmlFor={id} className="text-[13.5px] font-medium text-fg-2">
           {label}
         </label>
@@ -204,10 +208,11 @@ function Regler({ id, label, wert, min, max, schritt, onChange, anzeige, hinweis
         )}
         style={{ ["--track" as string]: `linear-gradient(to right, var(--ink) 0%, var(--ink-bright) ${p}%, var(--line-strong) ${p}%)` }}
       />
-      <div className="mt-1 flex justify-between text-[12.5px] text-fg-3">
+      <div className="mt-1 flex flex-wrap justify-between gap-x-2 text-[12.5px] text-fg-3">
         <span>{min}</span>
         {hinweis && (
-          <span id={hid} className="px-2 text-center">
+          // unter 360 px eigene Zeile unter der Skala (5 … 120), sonst mittig zwischen den Marken
+          <span id={hid} className="px-2 text-center max-[359px]:order-last max-[359px]:basis-full max-[359px]:px-0 max-[359px]:text-left">
             {hinweis}
           </span>
         )}

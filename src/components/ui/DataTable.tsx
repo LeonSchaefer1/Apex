@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import {
   flexRender, getCoreRowModel, getSortedRowModel, useReactTable,
   type ColumnDef, type SortingState, type VisibilityState, type ColumnSizingState, type RowSelectionState,
@@ -57,7 +57,7 @@ function speichere(id: string, v: Gespeichert) {
  * Mehrfachauswahl – Einstellungen werden je Tabelle gespeichert. Auf dem Smartphone als Kartenliste.
  */
 export function DataTable<T>({
-  id, data, columns, onRowClick, mobileRow, selectable, bulkActions, getRowId, empty, initialSort, toolbar, maxHeight, defaultHidden,
+  id, data, columns, onRowClick, mobileRow, selectable, bulkActions, getRowId, empty, initialSort, toolbar, maxHeight, defaultHidden, rowLabel, selectLabel,
 }: {
   id: string;
   data: T[];
@@ -73,6 +73,13 @@ export function DataTable<T>({
   maxHeight?: string;
   /** Spalten (ID), die anfangs ausgeblendet sind – nur solange für diese Spalte noch keine eigene Wahl gespeichert ist. */
   defaultHidden?: string[];
+  /**
+   * Zugänglicher Name des Öffnen-Ziels einer Zeile (I4-T07-01), z. B. „Rechnung RE-2026-0024 öffnen“. Mit `onRowClick` bekommt jede
+   * Zeile genau ein Tastaturziel (die erste sichtbare Datenspalte); ohne Angabe heißt es „Zeile öffnen“.
+   */
+  rowLabel?: (row: T) => string;
+  /** Zugänglicher Name des Auswahl-Häkchens einer Zeile, z. B. „RE-2026-0024 auswählen“ (ohne Angabe „Auswählen“). */
+  selectLabel?: (row: T) => string;
 }) {
   const saved = useMemo(() => lade(id), [id]);
   const [sorting, setSorting] = useState<SortingState>(saved.sorting ?? initialSort ?? []);
@@ -102,13 +109,18 @@ export function DataTable<T>({
         enableSorting: false,
         enableHiding: false,
         header: ({ table }) => (
-          <Checkbox checked={table.getIsAllRowsSelected()} indeterminate={table.getIsSomeRowsSelected()} onChange={() => table.toggleAllRowsSelected()} />
+          <Checkbox
+            checked={table.getIsAllRowsSelected()}
+            indeterminate={table.getIsSomeRowsSelected()}
+            onChange={() => table.toggleAllRowsSelected()}
+            label="Alle sichtbaren auswählen"
+          />
         ),
-        cell: ({ row }) => <Checkbox checked={row.getIsSelected()} onChange={() => row.toggleSelected()} />,
+        cell: ({ row }) => <Checkbox checked={row.getIsSelected()} onChange={() => row.toggleSelected()} label={selectLabel?.(row.original)} />,
       },
       ...columns,
     ];
-  }, [columns, selectable]);
+  }, [columns, selectable, selectLabel]);
 
   const table = useReactTable({
     data,
@@ -180,9 +192,9 @@ export function DataTable<T>({
         <ul className="divide-y divide-[var(--line)]">
           {rows.map((r) => (
             <li key={r.id}>
-              <button type="button" onClick={() => onRowClick?.(r.original)} className={cn("block w-full px-4 text-left active:bg-ink-softer", dichte === "compact" ? "py-2" : "py-3")}>
+              <KartenKnopf label={onRowClick ? (rowLabel?.(r.original) ?? "Zeile öffnen") : undefined} onClick={() => onRowClick?.(r.original)} className={cn("block w-full px-4 text-left active:bg-ink-softer", dichte === "compact" ? "py-2" : "py-3")}>
                 {mobileRow(r.original)}
-              </button>
+              </KartenKnopf>
             </li>
           ))}
         </ul>
@@ -226,28 +238,108 @@ export function DataTable<T>({
               ))}
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr
-                  key={r.id}
-                  data-selected={r.getIsSelected()}
-                  onClick={(e) => {
-                    if ((e.target as HTMLElement).closest("button,a,input,label")) return;
-                    onRowClick?.(r.original);
-                  }}
-                  className={cn(onRowClick && "cursor-pointer")}
-                >
-                  {r.getVisibleCells().map((c) => (
-                    <td key={c.id} style={{ width: c.column.getSize(), maxWidth: c.column.getSize() }} className={cn("truncate", (c.column.columnDef.meta as { align?: string } | undefined)?.align === "right" && "text-right")}>
-                      {flexRender(c.column.columnDef.cell, c.getContext())}
-                    </td>
-                  ))}
-                </tr>
-              ))}
+              {rows.map((r) => {
+                const zellen = r.getVisibleCells();
+                // Genau ein Tastaturziel je Zeile (I4-T07-01, WCAG 2.1.1): die erste sichtbare Datenspalte nach dem Häkchen
+                const oeffnenZelle = onRowClick ? zellen.find((c) => c.column.id !== "_select")?.id : undefined;
+                return (
+                  <tr
+                    key={r.id}
+                    data-selected={r.getIsSelected()}
+                    onClick={(e) => {
+                      if ((e.target as HTMLElement).closest("button,a,input,label")) return;
+                      onRowClick?.(r.original);
+                    }}
+                    className={cn(onRowClick && "cursor-pointer")}
+                  >
+                    {zellen.map((c) => (
+                      <td key={c.id} style={{ width: c.column.getSize(), maxWidth: c.column.getSize() }} className={cn("truncate", (c.column.columnDef.meta as { align?: string } | undefined)?.align === "right" && "text-right")}>
+                        {c.id === oeffnenZelle ? (
+                          <ZeilenOeffner label={rowLabel?.(r.original) ?? "Zeile öffnen"} onOeffnen={() => onRowClick?.(r.original)}>
+                            {flexRender(c.column.columnDef.cell, c.getContext())}
+                          </ZeilenOeffner>
+                        ) : (
+                          flexRender(c.column.columnDef.cell, c.getContext())
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
     </div>
+  );
+}
+
+const INTERAKTIV = "a[href], button, input, select, textarea, [tabindex]:not([tabindex='-1']), [role='button'], [role='link'], [role='checkbox']";
+
+/**
+ * Öffnen-Ziel einer Tabellenzeile: fasst den Inhalt der ersten Datenspalte in einen Knopf – Optik unverändert (volle Zellbreite, Text
+ * links, kein Knopf-Look), Fokusrahmen wie überall. Enthält der Zelleninhalt selbst schon Knöpfe oder Links, wird nicht verschachtelt
+ * (kein nested-interactive) – dann bleibt das vorhandene Element das Ziel. Pfeil links/rechts verschieben die Tabelle nicht seitlich;
+ * Pfeil hoch/runter springen zum Öffnen-Ziel der vorigen bzw. nächsten Zeile.
+ */
+function ZeilenOeffner({ label, onOeffnen, children }: { label: string; onOeffnen: () => void; children: ReactNode }) {
+  const ref = useRef<HTMLElement | null>(null);
+  const setRef = (el: HTMLElement | null) => {
+    ref.current = el;
+  };
+  const [verschachtelt, setVerschachtelt] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const hat = !!el.querySelector(INTERAKTIV);
+    if (hat !== verschachtelt) setVerschachtelt(hat);
+  });
+  if (verschachtelt) {
+    return (
+      <div ref={setRef} className="min-w-0">
+        {children}
+      </div>
+    );
+  }
+  const taste = (e: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      return;
+    }
+    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      const tbody = e.currentTarget.closest("tbody");
+      if (!tbody) return;
+      const alle = Array.from(tbody.querySelectorAll<HTMLButtonElement>("button[data-zeile-oeffnen]"));
+      const i = alle.indexOf(e.currentTarget);
+      const ziel = alle[e.key === "ArrowDown" ? i + 1 : i - 1];
+      e.preventDefault();
+      ziel?.focus();
+    }
+  };
+  return (
+    <button
+      ref={setRef}
+      type="button"
+      data-zeile-oeffnen=""
+      aria-label={label}
+      onClick={onOeffnen}
+      onKeyDown={taste}
+      className="zeile-oeffnen"
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Kartenliste (Telefon): vorhandener Knopf, Name wie das Öffnen-Ziel der Tabelle; der Karteninhalt bleibt als Beschreibung lesbar. */
+function KartenKnopf({ label, onClick, className, children }: { label?: string; onClick: () => void; className: string; children: ReactNode }) {
+  const id = useId();
+  return (
+    <button type="button" onClick={onClick} className={className} aria-label={label} aria-describedby={label ? id : undefined}>
+      <span id={id} className="block">
+        {children}
+      </span>
+    </button>
   );
 }
 

@@ -41,6 +41,8 @@ export interface Tenant {
   ustIdNr?: string;
   /** Geschäftskonto der Kanzlei für Rechnungen (IBAN mit Prüfziffer, optional BIC und Bank). */
   geschaeftskonto?: { iban: string; bic?: string; bank?: string };
+  /** Anderkonto der Kanzlei für Fremdgeld (§ 43a Abs. 7 BRAO, § 4 BORA) – Auftraggeberkonto der Fremdgeld-Weiterleitung, nicht auf Rechnungen. */
+  anderkonto?: { iban: string; bank?: string };
   /** Sicherheitseinstellungen der Kanzlei: Zwei-Faktor-Pflicht und Sperre bei Inaktivität (Minuten, Standard 15). */
   sicherheit?: { zweiFaktorPflicht?: boolean; sperreMinuten?: 5 | 10 | 15 | 30 };
 }
@@ -399,6 +401,11 @@ export interface Transaktion {
   vorschlag?: { rechnungId?: ID; akteId?: ID; sicherheit: number; grund: string; am: ISODateTime };
   /** Abgelehnte Vorschläge – werden nicht erneut angeboten. */
   abgelehnt?: { rechnungId?: ID; akteId?: ID; am: ISODateTime; von?: ID }[];
+  /**
+   * Konto des Umsatzes (I4-T08-01): Geschäftskonto der Kanzlei oder Anderkonto (Fremdgeld, § 43a Abs. 7 BRAO, § 4 BORA).
+   * Fehlt = Geschäftskonto (Altbestände).
+   */
+  konto?: "geschaeft" | "ander";
 }
 
 export interface Zeiteintrag {
@@ -450,6 +457,10 @@ export interface Aktivitaet {
   kategorie?: "anmeldung";
   /** Zusätzlich als Benachrichtigung (Glocke) für Partner und Administration, z. B. „3 fehlgeschlagene Anmeldungen für …“. */
   meldung?: boolean;
+  /** Eingriff des Anbieters über die Apex Console (Zugang angelegt, Startpasswort, Beispieldaten) – eigener Urheber im Protokoll (I4-T16-01). */
+  quelle?: "anbieter";
+  /** Person beim Anbieter, die den Eingriff vorgenommen hat (Name des Console-Zugangs bzw. „Vergeben durch“), z. B. „Lena Vogt“. */
+  anbieterPerson?: string;
 }
 
 export interface Notiz {

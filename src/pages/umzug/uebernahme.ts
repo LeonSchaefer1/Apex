@@ -29,6 +29,9 @@ export interface Ergebnis {
   fristen: number;
   /** davon Notfristen und Fristen – sie gehen in die Vier-Augen-Kontrolle (Wiedervorlagen und Termine nicht) */
   fristenKontrolle: number;
+  /** davon Wiedervorlagen bzw. Termine (getrennt gezählt – Meldung, Kachel und Protokoll nennen dieselben Zahlen) */
+  wiedervorlagen: number;
+  termine: number;
   dokumente: number;
   /** Dubletten innerhalb der Datei, die mit der ersten Zeile zusammengeführt wurden */
   zusammengefuehrt: number;
@@ -140,10 +143,11 @@ export function waehleZeilen(zeilen: MigZeile[], p: AuswahlRegeln): Auswahl {
  * zusammengeführte Dublette bringt ihre Frist nur mit, wenn sie abweicht; eine überschriebene Bestandsakte nur Fristen,
  * die sie noch nicht hat. Schritt 3, 4 und 5 zeigen dieselben Zahlen.
  */
-export function fristenPlan(zeilen: MigZeile[], p: AuswahlRegeln & { bestand?: Pick<Frist, "akteId" | "datum" | "titel">[] }, auswahl: Auswahl = waehleZeilen(zeilen, p)): { fristen: number; wiedervorlagen: number } {
+export function fristenPlan(zeilen: MigZeile[], p: AuswahlRegeln & { bestand?: Pick<Frist, "akteId" | "datum" | "titel">[] }, auswahl: Auswahl = waehleZeilen(zeilen, p)): { fristen: number; wiedervorlagen: number; termine: number } {
   const gesehen = new Set<string>();
   let fristen = 0;
   let wiedervorlagen = 0;
+  let termine = 0;
   for (const z of auswahl.rein)
     for (const x of [z, ...(auswahl.angehaengt.get(z.nr) ?? [])]) {
       if (!x.fristDatum) continue;
@@ -154,9 +158,45 @@ export function fristenPlan(zeilen: MigZeile[], p: AuswahlRegeln & { bestand?: P
       const ziel = z.dublette && p.aktionFuer(z) === "overwrite" ? z.dublette.akteId : undefined;
       if (ziel && p.bestand?.some((f) => f.akteId === ziel && f.datum === x.fristDatum && normName(f.titel) === titel)) continue;
       if (x.fristTyp === "notfrist" || x.fristTyp === "frist") fristen++;
-      else wiedervorlagen++;
+      else {
+        wiedervorlagen++;
+        if (x.fristTyp === "termin") termine++;
+      }
     }
-  return { fristen, wiedervorlagen };
+  return { fristen, wiedervorlagen, termine };
+}
+
+// ───────────── Eine Zählweise für Meldung, Kachel und Protokoll (I4-T11-02) ─────────────
+
+const anzahl = (n: number, eins: string, mehr: string) => `${n} ${n === 1 ? eins : mehr}`;
+const aufzaehlen = (teile: string[]) => (teile.length <= 1 ? teile.join("") : `${teile.slice(0, -1).join(", ")} und ${teile[teile.length - 1]}`);
+
+/** „1 Wiedervorlage“, „2 Wiedervorlagen und 1 Termin“ – Einträge ohne Vier-Augen-Kontrolle. */
+export function weitereText(z: { wiedervorlagen: number; termine: number }): string {
+  return aufzaehlen([z.wiedervorlagen ? anzahl(z.wiedervorlagen, "Wiedervorlage", "Wiedervorlagen") : "", z.termine ? anzahl(z.termine, "Termin", "Termine") : ""].filter(Boolean));
+}
+
+/** „2 Fristen und 1 Wiedervorlage“, „9 Fristen, 2 Wiedervorlagen und 1 Termin“ – Fristen (Vier-Augen-Kontrolle), Wiedervorlagen und Termine getrennt gezählt. */
+export function fristenZaehlung(z: { fristen: number; wiedervorlagen: number; termine: number }): string {
+  const teile = [
+    z.fristen ? anzahl(z.fristen, "Frist", "Fristen") : "",
+    z.wiedervorlagen ? anzahl(z.wiedervorlagen, "Wiedervorlage", "Wiedervorlagen") : "",
+    z.termine ? anzahl(z.termine, "Termin", "Termine") : "",
+  ].filter(Boolean);
+  return teile.length ? aufzaehlen(teile) : "keine Fristen";
+}
+
+/** Zählung aus dem Ergebnis einer Übernahme. */
+export const fristenAusErgebnis = (e: Pick<Ergebnis, "fristenKontrolle" | "wiedervorlagen" | "termine">) => ({ fristen: e.fristenKontrolle, wiedervorlagen: e.wiedervorlagen, termine: e.termine });
+
+/** Zählung aus den Fristen eines Umzugslaufs (Protokoll – auch nach dem Neuladen). */
+export function fristenAusLauf(laufId: string, fristen: Pick<Frist, "umzugLaufId" | "typ">[]) {
+  const eigene = fristen.filter((f) => f.umzugLaufId === laufId && f.typ !== "vorfrist");
+  return {
+    fristen: eigene.filter((f) => f.typ === "notfrist" || f.typ === "frist").length,
+    wiedervorlagen: eigene.filter((f) => f.typ === "wiedervorlage").length,
+    termine: eigene.filter((f) => f.typ === "termin").length,
+  };
 }
 
 /** Vorschau der Übernahme (Schritt 3 und 4) – zählt genau wie `fuehreUmzugAus`. */
@@ -172,7 +212,10 @@ export interface UmzugPlan {
   ohneDatum: MigZeile[];
   ohneDatumOffen: number;
   fristen: number;
+  /** Wiedervorlagen und Termine (ohne Vier-Augen-Kontrolle) */
   wiedervorlagen: number;
+  /** davon Termine */
+  termine: number;
   /** Kontakte aus den übernommenen Zeilen (neu + vorhandene) */
   kontakte: number;
   kontakteVorhanden: number;
@@ -202,6 +245,7 @@ export function umzugPlan(zeilen: MigZeile[], p: AuswahlRegeln & { kontakte: Pic
     ohneDatumOffen,
     fristen: f.fristen,
     wiedervorlagen: f.wiedervorlagen,
+    termine: f.termine,
     kontakte: namen.size + ersatzMandanten,
     kontakteVorhanden: [...namen].filter((n) => vorhanden.has(n)).length,
   };
@@ -231,7 +275,7 @@ export async function fuehreUmzugAus(opts: {
   const st = () => useData.getState();
   const undo: UndoInfo = { erstellt: [], vorher: [] };
   const e: Ergebnis = {
-    kontakteNeu: 0, kontakteZusammengefuehrt: 0, aktenNeu: 0, aktenAktualisiert: 0, aktenUmbenannt: 0, uebersprungen: 0, fehlerhaft: 0, fristen: 0, fristenKontrolle: 0, dokumente: 0,
+    kontakteNeu: 0, kontakteZusammengefuehrt: 0, aktenNeu: 0, aktenAktualisiert: 0, aktenUmbenannt: 0, uebersprungen: 0, fehlerhaft: 0, fristen: 0, fristenKontrolle: 0, wiedervorlagen: 0, termine: 0, dokumente: 0,
     zusammengefuehrt: 0, archiviert: 0, ausserhalbUmfang: 0, laufId, undo,
   };
 
@@ -431,6 +475,8 @@ export async function fuehreUmzugAus(opts: {
       undo.erstellt.push({ col: "fristen", id: frist.id });
       e.fristen++;
       if (echteFrist) e.fristenKontrolle++;
+      else if (z.fristTyp === "termin") e.termine++;
+      else e.wiedervorlagen++;
     }
     onFortschritt("fristen", { done: i + 1, total: mitFrist.length });
     await pause(fPause);
@@ -488,7 +534,7 @@ export async function fuehreUmzugAus(opts: {
   st().log({
     akteur: "system",
     userId: user.id,
-    text: `Umzug aus ${system}: ${e.aktenNeu} Akten neu${e.archiviert ? ` (davon ${e.archiviert} als abgeschlossen)` : ""}, ${e.aktenAktualisiert} aktualisiert, ${e.kontakteNeu} Kontakte, ${e.fristenKontrolle} Fristen zur Kontrolle vorgelegt${e.fristen > e.fristenKontrolle ? `, ${e.fristen - e.fristenKontrolle} ${e.fristen - e.fristenKontrolle === 1 ? "Wiedervorlage/Termin" : "Wiedervorlagen/Termine"}` : ""}${e.zusammengefuehrt ? `, ${e.zusammengefuehrt} ${e.zusammengefuehrt === 1 ? "Dublette" : "Dubletten"} der Datei zusammengeführt` : ""}`,
+    text: `Umzug aus ${system}: ${e.aktenNeu} Akten neu${e.archiviert ? ` (davon ${e.archiviert} als abgeschlossen)` : ""}, ${e.aktenAktualisiert} aktualisiert, ${e.kontakteNeu} Kontakte, ${fristenZaehlung(fristenAusErgebnis(e))} übernommen (Fristen zur Vier-Augen-Kontrolle vorgelegt)${e.zusammengefuehrt ? `, ${e.zusammengefuehrt} ${e.zusammengefuehrt === 1 ? "Dublette" : "Dubletten"} der Datei zusammengeführt` : ""}`,
   });
   return e;
 }

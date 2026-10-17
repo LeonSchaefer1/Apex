@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Building2, Check, CheckCircle2, Copy, Link2, Mail, Plus, Send } from "lucide-react";
 import { Button, Chip, Field, Input, Modal, Select, Switch, confirmDialog } from "@/components/ui";
@@ -8,7 +8,8 @@ import { getBackend, type NeuerKunde, type NeuerKundeErgebnis } from "@/lib/back
 import type { Bundesland, Sachgebiet } from "@/core/types";
 import { cn } from "@/lib/cn";
 import { StartpasswortKarte } from "@/components/StartpasswortKarte";
-import { LOGIN_URL_HINWEIS, SACHGEBIETE, einladungsText, kopieren, landFuerStadt, loginUrl } from "./helfer";
+import { KopierKnopf } from "@/components/KopierKnopf";
+import { LOGIN_URL_HINWEIS, SACHGEBIETE, einladungsText, landFuerStadt, loginUrl } from "./helfer";
 
 /** Formularzustand: Bundesland und Anrede ohne Vorbelegung („“ = noch nicht gewählt bzw. keine Anrede). */
 type Formular = Omit<NeuerKunde, "bundesland" | "adminAnrede"> & { bundesland: Bundesland | ""; adminAnrede: "" | "Frau" | "Herr" };
@@ -272,6 +273,7 @@ function Erfolg({ e, beispieldaten }: { e: NeuerKundeErgebnis; beispieldaten: bo
  */
 export function ZugangsDaten({ user, text, passwort, kopf }: { user: { email: string }; text: string; passwort: string; kopf?: React.ReactNode }) {
   const url = loginUrl();
+  const einladungId = useId();
   const zeilen = [
     { icon: <Link2 className="size-4" />, label: url ? "Anmeldeadresse" : "Anmeldeadresse", wert: url ?? LOGIN_URL_HINWEIS, was: "Anmeldeadresse", hinweis: !url },
     { icon: <Mail className="size-4" />, label: "E-Mail", wert: user.email, was: "E-Mail" },
@@ -292,12 +294,13 @@ export function ZugangsDaten({ user, text, passwort, kopf }: { user: { email: st
             <span className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-ink-soft text-ink">{z.icon}</span>
             <span className="min-w-0 flex-1">
               <span className="block text-[12.5px] font-medium text-fg-3">{z.label}</span>
-              <span className={z.hinweis ? "block text-[13px] text-fg-2" : "mono block truncate text-[13.5px] font-medium"}>{z.wert}</span>
+              {/* vollständig und umbrechend – die Adresse wird am Telefon vorgelesen (I4-T21-02) */}
+              <span className={z.hinweis ? "block text-[13px] text-fg-2" : "mono block text-[13.5px] font-medium leading-snug [overflow-wrap:anywhere]"}>{z.wert}</span>
             </span>
             {!z.hinweis && (
-              <Button size="sm" variant="secondary" icon={<Copy className="size-3.5" />} onClick={() => void kopieren(z.wert, z.was)} aria-label={`${z.was} kopieren`} title={`${z.was} kopieren`}>
+              <KopierKnopf text={z.wert} was={z.was} icon={<Copy className="size-3.5" />} aria-label={`${z.was} kopieren`} title={`${z.was} kopieren`} className="shrink-0 justify-end">
                 <span className="hidden sm:inline">Kopieren</span>
-              </Button>
+              </KopierKnopf>
             )}
           </li>
         ))}
@@ -306,11 +309,20 @@ export function ZugangsDaten({ user, text, passwort, kopf }: { user: { email: st
       <div>
         <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
           <span className="label !mb-0">Einladung – vollständig, ohne Passwort</span>
-          <Button size="sm" variant="primary" icon={<Send className="size-3.5" />} onClick={() => void kopieren(text, "Einladung")}>
+          <KopierKnopf text={text} was="Einladung" variant="primary" icon={<Send className="size-3.5" />} markieren={() => document.getElementById(einladungId)}>
             Einladung kopieren
-          </Button>
+          </KopierKnopf>
         </div>
-        <pre className="paper max-h-[260px] overflow-auto whitespace-pre-wrap p-4 font-[inherit] text-[13px] leading-relaxed" tabIndex={0} role="region" aria-label="Einladungstext">{text}</pre>
+        {/* Vorschaufläche wie ein Eingabefeld (Tokens, hell und dunkel) – eine E-Mail braucht kein Papier (I4-T21-01) */}
+        <pre
+          id={einladungId}
+          className="max-h-[260px] overflow-auto whitespace-pre-wrap rounded-[12px] border border-[var(--line-strong)] bg-[color-mix(in_oklab,var(--surface)_75%,transparent)] p-4 font-[inherit] text-[13px] leading-relaxed text-fg [overflow-wrap:anywhere]"
+          tabIndex={0}
+          role="region"
+          aria-label="Einladungstext"
+        >
+          {text}
+        </pre>
       </div>
     </div>
   );

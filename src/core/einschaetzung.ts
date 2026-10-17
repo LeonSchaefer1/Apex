@@ -27,11 +27,14 @@ export interface FaktorQuelle {
   /** Entscheidung (Fall-Datenbank) bzw. Dokument der Akte */
   id?: string;
 }
-export type Gewicht = "stark" | "mittel" | "gering";
 export interface Faktor {
   text: string;
   richtung: "pro" | "contra";
-  gewicht: Gewicht;
+  /**
+   * Rang je Seite (1, 2, 3 …) = Reihenfolge in der KI-Begründung – keine Gewichtung (I4-T06-02). Die Gewichtung nimmt die
+   * Anwältin bzw. der Anwalt vor; eine fachlich tragende Tatsache kann auch an dritter Stelle stehen.
+   */
+  rang: number;
   /** leer = „ohne Beleg – anwaltlich prüfen“ */
   quellen: FaktorQuelle[];
 }
@@ -80,16 +83,14 @@ export function belegeIn(text: string, k: FaktorKontext): FaktorQuelle[] {
   return quellen;
 }
 
-/** Gewicht nach der Reihenfolge der Begründung: erstes Argument stark, zweites mittel, danach gering. */
-function gewichtNach(i: number): Gewicht {
-  return i === 0 ? "stark" : i === 1 ? "mittel" : "gering";
-}
+/** Erläuterung zur Spalte „Rang“ (Fußnote der Tabelle). */
+export const RANG_HINWEIS = "Rang = Reihenfolge in der KI-Begründung – keine Gewichtung. Die Gewichtung nehmen Sie vor.";
 
-/** Pro- und Contra-Faktoren mit Gewicht und Quelle (oder ohne Beleg). */
+/** Pro- und Contra-Faktoren mit Rang (Reihenfolge der Begründung, je Seite ab 1) und Quelle (oder ohne Beleg). */
 export function faktorenAus(pro: string[], contra: string[], k: FaktorKontext): Faktor[] {
   return [
-    ...pro.map((text, i) => ({ text, richtung: "pro" as const, gewicht: gewichtNach(i), quellen: belegeIn(text, k) })),
-    ...contra.map((text, i) => ({ text, richtung: "contra" as const, gewicht: gewichtNach(i), quellen: belegeIn(text, k) })),
+    ...pro.map((text, i) => ({ text, richtung: "pro" as const, rang: i + 1, quellen: belegeIn(text, k) })),
+    ...contra.map((text, i) => ({ text, richtung: "contra" as const, rang: i + 1, quellen: belegeIn(text, k) })),
   ];
 }
 

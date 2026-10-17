@@ -1,7 +1,7 @@
 // Bankabgleich: Buchungsart bei Zuordnung zur Akte (I3-T08-01) und stornierte Rechnung im Verwendungszweck (I3-T08-02).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { nowLocal, uid } from "@/core/dates";
+import { fmtEUR, nowLocal, uid } from "@/core/dates";
 import type { Akte, Aktivitaet, Kontakt, Rechnung, TenantData, Transaktion } from "@/core/types";
 import { buchungsartVorschlag, mandantenIbans, stornierteRechnungImZweck } from "./abgleich";
 
@@ -81,4 +81,41 @@ test("Buchung Honorar/Vorschuss: Guthaben im Aktenkonto, keine Fremdgeld-Wiederv
   const s2 = kontoSummen(d.buchungen.filter((b) => b.akteId === "a150"));
   assert.deepEqual([s2.vorschuss, s2.angefordert, s2.offen], [0, 0, 0]);
   assert.ok(d.aktivitaeten.some((a) => /Honorar\/Vorschuss .* gegengebucht/.test(a.text)), "Protokoll");
+});
+
+test("Konto je Umsatz: Meldung und Fremdgeld-Text nennen das tatsächliche Konto (I4-T08-01)", async () => {
+  const { fremdgeldMeldung, fremdgeldKonto, fremdgeldLiegtText, kontoVon, KONTO_NAME } = await import("./abgleich");
+  // fehlt = Geschäftskonto (Altbestände)
+  assert.equal(kontoVon({}), "geschaeft");
+  assert.equal(kontoVon({ konto: "ander" }), "ander");
+  assert.equal(KONTO_NAME.ander, "Anderkonto");
+  assert.equal(fremdgeldMeldung(5670, "ander", "107/26"), `${fmtEUR(5670)} auf dem Anderkonto · 107/26 – bitte unverzüglich weiterleiten (§ 43a Abs. 7 BRAO)`);
+  assert.equal(
+    fremdgeldMeldung(6120, "geschaeft", "131/26"),
+    `${fmtEUR(6120)} auf dem Geschäftskonto eingegangen · 131/26 – unverzüglich weiterleiten oder auf das Anderkonto umbuchen (§ 43a Abs. 7 BRAO, § 4 BORA)`,
+  );
+  assert.doesNotMatch(fremdgeldMeldung(100, "geschaeft"), /auf dem Anderkonto ·/);
+  // Konto des Fremdgeld-Eingangs einer Akte aus dem Bankumsatz; Storno und Weiterleitungen zählen nicht
+  const tx = [{ id: "t1", konto: "ander" as const }, { id: "t2" }];
+  const b = (p: Partial<import("@/core/types").Buchung>) => ({ id: uid("b"), akteId: "a131", datum: "2026-10-16", art: "fremdgeld" as const, betrag: 100, text: "Zahlung", fremdgeld: true, ...p });
+  assert.equal(fremdgeldKonto("a131", [b({ transaktionId: "t1" })], tx), "ander");
+  assert.equal(fremdgeldKonto("a131", [b({ transaktionId: "t2" })], tx), "geschaeft");
+  assert.equal(fremdgeldKonto("a131", [b({ transaktionId: "t1" }), b({ transaktionId: "t2" })], tx), "gemischt");
+  assert.equal(fremdgeldKonto("a131", [b({})], tx), undefined, "ohne Bankumsatz unbekannt");
+  assert.equal(fremdgeldKonto("a131", [b({ transaktionId: "t2", betrag: -100, text: "Weiterleitung" }), b({ transaktionId: "t1" })], tx), "ander");
+  assert.match(fremdgeldLiegtText(6120, "geschaeft"), /^Auf dem Geschäftskonto eingegangen: 6\.120,00\s€ Fremdgeld – unverzüglich weiterleiten oder auf das Anderkonto umbuchen/);
+  assert.match(fremdgeldLiegtText(5670, "ander"), /^Auf dem Anderkonto liegen 5\.670,00\s€/);
+});
+
+test("Fremdgeld buchen: Buchungstext, Frist-Notiz und Protokoll nach dem Konto des Umsatzes", async () => {
+  const { useData } = await import("@/store/data");
+  const { bucheTreffer } = await import("./abgleich");
+  const t = umsatz({ gegenpartei: "ELBTAL VERSICHERUNG AG", betrag: 6120, verwendungszweck: "Schaden EV-2026-448812 Ihr Az. 131/26" });
+  const leer = { akten: [a150, a131], kontakte: [albrecht, yilmaz, elbtal], transaktionen: [t], buchungen: [], fristen: [], rechnungen: [], aktivitaeten: [] } as unknown as TenantData;
+  useData.setState({ data: leer, status: "bereit" });
+  bucheTreffer(t, { transaktionId: t.id, art: "fremdgeld", regel: "fremdgeld", sicherheit: 1, grund: "Manuell", akteId: "a131" }, "manuell", "u1");
+  const d = useData.getState().data;
+  assert.match(d.buchungen[0].text, /Eingang Geschäftskonto/);
+  assert.match(d.fristen[0].notiz ?? "", /Geschäftskonto eingegangen – unverzüglich weiterleiten oder auf das Anderkonto umbuchen/);
+  assert.ok(d.aktivitaeten.some((a) => /Eingang auf dem Geschäftskonto/.test(a.text)));
 });

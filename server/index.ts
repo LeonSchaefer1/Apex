@@ -25,7 +25,7 @@ import { geaenderteRechnungsangaben, normalisiereRechnungsangaben, pruefeRechnun
 import { istFristAutomatik } from "../src/core/automationen";
 import { pruefeDokument } from "../src/lib/backend/schema";
 import { sicheresPasswort, zufallsZahl } from "../src/lib/backend/zufall";
-import { ANMELDE_WARN_SCHWELLE, VORGANG, anmeldeVorgang, letzteEchteAktivitaet, mischeVorgaenge, pruefeConsolePasswortAnlass, vorgang, zaehleFehlversuch, zeitBerlin, type FehlGrund } from "../src/lib/backend/protokoll";
+import { ANMELDE_WARN_SCHWELLE, VORGANG, anbieterVorgang, anmeldeVorgang, letzteEchteAktivitaet, mischeVorgaenge, pruefeConsolePasswortAnlass, vorgang, zaehleFehlversuch, zeitBerlin, type FehlGrund } from "../src/lib/backend/protokoll";
 import { darfAutomatikSchalten, festeAnsprechBezeichnung, rollenLabel } from "../src/lib/rollen";
 
 // ───────────── Konfiguration ─────────────
@@ -842,6 +842,10 @@ app.put("/api/data/:col/:id", async (c) => {
   if (!doc || typeof doc !== "object" || (doc as { id?: unknown }).id !== id) return fehler(c, 400, "ID stimmt nicht überein");
   const problem = pruefeDokument(col, doc);
   if (problem) return fehler(c, 400, `Die Änderung wurde nicht gespeichert: ${problem}`);
+  // Anbieter-Eingriffe (quelle „anbieter“, I4-T16-01) schreibt nur der Server für die Apex Console – nie die Kanzlei selbst.
+  if (col === "aktivitaeten" && ((doc as { quelle?: unknown }).quelle !== undefined || (doc as { anbieterPerson?: unknown }).anbieterPerson !== undefined)) {
+    return fehler(c, 400, "Die Änderung wurde nicht gespeichert: Anbieter-Einträge im Kanzleiprotokoll schreibt nur die Apex Console.");
+  }
   let json = raw;
   // Fristautomatiken (Fristerkennung, Vorfristen, eEB) schalten nur Partner und Administration; beim Pausieren werden Zeitpunkt
   // und Person gespeichert (I3-T10-01) – die Person immer aus der Sitzung, nie aus der Anfrage.
@@ -938,12 +942,14 @@ app.put("/api/kanzlei/rechnungsangaben", async (c) => {
   if (s instanceof Response) return s;
   const me = sessionInfo(s);
   if (!me || !darfVerwalten(me.user)) return fehler(c, 403, "Nur Partner und Administration dürfen die Rechnungsangaben ändern.");
-  const b = (await c.req.json().catch(() => ({}))) as { steuernummer?: unknown; ustIdNr?: unknown; geschaeftskonto?: unknown };
+  const b = (await c.req.json().catch(() => ({}))) as { steuernummer?: unknown; ustIdNr?: unknown; geschaeftskonto?: unknown; anderkonto?: unknown };
   const k = (b.geschaeftskonto && typeof b.geschaeftskonto === "object" ? b.geschaeftskonto : {}) as { iban?: unknown; bic?: unknown; bank?: unknown };
+  const ak = (b.anderkonto && typeof b.anderkonto === "object" ? b.anderkonto : {}) as { iban?: unknown; bank?: unknown };
   const roh = {
     steuernummer: text(b.steuernummer, 40),
     ustIdNr: text(b.ustIdNr, 40),
     geschaeftskonto: { iban: text(k.iban, 60), bic: text(k.bic, 20), bank: typeof k.bank === "string" ? k.bank.trim().slice(0, 200) : "" },
+    anderkonto: { iban: text(ak.iban, 60), bank: typeof ak.bank === "string" ? ak.bank.trim().slice(0, 200) : "" },
   };
   const f = Object.entries(pruefeRechnungsangaben(roh))[0];
   if (f) return feldFehler(c, 400, f[1], f[0]);
@@ -953,6 +959,7 @@ app.put("/api/kanzlei/rechnungsangaben", async (c) => {
   delete tenant.steuernummer;
   delete tenant.ustIdNr;
   delete tenant.geschaeftskonto;
+  delete tenant.anderkonto;
   Object.assign(tenant, neu);
   db.prepare("UPDATE tenants SET json = ? WHERE id = ?").run(JSON.stringify(tenant), s.tenantId);
   audit("kanzlei.rechnungsangaben", geaendert.join(", ") || "unverändert", s.tenantId, s.userId);
@@ -1206,8 +1213,9 @@ app.post("/api/console/kunden", async (c) => {
   // Startpasswort: Bei der ersten Anmeldung legt die Kanzlei ein eigenes Passwort fest (wie bei Team-Einladungen).
   speichereUser(admin, passwort, true);
   audit("console.kunde.neu", `${tenant.name} / ${admin.email}`, tenant.id);
-  protokolliere(tenant.id, vorgang(VORGANG.zugangAngelegt(admin.name, rollenLabel(admin)), { akteur: "system", userId: admin.id }));
-  protokolliere(tenant.id, vorgang(VORGANG.startpasswortVergeben(admin.name), { akteur: "system", userId: admin.id }));
+  // Anbieter-Eingriffe (I4-T16-01): eigener Urheber „AnwaltApex – … (Apex Console)“ im Kanzleiprotokoll
+  protokolliere(tenant.id, anbieterVorgang(VORGANG.zugangAngelegt(admin.name, rollenLabel(admin)), { userId: admin.id, anbieterPerson: CONSOLE_NAME }));
+  protokolliere(tenant.id, anbieterVorgang(VORGANG.startpasswortVergeben(admin.name), { userId: admin.id, anbieterPerson: CONSOLE_NAME }));
   return c.json({ tenant, admin, passwort });
 });
 
@@ -1230,7 +1238,7 @@ app.post("/api/console/kunden/:id/reset", (c) => {
   if (!t) return fehler(c, 404, "Kanzlei nicht gefunden");
   ladeDaten(id, true);
   audit("console.kunde.reset", t.tenant.name, id);
-  protokolliere(id, vorgang(VORGANG.beispieldatenZurueckgesetzt(), { akteur: "system" }));
+  protokolliere(id, anbieterVorgang(VORGANG.beispieldatenZurueckgesetzt(), { anbieterPerson: CONSOLE_NAME }));
   return c.body(null, 204);
 });
 
@@ -1262,7 +1270,7 @@ app.post("/api/console/nutzer/:id/standardpasswort", (c) => {
   db.prepare("DELETE FROM sessions WHERE user_id = ?").run(id);
   audit("console.standardpasswort", id);
   const u = db.prepare("SELECT tenant_id, json FROM users WHERE id = ?").get(id) as { tenant_id: string; json: string } | undefined;
-  if (u) protokolliere(u.tenant_id, vorgang(VORGANG.standardPasswort(userJson(u).name), { akteur: "system", userId: id }));
+  if (u) protokolliere(u.tenant_id, anbieterVorgang(VORGANG.standardPasswort(userJson(u).name), { userId: id, anbieterPerson: CONSOLE_NAME }));
   return c.body(null, 204);
 });
 
@@ -1282,7 +1290,7 @@ app.post("/api/console/nutzer/:id/passwort", async (c) => {
   audit("console.passwort", u?.email ?? id, u?.tenant_id);
   // Anbieter-Eingriff: Die Kanzlei sieht ihn in ihrem Protokoll (Einstellungen → Datenschutz).
   // Kanzleiprotokoll mit Anbieter-Person, Anforderer und Anlass; zugleich Hinweis in der Glocke für Partner und Administration
-  if (u) protokolliere(u.tenant_id, anmeldeVorgang(VORGANG.consolePasswort(userJson(u).name, anlass, CONSOLE_NAME), { akteur: "system", userId: id, meldung: true }));
+  if (u) protokolliere(u.tenant_id, anbieterVorgang(VORGANG.consolePasswort(userJson(u).name, anlass, CONSOLE_NAME), { userId: id, anbieterPerson: anlass.bearbeiter, kategorie: "anmeldung", meldung: true }));
   return c.json({ passwort: pw });
 });
 

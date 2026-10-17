@@ -102,9 +102,110 @@ export function loeschSperre(k: Kontakt, akten: Akte[]): { gesperrt: false } | {
   };
 }
 
-/** Kollisionsprüfung für ein neues Mandat: Wo hat der Kontakt eine widerstreitende Rolle? */
-export function kollisionFuerNeuesMandat(k: Kontakt, akten: Akte[], als: "mandant" | "gegner"): { konflikte: { akte: Akte; rolle: BeteiligtenRolle }[]; frueher: { akte: Akte; rolle: BeteiligtenRolle }[] } {
+/** Grund, warum zwei Datensätze als dieselbe Person bzw. Firma gelten. */
+export type GleichGrund = Dublette["grund"] | "domain";
+
+export const GLEICH_GRUND: Record<GleichGrund, string> = { ...DUBLETTE_GRUND, domain: "gleiche E-Mail-Domain der Firma" };
+
+/**
+ * Freemailer – eine gemeinsame Domain bei gmx.de, web.de, gmail.com … sagt nichts über dieselbe Firma aus.
+ * `hotmail.*`, `yahoo.*`, `live.*` und `outlook.*` gelten in jeder Länderendung.
+ */
+const FREEMAILER = new Set([
+  "gmx.de", "gmx.net", "gmx.at", "gmx.ch", "gmx.com", "web.de", "gmail.com", "googlemail.com", "posteo.de", "posteo.net", "t-online.de",
+  "icloud.com", "me.com", "mac.com", "mail.de", "freenet.de", "aol.com", "aol.de", "arcor.de", "online.de", "email.de", "1und1.de",
+  "mailbox.org", "proton.me", "protonmail.com", "vodafone.de", "kabelmail.de",
+]);
+const FREEMAILER_FAMILIE = /^(?:hotmail|yahoo|outlook|live|msn|ymail)\.[a-z.]+$/;
+
+/** Domain einer E-Mail-Adresse in Kleinschreibung – `undefined` ohne gültige Adresse. */
+export function emailDomain(email?: string): string | undefined {
+  const m = email?.trim().toLowerCase().match(/^[^@\s]+@([a-z0-9.-]+\.[a-z]{2,})$/);
+  return m ? m[1].replace(/^www\./, "") : undefined;
+}
+
+/** Freemail-Domain (gmx.de, web.de, gmail.com, hotmail.* …)? */
+export function istFreemailer(domain: string): boolean {
+  const d = domain.toLowerCase();
+  return FREEMAILER.has(d) || FREEMAILER_FAMILIE.test(d);
+}
+
+/**
+ * Alle ANDEREN Datensätze derselben Person bzw. Firma (I4-T17-01): gleicher Name ohne Titel, Rechtsform, Groß-/Kleinschreibung
+ * und Satzzeichen (`nameSchluessel`), gleiche E-Mail-Adresse, gleiche Telefonnummer (`telefonZiffern`) und – bei Organisationen –
+ * gleiche E-Mail-Domain (ohne Freemailer). Je Datensatz ein Treffer mit dem ersten zutreffenden Grund.
+ */
+export function gleicheKontakte(
+  k: Pick<Kontakt, "id" | "name" | "email" | "telefon" | "typ">,
+  kontakte: Kontakt[],
+): { kontakt: Kontakt; grund: GleichGrund }[] {
+  const schluessel = nameSchluessel(k.name ?? "");
+  const mail = k.email?.trim().toLowerCase();
+  const tel = k.telefon ? telefonZiffern(k.telefon) : "";
+  const domain = k.typ !== "person" ? emailDomain(k.email) : undefined;
+  const domainZaehlt = !!domain && !istFreemailer(domain);
+  const out: { kontakt: Kontakt; grund: GleichGrund }[] = [];
+  for (const x of kontakte) {
+    if (k.id && x.id === k.id) continue;
+    let grund: GleichGrund | undefined;
+    if (schluessel.length >= 2 && nameSchluessel(x.name) === schluessel) grund = "name";
+    else if (mail && /@/.test(mail) && x.email?.trim().toLowerCase() === mail) grund = "email";
+    else if (tel.length >= 6 && !!x.telefon && telefonZiffern(x.telefon) === tel) grund = "telefon";
+    else if (domainZaehlt && x.typ === "organisation" && emailDomain(x.email) === domain) grund = "domain";
+    if (grund) out.push({ kontakt: x, grund });
+  }
+  return out;
+}
+
+/** Treffer der Kollisionsprüfung – `ueber` ist der gleiche Datensatz, über den er gefunden wurde (fehlt beim geprüften Kontakt selbst). */
+export interface KollisionsTreffer {
+  akte: Akte;
+  rolle: BeteiligtenRolle;
+  ueber?: Kontakt;
+}
+
+export interface KollisionsErgebnis {
+  konflikte: KollisionsTreffer[];
+  frueher: KollisionsTreffer[];
+}
+
+function kollisionUeber(pruefen: { k: Kontakt; ueber?: Kontakt }[], akten: Akte[], als: "mandant" | "gegner"): KollisionsErgebnis {
   const widerstreitend = (r: BeteiligtenRolle) => (als === "mandant" ? r === "Gegner" || r === "Schuldner" : r === "Mandant");
-  const treffer = aktenVonKontakt(k, akten).filter((x) => widerstreitend(x.rolle));
+  const treffer: KollisionsTreffer[] = [];
+  const gesehen = new Set<string>();
+  for (const { k, ueber } of pruefen) {
+    for (const x of aktenVonKontakt(k, akten)) {
+      if (!widerstreitend(x.rolle)) continue;
+      const key = `${x.akte.id}|${x.rolle}`;
+      if (gesehen.has(key)) continue;
+      gesehen.add(key);
+      treffer.push(ueber ? { ...x, ueber } : x);
+    }
+  }
   return { konflikte: treffer.filter((x) => x.akte.status !== "abgeschlossen"), frueher: treffer.filter((x) => x.akte.status === "abgeschlossen") };
+}
+
+/**
+ * Kollisionsprüfung für ein neues Mandat (§ 43a Abs. 4 BRAO, § 3 BORA): Wo hat der Kontakt eine widerstreitende Rolle?
+ * Mit `kontakte` prüft sie den Kontakt UND alle gleichen Datensätze (Dubletten, `gleicheKontakte`) – ein Treffer über eine Dublette
+ * trägt `ueber`. Ohne `kontakte` nur über die Kontakt-ID (bisheriges Ergebnis).
+ */
+export function kollisionFuerNeuesMandat(k: Kontakt, akten: Akte[], als: "mandant" | "gegner", kontakte?: Kontakt[]): KollisionsErgebnis {
+  const pruefen: { k: Kontakt; ueber?: Kontakt }[] = [{ k }];
+  if (kontakte) for (const g of gleicheKontakte(k, kontakte)) pruefen.push({ k: g.kontakt, ueber: g.kontakt });
+  return kollisionUeber(pruefen, akten, als);
+}
+
+/**
+ * Kollisionsprüfung für einen neu getippten Namen (Mandatsaufnahme „Neuer Mandant“, Gegner): über alle Datensätze, die nach Name,
+ * E-Mail, Telefon bzw. Firmen-Domain dieselbe Person oder Firma sind. Jeder Treffer trägt `ueber` (der gefundene Datensatz).
+ */
+export function kollisionFuerEntwurf(
+  e: { name: string; email?: string; telefon?: string; typ?: Kontakt["typ"] },
+  kontakte: Kontakt[],
+  akten: Akte[],
+  als: "mandant" | "gegner",
+): KollisionsErgebnis {
+  const gleiche = gleicheKontakte({ id: "", name: e.name, email: e.email, telefon: e.telefon, typ: e.typ ?? "organisation" }, kontakte);
+  return kollisionUeber(gleiche.map((g) => ({ k: g.kontakt, ueber: g.kontakt })), akten, als);
 }

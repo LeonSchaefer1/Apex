@@ -112,7 +112,8 @@ export function FristartAuswahl({
       tastatur.current = true;
       setAktivKey(sichtbar[i].key);
     } else if (e.key === "Enter") {
-      const r = sichtbar[aktivIndex] ?? sichtbar[0];
+      // Ohne Eingabe und ohne Markierung übernimmt Enter nichts – keine stille Vorwahl des ersten Eintrags (I4-T18-03)
+      const r = sichtbar[aktivIndex] ?? (suche.trim() ? sichtbar[0] : undefined);
       if (!r) return;
       e.preventDefault();
       waehle(r, true);

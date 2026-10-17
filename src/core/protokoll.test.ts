@@ -1,7 +1,8 @@
 // Kanzleiprotokoll (Anmeldungen, Fehlversuche, Abmeldung) und Teamregeln (§ 53 BRAO) – gleiche Logik in Demo-Backend und Server.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ANMELDE_WARN_FENSTER_MS, ANMELDE_WARN_SCHWELLE, VORGANG, anmeldeVorgang, mischeVorgaenge, vorgang, zaehleFehlversuch } from "../lib/backend/protokoll";
+import { ANMELDE_WARN_FENSTER_MS, ANMELDE_WARN_SCHWELLE, VORGANG, anbieterUrheber, anbieterVorgang, anmeldeVorgang, istAnbieterEintrag, mischeVorgaenge, vorgang, zaehleFehlversuch } from "../lib/backend/protokoll";
+import { pruefeDokument } from "../lib/backend/schema";
 import { pruefeTeamAenderung } from "../lib/backend/types";
 import type { User } from "./types";
 
@@ -119,4 +120,47 @@ test("Protokoll: Automatik pausieren nennt Person und Folge; Rechnungsangaben ne
   assert.deepEqual(n, { ustIdNr: "DE123456789", geschaeftskonto: { iban: "DE89 3704 0044 0532 0130 00", bic: "COBADEFFXXX", bank: "Commerzbank" } });
   assert.deepEqual(geaenderteRechnungsangaben({}, n), ["USt-IdNr.", "IBAN", "BIC", "Bank"]);
   assert.deepEqual(geaenderteRechnungsangaben(n, n), []);
+});
+
+test("Protokoll (I4-T16-01): Anbieter-Eingriffe tragen quelle „anbieter“ und die Person beim Anbieter", () => {
+  const anlass = { angefordertVon: "Claudia Reinholz", anlass: "Passwort vergessen – telefonisch angefordert", bearbeiter: "Lena Vogt" };
+  const a = anbieterVorgang(VORGANG.consolePasswort("Claudia Reinholz", anlass, "AnwaltApex Team"), { userId: "u1", anbieterPerson: anlass.bearbeiter, kategorie: "anmeldung", meldung: true });
+  assert.equal(a.quelle, "anbieter");
+  assert.equal(a.anbieterPerson, "Lena Vogt");
+  assert.equal(a.akteur, "system");
+  assert.equal(a.kategorie, "anmeldung");
+  assert.equal(a.meldung, true);
+  assert.equal(a.text, "Startpasswort für Claudia Reinholz durch AnwaltApex neu vergeben – Lena Vogt auf Anforderung von Claudia Reinholz, Anlass: Passwort vergessen – telefonisch angefordert");
+  assert.equal(anbieterUrheber(a), "AnwaltApex – Lena Vogt (Apex Console)");
+  assert.equal(istAnbieterEintrag(a), true);
+
+  // allgemeiner Console-Zugang ohne Person
+  const z = anbieterVorgang(VORGANG.zugangAngelegt("Claudia Reinholz", "Partnerin"), { userId: "u1", anbieterPerson: "AnwaltApex Team" });
+  assert.equal(z.anbieterPerson, undefined);
+  assert.equal(z.kategorie, undefined);
+  assert.equal(anbieterUrheber(z), "AnwaltApex (Apex Console)");
+
+  // Alt-Einträge ohne `quelle`: am Text erkannt, Person aus dem Text
+  const alt = anmeldeVorgang(VORGANG.consolePasswort("Mia Becker", { ...anlass, bearbeiter: "Lena Vogt" }), { akteur: "system", userId: "u2", meldung: true });
+  assert.equal(alt.quelle, undefined);
+  assert.equal(anbieterUrheber(alt), "AnwaltApex – Lena Vogt (Apex Console)");
+  assert.equal(anbieterUrheber(vorgang(VORGANG.standardPasswort("Mia Becker"), { akteur: "system" })), "AnwaltApex (Apex Console)");
+
+  // echte automatische Anmeldeereignisse sind keine Anbieter-Eingriffe
+  const fehl = anmeldeVorgang(VORGANG.anmeldungFehlgeschlagen("Mia Becker", "passwort"), { akteur: "system", userId: "u2" });
+  assert.equal(istAnbieterEintrag(fehl), false);
+  assert.equal(anbieterUrheber(fehl), undefined);
+  assert.equal(anbieterUrheber(vorgang(VORGANG.sperreInaktivitaet("Mia Becker"), { akteur: "system" })), undefined);
+});
+
+test("Schema (I4-T16-01, I4-T08-01): quelle, anbieterPerson und konto nur mit gültigen Werten", () => {
+  const akt = { id: "a1", zeit: "2026-10-17T06:00:00", text: "x", akteur: "system" };
+  assert.equal(pruefeDokument("aktivitaeten", { ...akt, quelle: "anbieter", anbieterPerson: "Lena Vogt" }), null);
+  assert.match(pruefeDokument("aktivitaeten", { ...akt, quelle: "kanzlei" }) ?? "", /quelle/);
+  assert.match(pruefeDokument("aktivitaeten", { ...akt, anbieterPerson: 42 }) ?? "", /anbieterPerson/);
+  const tx = { id: "t1", datum: "2026-10-12", betrag: 5670, gegenpartei: "Hanseatische", iban: "DE", verwendungszweck: "x", status: "offen" };
+  assert.equal(pruefeDokument("transaktionen", tx), null);
+  assert.equal(pruefeDokument("transaktionen", { ...tx, konto: "ander" }), null);
+  assert.equal(pruefeDokument("transaktionen", { ...tx, konto: "geschaeft" }), null);
+  assert.match(pruefeDokument("transaktionen", { ...tx, konto: "privat" }) ?? "", /konto/);
 });

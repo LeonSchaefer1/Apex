@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   AlertTriangle, BookCheck, Check, CircleAlert, Copy, FastForward, FileSignature, FolderOpen, MessageSquareReply, MessageSquareText, PenLine, Receipt, RotateCcw, Save, Scale, Send,
   ShieldCheck, Sparkles, Square, Wand2,
@@ -12,7 +12,7 @@ import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
 import { nowLocal, uid } from "@/core/dates";
 import type { Dokument } from "@/core/types";
-import { AiChip, Button, Card, Chip, Field, Segmented, Select, Textarea, confirmDialog } from "@/components/ui";
+import { AiChip, Button, Card, Chip, Field, PapierSchalter, Segmented, Select, Textarea, confirmDialog } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { kopiereText } from "@/pages/falldb/zwischenablage";
 import { pruefeZitate } from "@/pages/falldb/recherche";
@@ -71,6 +71,8 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
   const [gespeichert, setGespeichert] = useState<string | null>(null);
   const [kopiert, setKopiert] = useState(false);
 
+  // „Bewegung reduzieren“: Entwurf sofort vollständig, keine Schreibmaschine und kein „schreibt …“ (I4-T19-01)
+  const reduziert = useReducedMotion() ?? false;
   const abort = useRef<AbortController | null>(null);
   const tipp = useRef<number | null>(null);
   const laufNr = useRef(0); // verhindert, dass ein abgebrochener Lauf später noch schreibt
@@ -110,6 +112,12 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
 
   const schreibmaschine = (voll: string) => {
     stoppeTipp();
+    if (reduziert || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      setText(voll);
+      setSichtbar(voll.length);
+      setStatus("fertig");
+      return;
+    }
     setText(voll);
     setSichtbar(0);
     setStatus("schreibt");
@@ -155,7 +163,7 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
 
     const offline = async () => {
       setErzeugt({ akteId: akte.id, art, quelle: "vorlage" });
-      await new Promise((r) => setTimeout(r, 1150));
+      await new Promise((r) => setTimeout(r, reduziert ? 0 : 1150));
       if (nr !== laufNr.current) return;
       schreibmaschine(entwurfOffline(art, ton, hinweise, kontext));
     };
@@ -177,6 +185,8 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
         onText: (t) => {
           if (nr !== laufNr.current) return;
           teil = t;
+          // Reduzierte Bewegung: kein laufender Text – vollständig erst am Ende
+          if (reduziert) return;
           setText(t);
           setStatus("schreibt");
         },
@@ -187,6 +197,7 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
     } catch (e) {
       if (nr !== laufNr.current) return;
       if (e instanceof DemoModus) return offline();
+      if (reduziert && teil) setText(teil);
       if (ctl.signal.aborted) {
         setStatus(teil ? "fertig" : "leer");
         if (teil) toast("Entwurf angehalten", { text: "Der bisher geschriebene Text bleibt erhalten.", ton: "info" });
@@ -415,6 +426,8 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
               </Button>
             ) : text ? (
               <>
+                {/* Papier im Dunkelmodus gedimmt – „Original“ gilt für alle Vorschauen (I4-T06-01) */}
+                <PapierSchalter />
                 <Button size="sm" variant="primary" icon={gespeichert ? <Check className="size-4" /> : <Save className="size-4" />} onClick={speichern} disabled={!!gespeichert}>
                   {gespeichert ? "Gespeichert" : "In Akte speichern"}
                 </Button>

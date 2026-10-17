@@ -147,6 +147,7 @@ export function KundenKarte({ k, i, aktionen, beschaeftigt }: { k: ConsoleKunde;
                   onClick={() => aktionen.passwort(k, u)}
                   className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-medium text-fg-3 transition-colors hover:bg-ink-soft hover:text-ink"
                   title={`Neues Passwort für ${u.name} erzeugen`}
+                  aria-label={`Neues Passwort für ${u.name} erzeugen`}
                 >
                   <KeyRound className="size-3.5" />
                   <span className="hidden sm:inline">Neues Passwort</span>

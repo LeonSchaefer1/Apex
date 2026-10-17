@@ -158,3 +158,12 @@ test("Archivakte ohne Abschlussdatum: abschlussdatumUnbekannt, abgeschlossenAm =
   }
   assert.ok(mitDatum.abgeschlossenAm);
 });
+
+test("Zählung der Fristen: Fristen, Wiedervorlagen und Termine getrennt und ohne doppeltes „und“ (I4-T11-02)", async () => {
+  const { fristenZaehlung, weitereText } = await import("./uebernahme");
+  assert.equal(fristenZaehlung({ fristen: 2, wiedervorlagen: 1, termine: 0 }), "2 Fristen und 1 Wiedervorlage");
+  assert.equal(fristenZaehlung({ fristen: 9, wiedervorlagen: 2, termine: 1 }), "9 Fristen, 2 Wiedervorlagen und 1 Termin");
+  assert.equal(fristenZaehlung({ fristen: 1, wiedervorlagen: 0, termine: 0 }), "1 Frist");
+  assert.equal(fristenZaehlung({ fristen: 0, wiedervorlagen: 0, termine: 0 }), "keine Fristen");
+  assert.equal(weitereText({ wiedervorlagen: 2, termine: 1 }), "2 Wiedervorlagen und 1 Termin");
+});

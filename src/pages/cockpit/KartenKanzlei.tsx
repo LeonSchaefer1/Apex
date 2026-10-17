@@ -147,8 +147,8 @@ export function FinanzenKarte({ d, i, className }: { d: CockpitDaten; i: number;
           <li key={z.label} className="flex items-center gap-3 rounded-[14px] px-1 py-1.5">
             <span className={cn("grid size-8 shrink-0 place-items-center rounded-[10px]", kachel[z.ton])}>{z.icon}</span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[13px] font-medium text-fg-2">{z.label}</span>
-              <span className="block truncate text-[12.5px] text-fg-3">{z.sub}</span>
+              <span className="block truncate text-[13px] font-medium text-fg-2 max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:break-words">{z.label}</span>
+              <span className="block truncate text-[12.5px] text-fg-3 max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:break-words">{z.sub}</span>
             </span>
             <span className={cn("num shrink-0 text-[15px] font-semibold tracking-[-0.01em]", wertTon[z.ton])}>
               <AnimatedNumber value={z.wert} format={(n) => euro(n)} />
@@ -214,7 +214,7 @@ export function KiKarte({ d, i, className }: { d: CockpitDaten; i: number; class
         </span>
         <div className="min-w-0 flex-1">
           <h2 className="title-md">KI-Empfehlung</h2>
-          <div className="mt-0.5 truncate text-[12.5px] text-fg-3">Apex KI hat diese Akte vorbereitet</div>
+          <div className="mt-0.5 truncate text-[12.5px] text-fg-3 max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:break-words">Apex KI hat diese Akte vorbereitet</div>
         </div>
         <AiChip />
       </header>
@@ -329,8 +329,8 @@ export function Schnellaktionen() {
         >
           <span className={cn("relative z-[1] grid size-9 shrink-0 place-items-center rounded-[11px]", a.ai ? "ai-fill text-white shadow-[0_6px_14px_-6px_var(--ai-2)]" : "bg-ink-soft text-ink")}>{a.icon}</span>
           <span className="relative z-[1] min-w-0 flex-1">
-            <span className="block truncate text-[13.5px] font-semibold">{a.label}</span>
-            <span className="block truncate text-[12.5px] text-fg-3">{a.hint}</span>
+            <span className="block truncate text-[13.5px] font-semibold max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:break-words">{a.label}</span>
+            <span className="block truncate text-[12.5px] text-fg-3 max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:break-words">{a.hint}</span>
           </span>
           {a.kbd && <span className="kbd relative z-[1] hidden @5xl:inline-grid">{a.kbd}</span>}
         </motion.button>

@@ -3,19 +3,21 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { AlertTriangle, AtSign, Building2, Check, ChevronRight, FileDown, FolderOpen, Lock, MapPin, PenLine, Phone, Scale, ShieldCheck, StickyNote, Trash2, UserRound } from "lucide-react";
+import { AlertTriangle, ArrowRight, AtSign, Building2, Check, ChevronRight, Copy, FileDown, FolderOpen, GitMerge, Lock, MapPin, PenLine, Phone, Scale, ShieldCheck, StickyNote, Trash2, UserRound } from "lucide-react";
 import type { Akte, Kontakt, KontaktRolle } from "@/core/types";
-import { fmtDate, today } from "@/core/dates";
+import { fmtDate, nowLocal, today } from "@/core/dates";
+import { GLEICH_GRUND, gleicheKontakte, type GleichGrund } from "@/core/kontaktpruefung";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
-import { Button, Chip, Drawer, Field, Input, Segmented, Textarea, confirmDialog } from "@/components/ui";
+import { Button, Chip, Drawer, Field, Input, Modal, Segmented, Textarea, confirmDialog } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { STATUS_INFO } from "@/pages/akten/helfer";
 import { DateiDialog, type AusgabeDatei } from "@/pages/fristen/dateiAusgabe";
 import { CopyButton, KontaktAvatar, ROLLE_LABEL, ROLLE_TONE, aktenVonKontakt, kontaktAdresse, type Konflikt } from "./kontaktHelfer";
 import { KontaktFelder, emailUngueltig, entwurfGueltig, entwurfName, type KontaktEntwurf } from "./KontaktFormular";
 import { auskunftDateiname, auskunftHtml, auskunftJson, erstelleAuskunft, kollisionsText, loeschSperre } from "./auskunft";
+import { DATENFELD_LABEL, darfZusammenfuehren, originalUndDublette, planeZusammenfuehrung, zusammenfuehrText, type ZusammenfuehrPlan } from "./zusammenfuehren";
 
 export type VersicherungsAngaben = NonNullable<Kontakt["versicherung"]>;
 const LEERE_VERSICHERUNG: Required<VersicherungsAngaben> = { schadenabteilung: "", postfach: "", ansprechpartner: "", drebisKennung: "" };
@@ -64,7 +66,7 @@ function zuEntwurf(k: Kontakt): KontaktEntwurf {
   };
 }
 
-export function KontaktDrawer({ k, akten, konflikt, onClose }: { k?: Kontakt; akten: Akte[]; konflikt?: Konflikt; onClose: () => void }) {
+export function KontaktDrawer({ k, akten, konflikt, onClose, onOeffne }: { k?: Kontakt; akten: Akte[]; konflikt?: Konflikt; onClose: () => void; /** anderen Kontakt im Panel öffnen (Doppel-Datensatz, nach dem Zusammenführen) */ onOeffne?: (id: string) => void }) {
   const letzte = useRef<Kontakt | undefined>(k);
   if (k) letzte.current = k;
   const kontakt = k ?? letzte.current;
@@ -79,11 +81,16 @@ export function KontaktDrawer({ k, akten, konflikt, onClose }: { k?: Kontakt; ak
   const alleAkten = useCol("akten");
   const dokumente = useCol("dokumente");
   const nachrichten = useCol("nachrichten");
+  const alleKontakte = useCol("kontakte");
   const { user, tenant } = useKanzlei();
+  // Doppel-Datensätze derselben Person bzw. Firma (Name ohne Rechtsform, E-Mail, Telefon, Firmen-Domain)
+  const gleiche = kontakt ? gleicheKontakte(kontakt, alleKontakte) : [];
+  const [zusammen, setZusammen] = useState<Kontakt | null>(null);
 
   useEffect(() => {
     setBearbeiten(false);
     setPruefung(null);
+    setZusammen(null);
   }, [k?.id]);
 
   const starteBearbeiten = () => {
@@ -113,7 +120,8 @@ export function KontaktDrawer({ k, akten, konflikt, onClose }: { k?: Kontakt; ak
   /** Kollisionsprüfung für ein neues Mandat – Ergebnis wird protokolliert. */
   const kollisionPruefen = () => {
     if (!kontakt) return;
-    const r = kollisionsText(kontakt, alleAkten, pruefAls);
+    // Über den Kontakt UND alle gleichen Datensätze – eine Dublette darf die Prüfung nicht aushebeln (I4-T17-01)
+    const r = kollisionsText(kontakt, alleAkten, pruefAls, alleKontakte);
     setPruefung({ als: pruefAls, ...r });
     useData.getState().log({ akteur: "nutzer", userId: user.id, text: `Kollisionsprüfung für neues Mandat: ${kontakt.name} als ${pruefAls === "mandant" ? "Mandant" : "Gegner"} – ${r.text} · durch ${user.name}` });
   };
@@ -261,6 +269,8 @@ export function KontaktDrawer({ k, akten, konflikt, onClose }: { k?: Kontakt; ak
                 </div>
               )}
 
+              {gleiche.length > 0 && <DoppelHinweis kontakt={kontakt} gleiche={gleiche} onOeffne={onOeffne} onZusammenfuehren={setZusammen} darf={darfZusammenfuehren(user.rolle)} />}
+
               <section className="rounded-[16px] p-3.5 shadow-[inset_0_0_0_1px_var(--line)]" aria-labelledby="kd-kollision-titel">
                 <h3 id="kd-kollision-titel" className="text-[13.5px] font-semibold">
                   Kollisionsprüfung für neues Mandat
@@ -376,7 +386,171 @@ export function KontaktDrawer({ k, akten, konflikt, onClose }: { k?: Kontakt; ak
         </AnimatePresence>
       )}
       <DateiDialog dateien={dateien} titel={kontakt ? `Auskunft: ${kontakt.name}` : undefined} onClose={() => setDateien(null)} />
+      {kontakt && zusammen && (
+        <ZusammenfuehrenDialog
+          a={kontakt}
+          b={zusammen}
+          onClose={() => setZusammen(null)}
+          onFertig={(originalId) => {
+            setZusammen(null);
+            if (originalId !== kontakt.id) onOeffne?.(originalId);
+          }}
+        />
+      )}
     </Drawer>
+  );
+}
+
+/** „Möglicher Doppel-Datensatz: „Kröger Logistik GmbH“ (Berlin) – zusammenführen?“ */
+function DoppelHinweis({ kontakt, gleiche, onOeffne, onZusammenfuehren, darf }: { kontakt: Kontakt; gleiche: { kontakt: Kontakt; grund: GleichGrund }[]; onOeffne?: (id: string) => void; onZusammenfuehren: (k: Kontakt) => void; darf: boolean }) {
+  const alleAkten = useCol("akten");
+  return (
+    <section role="status" aria-labelledby="kd-doppel-titel" className="rounded-[18px] bg-amber-soft p-4 text-[13px]">
+      <h3 id="kd-doppel-titel" className="flex items-center gap-2 text-[14px] font-semibold text-fg">
+        <Copy className="size-4 shrink-0 text-[var(--amber-text)]" aria-hidden />
+        <span className="min-w-0 break-words">
+          {gleiche.length === 1
+            ? `Möglicher Doppel-Datensatz: „${gleiche[0].kontakt.name}“${gleiche[0].kontakt.ort ? ` (${gleiche[0].kontakt.ort})` : ""} – zusammenführen?`
+            : `${gleiche.length} mögliche Doppel-Datensätze – zusammenführen?`}
+        </span>
+      </h3>
+      <ul className="mt-2 grid gap-2">
+        {gleiche.map(({ kontakt: g, grund }) => (
+          <li key={g.id} className="rounded-[14px] bg-[var(--surface)] p-3 shadow-[0_0_0_1px_var(--line)]">
+            <p className="break-words text-fg-2">
+              <span className="font-semibold text-fg">„{g.name}“</span>
+              {g.ort ? ` (${g.ort})` : ""} – {GLEICH_GRUND[grund]}, angelegt am {fmtDate(g.createdAt.slice(0, 10))}{aktenVonKontakt(g, alleAkten).length ? `, beteiligt in ${aktenVonKontakt(g, alleAkten).slice(0, 3).map((x) => `${x.akte.aktenzeichen} (${x.rolle})`).join(", ")}` : ""}. Ist das {kontakt.typ === "organisation" ? "dieselbe Firma" : "dieselbe Person"}? Dann zusammenführen – die Kollisionsprüfung berücksichtigt beide Datensätze schon jetzt.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {onOeffne && (
+                <Button size="sm" variant="ghost" iconRight={<ArrowRight className="size-4" />} onClick={() => onOeffne(g.id)}>
+                  „{g.name}“ öffnen
+                </Button>
+              )}
+              {darf ? (
+                <Button size="sm" variant="secondary" icon={<GitMerge className="size-4" />} onClick={() => onZusammenfuehren(g)}>
+                  Zusammenführen …
+                </Button>
+              ) : (
+                <span className="self-center text-[12.5px] text-fg-3">Zusammenführen dürfen Partner, Anwälte und die Administration.</span>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * Doppel-Datensatz zusammenführen: Vorschau der betroffenen Akten und Rechnungen, übernommene Rollen und Daten,
+ * Rückfrage mit Fokus auf „Abbrechen“. Danach sind alle Verweise umgehängt, die Dublette ist gelöscht – mit Protokoll.
+ */
+function ZusammenfuehrenDialog({ a, b, onClose, onFertig }: { a: Kontakt; b: Kontakt; onClose: () => void; onFertig: (originalId: string) => void }) {
+  const { user } = useKanzlei();
+  const akten = useCol("akten");
+  const rechnungen = useCol("rechnungen");
+  const start = originalUndDublette(a, b);
+  const [getauscht, setGetauscht] = useState(false);
+  const original = getauscht ? start.dublette : start.original;
+  const dublette = getauscht ? start.original : start.dublette;
+  const plan: ZusammenfuehrPlan = planeZusammenfuehrung(original, dublette, { akten, rechnungen });
+
+  const ausfuehren = () => {
+    const st = useData.getState();
+    const jetzt = nowLocal();
+    for (const x of plan.akten) {
+      st.patch("akten", x.akte.id, { ...x.patch, updatedAt: jetzt });
+      st.log({ akteur: "nutzer", userId: user.id, akteId: x.akte.id, text: `Beteiligte bereinigt: Doppel-Datensatz „${dublette.name}“ (${x.rollen.join(", ")}) durch „${original.name}“ ersetzt – ${x.akte.aktenzeichen}` });
+    }
+    for (const x of plan.rechnungen) st.patch("rechnungen", x.rechnung.id, x.patch);
+    const { id: _id, ...rest } = plan.kontakt;
+    void _id;
+    st.patch("kontakte", original.id, rest);
+    st.remove("kontakte", dublette.id);
+    st.log({ akteur: "nutzer", userId: user.id, text: zusammenfuehrText(plan, user.name) });
+    toast("Kontakte zusammengeführt", { ton: "erfolg", text: `${plan.akten.length} ${plan.akten.length === 1 ? "Akte" : "Akten"} und ${plan.rechnungen.length} ${plan.rechnungen.length === 1 ? "Rechnung" : "Rechnungen"} umgehängt – „${original.name}“ bleibt.` });
+    onFertig(original.id);
+  };
+
+  const zeile = (k: Kontakt) => `„${k.name}“${k.ort ? ` (${k.ort})` : ""} · angelegt am ${fmtDate(k.createdAt.slice(0, 10))}`;
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="md"
+      icon={<GitMerge className="size-[18px]" />}
+      title="Doppel-Datensatz zusammenführen?"
+      subtitle="Alle Verweise gehen auf den Datensatz über, der bleibt. Das lässt sich nicht rückgängig machen."
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} data-autofocus>
+            Abbrechen
+          </Button>
+          <Button variant="danger" icon={<GitMerge className="size-4" />} onClick={ausfuehren}>
+            Zusammenführen und Doppel-Datensatz löschen
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-4 text-[13px]">
+        <dl className="grid gap-x-4 gap-y-2 rounded-[16px] bg-ink-softer p-4 ring-1 ring-inset ring-[var(--line)] sm:grid-cols-[150px_minmax(0,1fr)]">
+          <dt className="text-fg-3">Bleibt erhalten</dt>
+          <dd className="break-words font-semibold text-fg">{zeile(original)}</dd>
+          <dt className="text-fg-3">Wird gelöscht</dt>
+          <dd className="break-words text-fg-2">{zeile(dublette)}</dd>
+        </dl>
+        <Button size="sm" variant="ghost" className="justify-self-start" onClick={() => setGetauscht((x) => !x)}>
+          Umgekehrt: „{dublette.name}“{dublette.ort ? ` (${dublette.ort})` : ""} behalten
+        </Button>
+        <section aria-labelledby="zf-akten">
+          <h3 id="zf-akten" className="eyebrow mb-1.5">
+            Betroffene Akten ({plan.akten.length})
+          </h3>
+          {plan.akten.length ? (
+            <ul className="grid gap-1">
+              {plan.akten.map((x) => (
+                <li key={x.akte.id} className="flex min-w-0 items-baseline gap-2 rounded-[10px] px-2 py-1">
+                  <span className="mono shrink-0 text-[12.5px] font-semibold text-fg-2">{x.akte.aktenzeichen}</span>
+                  <span className="min-w-0 flex-1 break-words">{x.akte.titel}</span>
+                  <Chip>{x.rollen.join(", ")}</Chip>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="px-2 text-fg-3">Der Doppel-Datensatz ist keiner Akte zugeordnet.</p>
+          )}
+        </section>
+        <section aria-labelledby="zf-rechnungen">
+          <h3 id="zf-rechnungen" className="eyebrow mb-1.5">
+            Betroffene Rechnungen ({plan.rechnungen.length})
+          </h3>
+          {plan.rechnungen.length ? (
+            <p className="px-2 text-fg-2">Empfänger wird „{original.name}“: {plan.rechnungen.map((x) => x.rechnung.nummer).join(", ")}</p>
+          ) : (
+            <p className="px-2 text-fg-3">Keine Rechnungen an den Doppel-Datensatz.</p>
+          )}
+        </section>
+        <section aria-labelledby="zf-daten">
+          <h3 id="zf-daten" className="eyebrow mb-1.5">
+            Rollen und Kontaktdaten
+          </h3>
+          <ul className="grid gap-1 px-2 text-fg-2">
+            <li>Rollen danach: {plan.kontakt.rollen.map((r) => ROLLE_LABEL[r]).join(", ") || "–"}{plan.neueRollen.length ? ` (neu: ${plan.neueRollen.map((r) => ROLLE_LABEL[r]).join(", ")})` : ""}</li>
+            <li>{plan.uebernommen.length ? `Übernommen, weil beim bleibenden Datensatz leer: ${plan.uebernommen.map((x) => `${DATENFELD_LABEL[x.feld]} ${x.wert}`).join(" · ")}` : "Keine fehlenden Kontaktdaten zu übernehmen."}</li>
+            {plan.abweichend.length > 0 && (
+              <li className="text-[var(--amber-text)]">
+                Abweichend, bleibt wie beim bleibenden Datensatz: {plan.abweichend.map((x) => `${DATENFELD_LABEL[x.feld]} ${x.original} (statt ${x.dublette})`).join(" · ")}
+              </li>
+            )}
+          </ul>
+        </section>
+        <p className="flex items-start gap-2 text-[12.5px] text-fg-3">
+          <Scale className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          Der Vorgang steht mit Ihrem Namen im Kanzleiprotokoll und im Verlauf jeder betroffenen Akte.
+        </p>
+      </div>
+    </Modal>
   );
 }
 

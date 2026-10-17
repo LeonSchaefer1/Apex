@@ -37,8 +37,9 @@ export function KartenKopf({ icon, ton = "ink", titel, unter, mehr, extra }: { i
     <header className="relative z-[1] mb-3.5 flex items-start gap-3">
       <div className={cn("grid size-9 shrink-0 place-items-center rounded-[12px] [&>svg]:size-[18px]", TON_KACHEL[ton])}>{icon}</div>
       <div className="min-w-0 flex-1">
-        <h2 className="title-md truncate">{titel}</h2>
-        {unter && <div className="mt-0.5 line-clamp-2 text-[12.5px] leading-snug text-fg-3 @4xl:truncate">{unter}</div>}
+        {/* Unter 360 px (Reflow 320 px, I4-T01-01) brechen Titel und Untertitel um, statt gekürzt zu werden */}
+        <h2 className="title-md truncate max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:break-words">{titel}</h2>
+        {unter && <div className="mt-0.5 line-clamp-2 text-[12.5px] leading-snug text-fg-3 max-[359px]:line-clamp-none @4xl:truncate">{unter}</div>}
       </div>
       {extra}
       {mehr && <MehrLink to={mehr.to}>{mehr.label}</MehrLink>}

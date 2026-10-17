@@ -21,7 +21,7 @@ import { heroesBerlin, heroesMuenchen, heroesHamburg, zusatzBerlin } from "./her
  * Mandantin weiterleiten“ (131/26) ist eine Wiedervorlage von Mia Becker. 142/26: Herkunft der Schaden-Nr. (Notiz, Verlauf),
  * Deckungsanfrage mit Antragsbestandteilen (10.200 € + 3.400 € = 13.600 €).
  */
-export const SEED_VERSION = 11;
+export const SEED_VERSION = 12;
 
 export interface SeedInput {
   tenant: Tenant;
@@ -593,11 +593,14 @@ function bankUmsaetze(ctx: Ctx) {
       iban: `DE${rng.int(10, 99)} ${rng.int(1000, 9999)} ${rng.int(1000, 9999)} ${rng.int(1000, 9999)} ${rng.int(1000, 9999)} ${rng.int(10, 99)}`,
       verwendungszweck: mode === 0 ? `${r.nummer} AZ ${akte.aktenzeichen}` : mode === 1 ? `Rechnung vom ${fmtDate(r.datum)} ${zahler.nachname ?? ""}`.trim() : `Honorar ${akte.titel.split(" ./. ")[0]}`,
       status: "offen",
+      // Honorare und Mandantenzahlungen gehen auf das Geschäftskonto der Kanzlei (I4-T08-01)
+      konto: "geschaeft",
     };
     data.transaktionen.push(t);
   });
   // Versicherungszahlung (Fremdgeld): Ein Kfz-Haftpflichtversicherer reguliert für die Mandantschaft auf das Anderkonto –
   // erkennbar an Aktenzeichen und Schadennummer. Ohne Zufallszug, damit der übrige Demobestand unverändert bleibt.
+  // Konto je Umsatz (SEED_VERSION 12, I4-T08-01): Regulierungen für die Mandantschaft „ander“, alles Übrige „geschaeft“.
   const fremdAkte = data.akten.find(
     (a) => a.status === "offen" && a.gegenstandswert > 0 && !!a.gegnerId && data.kontakte.find((k) => k.id === a.gegnerId)?.rollen.includes("versicherung") && !data.buchungen.some((b) => b.akteId === a.id && b.fremdgeld),
   );
@@ -607,12 +610,13 @@ function bankUmsaetze(ctx: Ctx) {
     data.transaktionen.push({
       id: ctx.id("t"), datum: ctx.d(-1), betrag: Math.max(500, Math.round((fremdAkte.gegenstandswert * 0.6) / 10) * 10), gegenpartei: versicherer.name.toUpperCase(),
       iban: "DE02 1203 0000 0000 2020 51", verwendungszweck: `Schaden-Nr. KH-${ctx.yy}-${nr.padStart(6, "0")} / Ihr Az. ${fremdAkte.aktenzeichen} – Regulierung Fahrzeugschaden`, status: "offen",
+      konto: "ander",
     });
   }
   // Sonstige Umsätze
   data.transaktionen.push(
-    { id: ctx.id("t"), datum: ctx.d(-1), betrag: -2450, gegenpartei: "Bürohaus Verwaltung GmbH", iban: "DE44 1001 0010 0123 4567 89", verwendungszweck: `Miete Kanzleiräume ${["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"][Number(ctx.today.slice(5, 7)) - 1]}`, status: "offen" },
-    { id: ctx.id("t"), datum: ctx.d(-2), betrag: -189.9, gegenpartei: "Telekommunikation AG", iban: "DE12 3004 0000 0123 4567 00", verwendungszweck: "Kundennr. 4711-0815 Rechnung", status: "offen" },
+    { id: ctx.id("t"), datum: ctx.d(-1), betrag: -2450, gegenpartei: "Bürohaus Verwaltung GmbH", iban: "DE44 1001 0010 0123 4567 89", verwendungszweck: `Miete Kanzleiräume ${["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"][Number(ctx.today.slice(5, 7)) - 1]}`, status: "offen", konto: "geschaeft" },
+    { id: ctx.id("t"), datum: ctx.d(-2), betrag: -189.9, gegenpartei: "Telekommunikation AG", iban: "DE12 3004 0000 0123 4567 00", verwendungszweck: "Kundennr. 4711-0815 Rechnung", status: "offen", konto: "geschaeft" },
   );
   // bereits zugeordnete historische Umsätze
   data.rechnungen.filter((r) => r.status === "bezahlt").slice(0, 6).forEach((r) => {
@@ -623,6 +627,7 @@ function bankUmsaetze(ctx: Ctx) {
       iban: `DE${rng.int(10, 99)} ${rng.int(1000, 9999)} ${rng.int(1000, 9999)} ${rng.int(1000, 9999)} ${rng.int(1000, 9999)} ${rng.int(10, 99)}`,
       verwendungszweck: `${r.nummer} ${akte.aktenzeichen}`, status: "zugeordnet",
       zuordnung: { rechnungId: r.id, akteId: akte.id, sicherheit: 0.99, durch: "auto", grund: "Rechnungsnummer im Verwendungszweck" },
+      konto: "geschaeft",
     });
   });
 }

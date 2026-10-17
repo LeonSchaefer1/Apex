@@ -10,6 +10,7 @@ import { hatBeispieldaten } from "@/lib/backend";
 import { toast } from "@/store/ui";
 import { addDays, diffDays, fmtDateShort, fmtEUR, monatName, relDays, round2, today } from "@/core/dates";
 import { cn } from "@/lib/cn";
+import { fremdgeldKonto, fremdgeldLiegtText } from "./abgleich";
 import { sendeZahlungserinnerungen } from "./aktionen";
 import { WeiterleitungsDialog } from "./WeiterleitungsDialog";
 import { istOffen, istUeberfaellig, offenerBetrag, zaehltAlsUmsatz, type TabKey } from "./lib";
@@ -19,6 +20,8 @@ import { UmsatzChart, type MonatsWert } from "./UmsatzChart";
 import { useLookups } from "./ui";
 
 const EUR0 = (n: number) => fmtEUR(n, { cents: false });
+/** „1 Rechnung“ / „2 Rechnungen“ – Singular und Plural (I4-T08-03) */
+const anzahl = (n: number, eins: string, mehr: string) => `${n} ${n === 1 ? eins : mehr}`;
 
 function KpiWert({ n }: { n: number }) {
   return <AnimatedNumber value={n} format={EUR0} className="text-[20px] sm:text-[28px]" />;
@@ -27,6 +30,7 @@ function KpiWert({ n }: { n: number }) {
 /** Offenes Fremdgeld je Akte (Saldo der Fremdgeldbuchungen). */
 export function useFremdgeld() {
   const buchungen = useCol("buchungen");
+  const transaktionen = useCol("transaktionen");
   const { akten, kontakte } = useLookups();
   return useMemo(() => {
     const proAkte = new Map<string, { saldo: number; letzterEingang: string; text: string }>();
@@ -44,10 +48,11 @@ export function useFremdgeld() {
       .filter(([, v]) => v.saldo > 0.005)
       .map(([akteId, v]) => {
         const akte = akten.get(akteId);
-        return { akteId, akte, mandant: akte ? kontakte.get(akte.mandantId) : undefined, ...v };
+        // Konto, auf dem das Fremdgeld eingegangen ist (I4-T08-01)
+        return { akteId, akte, mandant: akte ? kontakte.get(akte.mandantId) : undefined, konto: fremdgeldKonto(akteId, buchungen, transaktionen), ...v };
       })
       .sort((a, b) => a.letzterEingang.localeCompare(b.letzterEingang));
-  }, [buchungen, akten, kontakte]);
+  }, [buchungen, transaktionen, akten, kontakte]);
 }
 
 const ALTER = [
@@ -233,7 +238,7 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
       key: "bank",
       icon: <Landmark className="size-[18px]" />,
       tone: "bg-violet-soft text-violet",
-      titel: offeneUmsaetze ? `${offeneUmsaetze} Kontoumsätze offen` : "Konto abgeglichen",
+      titel: offeneUmsaetze ? `${anzahl(offeneUmsaetze, "Kontoumsatz", "Kontoumsätze")} offen` : "Konto abgeglichen",
       text: offeneUmsaetze ? "Automatisch Rechnungen zuordnen" : "Alle Umsätze sind zugeordnet",
       onClick: () => onTab("bank"),
     },
@@ -241,7 +246,7 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
       key: "ueber",
       icon: <BellRing className="size-[18px]" />,
       tone: kpi.ueberN ? "bg-seal-soft text-seal" : "bg-green-soft text-green",
-      titel: kpi.ueberN ? `${kpi.ueberN} Rechnungen überfällig` : "Nichts überfällig",
+      titel: kpi.ueberN ? `${anzahl(kpi.ueberN, "Rechnung", "Rechnungen")} überfällig` : "Nichts überfällig",
       text: kpi.ueberN ? `${EUR0(kpi.ueber)} offen – Zahlungserinnerung senden` : "Alle Fälligkeiten im grünen Bereich",
       onClick: () => onTab("rechnungen", { filter: "ueberfaellig" }),
     },
@@ -262,7 +267,7 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
           tone="ink"
           icon={<Wallet className="size-4" />}
           value={<KpiWert n={kpi.offen} />}
-          sub={`${kpi.offenN} Rechnungen offen`}
+          sub={`${anzahl(kpi.offenN, "Rechnung", "Rechnungen")} offen`}
           onClick={() => onTab("rechnungen", { filter: "offen" })}
         />
         <Stat
@@ -270,7 +275,7 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
           tone="seal"
           icon={<AlertTriangle className="size-4" />}
           value={<KpiWert n={kpi.ueber} />}
-          sub={kpi.aeltesteUeber ? `${kpi.ueberN} Rechnungen · älteste seit ${fmtDateShort(kpi.aeltesteUeber)}` : "keine überfälligen Rechnungen"}
+          sub={kpi.aeltesteUeber ? `${anzahl(kpi.ueberN, "Rechnung", "Rechnungen")} · ${kpi.ueberN === 1 ? "seit" : "älteste seit"} ${fmtDateShort(kpi.aeltesteUeber)}` : "keine überfälligen Rechnungen"}
           onClick={() => onTab("rechnungen", { filter: "ueberfaellig" })}
         />
         <Stat
@@ -356,6 +361,12 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
                             </Chip>
                             <span className="text-[12.5px] text-fg-3">an {f.mandant?.name ?? "Mandant"}</span>
                           </div>
+                          {f.konto && (
+                            <div className={cn("mt-1 flex items-start gap-1.5 text-[12.5px]", f.konto === "ander" ? "text-fg-3" : "font-medium text-[var(--amber-text)]")}>
+                              <Landmark className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                              <span>{fremdgeldLiegtText(f.saldo, f.konto)}</span>
+                            </div>
+                          )}
                         </div>
                         <div className="flex shrink-0 flex-col items-end gap-2">
                           <span className="num text-[14px] font-semibold">{fmtEUR(f.saldo)}</span>

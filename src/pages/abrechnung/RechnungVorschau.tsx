@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Ban, BadgeCheck, Banknote, FileCode2, FilePenLine, Info, Plus, Receipt, Send, ShieldCheck, Trash2, Undo2, X } from "lucide-react";
-import { Button, Drawer, Field, Input, Segmented, confirmDialog } from "@/components/ui";
+import { Button, Drawer, Field, Input, Segmented, confirmDialog, PapierSchalter } from "@/components/ui";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
@@ -563,6 +563,8 @@ export function RechnungVorschau({ id, onClose }: { id: string | null; onClose: 
       {r && (
         <>
           <div className="mb-4 flex flex-wrap items-center gap-2">
+            {/* Papier-Dimmung im Dunkelmodus – „Original“ gilt für alle Vorschauen (I4-T06-01) */}
+            <PapierSchalter className="order-last sm:ml-auto" />
             <StatusChip r={r} />
             <FormatChip format={r.format} />
             <span className="text-[12.5px] text-fg-3">

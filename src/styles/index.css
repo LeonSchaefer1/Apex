@@ -496,6 +496,61 @@
     white-space: nowrap;
   }
 }
+/* Reflow 320 px (I4-T01-01): Kopfleisten-Knöpfe unter 360 px 40 statt 44 px, damit der Seitentitel in voller Länge Platz hat */
+@media (max-width: 359px) {
+  .kopfleiste .kopf-innen .icon-btn,
+  .kopfleiste .kopf-innen .kopf-knopf {
+    width: 40px !important;
+    height: 40px !important;
+  }
+}
+/* Geringe Höhe (z. B. 200 % Zoom auf dem Notebook, 720 × 450 CSS-px – I4-T15-03): kompakte Kopf- und Tab-Leiste, zusammen
+   höchstens ein Fünftel der Höhe; die Kopfleiste blendet sich zusätzlich beim Scrollen nach unten aus (TopBar). */
+@media (max-height: 520px) {
+  :root {
+    --tabbar-h: 48px;
+  }
+  .kopfleiste {
+    padding-top: max(4px, env(safe-area-inset-top)) !important;
+  }
+  .kopfleiste .kopf-innen {
+    height: 40px !important;
+    border-radius: 16px;
+  }
+  .kopfleiste .kopf-innen .icon-btn,
+  .kopfleiste .kopf-innen .kopf-knopf {
+    width: 36px !important;
+    height: 36px !important;
+  }
+  .tabbar-zone {
+    padding-bottom: max(4px, env(safe-area-inset-bottom)) !important;
+  }
+  .tabbar-zone .tabbar-leiste {
+    height: 40px !important;
+  }
+  .tabbar-zone .tabbar-tab {
+    height: 34px !important;
+  }
+  .tabbar-zone .tabbar-kugel {
+    width: 40px !important;
+    height: 40px !important;
+  }
+  .tabbar-zone .tabbar-kugel > div {
+    width: 36px !important;
+    height: 36px !important;
+  }
+}
+/* Unter 500 px Höhe: Tab-Leiste nur mit Symbolen (die zugänglichen Namen bleiben erhalten) */
+@media (max-height: 499px) {
+  .tabbar-zone .tab-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
 /* Popover-Menüs liegen meist in einem Glas-Container (Kopfleiste, Karten). Dort kann ihr backdrop-filter den
    Seiteninhalt nicht weichzeichnen – Chromium zeigt ihn bei jedem teiltransparenten Hintergrund sogar scharf durch.
    Deshalb deckende Fläche mit Glanzverlauf, Lichtkante und Schatten des Glas-Materials. */
@@ -738,6 +793,22 @@
   background-position: 100% 0;
   transform: translateY(-1px);
 }
+/* Gesperrte Hauptknöpfe (I4-T18-01): neutral statt blasser Verlauf – hell und dunkel klar von einem aktiven Knopf zu unterscheiden */
+.btn-primary:disabled,
+.btn-primary[aria-disabled="true"],
+.btn-primary[aria-disabled="true"]:hover,
+.btn-primary[aria-disabled="true"]:active,
+.btn-ai:disabled,
+.btn-ai[aria-disabled="true"],
+.btn-ai[aria-disabled="true"]:hover,
+.btn-ai[aria-disabled="true"]:active {
+  opacity: 1;
+  color: var(--fg-3);
+  background: transparent;
+  box-shadow: 0 0 0 1px var(--line-strong) inset;
+  transform: none;
+  cursor: not-allowed;
+}
 .icon-btn {
   display: inline-grid;
   place-items: center;
@@ -867,6 +938,20 @@ select.field {
   background: var(--ink-softer);
   box-shadow: 0 0 0 1px var(--line) inset;
 }
+/* Tastenhinweis auf gefüllten Knöpfen (z. B. „Fristenrechner F“): Schrift in der Knopffarbe statt Grau – sonst 2 : 1 auf Ink */
+.btn-primary .kbd,
+.btn-ai .kbd {
+  color: inherit;
+  background: transparent;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+}
+.btn-primary:disabled .kbd,
+.btn-primary[aria-disabled="true"] .kbd,
+.btn-ai:disabled .kbd,
+.btn-ai[aria-disabled="true"] .kbd {
+  background: var(--ink-softer);
+  box-shadow: 0 0 0 1px var(--line) inset;
+}
 
 .mono {
   font-family: var(--font-mono);
@@ -943,6 +1028,23 @@ select.field {
 }
 .table tbody tr[data-selected="true"] {
   background: var(--ink-soft);
+}
+/* Öffnen-Ziel einer Tabellenzeile (DataTable, I4-T07-01): sieht aus wie der Zelleninhalt, ist aber per Tab erreichbar */
+.zeile-oeffnen {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: 6px;
 }
 
 /* Scrollbereiche mit sanft auslaufenden Kanten */
@@ -1038,6 +1140,21 @@ select.field {
   font-size: 13px;
   line-height: 1.6;
 }
+/* Papier-Dimmung im Dunkelmodus (I4-T06-01): jedes Blatt leicht abgedunkelt, damit es abends nicht blendet – außer die Nutzerin
+   wählt „Original“ (PapierSchalter setzt html[data-papier="original"]). Gleiche Einstellung für alle Vorschauen. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-papier="original"]) .paper {
+    filter: brightness(0.87);
+  }
+}
+:root[data-theme="dark"]:not([data-papier="original"]) .paper {
+  filter: brightness(0.87);
+}
+@media print {
+  .paper {
+    filter: none !important;
+  }
+}
 
 /* Schwebende Navigation mit Lichtbrechung (Chromium) */
 @supports (backdrop-filter: url(#x)) {
@@ -1047,6 +1164,43 @@ select.field {
   }
 }
 
+}
+
+/* Abschlusskarte der Landing (Kontakt): hell invertiert (Schrift --bg auf --fg); dunkel eine erhöhte dunkle Fläche mit Akzentrand
+   und Glühen in --ink, Schrift --fg – keine große helle Fläche im Dunkelmodus (I4-T00-02). --sk-fg ist die Schriftfarbe darin. */
+.schluss-karte {
+  --sk-fg: var(--bg);
+  background: var(--fg);
+  color: var(--sk-fg);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .schluss-karte {
+    --sk-fg: var(--fg);
+    background: linear-gradient(160deg, color-mix(in oklab, var(--ink) 16%, var(--surface-2)) 0%, var(--surface) 70%);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--ink) 45%, transparent), 0 30px 80px -30px color-mix(in oklab, var(--ink) 60%, transparent);
+  }
+}
+:root[data-theme="dark"] .schluss-karte {
+  --sk-fg: var(--fg);
+  background: linear-gradient(160deg, color-mix(in oklab, var(--ink) 16%, var(--surface-2)) 0%, var(--surface) 70%);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--ink) 45%, transparent), 0 30px 80px -30px color-mix(in oklab, var(--ink) 60%, transparent);
+}
+
+/* Gefüllte Ink-Flächen mit weißer Schrift (Zähler, Häkchen, Kalendermarken, Plaketten – I4-T09-01): Im Dunkelmodus ist --ink hell
+   (#5c7bff, Weiß darauf nur 3,7 : 1). Als Fläche gilt dort --ink-fill (#3f5ce4, Weiß ≥ 5,4 : 1); text-ink bleibt hell. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .bg-ink,
+  :root:not([data-theme="light"]) .bg-\[var\(--ink\)\],
+  :root:not([data-theme="light"]) .hover\:bg-\[var\(--ink\)\]:hover,
+  :root:not([data-theme="light"]) .group:hover .group-hover\:bg-ink {
+    background-color: var(--ink-fill);
+  }
+}
+:root[data-theme="dark"] .bg-ink,
+:root[data-theme="dark"] .bg-\[var\(--ink\)\],
+:root[data-theme="dark"] .hover\:bg-\[var\(--ink\)\]:hover,
+:root[data-theme="dark"] .group:hover .group-hover\:bg-ink {
+  background-color: var(--ink-fill);
 }
 
 /* Bewegung reduzieren */

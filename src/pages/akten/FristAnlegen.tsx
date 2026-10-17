@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { AlertTriangle, CalendarClock, CalendarPlus, Calculator, Info, ShieldAlert, Sparkles } from "lucide-react";
-import type { Akte, Bundesland, Dokument, Frist, FristTyp, Nachricht } from "@/core/types";
+import type { Akte, Bundesland, Frist, FristTyp } from "@/core/types";
 import { FRIST_REGELN, berechneNachRegel, berechnungsNormen, fristArt, gerichtsortDerAkte, type Einheit, type FristRegel } from "@/core/fristen";
 import { bundeslandName, feiertagAm, istWerktag } from "@/core/feiertage";
 import { fmtDate, fmtDateWd, nowLocal, relDays, schuetzeLeerzeichen, today, uid, wochentagName } from "@/core/dates";
@@ -16,34 +16,9 @@ import { cn } from "@/lib/cn";
 import { FRIST_TYP_LABEL, beruehreAkte, dringlichkeit, useTeam } from "./helfer";
 import { FristartAuswahl } from "@/pages/fristen/FristartAuswahl";
 
-const DATUM_RE = /(\d{1,2})\.(\d{1,2})\.(\d{4})/;
-const isoAus = (m: RegExpMatchArray) => `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+import { ereignisVorschlaege } from "./fristVorschlaege";
 
-/**
- * Vorschläge für das fristauslösende Ereignis – immer mit Quelle, nie still übernommen:
- * Zugang der Kündigung aus dem Kündigungsschreiben bzw. einer notierten Klagefrist, Zustellung aus dem eEB.
- */
-export function ereignisVorschlaege(regel: FristRegel | undefined, akte: Akte, dokumente: Dokument[], fristen: Frist[], nachrichten: Nachricht[]): { datum: string; quelle: string }[] {
-  if (!regel) return [];
-  const out: { datum: string; quelle: string }[] = [];
-  const dazu = (datum: string, quelle: string) => {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(datum) && !out.some((v) => v.datum === datum)) out.push({ datum, quelle });
-  };
-  if (/kündigung/i.test(regel.ereignis)) {
-    for (const d of dokumente.filter((x) => x.akteId === akte.id && /kündigung/i.test(x.name))) {
-      const m = d.inhalt.match(/(?:zugegangen|zugestellt|Zugang)[^\n]{0,60}?(\d{1,2}\.\d{1,2}\.\d{4})/i);
-      const mm = m?.[1].match(DATUM_RE);
-      if (mm) dazu(isoAus(mm), `aus „${d.name}“`);
-    }
-  }
-  if (/zustellung|bekanntgabe/i.test(regel.ereignis)) {
-    for (const n of nachrichten.filter((x) => x.akteId === akte.id && x.eebZustellungsdatum).sort((a, b) => b.eingang.localeCompare(a.eingang)).slice(0, 2))
-      dazu(n.eebZustellungsdatum!, `Zustellungsdatum laut eEB zu „${n.betreff}“`);
-  }
-  for (const f of fristen.filter((x) => x.akteId === akte.id && x.regelKey === regel.key && x.ereignisDatum && x.typ !== "vorfrist"))
-    dazu(f.ereignisDatum!, `aus der notierten Frist „${f.titel}“`);
-  return out;
-}
+export { ereignisVorschlaege } from "./fristVorschlaege";
 
 /**
  * Umschalter, der auf schmalen Bildschirmen umbricht statt abzuschneiden (Optionsfeld-Gruppe mit Pillen).
@@ -84,6 +59,8 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
   // Ereignisdatum leer und Pflicht – „heute“ nur als Schnellwahl, Vorschläge aus der Akte mit Quelle
   const [ereignis, setEreignis] = useState("");
   const [dubletteOk, setDubletteOk] = useState(false);
+  // Fristende vor heute: nur mit ausdrücklicher Bestätigung (I4-T15-02)
+  const [vergangenOk, setVergangenOk] = useState(false);
   const [titel, setTitel] = useState("");
   const [freiTyp, setFreiTyp] = useState<Extract<FristTyp, "wiedervorlage" | "termin" | "frist">>("wiedervorlage");
   const [datum, setDatum] = useState("");
@@ -93,7 +70,8 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
   const [notiz, setNotiz] = useState("");
   // Dauer bei frei bestimmten bzw. vereinbarten Fristen – Pflichtangabe ohne Standardwert
   const [dauer, setDauer] = useState("");
-  const [einheit, setEinheit] = useState<Exclude<Einheit, "jahresende">>("wochen");
+  // Einheit bei Regeln mit Pflicht-Dauer nicht vorbelegt – Tage, Wochen oder Monate bewusst wählen (I4-T15-02)
+  const [einheit, setEinheit] = useState<Exclude<Einheit, "jahresende"> | "">("");
   const [festModus, setFestModus] = useState<"dauer" | "datum">("dauer");
   const [festesEnde, setFestesEnde] = useState("");
   // Feiertage am Gerichtsort laut Akte (§ 222 Abs. 2 ZPO, § 43 Abs. 2 StPO) – sonst Kanzleisitz
@@ -111,6 +89,7 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
     setSuche("");
     setEreignis("");
     setDubletteOk(false);
+    setVergangenOk(false);
     setTitel("");
     setFreiTyp("wiedervorlage");
     setDatum("");
@@ -131,7 +110,7 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
     setFestesEnde("");
     setDubletteOk(false);
     setFestModus(regel.festesDatum === "pflicht" ? "datum" : "dauer");
-    if (regel.einheit !== "jahresende") setEinheit(regel.einheit);
+    setEinheit(regel.dauerPflicht || regel.einheit === "jahresende" ? "" : regel.einheit);
   }, [regelKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const vorschlaege = useMemo(() => ereignisVorschlaege(gewaehlt, akte, alleDoks, alleFristen, nachrichten), [gewaehlt, akte, alleDoks, alleFristen, nachrichten]);
   // Dublette: offene Frist derselben Fristart in dieser Akte
@@ -147,7 +126,10 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
         ? `Bitte das Fristende laut ${regel.key === "widerruf_vergleich" ? "Vergleich" : "Vereinbarung"} eintragen – dann erscheint die Frist mit Vorfrist.`
         : !mitDatum && regel.dauerPflicht && !dauerNum
           ? "Bitte die Dauer eingeben (Zahl und Einheit, z. B. 2 Wochen laut Verfügung) – AnwaltApex nimmt keinen Standardwert an."
-          : undefined;
+          : !mitDatum && regel.dauerPflicht && !einheit
+            ? "Bitte die Einheit der Dauer wählen – Tage, Wochen oder Monate. AnwaltApex nimmt keinen Standardwert an."
+            : undefined;
+  const einheitFehlt = !!gewaehlt && !mitDatum && !!regel.dauerPflicht && !!dauerNum && !einheit;
 
   const ergebnis = useMemo(() => {
     if (modus !== "regel" || fehlt) return null;
@@ -155,7 +137,7 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
       return berechneNachRegel(regelKey, ereignis, land, mitDatum ? undefined : regel.dauerPflicht ? dauerNum : undefined, {
         feiertagsOrt: gerichtsort ? `${gerichtsort.gericht} – laut Akte` : "Kanzleisitz",
         kanzleiLand: tenant.bundesland,
-        einheit: regel.dauerPflicht ? einheit : undefined,
+        einheit: regel.dauerPflicht && einheit ? einheit : undefined,
         festesEnde: mitDatum ? festesEnde : undefined,
       });
     } catch {
@@ -176,7 +158,12 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
   const freiFeiertag = freiDatumOk ? feiertagAm(datum, land) : undefined;
   const freiKeinWerktag = freiDatumOk && !istWerktag(datum, land);
 
-  const kannSpeichern = modus === "regel" ? !!ergebnis && (!dublette || dubletteOk) : freiDatumOk && !!titel.trim();
+  // Fristende bzw. Datum vor heute (z. B. falsche Einheit): Pflichtbestätigung wie bei der Doppelung, im Verlauf vermerkt
+  const heute = today();
+  const vergangenesEnde = modus === "regel" ? (ergebnis && ergebnis.ende < heute ? ergebnis.ende : undefined) : freiDatumOk && datum < heute ? datum : undefined;
+  useEffect(() => setVergangenOk(false), [vergangenesEnde]);
+  const kannSpeichern = (modus === "regel" ? !!ergebnis && (!dublette || dubletteOk) : freiDatumOk && !!titel.trim()) && (!vergangenesEnde || vergangenOk);
+  const vergangenVermerk = vergangenesEnde ? ` – Fristende ${fmtDateWd(vergangenesEnde)} lag beim Eintragen in der Vergangenheit (Eintrag bestätigt)` : "";
 
   const speichere = () => {
     const st = useData.getState();
@@ -205,7 +192,7 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
         akteur: "nutzer",
         userId: user.id,
         akteId: akte.id,
-        text: `Frist eingetragen: ${f.titel} bis ${fmtDate(f.datum)} (Ereignis ${fmtDate(ereignis)})${dublette ? ` – trotz bereits notierter „${dublette.titel}“ bis ${fmtDate(dublette.datum)} (bestätigt)` : ""} – ${akte.aktenzeichen}`,
+        text: `Frist eingetragen: ${f.titel} bis ${fmtDate(f.datum)} (Ereignis ${fmtDate(ereignis)})${dublette ? ` – trotz bereits notierter „${dublette.titel}“ bis ${fmtDate(dublette.datum)} (bestätigt)` : ""}${vergangenVermerk} – ${akte.aktenzeichen}`,
       });
       st.log({ akteur: "automation", automationKey: "vorfristen", akteId: akte.id, minutenGespart: 4, text: `Vorfrist am ${fmtDate(ergebnis.vorfrist)} gesetzt und Verantwortliche informiert – ${akte.aktenzeichen}` });
       toast("Frist eingetragen", { ton: "erfolg", text: `${FRIST_TYP_LABEL[r.typ]} bis ${fmtDateWd(ergebnis.ende)} · Vorfrist ${fmtDateWd(ergebnis.vorfrist)}` });
@@ -216,7 +203,7 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
         notiz: notiz.trim() || undefined, createdAt: jetzt,
       };
       st.upsert("fristen", f);
-      st.log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `${FRIST_TYP_LABEL[freiTyp]} eingetragen: ${f.titel} am ${fmtDate(datum)} – ${akte.aktenzeichen}` });
+      st.log({ akteur: "nutzer", userId: user.id, akteId: akte.id, text: `${FRIST_TYP_LABEL[freiTyp]} eingetragen: ${f.titel} am ${fmtDate(datum)}${vergangenesEnde ? ` – Datum lag beim Eintragen in der Vergangenheit (Eintrag bestätigt)` : ""} – ${akte.aktenzeichen}` });
       toast(`${FRIST_TYP_LABEL[freiTyp]} eingetragen`, { ton: "erfolg", text: `${f.titel} · ${fmtDateWd(datum)}${f.uhrzeit ? `, ${f.uhrzeit} Uhr` : ""}` });
     }
     beruehreAkte(akte.id);
@@ -316,12 +303,27 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
                 <Field label="Dauer (Pflicht)" htmlFor="fa-dauer" hint={regel.key === "widerruf_vergleich" ? "Laut Vergleich, z. B. 3 Wochen ab Verkündung bzw. Zustellung des Protokolls" : regel.key === "ausschlussfrist_vertrag" ? "Laut Vertrag, z. B. 3 Monate ab Fälligkeit" : "Laut Verfügung bzw. Schreiben"}>
                   <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-2">
                     <Input id="fa-dauer" type="number" inputMode="numeric" min={1} max={999} required aria-required="true" value={dauer} onChange={(e) => setDauer(e.target.value)} placeholder="z. B. 2" />
-                    <Select id="fa-einheit" aria-label="Einheit der Dauer" value={einheit} onChange={(e) => setEinheit(e.target.value as Exclude<Einheit, "jahresende">)}>
+                    <Select
+                      id="fa-einheit"
+                      aria-label="Einheit der Dauer (Pflicht)"
+                      required
+                      aria-required="true"
+                      aria-invalid={einheitFehlt || undefined}
+                      aria-describedby={einheitFehlt ? "fa-einheit-fehler" : undefined}
+                      value={einheit}
+                      onChange={(e) => setEinheit(e.target.value as Exclude<Einheit, "jahresende"> | "")}
+                    >
+                      <option value="">Einheit wählen …</option>
                       <option value="tage">Tage</option>
                       <option value="wochen">Wochen</option>
                       <option value="monate">Monate</option>
                     </Select>
                   </div>
+                  {einheitFehlt && (
+                    <p id="fa-einheit-fehler" className="mt-1.5 flex items-start gap-1.5 text-[12.5px] font-medium text-seal">
+                      <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden /> Bitte die Einheit wählen – Tage, Wochen oder Monate.
+                    </p>
+                  )}
                 </Field>
               ) : null}
               <Field label="Bezeichnung (optional)" htmlFor="fa-titel">
@@ -350,6 +352,7 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
                   </label>
                 </div>
               )}
+              {vergangenesEnde && <VergangenBestaetigung datum={vergangenesEnde} ok={vergangenOk} onOk={setVergangenOk} />}
               <Vorschau ergebnis={ergebnis} land={ergebnis?.land ?? land} fehlt={fehlt} />
             </div>
           </div>
@@ -400,6 +403,7 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
                 <Input id="fa-ort" value={ort} onChange={(e) => setOrt(e.target.value)} placeholder="z. B. Amtsgericht Charlottenburg, Saal 1/215" />
               </Field>
             )}
+            {vergangenesEnde && <VergangenBestaetigung datum={vergangenesEnde} ok={vergangenOk} onOk={setVergangenOk} art={FRIST_TYP_LABEL[freiTyp]} />}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Verantwortlich id="fa-frei-verantw" value={verantwortlich} onChange={setVerantwortlich} team={waehlbar} nurBerufstraeger={nurBerufstraeger} />
               <Field label="Notiz" htmlFor="fa-frei-notiz">
@@ -410,6 +414,27 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
         )}
       </div>
     </Modal>
+  );
+}
+
+/** Fristende bzw. Datum vor heute – Pflichtbestätigung wie bei der Doppelung; der Eintrag vermerkt sie im Verlauf. */
+function VergangenBestaetigung({ datum, ok, onOk, art }: { datum: string; ok: boolean; onOk: (v: boolean) => void; art?: string }) {
+  return (
+    <div role="alert" className="grid gap-2 rounded-[16px] bg-seal-soft p-3.5 text-[12.5px] leading-relaxed text-seal">
+      <div className="flex gap-2">
+        <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+        <span>
+          <strong className="font-semibold">
+            {art ? `Das Datum (${fmtDateWd(datum)})` : `Das Fristende (${fmtDateWd(datum)})`} liegt in der Vergangenheit – trotzdem eintragen?
+          </strong>{" "}
+          Das wird protokolliert. Prüfen Sie Dauer, Einheit und Ereignisdatum.
+        </span>
+      </div>
+      <label className="flex min-h-[32px] items-start gap-2 font-medium">
+        <input type="checkbox" className="mt-0.5 size-4 accent-[var(--seal)]" checked={ok} onChange={(e) => onOk(e.target.checked)} />
+        <span>Trotzdem eintragen (wird protokolliert)</span>
+      </label>
+    </div>
   );
 }
 

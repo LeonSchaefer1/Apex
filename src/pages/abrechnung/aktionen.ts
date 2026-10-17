@@ -471,8 +471,11 @@ export function macheWeiterleitungRueckgaengig(res: Weiterleitung) {
   storniereWeiterleitung(res.buchungId, res.userId);
 }
 
-/** SEPA-Überweisungsdatei (pain.001.001.09) für die Weiterleitung – Freigabe im Online-Banking des Anderkontos. */
-export function sepaPain001(p: { betrag: number; empfaenger: string; iban: string; verwendungszweck: string; kanzlei: string; ausfuehrung: string }): string {
+/**
+ * SEPA-Überweisungsdatei (pain.001.001.09) für die Weiterleitung – vom Quellkonto, auf dem das Fremdgeld einging
+ * (Geschäftskonto bzw. Anderkonto, I4-T08-01); Auftraggeber-IBAN aus dem Kanzleiprofil, wo vorhanden.
+ */
+export function sepaPain001(p: { betrag: number; empfaenger: string; iban: string; verwendungszweck: string; kanzlei: string; ausfuehrung: string; konto?: "geschaeft" | "ander"; kontoIban?: string }): string {
   const x = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const msgId = `APEX-${Date.now()}`;
   const betrag = round2(p.betrag).toFixed(2);
@@ -493,8 +496,8 @@ export function sepaPain001(p: { betrag: number; empfaenger: string; iban: strin
       <CtrlSum>${betrag}</CtrlSum>
       <PmtTpInf><SvcLvl><Cd>SEPA</Cd></SvcLvl></PmtTpInf>
       <ReqdExctnDt><Dt>${p.ausfuehrung}</Dt></ReqdExctnDt>
-      <Dbtr><Nm>${x(p.kanzlei)} – Anderkonto</Nm></Dbtr>
-      <DbtrAcct><Id><IBAN>DE00000000000000000000</IBAN></Id></DbtrAcct>
+      <Dbtr><Nm>${x(p.kanzlei)} – ${p.konto === "geschaeft" ? "Geschäftskonto" : "Anderkonto"}</Nm></Dbtr>
+      <DbtrAcct><Id><IBAN>${(p.kontoIban ?? "DE00000000000000000000").replace(/\s+/g, "").toUpperCase()}</IBAN></Id></DbtrAcct>
       <DbtrAgt><FinInstnId><Othr><Id>NOTPROVIDED</Id></Othr></FinInstnId></DbtrAgt>
       <ChrgBr>SLEV</ChrgBr>
       <CdtTrfTxInf>

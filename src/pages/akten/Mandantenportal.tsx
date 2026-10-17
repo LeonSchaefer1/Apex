@@ -9,7 +9,7 @@ import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
 import { Button, Chip, Modal, confirmDialog } from "@/components/ui";
-import { PHASEN, beruehreAkte, istEingang, useKontaktMap, useTeam } from "./helfer";
+import { PHASEN, beruehreAkte, istEingang, istGesendet, useKontaktMap, useTeam } from "./helfer";
 
 /** Warum ein Dokument nicht ins Portal darf (sonst `undefined`): interne Notizen, Rechnungen (Aktenkonto), Entwürfe vor der Freigabe. */
 export function portalSperrgrund(d: Pick<Dokument, "art" | "status">): string | undefined {
@@ -28,12 +28,21 @@ export function portalDokumente(akteId: string, dokumente: Dokument[]): Dokument
 }
 
 /** Was der Mandant NICHT sieht – für die Kanzleiansicht unter der Vorschau. */
-export function nichtImPortal(akteId: string, dokumente: Dokument[]): { entwuerfe: number; eingaenge: number; intern: number; weitere: number } {
+export function nichtImPortal(akteId: string, dokumente: Dokument[]): { entwuerfe: number; eingaenge: number; gesendet: number; gesendetBea: number; intern: number; weitere: number } {
   const rest = dokumente.filter((d) => d.akteId === akteId && !imPortal(d));
   const intern = rest.filter((d) => d.art === "notiz" || d.art === "rechnung");
   const entwuerfe = rest.filter((d) => d.status === "entwurf" && !intern.includes(d));
-  const eingaenge = rest.filter((d) => !intern.includes(d) && !entwuerfe.includes(d) && istEingang(d));
-  return { entwuerfe: entwuerfe.length, eingaenge: eingaenge.length, intern: intern.length, weitere: rest.length - intern.length - entwuerfe.length - eingaenge.length };
+  // Eingänge und Ausgänge getrennt zählen – die gesendete E-Mail an den Mandanten ist kein „Eingang“ (I4-T23-01)
+  const gesendet = rest.filter((d) => !intern.includes(d) && !entwuerfe.includes(d) && istGesendet(d));
+  const eingaenge = rest.filter((d) => !intern.includes(d) && !entwuerfe.includes(d) && !gesendet.includes(d) && istEingang(d));
+  return {
+    entwuerfe: entwuerfe.length,
+    eingaenge: eingaenge.length,
+    gesendet: gesendet.length,
+    gesendetBea: gesendet.filter((d) => d.quelle === "bea").length,
+    intern: intern.length,
+    weitere: rest.length - intern.length - entwuerfe.length - eingaenge.length - gesendet.length,
+  };
 }
 
 /** „Nicht sichtbar für den Mandanten: 2 Entwürfe, 3 Eingänge, …“ */
@@ -41,6 +50,11 @@ export function nichtImPortalText(n: ReturnType<typeof nichtImPortal>): string {
   const teile = [
     n.entwuerfe ? `${n.entwuerfe} ${n.entwuerfe === 1 ? "Entwurf" : "Entwürfe"}` : "",
     n.eingaenge ? `${n.eingaenge} ${n.eingaenge === 1 ? "Eingang" : "Eingänge"}` : "",
+    n.gesendet
+      ? n.gesendetBea === 0
+        ? `${n.gesendet} ${n.gesendet === 1 ? "gesendete E-Mail" : "gesendete E-Mails"}`
+        : `${n.gesendet} ${n.gesendet === 1 ? "gesendete Nachricht" : "gesendete Nachrichten"} (E-Mail, beA)`
+      : "",
     n.intern ? `${n.intern} ${n.intern === 1 ? "internes Dokument" : "interne Dokumente"} (Notizen, Rechnungen)` : "",
     n.weitere ? `${n.weitere} weitere, nicht bereitgestellt` : "",
   ].filter(Boolean);

@@ -11,9 +11,7 @@ import { istBerufstraeger } from "@/core/vertretung";
 import { useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
-import { AiChip, Button, Chip, Drawer, IconButton, Segmented, Textarea } from "@/components/ui";
-import { useMedia } from "@/lib/useMedia";
-import { cn } from "@/lib/cn";
+import { AiChip, Button, Chip, Drawer, IconButton, PapierSchalter, Textarea, useDunkelModus, usePapierGedimmt } from "@/components/ui";
 import { Highlight } from "@/components/Highlight";
 import { kopiere } from "@/pages/kontakte/kontaktHelfer";
 import { DOK_ART_LABEL, DOK_STATUS_INFO, QUELLE_LABEL, beruehreAkte, eigenesSchreiben, fmtKb, offenePlatzhalter, useTeam } from "./helfer";
@@ -23,29 +21,6 @@ import { imPortal, portalSperrgrund, setzePortal } from "./Mandantenportal";
 function eingangsVermerk(d: Dokument): string {
   const art = d.quelle === "bea" ? "beA" : d.quelle === "email" ? "E-Mail" : d.quelle === "scan" ? "Scan" : d.quelle === "migration" ? "Umzug" : "Upload";
   return `Eingang ${fmtDate(d.createdAt.slice(0, 10))} · ${art}`;
-}
-
-/** Dunkelmodus aktiv? data-theme der App (bzw. des einbettenden Viewers), sonst die Systemeinstellung. */
-function useDunkelModus(): boolean {
-  const system = useMedia("(prefers-color-scheme: dark)");
-  const [attr, setAttr] = useState<string | null>(() => (typeof document === "undefined" ? null : document.documentElement.getAttribute("data-theme")));
-  useEffect(() => {
-    const root = document.documentElement;
-    const o = new MutationObserver(() => setAttr(root.getAttribute("data-theme")));
-    o.observe(root, { attributes: true, attributeFilter: ["data-theme"] });
-    return () => o.disconnect();
-  }, []);
-  return attr === "dark" || attr === "light" ? attr === "dark" : system;
-}
-
-/** Vorschau im Dunkelmodus: Seite gedimmt (Standard) oder Original – je Gerät gemerkt (I3-T15-02). */
-const ABDUNKELN_KEY = "apex.dokumentvorschau.abdunkeln";
-function ladeAbdunkeln(): boolean {
-  try {
-    return localStorage.getItem(ABDUNKELN_KEY) !== "aus";
-  } catch {
-    return true;
-  }
 }
 
 export function DokumentVorschau({
@@ -60,16 +35,9 @@ export function DokumentVorschau({
   onLoeschen: (d: Dokument) => void;
   onUmbenennen: (d: Dokument, name: string) => void;
 }) {
+  // Papier-Dimmung zentral (I4-T06-01): `.paper` ist im Dunkelmodus global gedimmt, „Original“ gilt für alle Vorschauen
   const dunkel = useDunkelModus();
-  const [abdunkeln, setAbdunkelnRaw] = useState(ladeAbdunkeln);
-  const setAbdunkeln = (v: boolean) => {
-    setAbdunkelnRaw(v);
-    try {
-      localStorage.setItem(ABDUNKELN_KEY, v ? "an" : "aus");
-    } catch {
-      /* ohne Speicher: Wahl gilt bis zum Neuladen */
-    }
-  };
+  const [abdunkeln] = usePapierGedimmt();
   const gedimmt = dunkel && abdunkeln;
   const { tenant, user } = useKanzlei();
   const { byId } = useTeam();
@@ -255,17 +223,7 @@ export function DokumentVorschau({
               <Chip>{fmtKb(d.groesseKb)}</Chip>
               <Chip tone="outline">{d.format.toUpperCase()}</Chip>
               <div className="flex-1" />
-              {dunkel && (
-                <Segmented
-                  size="sm"
-                  value={abdunkeln ? "an" : "aus"}
-                  onChange={(v) => setAbdunkeln(v === "an")}
-                  options={[
-                    { value: "an", label: "Seite abdunkeln" },
-                    { value: "aus", label: "Original" },
-                  ]}
-                />
-              )}
+              <PapierSchalter />
               {d.inhalt.trim().length >= 20 && (
                 <Button
                   size="sm"
@@ -366,7 +324,7 @@ export function DokumentVorschau({
                 </div>
               )}
               {/* Dunkelmodus: Papier gedimmt statt voll weiß (Helligkeit ≈ 87 %); Hellmodus und Druck unverändert */}
-              <article className={cn("paper mx-auto w-full max-w-[640px] px-6 py-8 sm:px-12 sm:py-12", gedimmt && "[filter:brightness(0.87)] print:[filter:none]")} data-gedimmt={gedimmt || undefined}>
+              <article className="paper mx-auto w-full max-w-[640px] px-6 py-8 sm:px-12 sm:py-12" data-gedimmt={gedimmt || undefined}>
                 {eigen && (
                   <header className="mb-7 flex items-start justify-between gap-4 border-b border-current/10 pb-3 text-[12px] font-semibold uppercase tracking-[0.1em] opacity-55">
                     <span className="truncate">{tenant.name}</span>

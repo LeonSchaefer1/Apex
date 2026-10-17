@@ -4,7 +4,7 @@ import { useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { addDays, diffDays, fmtDate, fmtDateShort, fmtEUR, fmtTime, today, wochentagName } from "@/core/dates";
 import { istWerktag } from "@/core/feiertage";
-import { vertreteneIds, vertretungsUmfang } from "@/core/vertretung";
+import { kuenftigeVertretungen, tagKurz, vertreteneIds, vertretungsUmfang, vertretungUmfangText, vertretungVorabText, type KuenftigeVertretung } from "@/core/vertretung";
 import { gruss as foermlicherGruss } from "@/lib/rollen";
 import { aktenMitFrist, fristenLage, istKritisch, nachDringlichkeit, zaehltAlsFrist, type FristenLage } from "@/core/fristenLage";
 import {
@@ -99,6 +99,11 @@ export interface CockpitDaten {
   vertretung: { person: User; fristen: number; weitere: number; bis: ISODate; bisAbwesenheitsende: boolean }[];
   /** verantwortlichId → vertretene Person, für die Kennzeichnung „Vertretung für …“ */
   vertreten: Map<string, User>;
+  /**
+   * Vertretung vorab (I4-T18-04): Abwesenheiten anderer mit mir als Vertretung, die in den nächsten 14 Tagen beginnen – mit den
+   * Einträgen der Person im Zeitraum und dem Hinweistext („Ab Mo, 19.10. vertreten Sie …“). Ab Beginn gilt `vertretung`.
+   */
+  vertretungVorab: (KuenftigeVertretung & { text: string })[];
   /** Wochenblick: Fristen und Termine je Werktag; Wiedervorlagen getrennt (nur im Tooltip) */
   wochenTage: { datum: string; fristen: number; wiedervorlagen: number; termine: number; kritisch: boolean }[];
   /** Offene Akten mit Frist ≤ 7 Tage (wie Akten-Kennzahl, `aktenMitFrist`), danach Akten mit hoher Priorität */
@@ -126,6 +131,24 @@ export function fristAutomatikWarnungen(automationen: Automation[], team: Map<st
       { t: "Achtung: ", ton: "seal" as const },
       { t: `${fristAutomatikKurzname(a.key)} pausiert${seit}`, ton: "amber" as const, href: "/automatisierung" },
       { t: ` – ${folgeWaehrendPause(a.key)}` },
+    ];
+  });
+}
+
+/** Briefing-Zeile je künftiger Vertretung: „Vertretung ab Mo, 19.10.: Sie vertreten Jonas Brandt bis Fr, 30.10. – 4 Fristen, die erste …“ */
+export function vertretungVorabSaetze(liste: KuenftigeVertretung[], akten: Map<string, Akte>): Satz[] {
+  return liste.map((v) => {
+    const erste = v.fristen[0];
+    const az = erste ? akten.get(erste.akteId)?.aktenzeichen : undefined;
+    return [
+      { t: `Vertretung ab ${tagKurz(v.von)}: `, ton: "amber" as const },
+      // Link in Fließtext-Schrift („ink“ ist im Briefing die Aktenzeichen-Schrift, mono)
+      { t: `Sie vertreten ${v.person.name} bis ${tagKurz(v.bis)}`, ton: "fg" as const, href: "/fristen?vertretung=vorab" },
+      {
+        t: erste
+          ? ` – ${vertretungUmfangText(v.fristen)} im Zeitraum, die erste ${tagKurz(erste.datum)}: ${erste.titel}${az ? ` (${az})` : ""}.`
+          : " – im Zeitraum liegen keine offenen Fristen.",
+      },
     ];
   });
 }
@@ -199,6 +222,7 @@ export function useCockpitDaten(ansicht: Ansicht): CockpitDaten {
     const termineHeute = offen.filter((f) => f.typ === "termin" && f.datum === heute).sort((a, b) => (a.uhrzeit ?? "99").localeCompare(b.uhrzeit ?? "99"));
     // über den ganzen Abwesenheitszeitraum (nicht nur 7 Tage) – sonst fehlt z. B. die Frist kurz vor der Rückkehr
     const vertretung = [...vertreten.values()].map((person) => ({ person, ...vertretungsUmfang(fristen, person, heute) }));
+    const vertretungVorab = kuenftigeVertretungen(team, fristen, user.id, heute).map((v) => ({ ...v, text: vertretungVorabText(v, (id) => akten.get(id)?.aktenzeichen) }));
 
     // Wochenblick: die nächsten 5 Werktage ab heute
     const wochenTage: CockpitDaten["wochenTage"] = [];
@@ -286,9 +310,9 @@ export function useCockpitDaten(ansicht: Ansicht): CockpitDaten {
     return {
       heute, bisTag, wochenende: bisTag !== addDays(heute, 1), user, team: teamMap, akten,
       lage, bisWerktag, ueberfaellig, heuteFaellig, kritischWoche, woche, kritischste,
-      posteingang, wartetAufKi, kiFertig, eeb, termine, termineHeute, vertretung, vertreten, wochenTage, handlungsbedarf,
+      posteingang, wartetAufKi, kiFertig, eeb, termine, termineHeute, vertretung, vertreten, vertretungVorab, wochenTage, handlungsbedarf,
       aktenMitFrist: aktenMitFristAnzahl, aktenNurPrio: handlungsbedarf.length - aktenMitFristAnzahl, motor, finanzen,
-      kiAkte, kiAkteFrist, briefing, warnungen: fristAutomatikWarnungen(automationen, teamMap),
+      kiAkte, kiAkteFrist, briefing, warnungen: [...fristAutomatikWarnungen(automationen, teamMap), ...vertretungVorabSaetze(vertretungVorab, akten)],
     };
   }, [fristen, aktenArr, nachrichten, aktivitaeten, rechnungen, buchungen, transaktionen, automationen, ansicht, user, team, tenant.bundesland]);
 }

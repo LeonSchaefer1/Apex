@@ -201,7 +201,7 @@ export default function Kontakte() {
         </>
       )}
 
-      <KontaktDrawer k={offen} akten={offen ? aktenJeKontakt.get(offen.id) ?? [] : []} konflikt={offen ? konflikte.get(offen.id) : undefined} onClose={() => oeffne(null)} />
+      <KontaktDrawer k={offen} akten={offen ? aktenJeKontakt.get(offen.id) ?? [] : []} konflikt={offen ? konflikte.get(offen.id) : undefined} onClose={() => oeffne(null)} onOeffne={(id) => oeffne(id)} />
       {/* Keine stille Vorbelegung der Rolle – der Filter bestimmt nur, ob eine Person oder Organisation vorgeschlagen wird */}
       <NeuerKontakt open={neu} onClose={() => setNeu(false)} rolle={rolle === "alle" || rolle === "sonstige" ? undefined : rolle} onAngelegt={(id) => oeffne(id)} />
     </div>

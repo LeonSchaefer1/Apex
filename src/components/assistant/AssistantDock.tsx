@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUp, Mic, MicOff, Volume2, VolumeX, X, RotateCcw, Square, Phone, Wrench, ArrowRight, Check, CalendarPlus, Pencil, Undo2, ChevronRight, FolderOpen, StickyNote } from "lucide-react";
+import { ArrowUp, Mic, MicOff, Volume2, VolumeX, X, RotateCcw, Square, Phone, Wrench, ArrowRight, Check, CalendarPlus, Pencil, Undo2, ChevronRight, FolderOpen, StickyNote, PanelRightClose, AlertTriangle } from "lucide-react";
 import { useUI } from "@/store/ui";
 import { useKanzlei } from "@/store/session";
 import { DEMO_KI_NAME, useAiStatus } from "@/ai/status";
-import { ansprechBitte, frageAssistent, pruefeDatum, vorschlaege, vorschlagArtName, vorschlagEintragen, vorschlagZuruecknehmen, type AssistentLink, type AuswahlKnopf, type Eintragung, type SchreibVorschlag } from "@/ai/assistent";
+import { ansprechBitte, doppelterEintrag, frageAssistent, pruefeDatum, vorschlaege, vorschlagArtName, vorschlagEintragen, vorschlagZuruecknehmen, type AssistentLink, type AuswahlKnopf, type Eintragung, type SchreibVorschlag } from "@/ai/assistent";
 import { fmtDateWd } from "@/core/dates";
 import { RUECKRUF_SIMULIERT } from "@/core/rueckruf";
 import { gruss } from "@/lib/rollen";
@@ -55,6 +55,20 @@ function speichereVerlauf(key: string, msgs: Msg[]) {
   } catch {
     /* Speicher gesperrt – Verlauf gilt dann nur bis zum Neuladen */
   }
+}
+
+/** Kugel: 60 px, 24 px vom Rand (bottom-6 right-6) – bei größerer Schrift per zoom entsprechend größer. */
+const KUGEL = 60;
+const KUGEL_RAND = 24;
+/** Griff der ausgewichenen Kugel: 14 × 56 px am rechten Rand, Grundlage 40 px über dem unteren Rand. */
+const GRIFF_BREITE = 14;
+const GRIFF_HOEHE = 56;
+const GRIFF_UNTEN = 40;
+
+/** Skalierung der Oberfläche durch die Schriftgröße (Einstellungen → Darstellung setzt zoom am Wurzelelement). */
+function zoomFaktor(): number {
+  const z = parseFloat(getComputedStyle(document.documentElement).zoom || "1");
+  return Number.isFinite(z) && z > 0 ? z : 1;
 }
 
 /** Bedienelement, Text, Kennzahl oder Diagramm unter einem Punkt (die Kugel selbst ist dabei durchlässig)? */
@@ -141,7 +155,9 @@ export function AssistantDock() {
   }, [verlaufKey]);
 
   // Kugel nur zeigen, wo sie nichts verdeckt: liegt unter ihr Text oder ein Bedienelement, weicht sie als Griff an den Rand aus.
+  // Liegt auch der Griff über Text, rückt er auf eine freie Höhe (I4-T13-01).
   const kugelSichtbar = !assistentOffen && !mobile && kugel && !kugelEingeklappt;
+  const [griffUnten, setGriffUnten] = useState(GRIFF_UNTEN);
   useEffect(() => {
     if (!kugelSichtbar) return;
     let raf = 0;
@@ -150,18 +166,40 @@ export function AssistantDock() {
       raf = requestAnimationFrame(() => {
         const w = window.innerWidth;
         const h = window.innerHeight;
-        // Fläche der Kugel: 60 × 60 px, 24 px vom Rand (bottom-6 right-6) – geprüft wird die ganze Kreisfläche plus 6 px Rand,
-        // damit auch Zeilenenden, Kennzahlen und Tabellenzellen am Rand der Kugel erkannt werden (I3-T06-05)
-        const cx = w - 54;
-        const cy = h - 54;
+        // Tatsächlich gerenderte Größe: Die Schriftgröße (Einstellungen → Darstellung) skaliert die Oberfläche per zoom –
+        // bei 125 % ist die Kugel 75 statt 60 px groß und sitzt 30 statt 24 px vom Rand. Geprüft wird die ganze Kreisfläche
+        // plus 8 px Sicherheitsabstand, damit auch Zeilenenden, Kennzahlen und Tabellenzellen am Rand erkannt werden.
+        const z = zoomFaktor();
+        const groesse = KUGEL * z;
+        const rand = KUGEL_RAND * z;
+        const cx = w - rand - groesse / 2;
+        const cy = h - rand - groesse / 2;
+        const radius = groesse / 2 + 8;
         const huelle = kugelRef.current;
         const vorher = huelle?.style.pointerEvents ?? "";
         if (huelle) huelle.style.pointerEvents = "none";
         const punkte: [number, number][] = [];
-        for (let dx = -36; dx <= 36; dx += 9) for (let dy = -36; dy <= 36; dy += 9) if (dx * dx + dy * dy <= 36 * 36) punkte.push([cx + dx, cy + dy]);
-        const belegt = punkte.some(([x, y]) => x < w && y < h && belegtAn(x, y));
+        const schritt = Math.max(6, Math.round(radius / 5));
+        for (let dx = -radius; dx <= radius; dx += schritt) for (let dy = -radius; dy <= radius; dy += schritt) if (dx * dx + dy * dy <= radius * radius) punkte.push([cx + dx, cy + dy]);
+        for (let a = 0; a < 360; a += 20) punkte.push([cx + Math.cos((a * Math.PI) / 180) * radius, cy + Math.sin((a * Math.PI) / 180) * radius]);
+        const frei = (pts: [number, number][]) => !pts.some(([x, y]) => x >= 0 && y >= 0 && x < w && y < h && belegtAn(x, y));
+        const belegt = !frei(punkte);
+        // Griff (14 × 56 px am rechten Rand): erste freie Höhe ab der Grundlage, sonst die Grundlage
+        let unten = GRIFF_UNTEN;
+        if (belegt) {
+          const gb = GRIFF_BREITE * z + 6;
+          const gh = GRIFF_HOEHE * z;
+          const griffPunkte = (u: number): [number, number][] => {
+            const pts: [number, number][] = [];
+            for (let x = w - gb; x < w; x += 4) for (let y = h - u * z - gh - 6; y <= h - u * z + 6; y += 8) pts.push([x, y]);
+            return pts;
+          };
+          const kandidat = [GRIFF_UNTEN, 120, 200, 280, 360, 440].filter((u) => (u * z + gh) < h - 96 * z).find((u) => frei(griffPunkte(u)));
+          unten = kandidat ?? GRIFF_UNTEN;
+        }
         if (huelle) huelle.style.pointerEvents = vorher;
         setAusweichen(belegt);
+        setGriffUnten(unten);
       });
     };
     pruefe();
@@ -190,12 +228,16 @@ export function AssistantDock() {
     });
     const main = document.querySelector("main");
     if (main) obs.observe(main, { childList: true, subtree: true, characterData: true });
+    // Schriftgröße geändert (data-schrift am Wurzelelement): neu messen
+    const wurzel = new MutationObserver(() => pruefe());
+    wurzel.observe(document.documentElement, { attributes: true, attributeFilter: ["data-schrift"] });
     return () => {
       cancelAnimationFrame(raf);
       clearTimeout(t);
       clearTimeout(t2);
       clearTimeout(ende);
       obs.disconnect();
+      wurzel.disconnect();
       window.removeEventListener("scroll", beimScrollen, { capture: true });
       window.removeEventListener("resize", pruefe);
     };
@@ -358,59 +400,56 @@ export function AssistantDock() {
   return (
     <>
       {/* Avatar-Knopf (ab Tablet; auf dem Smartphone sitzt die Kugel in der Tab-Leiste). Einklappbar zu einem Griff am Rand,
-          abschaltbar unter Einstellungen → Darstellung – der Assistent bleibt über Strg+K bzw. das Menü erreichbar. */}
+          abschaltbar unter Einstellungen → Darstellung – der Assistent bleibt über Strg+K bzw. das Menü erreichbar.
+          Feste Tab-Folge (I4-T07-02): Die Knöpfe stehen am Ende der Seite (nach dem Hauptinhalt) und immer in derselben Reihenfolge –
+          „Apex Assistent öffnen“, dann „Assistent-Kugel an den Rand einklappen“ –, ob die Kugel sichtbar oder an den Rand
+          ausgewichen ist. Beim Ausweichen bleibt es derselbe Knopf (der Fokus geht nicht verloren). */}
       <AnimatePresence>
-        {kugelSichtbar && !ausweichen && (
+        {kugelSichtbar && (
           <motion.div
             ref={setzeKugelRef}
             data-kugel
+            data-ausgewichen={ausweichen || undefined}
             key="kugel"
             initial={{ scale: 0.6, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.6, opacity: 0 }}
             transition={{ type: "spring", stiffness: 420, damping: 24 }}
-            className="group fixed bottom-6 right-6 z-50"
+            className={cn("group fixed z-50", ausweichen ? "right-0" : "bottom-6 right-6")}
+            style={ausweichen ? { bottom: griffUnten } : undefined}
           >
-            <motion.button
+            <button
               type="button"
-              whileHover={{ scale: 1.06 }}
-              whileTap={{ scale: 0.94 }}
               onClick={() => oeffneAssistent()}
-              className="grid place-items-center rounded-full"
-              aria-label="Apex Assistent öffnen – per Sprache oder Text fragen"
-              title="Apex Assistent – fragen Sie per Sprache oder Text"
+              className={cn(
+                ausweichen
+                  ? "ai-fill block h-14 w-3.5 rounded-l-full shadow-[0_6px_18px_-6px_rgba(60,40,200,.6)] ring-1 ring-white/30 transition-[width] hover:w-5 focus-visible:w-5"
+                  : "grid place-items-center rounded-full transition-transform duration-300 ease-[var(--spring)] hover:scale-[1.06] active:scale-[0.94]",
+              )}
+              aria-label={ausweichen ? "Apex Assistent öffnen (Kugel ist an den Rand ausgewichen, damit sie nichts verdeckt)" : "Apex Assistent öffnen – per Sprache oder Text fragen"}
+              title={ausweichen ? "Apex Assistent öffnen" : "Apex Assistent – fragen Sie per Sprache oder Text"}
             >
-              <ApexOrb size={60} />
-            </motion.button>
+              {!ausweichen && <ApexOrb size={KUGEL} />}
+            </button>
             <button
               type="button"
               onClick={() => setKugelEingeklappt(true)}
-              className="absolute -left-2 -top-2 grid size-6 place-items-center rounded-full bg-[var(--surface)] text-fg-2 opacity-0 shadow ring-1 ring-[var(--line-strong)] transition-opacity hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"
+              className={cn(
+                "absolute grid size-6 place-items-center rounded-full bg-[var(--surface)] text-fg-2 opacity-0 shadow ring-1 ring-[var(--line-strong)] transition-opacity hover:text-fg focus-visible:opacity-100",
+                // ausgewichen: nur bei Tastaturfokus sichtbar und klickbar – verdeckt sonst nichts am Rand
+                ausweichen ? "pointer-events-none right-[calc(100%+6px)] top-1/2 -translate-y-1/2 focus-visible:pointer-events-auto" : "-left-2 -top-2 group-hover:opacity-100",
+              )}
               aria-label="Assistent-Kugel an den Rand einklappen"
               title="An den Rand einklappen"
             >
               <ChevronRight className="size-3.5" />
             </button>
-            <span className="pointer-events-none absolute right-[calc(100%+10px)] top-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-[#0b0e18]/90 px-3 py-1.5 text-[13px] font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
-              Apex Assistent fragen
-            </span>
+            {!ausweichen && (
+              <span className="pointer-events-none absolute right-[calc(100%+10px)] top-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-[#0b0e18]/90 px-3 py-1.5 text-[13px] font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                Apex Assistent fragen
+              </span>
+            )}
           </motion.div>
-        )}
-        {kugelSichtbar && ausweichen && (
-          <motion.button
-            ref={setzeKugelRef}
-            data-kugel
-            key="ausgewichen"
-            type="button"
-            initial={{ x: 20, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: 20, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 420, damping: 30 }}
-            onClick={() => oeffneAssistent()}
-            className="ai-fill fixed bottom-10 right-0 z-50 h-14 w-3.5 rounded-l-full shadow-[0_6px_18px_-6px_rgba(60,40,200,.6)] ring-1 ring-white/30 transition-[width] hover:w-5 focus-visible:w-5"
-            aria-label="Apex Assistent öffnen (Kugel ist an den Rand ausgewichen, damit sie nichts verdeckt)"
-            title="Apex Assistent öffnen"
-          />
         )}
         {!assistentOffen && !mobile && kugel && kugelEingeklappt && (
           <motion.button
@@ -465,6 +504,20 @@ export function AssistantDock() {
                 <button type="button" className="icon-btn !size-9" onClick={neu} aria-label="Neues Gespräch" title="Neues Gespräch">
                   <RotateCcw className="size-[17px]" />
                 </button>
+                {!mobile && kugel && (
+                  <button
+                    type="button"
+                    className="icon-btn !size-9"
+                    onClick={() => {
+                      setKugelEingeklappt(true);
+                      schliesseAssistent();
+                    }}
+                    aria-label="Assistent-Kugel an den Rand einklappen"
+                    title="Kugel an den Rand einklappen – wieder einblenden über den Griff am rechten Rand"
+                  >
+                    <PanelRightClose className="size-[17px]" />
+                  </button>
+                )}
                 <button type="button" className="icon-btn !size-9" onClick={schliesseAssistent} aria-label="Assistent schließen">
                   <X className="size-[18px]" />
                 </button>
@@ -737,6 +790,9 @@ function BestaetigungsKarte({ v, status, land, onEintragen, onVerwerfen, onRueck
   const notiz = v.art === "notiz";
   const p = !notiz && datum ? pruefeDatum(datum, land) : { werktag: true as const };
   const aktuell: SchreibVorschlag = notiz ? { ...v, text: titel.trim() || v.text } : { ...v, titel: titel.trim() || v.titel, datum };
+  // Doppelungsprüfung (I4-T20-01) – live, auch nach „Ändern“ des Datums: gleicher Tag, gleiche Art, offen
+  const fristen = useData((st) => st.data.fristen);
+  const doppelt = status === "offen" ? doppelterEintrag(aktuell, fristen) : undefined;
   const Icon = notiz ? StickyNote : CalendarPlus;
   return (
     <div className="mt-2 overflow-hidden rounded-[18px] bg-[var(--surface)] ring-1 ring-[var(--line-strong)]" role="group" aria-label={`${vorschlagArtName(v)} bestätigen`}>
@@ -777,12 +833,27 @@ function BestaetigungsKarte({ v, status, land, onEintragen, onVerwerfen, onRueck
           </button>
         </div>
       )}
+      {doppelt && (
+        <div className="mx-3 mb-2 flex items-start gap-2 rounded-[12px] bg-amber-soft px-2.5 py-1.5 text-[12.5px] leading-snug text-fg-2" role="note">
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber" aria-hidden />
+          <span>
+            <span className="font-semibold text-fg">Doppelung? </span>
+            {doppelt.hinweis}. Eintragen nur, wenn Sie bewusst einen zweiten Eintrag möchten.
+          </span>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-1.5 border-t border-[var(--line)] px-3 py-2">
         {status === "offen" && (
           <>
-            <button type="button" onClick={() => onEintragen(aktuell)} className="inline-flex h-8 items-center gap-1.5 rounded-full bg-ink px-3 text-[13px] font-semibold text-white hover:opacity-90">
-              <Check className="size-3.5" /> Eintragen
-            </button>
+            {doppelt ? (
+              <button type="button" onClick={() => onEintragen(aktuell)} className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-semibold text-[var(--amber-text)] ring-1 ring-[color-mix(in_oklab,var(--amber)_55%,transparent)] hover:bg-amber-soft">
+                <AlertTriangle className="size-3.5" /> Trotzdem eintragen
+              </button>
+            ) : (
+              <button type="button" onClick={() => onEintragen(aktuell)} className="inline-flex h-8 items-center gap-1.5 rounded-full bg-ink px-3 text-[13px] font-semibold text-white hover:opacity-90">
+                <Check className="size-3.5" /> Eintragen
+              </button>
+            )}
             <button type="button" onClick={() => setAendern((x) => !x)} aria-pressed={aendern} className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium text-fg-2 ring-1 ring-[var(--line-strong)] hover:bg-ink-softer">
               <Pencil className="size-3.5" /> {aendern ? "Fertig" : "Ändern"}
             </button>

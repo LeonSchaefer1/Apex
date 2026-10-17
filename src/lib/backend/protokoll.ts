@@ -102,6 +102,50 @@ export function zaehleFehlversuch(speicher: Map<string, number[]>, kontoId: stri
   return liste.length;
 }
 
+/** Name des allgemeinen Console-Zugangs – keine Person; im Protokoll steht dann nur „AnwaltApex (Apex Console)“. */
+export const ANBIETER_TEAM = "AnwaltApex Team";
+
+/** Person beim Anbieter aus „Vergeben durch“ bzw. dem Namen des Console-Zugangs – ohne den allgemeinen Teamnamen. */
+export function anbieterPersonAus(...namen: (string | null | undefined)[]): string | undefined {
+  for (const n of namen) {
+    const t = (n ?? "").trim().slice(0, 120);
+    if (t && t !== ANBIETER_TEAM) return t;
+  }
+  return undefined;
+}
+
+/**
+ * Eingriff des Anbieters über die Apex Console (I4-T16-01): Zugang angelegt, Startpasswort, Demo-Passwort, Beispieldaten.
+ * Eigener Urheber im Kanzleiprotokoll („AnwaltApex – Lena Vogt (Apex Console)“) und Filter „Anbieter“. Ein neues Startpasswort
+ * gehört zusätzlich zu den Anmeldungen (`kategorie`) und meldet sich bei Partner und Administration (`meldung`).
+ */
+export function anbieterVorgang(text: string, opts: { userId?: ID; anbieterPerson?: string; kategorie?: "anmeldung"; meldung?: boolean } = {}): Aktivitaet {
+  const a = vorgang(text, { akteur: "system", userId: opts.userId });
+  const person = anbieterPersonAus(opts.anbieterPerson);
+  return {
+    ...a,
+    quelle: "anbieter",
+    ...(person ? { anbieterPerson: person } : {}),
+    ...(opts.kategorie ? { kategorie: opts.kategorie } : {}),
+    ...(opts.meldung ? { meldung: true } : {}),
+  };
+}
+
+/** Stammt der Eintrag vom Anbieter? Neue Einträge über `quelle`, ältere (ohne `quelle`) am Text „durch AnwaltApex“ bzw. „(Apex Console)“. */
+export function istAnbieterEintrag(a: Pick<Aktivitaet, "quelle" | "text">): boolean {
+  return a.quelle === "anbieter" || /durch AnwaltApex|\(Apex Console\)/.test(a.text);
+}
+
+/**
+ * Urheber eines Anbieter-Eintrags im Kanzleiprotokoll: „AnwaltApex – Lena Vogt (Apex Console)“ bzw. „AnwaltApex (Apex Console)“.
+ * `undefined`, wenn der Eintrag nicht vom Anbieter stammt. Bei Alt-Einträgen wird die Person aus dem Text gelesen.
+ */
+export function anbieterUrheber(a: Pick<Aktivitaet, "quelle" | "anbieterPerson" | "text">): string | undefined {
+  if (!istAnbieterEintrag(a)) return undefined;
+  const person = a.quelle === "anbieter" ? anbieterPersonAus(a.anbieterPerson) : anbieterPersonAus(/durch AnwaltApex neu vergeben – (.+?) auf Anforderung von /.exec(a.text)?.[1]);
+  return person ? `AnwaltApex – ${person} (Apex Console)` : "AnwaltApex (Apex Console)";
+}
+
 let zaehler = 0;
 /** Neuer Protokolleintrag. `system`: Vorgang durch AnwaltApex bzw. das System; `nutzer`: von der Person selbst ausgelöst. */
 export function vorgang(text: string, opts: { akteur: "system" | "nutzer"; userId?: ID; zeit?: string }): Aktivitaet {

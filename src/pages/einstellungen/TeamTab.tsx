@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowRightLeft, CalendarOff, Check, Info, KeyRound, Minus, MoreHorizontal, Power, PowerOff, ShieldCheck, ShieldOff, Trash2, UserPlus, Users, Infinity as InfinityIcon } from "lucide-react";
 import type { Rolle, User } from "@/core/types";
@@ -9,8 +9,9 @@ import { toast } from "@/store/ui";
 import { Avatar, Button, Chip, Field, Input, Menu, Modal, Select } from "@/components/ui";
 import { StartpasswortKarte } from "@/components/StartpasswortKarte";
 import { cn } from "@/lib/cn";
-import { fmtDate, fmtDateWd, today } from "@/core/dates";
-import { istAbwesend, istBerufstraeger } from "@/core/vertretung";
+import { addDays, fmtDate, today } from "@/core/dates";
+import { istAbwesend, istBerufstraeger, tagKurz, vertretungUmfangText } from "@/core/vertretung";
+import type { Frist } from "@/core/types";
 import { Abschnitt } from "./teile";
 import { ROLLE_AUSWAHL, ROLLE_SPALTE, rollenLabel } from "@/lib/rollen";
 
@@ -340,8 +341,20 @@ function AbwesenheitModal({ ziel, onClose }: { ziel: User | null; onClose: () =>
   const [fehler, setFehler] = useState<string | null>(null);
   const [laedt, setLaedt] = useState(false);
   const [geoeffnetFuer, setGeoeffnetFuer] = useState<string | null>(null);
+  // Bestätigung nach dem Speichern (I4-T18-04): Einträge der abwesenden Person im Zeitraum und wer sie ab wann sieht
+  const [ergebnis, setErgebnis] = useState<{ von: string; bis: string; vertretung?: User; eintraege: Frist[] } | null>(null);
+  const fristen = useData((s) => s.data.fristen);
+  const akten = useData((s) => s.data.akten);
+  const fertigRef = useRef<HTMLButtonElement>(null);
+  // Nach dem Speichern: Fokus auf „Fertig“ (der Speichern-Knopf ist dann nicht mehr da)
+  useEffect(() => {
+    if (!ergebnis) return;
+    const t = setTimeout(() => fertigRef.current?.focus(), 40);
+    return () => clearTimeout(t);
+  }, [ergebnis]);
   if (ziel && geoeffnetFuer !== ziel.id) {
     setGeoeffnetFuer(ziel.id);
+    setErgebnis(null);
     setVon(ziel.abwesenheit?.von ?? today());
     setBis(ziel.abwesenheit?.bis ?? "");
     // Früher gespeicherte Vertretung durch eine Fachangestellte: als Sachbearbeitung übernehmen, Vertretung neu wählen lassen
@@ -383,8 +396,16 @@ function AbwesenheitModal({ ziel, onClose }: { ziel: User | null; onClose: () =>
           ? `Abwesenheit von ${ziel.name} beendet`
           : `Abwesenheit von ${ziel.name} eingetragen (${fmtDate(von)}–${fmtDate(bis)}) – Vertretung: ${v?.name ?? "keine"}${berufstraeger ? " (§ 53 BRAO)" : ""}${sb ? ` · Sachbearbeitung: ${sb.name}` : ""}`,
       });
-      toast(entfernen ? "Abwesenheit entfernt" : "Abwesenheit eingetragen", { text: entfernen ? ziel.name : `${ziel.name} · bis ${fmtDateWd(bis)}${v ? ` · Vertretung: ${v.name}` : ""}`, ton: "erfolg" });
-      onClose();
+      if (entfernen) {
+        toast("Abwesenheit entfernt", { text: ziel.name, ton: "erfolg" });
+        onClose();
+      } else {
+        // offene Fristen, Notfristen, Wiedervorlagen und Vorfristen der Person im Zeitraum (keine Termine) – wie „Vertretung vorab“
+        const eintraege = fristen
+          .filter((f) => f.status === "offen" && f.verantwortlichId === ziel.id && f.typ !== "termin" && f.datum >= von && f.datum <= bis)
+          .sort((a, b) => a.datum.localeCompare(b.datum) || (a.uhrzeit ?? "").localeCompare(b.uhrzeit ?? ""));
+        setErgebnis({ von, bis, vertretung: v, eintraege });
+      }
     } catch (e) {
       setFehler(e instanceof Error ? e.message : "Die Abwesenheit konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.");
     } finally {
@@ -392,15 +413,77 @@ function AbwesenheitModal({ ziel, onClose }: { ziel: User | null; onClose: () =>
     }
   };
 
+  // Bestätigung im selben Dialog (Fokus bleibt im Dialog und kehrt beim Schließen zum Auslöser zurück)
+  const bestaetigung = (() => {
+    if (!ziel || !ergebnis) return null;
+    const heute = today();
+    // Die Vertretung sieht die Einträge im Cockpit 14 Tage vor Beginn (Vertretung vorab), ab Beginn unter „Nur meine (+ Vertretung)“
+    const abWann = ergebnis.von <= addDays(heute, 14) ? "ab sofort" : `ab ${tagKurz(addDays(ergebnis.von, -14))}`;
+    const az = (id: string) => akten.find((a) => a.id === id)?.aktenzeichen;
+    return (
+      <div className="grid gap-3">
+        {ergebnis.eintraege.length === 0 ? (
+          <p className="flex items-start gap-2 rounded-[12px] bg-green-soft px-3 py-2.5 text-[13.5px] text-fg-2">
+            <Check className="mt-0.5 size-4 shrink-0 text-green" /> Im Zeitraum liegen keine offenen Fristen.
+          </p>
+        ) : (
+          <>
+            <p className="text-[13.5px] text-fg-2">
+              Im Zeitraum: <span className="font-semibold text-fg">{vertretungUmfangText(ergebnis.eintraege)}</span>
+            </p>
+            <ul className="grid divide-y divide-[var(--line)] overflow-hidden rounded-[14px] ring-1 ring-[var(--line)]" aria-label="Einträge im Zeitraum">
+              {ergebnis.eintraege.map((f) => (
+                <li key={f.id} className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 px-3 py-2 text-[13px]">
+                  <span className="num font-semibold text-fg">{tagKurz(f.datum)}</span>
+                  <span className="min-w-0 break-words text-fg-2">
+                    {az(f.akteId) && <span className="mono mr-1.5 font-medium text-fg">{az(f.akteId)}</span>}
+                    {f.titel}
+                    {f.typ !== "frist" && <span className="text-fg-3"> · {f.typ === "notfrist" ? "Notfrist" : f.typ === "wiedervorlage" ? "Wiedervorlage" : "Vorfrist"}</span>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        {ergebnis.vertretung ? (
+          <p className="flex items-start gap-2 rounded-[12px] bg-violet-soft px-3 py-2.5 text-[13px] leading-snug text-fg-2">
+            <Info className="mt-0.5 size-3.5 shrink-0 text-violet" />
+            <span>
+              {ergebnis.eintraege.length
+                ? `${ergebnis.vertretung.name} sieht sie ${abWann} im Cockpit und unter ‚Nur meine (+ Vertretung)‘.`
+                : `${ergebnis.vertretung.name} ist als Vertretung eingetragen und sieht neue Einträge ${abWann} im Cockpit und unter ‚Nur meine (+ Vertretung)‘.`}
+            </span>
+          </p>
+        ) : (
+          <p className="flex items-start gap-2 rounded-[12px] bg-amber-soft px-3 py-2.5 text-[13px] leading-snug text-fg-2">
+            <Info className="mt-0.5 size-3.5 shrink-0 text-amber" />
+            <span>Ohne Vertretung sieht niemand diese Einträge vorab – bitte eine Vertretung eintragen (§ 53 BRAO).</span>
+          </p>
+        )}
+      </div>
+    );
+  })();
+
   return (
     <Modal
       open={!!ziel}
       onClose={onClose}
       size="sm"
       icon={<CalendarOff className="size-5" />}
-      title="Abwesenheit & Vertretung"
-      subtitle={ziel ? `${ziel.name} – die Vertretung sieht die Fristen im Cockpit und unter „Nur meine“.` : undefined}
+      title={bestaetigung ? "Abwesenheit eingetragen" : "Abwesenheit & Vertretung"}
+      subtitle={
+        ziel && ergebnis
+          ? `${ziel.name} · ${tagKurz(ergebnis.von)} bis ${tagKurz(ergebnis.bis)}`
+          : ziel
+            ? `${ziel.name} – die Vertretung sieht die Fristen im Cockpit und unter „Nur meine“.`
+            : undefined
+      }
       footer={
+        bestaetigung ? (
+          <Button ref={fertigRef} variant="primary" onClick={onClose}>
+            Fertig
+          </Button>
+        ) : (
         <>
           {ziel?.abwesenheit && (
             <Button variant="ghost" onClick={() => void speichern(true)} className="mr-auto">
@@ -414,8 +497,10 @@ function AbwesenheitModal({ ziel, onClose }: { ziel: User | null; onClose: () =>
             Speichern
           </Button>
         </>
+        )
       }
     >
+      {bestaetigung ?? (
       <form
         className="grid gap-3.5"
         onSubmit={(e) => {
@@ -477,6 +562,7 @@ function AbwesenheitModal({ ziel, onClose }: { ziel: User | null; onClose: () =>
         )}
         <button type="submit" className="hidden" aria-hidden tabIndex={-1} />
       </form>
+      )}
     </Modal>
   );
 }

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { Bot, CheckCircle2, ChevronDown, Clock, MapPin, MoreHorizontal, PanelRightOpen, PenLine, RotateCcw, ShieldAlert, Sparkles, Trash2, Undo2, UserCheck, Users } from "lucide-react";
+import { Bot, CalendarClock, CheckCircle2, ChevronDown, Clock, MapPin, MoreHorizontal, PanelRightOpen, PenLine, RotateCcw, ShieldAlert, Sparkles, Trash2, Undo2, UserCheck, Users } from "lucide-react";
 import { fmtDate, fmtDateShort, fmtDateWd, schuetzeLeerzeichen, today } from "@/core/dates";
 import { fristArtZu } from "@/core/fristen";
 import type { Akte, Frist, FristTyp, User } from "@/core/types";
@@ -59,7 +59,7 @@ export function QuelleChip({ quelle, notiz }: { quelle: Frist["quelle"]; notiz?:
 /** „Erledigt“ mit animiertem Häkchen (Kreis füllt sich, Haken zeichnet sich). */
 export function ErledigtKnopf({ erledigt, onClick, className }: { erledigt: boolean; onClick: () => void; className?: string }) {
   return (
-    <button type="button" onClick={onClick} className={cn("btn btn-sm btn-secondary !pl-2", className)} aria-pressed={erledigt} title={erledigt ? "Wieder öffnen" : "Als erledigt markieren"}>
+    <button type="button" onClick={onClick} data-aktion="erledigt" className={cn("btn btn-sm btn-secondary !pl-2", className)} aria-pressed={erledigt} title={erledigt ? "Wieder öffnen" : "Als erledigt markieren"}>
       <span className={cn("relative grid size-[18px] place-items-center rounded-full border-[1.5px] transition-colors", erledigt ? "border-green" : "border-[var(--line-strong)]")}>
         <motion.span className="absolute inset-[-1.5px] rounded-full bg-green" initial={false} animate={{ scale: erledigt ? 1 : 0, opacity: erledigt ? 1 : 0 }} transition={{ type: "spring", stiffness: 600, damping: 26 }} />
         <svg viewBox="0 0 24 24" className="relative size-3 text-[var(--surface)]" aria-hidden>
@@ -158,7 +158,7 @@ export function KontrolleAktion({ f, user, kontrollieren, verantwortlich, anford
   if (!brauchtKontrolle(f) || !darfKontrollieren(f, user.id)) return null;
   return (
     <>
-      <button type="button" onClick={kontrollieren} className="btn btn-sm btn-secondary" title={`Datum und Rechenweg der Frist von ${verantwortlich?.name ?? "Kollegin/Kollege"} prüfen und bestätigen (Vier-Augen-Kontrolle)`}>
+      <button type="button" onClick={kontrollieren} data-aktion="kontrolle" className="btn btn-sm btn-secondary" title={`Datum und Rechenweg der Frist von ${verantwortlich?.name ?? "Kollegin/Kollege"} prüfen und bestätigen (Vier-Augen-Kontrolle)`}>
         <UserCheck className="size-4 text-ink" />
         Kontrolle bestätigen
       </button>
@@ -233,7 +233,7 @@ export function EigeneKontrolleHinweis({ f, user, className }: { f: Frist; user:
 
 /** Eine Frist als Zeile: Ampelstreifen, Typ, Akte, Grundlage, Verantwortlich, Quelle, Aktionen, Rechenweg. */
 export function FristZeile({
-  f, akte, team, user, index = 0, zeigeDatum, vertretungFuer, onOpen,
+  f, akte, team, user, index = 0, zeigeDatum, vertretungFuer, vertretungVorab, onOpen,
 }: {
   f: Frist;
   akte?: Akte;
@@ -242,6 +242,8 @@ export function FristZeile({
   index?: number;
   zeigeDatum?: boolean;
   vertretungFuer?: string;
+  /** Künftige Vertretung: „Jonas Brandt ab Mo, 19.10.“ */
+  vertretungVorab?: string;
   /** Klick auf die Zeile öffnet das Fristdetail */
   onOpen?: (f: Frist) => void;
 }) {
@@ -250,6 +252,8 @@ export function FristZeile({
   const verantwortlich = team.find((u) => u.id === f.verantwortlichId);
   const hatDetails = !!(f.rechenweg?.length || f.notiz || f.ereignisDatum);
   const art = f.typ === "notfrist" || f.typ === "frist" ? fristArtZu(f) : undefined;
+  const letzteKorrektur = f.korrekturen?.[f.korrekturen.length - 1];
+  const letzteKorrekturVon = letzteKorrektur ? team.find((u) => u.id === letzteKorrektur.vonId)?.name : undefined;
   // Telefon: „Kontrolle bestätigen“ (falls erlaubt) bzw. „Erledigt“ sichtbar, alles Übrige im „⋯“-Menü (I3-T03-01)
   const kannKontrolle = f.status === "offen" && darfKontrollieren(f, user.id);
   const mobilMenue = [
@@ -271,7 +275,9 @@ export function FristZeile({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, height: 0, transition: { duration: 0.28, ease: [0.16, 1, 0.3, 1] } }}
       transition={{ ...spring, delay: Math.min(index, 10) * 0.03 }}
-      className="relative overflow-hidden"
+      data-frist-zeile={f.id}
+      // Gewählte Zeile (Tastatur: J/K, ↑/↓, Tab) sichtbar markiert – Fläche und Balken, nicht nur der Fokusring (I4-T03-05)
+      className="relative overflow-hidden has-[:focus-visible]:bg-ink-soft has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:-outline-offset-2 has-[:focus-visible]:outline-[var(--ink)]"
     >
       <span className={cn("absolute bottom-3 left-0 top-3 w-[3px] rounded-r-full transition-colors", erledigt ? "bg-green" : streifenFarbe(f))} aria-hidden />
       <div
@@ -285,7 +291,21 @@ export function FristZeile({
         <div className="min-w-[220px] flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <TypChip typ={f.typ} regelKey={f.regelKey} />
-            <span className={cn("text-[14px] font-semibold tracking-[-0.01em] transition-colors", erledigt && "text-fg-3 line-through decoration-[var(--line-strong)]")}>{f.titel}</span>
+            {onOpen ? (
+              // Öffnen-Ziel der Zeile: J/K bzw. ↑/↓ setzen den Fokus hierher, Enter öffnet die Details (tabIndex −1: kein zusätzlicher Tab-Stopp)
+              <button
+                type="button"
+                tabIndex={-1}
+                data-aktion="titel"
+                onClick={() => onOpen(f)}
+                aria-label={`${f.titel}${akte ? ` – ${akte.aktenzeichen}` : ""} – ${fmtDateWd(f.datum)} – Details öffnen`}
+                className={cn("rounded-[6px] text-left text-[14px] font-semibold tracking-[-0.01em] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--focus)]", erledigt && "text-fg-3 line-through decoration-[var(--line-strong)]")}
+              >
+                {f.titel}
+              </button>
+            ) : (
+              <span className={cn("text-[14px] font-semibold tracking-[-0.01em] transition-colors", erledigt && "text-fg-3 line-through decoration-[var(--line-strong)]")}>{f.titel}</span>
+            )}
             {zeigeDatum && <span className="num text-[12.5px] text-fg-3">· {fmtDateWd(f.datum)}</span>}
             {f.uhrzeit && (
               <span className="num inline-flex items-center gap-1 text-[12.5px] text-fg-2">
@@ -313,13 +333,18 @@ export function FristZeile({
             )}
             <span className="inline-flex flex-wrap items-center gap-1.5">
               {f.korrekturen?.length ? (
-                <Chip tone="neutral" icon={<PenLine className="size-3" />} title={f.korrekturen.map((k) => `${fmtDate(k.am.slice(0, 10))}: ${k.grund}`).join(" · ")}>
+                <Chip tone="neutral" icon={<PenLine className="size-3" />} title={f.korrekturen.map((k, i) => `${fmtDate(k.am.slice(0, 10))}: ${fmtDate(k.vorher.datum)} → ${fmtDate(f.korrekturen![i + 1]?.vorher.datum ?? f.datum)} – ${k.grund}`).join(" · ")}>
                   korrigiert
                 </Chip>
               ) : null}
               {vertretungFuer && (
                 <Chip tone="amber" icon={<Users className="size-3" />} title="Die verantwortliche Person ist heute abwesend und hat Sie als Vertretung eingetragen (§ 53 BRAO)">
                   Vertretung für {vertretungFuer}
+                </Chip>
+              )}
+              {!vertretungFuer && vertretungVorab && (
+                <Chip tone="amber" icon={<CalendarClock className="size-3" />} title="Die verantwortliche Person ist dann abwesend und hat Sie als Vertretung eingetragen (§ 53 BRAO) – vorab eingeblendet">
+                  Vertretung für {vertretungVorab}
                 </Chip>
               )}
               <QuelleChip quelle={f.quelle} notiz={f.notiz} />
@@ -339,14 +364,14 @@ export function FristZeile({
           <EigeneKontrolleHinweis f={f} user={user} className="basis-full" />
           {verantwortlich && <Avatar initialen={verantwortlich.initialen} farbe={verantwortlich.farbe} size={28} title={`Verantwortlich: ${verantwortlich.name}`} />}
           {kannKontrolle ? (
-            <button type="button" onClick={kontrollieren} className="btn btn-sm btn-secondary min-h-11 shrink-0" title={`Datum und Rechenweg der Frist von ${verantwortlich?.name ?? "Kollegin/Kollege"} prüfen und bestätigen (Vier-Augen-Kontrolle)`}>
+            <button type="button" onClick={kontrollieren} data-aktion="kontrolle" className="btn btn-sm btn-secondary min-h-11 shrink-0" title={`Datum und Rechenweg der Frist von ${verantwortlich?.name ?? "Kollegin/Kollege"} prüfen und bestätigen (Vier-Augen-Kontrolle)`}>
               <UserCheck className="size-4 text-ink" />
               Kontrolle bestätigen
             </button>
           ) : f.status === "offen" ? (
             <ErledigtKnopf erledigt={erledigt} onClick={umschalten} className="min-h-11 shrink-0" />
           ) : (
-            <button type="button" onClick={umschalten} className="btn btn-sm btn-ghost min-h-11 shrink-0" title="Wieder öffnen">
+            <button type="button" onClick={umschalten} data-aktion="wieder" className="btn btn-sm btn-ghost min-h-11 shrink-0" title="Wieder öffnen">
               <RotateCcw className="size-3.5" />
               Wieder öffnen
             </button>
@@ -355,7 +380,7 @@ export function FristZeile({
             <div className="ml-auto shrink-0">
               <Menu
                 trigger={({ toggle }) => (
-                  <button type="button" onClick={toggle} className="icon-btn !size-11 text-fg-2" aria-label={`Weitere Aktionen für ${f.titel}`} title="Weitere Aktionen">
+                  <button type="button" onClick={toggle} data-aktion="menue" className="icon-btn !size-11 text-fg-2" aria-label={`Weitere Aktionen für ${f.titel}`} title="Weitere Aktionen">
                     <MoreHorizontal className="size-5" />
                   </button>
                 )}
@@ -371,7 +396,7 @@ export function FristZeile({
           {f.status === "offen" ? (
             <ErledigtKnopf erledigt={erledigt} onClick={umschalten} />
           ) : (
-            <button type="button" onClick={umschalten} className="btn btn-sm btn-ghost" title="Wieder öffnen">
+            <button type="button" onClick={umschalten} data-aktion="wieder" className="btn btn-sm btn-ghost" title="Wieder öffnen">
               <RotateCcw className="size-3.5" />
               Wieder öffnen
             </button>
@@ -379,7 +404,7 @@ export function FristZeile({
           {(onOpen || korrigierbar(f)) && (
             <Menu
               trigger={({ toggle }) => (
-                <button type="button" onClick={toggle} className="icon-btn !size-9 text-fg-3" aria-label={`Weitere Aktionen für ${f.titel}`} title="Korrigieren, Streichen, Details">
+                <button type="button" onClick={toggle} data-aktion="menue" className="icon-btn !size-9 text-fg-3" aria-label={`Weitere Aktionen für ${f.titel}`} title="Korrigieren, Streichen, Details">
                   <MoreHorizontal className="size-4" />
                 </button>
               )}
@@ -441,7 +466,8 @@ export function FristZeile({
               {f.notiz && <p className="mt-3 text-[12.5px] leading-relaxed text-fg-3">{f.notiz}</p>}
               {f.korrekturen?.length ? (
                 <p className="mt-3 text-[12.5px] leading-relaxed text-fg-3">
-                  {f.korrekturen.length === 1 ? "1 Korrektur" : `${f.korrekturen.length} Korrekturen`} – zuletzt: {f.korrekturen[f.korrekturen.length - 1].grund} (vorher {fmtDate(f.korrekturen[f.korrekturen.length - 1].vorher.datum)})
+                  {f.korrekturen.length === 1 ? "1 Korrektur" : `${f.korrekturen.length} Korrekturen`} – zuletzt: {letzteKorrektur?.grund} ({letzteKorrektur ? fmtDate(letzteKorrektur.vorher.datum) : ""} → {fmtDate(f.datum)}
+                  {letzteKorrekturVon ? `, ${letzteKorrekturVon}` : ""})
                 </p>
               ) : null}
               {brauchtKontrolle(f) && f.verantwortlichId === user.id && (

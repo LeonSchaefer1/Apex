@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { motion } from "motion/react";
-import { Building, Cloud, DatabaseBackup, FileClock, FileText, Fingerprint, KeyRound, Lock, MonitorCheck, RotateCcw, Scale, Server, ShieldAlert, ShieldCheck, Trash2, Users } from "lucide-react";
+import { Building, Building2, Cloud, DatabaseBackup, FileClock, FileText, Fingerprint, KeyRound, Lock, MonitorCheck, RotateCcw, Scale, Server, ShieldAlert, ShieldCheck, Trash2, Users } from "lucide-react";
 import { SPERRE_MINUTEN, darfVerwalten, getBackend, getInfo, hatBeispieldaten, istConsole, kanzleiSicherheit, type SperreMinuten, type ZweiFaktorStatus } from "@/lib/backend";
 import { fmtDate, fmtTime, relTime, today } from "@/core/dates";
 import { useCol, useData } from "@/store/data";
@@ -12,6 +12,8 @@ import { ZweiFaktorEinrichtung } from "@/components/sicherheit/ZweiFaktorEinrich
 import { DateiDialog, type AusgabeDatei } from "@/pages/fristen/dateiAusgabe";
 import { LOESCHKONZEPT, MUSTER, MUSTER_KENNZEICHNUNG, UNTERAUFTRAGNEHMER } from "@/content/datenschutz";
 import { cn } from "@/lib/cn";
+import { anbieterUrheber, istAnbieterEintrag } from "@/lib/backend/protokoll";
+import type { Aktivitaet, User } from "@/core/types";
 import { Abschnitt, Zeile } from "./teile";
 
 const SICHERHEIT = [
@@ -58,23 +60,29 @@ export function DatenschutzTab() {
   const [laedt, setLaedt] = useState(false);
   const namen = useMemo(() => new Map(team.map((u) => [u.id, u])), [team]);
   const [params] = useSearchParams();
-  const [filter, setFilter] = useState<"alle" | "anmeldungen">(params.get("filter") === "anmeldungen" ? "anmeldungen" : "alle");
+  const filterParam = params.get("filter");
+  const [filter, setFilter] = useState<ProtokollFilter>(filterParam === "anmeldungen" || filterParam === "anbieter" ? filterParam : "alle");
   // Anmeldeereignisse anderer Personen (z. B. Fehlversuche) sehen nur Partner und Administration – die eigenen sieht jede Person
   const sichtbar = (a: (typeof akt)[number]) => a.kategorie !== "anmeldung" || darf || a.userId === user.id;
   const protokoll = useMemo(
     () =>
       akt
-        .filter((a) => (a.akteur === "nutzer" || a.akteur === "system") && sichtbar(a) && (filter === "alle" || a.kategorie === "anmeldung"))
+        .filter(
+          (a) =>
+            (a.akteur === "nutzer" || a.akteur === "system") &&
+            sichtbar(a) &&
+            (filter === "alle" || (filter === "anmeldungen" ? a.kategorie === "anmeldung" : istAnbieterEintrag(a))),
+        )
         .slice()
         .sort((a, b) => b.zeit.localeCompare(a.zeit))
-        .slice(0, filter === "anmeldungen" ? 20 : 8),
+        .slice(0, filter === "alle" ? 8 : 20),
     [akt, filter, darf, user.id],
   );
   // Direktsprung (Strg+K, Glocke): /einstellungen?tab=datenschutz&abschnitt=sicherheit|protokoll|loeschkonzept
   const abschnitt = params.get("abschnitt");
   useEffect(() => {
     if (!abschnitt) return;
-    if (abschnitt === "protokoll" && params.get("filter") !== "alle") setFilter("anmeldungen");
+    if (abschnitt === "protokoll" && params.get("filter") !== "alle") setFilter(params.get("filter") === "anbieter" ? "anbieter" : "anmeldungen");
     const t = setTimeout(() => {
       const el = document.getElementById(`ds-${abschnitt}`);
       el?.scrollIntoView({ block: "start" });
@@ -196,7 +204,8 @@ export function DatenschutzTab() {
             <h3 id="loeschkonzept" className="text-[13.5px] font-semibold">
               Löschkonzept
             </h3>
-            <div className="mt-2 overflow-x-auto rounded-[16px] ring-1 ring-[var(--line)]">
+            {/* schmale Breiten: seitlich scrollbar und per Tastatur erreichbar (WCAG 2.1.1, axe scrollable-region-focusable) */}
+            <div className="mt-2 overflow-x-auto rounded-[16px] ring-1 ring-[var(--line)]" tabIndex={0} role="region" aria-labelledby="loeschkonzept">
               <table className="w-full min-w-[420px] text-left text-[12.5px]" aria-labelledby="loeschkonzept">
                 <thead className="bg-[var(--surface-2)] text-fg-3">
                   <tr>
@@ -233,51 +242,28 @@ export function DatenschutzTab() {
         text="Jede Änderung an Akten, Fristen, Zugängen und Einstellungen wird mit Person und Zeitpunkt festgehalten – ebenso Anmeldungen, Abmeldungen, Fehlversuche und Sperren."
         icon={<FileClock className="size-[18px]" />}
         aktion={
-          <Segmented<"alle" | "anmeldungen">
+          <Segmented<ProtokollFilter>
             size="sm"
+            wrap
             value={filter}
             onChange={setFilter}
             options={[
               { value: "alle", label: "Alle" },
               { value: "anmeldungen", label: "Anmeldungen", icon: <KeyRound className="size-3.5" /> },
+              { value: "anbieter", label: "Anbieter", icon: <Building2 className="size-3.5" /> },
             ]}
           />
         }
       >
         <ul className="divide-y divide-[var(--line)] overflow-hidden rounded-[16px] border border-[var(--line)]">
-          {protokoll.length === 0 && <li className="px-3.5 py-6 text-center text-[13px] text-fg-3">{filter === "anmeldungen" ? "Noch keine Anmeldeereignisse." : "Noch keine Einträge."}</li>}
-          {protokoll.map((a, i) => {
-            // Vorgänge durch AnwaltApex bzw. das System (z. B. Zugang angelegt, Startpasswort vergeben): `userId` nennt die
-            // betroffene Person – ausgelöst hat sie AnwaltApex, nicht die Person selbst.
-            const u = a.akteur !== "system" && a.userId ? namen.get(a.userId) : undefined;
-            const anmeldung = a.kategorie === "anmeldung";
-            const wer = a.beispiel && !u ? "Beispielperson" : (u?.name ?? (anmeldung && a.akteur === "system" ? "Anmeldeversuch bzw. Sperre (automatisch)" : a.akteur === "system" ? "AnwaltApex (System)" : "Unbekannte Person"));
-            return (
-              <motion.li key={a.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }} className={cn("flex items-center gap-3 px-3.5 py-2.5", a.beispiel && "bg-[var(--ink-softer)]")}>
-                {u ? (
-                  <Avatar initialen={u.initialen} farbe={u.farbe} size={26} />
-                ) : (
-                  <span className="grid size-[26px] shrink-0 place-items-center rounded-full bg-ink-soft text-ink">
-                    <ShieldCheck className="size-3.5" />
-                  </span>
-                )}
-                <span className="min-w-0 flex-1">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="min-w-0 truncate text-[13px]">{a.text}</span>
-                    {a.beispiel && (
-                      <Chip tone="amber" className="shrink-0">
-                        Beispiel
-                      </Chip>
-                    )}
-                  </span>
-                  <span className="block text-[12.5px] text-fg-3">
-                    {wer} · <time dateTime={a.zeit}>{fmtDate(a.zeit.slice(0, 10))}, {fmtTime(a.zeit)} Uhr</time> ({relTime(a.zeit)})
-                    {a.beispiel && " · Beispieldaten – nicht von Ihnen ausgelöst"}
-                  </span>
-                </span>
-              </motion.li>
-            );
-          })}
+          {protokoll.length === 0 && (
+            <li className="px-3.5 py-6 text-center text-[13px] text-fg-3">
+              {filter === "anmeldungen" ? "Noch keine Anmeldeereignisse." : filter === "anbieter" ? "Noch keine Eingriffe von AnwaltApex." : "Noch keine Einträge."}
+            </li>
+          )}
+          {protokoll.map((a, i) => (
+            <ProtokollZeile key={a.id} a={a} i={i} namen={namen} />
+          ))}
         </ul>
         <p className="mt-2 text-[12.5px] text-fg-3">
           Auszug der letzten Einträge. Eingriffe von AnwaltApex (z. B. ein neues Startpasswort über die Apex Console) stehen hier ebenfalls. KI-Anfragen werden ohne Inhalte protokolliert, Fehlversuche ohne das eingegebene Passwort. Nach 3 Fehlversuchen für dasselbe Konto innerhalb von 15 Minuten erhalten Partner und Administration einen Hinweis.
@@ -310,6 +296,80 @@ export function DatenschutzTab() {
       )}
       <DateiDialog datei={muster} onClose={() => setMuster(null)} />
     </div>
+  );
+}
+
+type ProtokollFilter = "alle" | "anmeldungen" | "anbieter";
+
+/**
+ * Eintrag im Kanzleiprotokoll (I4-T16-01): Text umbricht statt gekürzt zu werden; über drei Zeilen „Mehr anzeigen“.
+ * Urheber: Person der Kanzlei, „AnwaltApex – … (Apex Console)“ bei Anbieter-Eingriffen, „Anmeldeversuch bzw. Sperre (automatisch)“
+ * nur bei echten automatischen Anmeldeereignissen (Fehlversuch, Sperre, Warnung).
+ */
+function ProtokollZeile({ a, i, namen }: { a: Aktivitaet; i: number; namen: Map<string, User> }) {
+  // Vorgänge durch AnwaltApex bzw. das System (z. B. Zugang angelegt, Startpasswort vergeben): `userId` nennt die
+  // betroffene Person – ausgelöst hat sie AnwaltApex, nicht die Person selbst.
+  const u = a.akteur !== "system" && a.userId ? namen.get(a.userId) : undefined;
+  const anbieter = a.akteur === "system" ? anbieterUrheber(a) : undefined;
+  const anmeldung = a.kategorie === "anmeldung";
+  const wer =
+    a.beispiel && !u
+      ? "Beispielperson"
+      : (u?.name ?? anbieter ?? (anmeldung && a.akteur === "system" ? "Anmeldeversuch bzw. Sperre (automatisch)" : a.akteur === "system" ? "AnwaltApex (System)" : "Unbekannte Person"));
+  const textRef = useRef<HTMLSpanElement>(null);
+  const [lang, setLang] = useState(false);
+  const [offen, setOffen] = useState(false);
+  const textId = useId();
+  // Mehr als drei Zeilen? Messen am gekürzten Text (scrollHeight > clientHeight) – auch nach Größenänderung
+  useLayoutEffect(() => {
+    const el = textRef.current;
+    if (!el) return;
+    const pruefe = () => {
+      if (offen) return;
+      setLang(el.scrollHeight > el.clientHeight + 1);
+    };
+    pruefe();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(pruefe) : null;
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, [a.text, offen]);
+  return (
+    <motion.li initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }} className={cn("flex items-start gap-3 px-3.5 py-2.5", a.beispiel && "bg-[var(--ink-softer)]")}>
+      {u ? (
+        <Avatar initialen={u.initialen} farbe={u.farbe} size={26} />
+      ) : (
+        <span className={cn("grid size-[26px] shrink-0 place-items-center rounded-full", anbieter ? "bg-violet-soft text-violet" : "bg-ink-soft text-ink")} aria-hidden>
+          {anbieter ? <Building2 className="size-3.5" /> : <ShieldCheck className="size-3.5" />}
+        </span>
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 flex-wrap items-start gap-x-2 gap-y-1">
+          <span id={textId} ref={textRef} className={cn("min-w-0 flex-1 basis-[200px] break-words text-[13px] leading-snug [overflow-wrap:anywhere]", !offen && "line-clamp-3")}>
+            {a.text}
+          </span>
+          {a.beispiel && (
+            <Chip tone="amber" className="shrink-0">
+              Beispiel
+            </Chip>
+          )}
+        </span>
+        {(lang || offen) && (
+          <button
+            type="button"
+            className="mt-0.5 inline-flex min-h-6 items-center text-[12.5px] font-semibold text-ink underline decoration-[var(--ink-soft)] underline-offset-2 hover:decoration-ink"
+            aria-expanded={offen}
+            aria-controls={textId}
+            onClick={() => setOffen((x) => !x)}
+          >
+            {offen ? "Weniger anzeigen" : "Mehr anzeigen"}
+          </button>
+        )}
+        <span className="block text-[12.5px] text-fg-3">
+          {anbieter ? <span className="font-medium text-fg-2">{wer}</span> : wer} · <time dateTime={a.zeit}>{fmtDate(a.zeit.slice(0, 10))}, {fmtTime(a.zeit)} Uhr</time> ({relTime(a.zeit)})
+          {a.beispiel && " · Beispieldaten – nicht von Ihnen ausgelöst"}
+        </span>
+      </span>
+    </motion.li>
   );
 }
 

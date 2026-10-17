@@ -21,9 +21,9 @@ import { FristAnlegen } from "./FristAnlegen";
 import { EmailComposer } from "./EmailComposer";
 import { beruehreAkte, listenKontext } from "./helfer";
 import { DiktatKnopf } from "./Diktat";
+import { merkeAkteGeoeffnet } from "./AktenSuchauswahl";
 import { darfAbrechnung } from "@/lib/backend";
 import { useMedia } from "@/lib/useMedia";
-import { cn } from "@/lib/cn";
 
 const TABS = ["uebersicht", "dokumente", "fristen", "beteiligte", "aktenkonto", "verlauf", "ki"] as const;
 type TabKey = (typeof TABS)[number];
@@ -47,6 +47,10 @@ export default function AkteDetail() {
   const tabsRef = useRef<HTMLDivElement>(null);
   // Aktenkonto ist für Auszubildende ausgeblendet (Rechte laut Rolle)
   const ohneAktenkonto = !darfAbrechnung(user.rolle);
+  // „Zuletzt geöffnet“ für die Aktenwahl mit Suche (Posteingang u. a., I4-T02-01)
+  useEffect(() => {
+    if (akte?.id) merkeAkteGeoeffnet(user.id, akte.id);
+  }, [akte?.id, user.id]);
   // Kompakter Kurzkopf, sobald der Aktenkopf aus dem Bild gescrollt ist
   const kopfRef = useRef<HTMLDivElement>(null);
   const [kompakt, setKompakt] = useState(false);
@@ -238,22 +242,7 @@ export default function AkteDetail() {
       <FristAnlegen akte={akte} open={!!fristOffen} startModus={fristOffen || "regel"} onClose={() => setFristOffen(false)} />
       <NotizDialog akte={akte} open={notizOffen} onClose={() => setNotizOffen(false)} />
 
-      {/* Mobil: feste Aktionsleiste über der Tab-Leiste, rechts mit Abstand zur Assistent-Kugel. Im Reiter „Dokumente“
-          ausgeblendet – dort liegt nichts Bedienbares darunter, die Mehrfachauswahl nutzt den Platz (I3-T05-01);
-          Notiz, Frist und Wiedervorlage bleiben über den Aktenkopf („Frist“ bzw. „⋯“) erreichbar. */}
-      <div className={cn("fixed bottom-[calc(88px+env(safe-area-inset-bottom))] left-3 right-[84px] z-30 md:hidden", tab === "dokumente" && "hidden")}>
-        <div className="glass-strong tabbar-deckend flex items-center gap-1 rounded-full p-1" style={{ boxShadow: "var(--glass-shadow)" }} role="toolbar" aria-label="Schnellaktionen der Akte">
-          <button type="button" onClick={() => setNotizOffen(true)} className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-full text-[13px] font-medium text-fg-2 hover:bg-ink-softer">
-            <StickyNote className="size-4" /> Notiz
-          </button>
-          <button type="button" onClick={() => setFristOffen("regel")} className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-full text-[13px] font-medium text-fg-2 hover:bg-ink-softer">
-            <CalendarPlus className="size-4" /> Frist
-          </button>
-          <button type="button" onClick={() => setFristOffen("frei")} className="flex min-h-11 flex-[1.4] items-center justify-center gap-1.5 rounded-full text-[13px] font-medium text-fg-2 hover:bg-ink-softer">
-            <CalendarClock className="size-4" /> Wiedervorlage
-          </button>
-        </div>
-      </div>
+      {/* Mobil: Notiz, Frist und Wiedervorlage liegen im Aktenkopf (44 px) – keine schwebende Leiste mehr über dem Inhalt (I4-T14-01) */}
       <EmailComposer akte={akte} open={emailOffen} onClose={() => setEmailOffen(false)} onGesendet={(dokId) => setTab("dokumente", { dok: dokId })} />
     </div>
   );

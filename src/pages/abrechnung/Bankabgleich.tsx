@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { AlertTriangle, ArrowRight, Building2, Check, CheckCircle2, ChevronDown, Clock, FilePenLine, HandCoins, Landmark, Link2, Send, ShieldCheck, Sparkles, Unlink, Upload, Wallet, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, Building2, Check, CheckCircle2, ChevronDown, Clock, FilePenLine, HandCoins, Landmark, Link2, Send, ShieldCheck, Sparkles, Unlink, Upload, Vault, Wallet, X } from "lucide-react";
 import { AnimatedNumber, Button, Card, Chip, ProgressRing, Segmented, Select, confirmDialog } from "@/components/ui";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
@@ -17,6 +17,10 @@ import {
   AUTO_SCHWELLE,
   bucheTreffer,
   buchungsartVorschlag,
+  fremdgeldMeldung,
+  KONTO_NAME,
+  kontoVon,
+  type KontoArt,
   gleicheAb,
   lehneVorschlagAb,
   loeseZuordnung,
@@ -49,7 +53,7 @@ interface LaufStand {
   fremd: number;
   keine: number;
   gespart: number;
-  /** false = Anzeige wurde unterbrochen (Seitenwechsel, Neuladen) – die Buchungen sind trotzdem vollständig */
+  /** false = Seite während des Laufs verlassen (Seitenwechsel, Neuladen) – die Buchungen sind trotzdem vollständig */
   angezeigt: boolean;
 }
 const laufKey = (tenantId: string) => `apex.bankabgleich.lauf.${tenantId}`;
@@ -200,6 +204,9 @@ export function BankabgleichTab() {
   const { user, tenant } = useKanzlei();
   const nav = useNavigate();
   const [ansicht, setAnsicht] = useState<"offen" | "gebucht">("offen");
+  // Filter „Konto: Alle · Geschäftskonto · Anderkonto“ (I4-T08-01)
+  const [kontoFilter, setKontoFilter] = useState<"alle" | KontoArt>("alle");
+  const kontoPasst = (t: Transaktion) => kontoFilter === "alle" || kontoVon(t) === kontoFilter;
   const [gespartLauf, setGespartLauf] = useState(0);
   const [phase, setPhase] = useState<"bereit" | "laeuft" | "fertig">("bereit");
   const [reihenfolge, setReihenfolge] = useState<string[]>([]);
@@ -355,7 +362,8 @@ export function BankabgleichTab() {
     if (e.art === "fremdgeld") {
       const a = e.akteId ? akten.get(e.akteId) : undefined;
       toast("Als Fremdgeld gebucht", {
-        text: `${fmtEUR(t.betrag)} auf dem Anderkonto${a ? ` · ${a.aktenzeichen}` : ""} – bitte unverzüglich weiterleiten (§ 43a Abs. 7 BRAO)`,
+        // Text nach dem tatsächlichen Konto des Umsatzes (I4-T08-01)
+        text: fremdgeldMeldung(t.betrag, kontoVon(t), a?.aktenzeichen),
         ton: "warnung",
         aktion: { label: "Fremdgeld-Wächter", onClick: zumWaechter },
       });
@@ -440,7 +448,7 @@ export function BankabgleichTab() {
       bucheTreffer(t, tr, "manuell", user.id);
       setErgebnisse((e) => ({ ...e, [t.id]: { ...tr, zustand: "bestaetigt" } }));
       if (art === "vorschuss") toast(`Als ${AKTEN_BUCHUNGSART_KURZ.vorschuss} gebucht`, { text: `${fmtEUR(t.betrag)} · ${a.aktenzeichen} – Guthaben im Aktenkonto, kein Fremdgeld`, ton: "erfolg" });
-      else toast("Als Fremdgeld gebucht", { text: `${fmtEUR(t.betrag)} · ${a.aktenzeichen} – bitte unverzüglich weiterleiten (§ 43a Abs. 7 BRAO)`, ton: "warnung", aktion: { label: "Fremdgeld-Wächter", onClick: zumWaechter } });
+      else toast("Als Fremdgeld gebucht", { text: fremdgeldMeldung(t.betrag, kontoVon(t), a.aktenzeichen), ton: "warnung", aktion: { label: "Fremdgeld-Wächter", onClick: zumWaechter } });
       return;
     }
     if (wahl === "kosten") {
@@ -840,9 +848,12 @@ export function BankabgleichTab() {
         <div className="break-words text-[13.5px] font-medium">{t.gegenpartei}</div>
         <div className="mono break-words text-[12px] text-fg-3">{t.verwendungszweck}</div>
       </div>
-      <div className={cn("num shrink-0 text-right text-[14px] font-semibold", t.betrag > 0 ? "text-green" : "text-fg-2")}>
-        {t.betrag > 0 ? "+" : "−"}
-        {fmtEUR(Math.abs(t.betrag))}
+      <div className="flex shrink-0 flex-col items-end gap-1">
+        <div className={cn("num text-right text-[14px] font-semibold", t.betrag > 0 ? "text-green" : "text-fg-2")}>
+          {t.betrag > 0 ? "+" : "−"}
+          {fmtEUR(Math.abs(t.betrag))}
+        </div>
+        <KontoChip konto={kontoVon(t)} />
       </div>
     </div>
   );
@@ -896,9 +907,8 @@ export function BankabgleichTab() {
                 </strong>{" "}
                 {letzterLauf.gebucht} gebucht · {plural(letzterLauf.vorschlaege, "Vorschlag", "Vorschläge")} · {letzterLauf.kosten} Kanzleikosten
                 {letzterLauf.fremd ? ` · ${letzterLauf.fremd} Fremdgeld` : ""}.{" "}
-                {letzterLauf.angezeigt
-                  ? "Offene Vorschläge stehen unten bis zu Ihrer Entscheidung."
-                  : "Die Anzeige wurde unterbrochen – Buchungen und Vorschläge sind trotzdem vollständig gespeichert."}
+                {/* Nur wenn die Seite während des Laufs wirklich verlassen wurde – neutral, kein „unterbrochen“ (I4-T08-02) */}
+                {letzterLauf.angezeigt ? "Offene Vorschläge stehen unten bis zu Ihrer Entscheidung." : "Sie haben die Seite während des Abgleichs verlassen – alle Buchungen und Vorschläge sind gespeichert."}
                 {letzterLauf.gespart > 0 && (
                   <span className="mt-1 block">
                     <GespartSchaetzung minuten={letzterLauf.gespart} />
@@ -952,13 +962,14 @@ export function BankabgleichTab() {
                     { value: "gebucht", label: "Gebucht", count: gebuchtListe.length },
                   ]}
                 />
+                <KontoFilter value={kontoFilter} onChange={setKontoFilter} umsaetze={gebuchtListe} />
                 <div className="text-[12.5px] text-fg-3">Gebuchte Umsätze mit Grund, Art, wer und wann – jede Zuordnung lässt sich lösen</div>
               </div>
               {gebuchtListe.length === 0 ? (
                 <p className="px-4 py-10 text-center text-[13px] text-fg-3">Noch keine zugeordneten Umsätze.</p>
               ) : (
                 <ul className="grid grid-cols-1 gap-2 p-3">
-                  {gebuchtListe.map((t) => (
+                  {gebuchtListe.filter(kontoPasst).map((t) => (
                     <li key={t.id} className="grid items-stretch gap-1 2xl:grid-cols-[minmax(0,1.1fr)_64px_minmax(0,1fr)] 2xl:gap-0">
                       {umsatzKarte(t, false)}
                       <Verbinder ton={t.status === "ignoriert" ? "neutral" : "green"} sichtbar scannt={false} />
@@ -980,6 +991,7 @@ export function BankabgleichTab() {
                     { value: "gebucht", label: "Gebucht", count: gebuchtListe.length },
                   ]}
                 />
+              <KontoFilter value={kontoFilter} onChange={setKontoFilter} umsaetze={liste.map((id) => tById.get(id)).filter((t): t is Transaktion => !!t)} />
               <div className="text-[12.5px] text-fg-3">{phase === "bereit" ? "Offene Kontoumsätze" : "Ergebnis des Abgleichs"}<span className="hidden md:inline"> · Umsatz → zugeordnete Rechnung</span></div>
             </div>
             {liste.length === 0 ? (
@@ -994,7 +1006,7 @@ export function BankabgleichTab() {
               <ul className="grid grid-cols-1 gap-2 p-3">
                 {liste.map((id, idx) => {
                   const t = tById.get(id);
-                  if (!t) return null;
+                  if (!t || !kontoPasst(t)) return null;
                   const e = ergebnisVon(t);
                   const scannt = phase === "laeuft" && idx === aktuell;
                   return (
@@ -1093,5 +1105,40 @@ export function BankabgleichTab() {
         </div>
       </div>
     </>
+  );
+}
+
+/** Konto des Umsatzes als Text und Symbol – nicht nur Farbe (I4-T08-01). */
+function KontoChip({ konto }: { konto: KontoArt }) {
+  return konto === "ander" ? (
+    <Chip tone="violet" icon={<Vault className="size-3" aria-hidden />} title="Anderkonto (Treuhand) – Fremdgeld nach § 43a Abs. 7 BRAO, § 4 BORA">
+      {KONTO_NAME.ander}
+    </Chip>
+  ) : (
+    <Chip tone="neutral" icon={<Building2 className="size-3" aria-hidden />} title="Geschäftskonto der Kanzlei">
+      {KONTO_NAME.geschaeft}
+    </Chip>
+  );
+}
+
+/** Filter „Konto: Alle · Geschäftskonto · Anderkonto“ mit Anzahl je Konto. */
+function KontoFilter({ value, onChange, umsaetze }: { value: "alle" | KontoArt; onChange: (v: "alle" | KontoArt) => void; umsaetze: Transaktion[] }) {
+  const ander = umsaetze.filter((t) => kontoVon(t) === "ander").length;
+  return (
+    <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Konto-Filter">
+      <span className="text-[12.5px] font-medium text-fg-3" aria-hidden>
+        Konto:
+      </span>
+      <Segmented
+        size="sm"
+        value={value}
+        onChange={onChange}
+        options={[
+          { value: "alle", label: "Alle", count: umsaetze.length },
+          { value: "geschaeft", label: KONTO_NAME.geschaeft, count: umsaetze.length - ander },
+          { value: "ander", label: KONTO_NAME.ander, count: ander },
+        ]}
+      />
+    </div>
   );
 }

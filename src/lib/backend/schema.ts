@@ -27,7 +27,8 @@ const OPTIONAL: Partial<Record<CollectionKey, [string, Art | readonly string[]][
   akten: [["abschlussdatumUnbekannt", "wahr"]],
   dokumente: [["status", ["entwurf", "freigegeben", "versandt"]], ["portal", "objekt"]],
   fristen: [["erledigtNachweis", "objekt"], ["korrekturAngefordert", "objekt"], ["korrekturen", "liste"], ["gerichtsort", "objekt"]],
-  transaktionen: [["vorschlag", "objekt"], ["abgelehnt", "liste"], ["zuordnung", "objekt"]],
+  transaktionen: [["vorschlag", "objekt"], ["abgelehnt", "liste"], ["zuordnung", "objekt"], ["konto", ["geschaeft", "ander"]]],
+  aktivitaeten: [["quelle", ["anbieter"]], ["anbieterPerson", "text"]],
   automationen: [["pausiertAm", "zeit"], ["pausiertVon", "text"]],
   umzugLaeufe: [["abgebrochen", "wahr"]],
 };
@@ -92,6 +93,7 @@ export function pruefeDokument(col: CollectionKey, doc: unknown): string | null 
     const z = d.zuordnung as Record<string, unknown>;
     if (z.art !== undefined && (typeof z.art !== "string" || !ZUORDNUNG_ARTEN.includes(z.art))) return "Feld „zuordnung.art“ hat einen unbekannten Wert.";
   }
+  if (col === "aktivitaeten" && typeof d.anbieterPerson === "string" && d.anbieterPerson.length > 200) return "Feld „anbieterPerson“ ist zu lang.";
   if (col === "dokumente" && d.portal) {
     const p = d.portal as Record<string, unknown>;
     if (!passt(p.am, "zeit") || typeof p.vonId !== "string") return "Feld „portal“ braucht Zeitpunkt (am) und Person (vonId).";

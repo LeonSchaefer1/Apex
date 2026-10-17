@@ -118,6 +118,50 @@ export interface RechercheTreffer {
   relevanz: number; // 0..100
   begruendung: string;
   gemeinsam: string[];
+  /** Schwacher Treffer (I4-T06-03): passt nur über ein allgemeines Merkmal bzw. liegt unter der Schwelle – ohne Prozentangabe zeigen */
+  schwach?: { grund: string };
+}
+
+/** Unter dieser Relevanz gilt ein Treffer als schwach. */
+export const SCHWACH_SCHWELLE = 70;
+
+const gross = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/**
+ * Allgemeines Merkmal: Stichwort, das in vielen Entscheidungen vorkommt („Kündigung“, „Unfall“) – trägt allein keinen Treffer.
+ * Seltene Stichworte („Bagatelle“, „Dashcam“) sind spezifisch.
+ */
+const ALLGEMEIN_AB = 2;
+const stichwortHaeufigkeit = new Map<string, number>();
+export function istAllgemeinesMerkmal(kw: string): boolean {
+  const key = kw.toLowerCase();
+  let n = stichwortHaeufigkeit.get(key);
+  if (n === undefined) {
+    const kt = tokenize(kw);
+    n = kt.length ? ENTSCHEIDUNGEN.filter((e) => e.schlagworte.some((s) => { const st = tokenize(s); return kt.every((t) => st.includes(t)); })).length : 0;
+    stichwortHaeufigkeit.set(key, n);
+  }
+  return n >= ALLGEMEIN_AB;
+}
+
+/**
+ * Schwache Treffer kennzeichnen und unter die starken sortieren (I4-T06-03): nur ein gemeinsames, allgemeines Stichwort ohne
+ * Norm-Bezug („schwacher Treffer – nur Stichwort ‚Kündigung‘“), gar kein Stichwort, oder (Live-KI) Relevanz unter SCHWACH_SCHWELLE.
+ */
+export function ordneNachStaerke(treffer: (RechercheTreffer & { norm?: boolean })[], opts: { nurSchwelle?: boolean } = {}): RechercheTreffer[] {
+  const out = treffer.map(({ norm, ...t }) => {
+    const nurStichwort = !opts.nurSchwelle && !norm && (t.gemeinsam.length === 0 || (t.gemeinsam.length === 1 && istAllgemeinesMerkmal(t.gemeinsam[0])));
+    const schwach = nurStichwort || (opts.nurSchwelle === true && t.relevanz < SCHWACH_SCHWELLE);
+    if (!schwach) return t;
+    const grund =
+      nurStichwort && t.gemeinsam.length === 1
+        ? `schwacher Treffer – nur Stichwort ‚${gross(t.gemeinsam[0])}‘`
+        : nurStichwort
+          ? "schwacher Treffer – nur inhaltliche Nähe zum Leitsatz"
+          : `schwacher Treffer – Relevanz unter ${SCHWACH_SCHWELLE} %`;
+    return { ...t, schwach: { grund } };
+  });
+  return [...out.filter((t) => !t.schwach), ...out.filter((t) => t.schwach)];
 }
 
 export interface RechercheErgebnis {
@@ -128,22 +172,30 @@ export interface RechercheErgebnis {
   dauerMs: number;
 }
 
+/**
+ * Wort des Sachverhalts (x) passt zum Stichwort-Wort (t): gleich, länger („Kündigungsschutzklage“ → „Kündigung“) oder nur um eine
+ * Endung kürzer. Kurze Wörter wie „über“ treffen damit nicht mehr „Überwachung“ oder „Überstunden“ (I4-T06-03).
+ */
+const wortPasst = (x: string, t: string) => x === t || x.startsWith(t) || (x.length >= 5 && t.startsWith(x) && t.length - x.length <= 3);
+
 function kennzeichen(text: string) {
   const toks = new Set(tokenize(text));
   const passt = (kw: string) => {
     const kt = tokenize(kw);
-    return kt.length > 0 && kt.every((t) => [...toks].some((x) => x === t || x.startsWith(t) || t.startsWith(x)));
+    return kt.length > 0 && kt.every((t) => [...toks].some((x) => wortPasst(x, t)));
   };
-  return { toks, passt };
+  /** wie overlapScore, aber mit der strengeren Wortprüfung: mehrteilige Stichworte zählen doppelt */
+  const ueberlappung = (keywords: string[]) => keywords.reduce((s, kw) => s + (passt(kw) ? (tokenize(kw).length > 1 ? 2 : 1) : 0), 0);
+  return { toks, passt, ueberlappung };
 }
 
 /** Offline-Recherche: Schlagwort-Überlappung, Leitsatz-Wortschatz und Normen – nachvollziehbar und ohne Netz. */
 export function offlineRecherche(sachverhalt: string, n = 4): RechercheTreffer[] {
-  const { toks, passt } = kennzeichen(sachverhalt);
+  const { toks, passt, ueberlappung } = kennzeichen(sachverhalt);
   const normText = sachverhalt.toLowerCase();
   const roh = ENTSCHEIDUNGEN.map((e) => {
     const gemeinsam = e.schlagworte.filter(passt);
-    let score = overlapScore(sachverhalt, e.schlagworte) * 3;
+    let score = ueberlappung(e.schlagworte) * 3;
     const lt = new Set(tokenize(`${e.titel} ${e.leitsatz}`));
     for (const t of lt) if (t.length > 3 && toks.has(t)) score += 0.6;
     let norm = false;
@@ -164,12 +216,15 @@ export function offlineRecherche(sachverhalt: string, n = 4): RechercheTreffer[]
     .sort((a, b) => b.score - a.score)
     .slice(0, n);
   const max = auswahl[0]?.score ?? 1;
-  return auswahl.map(({ e, score, gemeinsam }) => ({
-    entscheidung: e,
-    relevanz: Math.round(Math.min(97, 52 + (score / max) * 44)),
-    gemeinsam,
-    begruendung: offlineBegruendung(e, gemeinsam),
-  }));
+  return ordneNachStaerke(
+    auswahl.map(({ e, score, gemeinsam, norm }) => ({
+      entscheidung: e,
+      relevanz: Math.round(Math.min(97, 52 + (score / max) * 44)),
+      gemeinsam,
+      norm,
+      begruendung: offlineBegruendung(e, gemeinsam),
+    })),
+  );
 }
 
 function offlineBegruendung(e: Entscheidung, gemeinsam: string[]): string {
@@ -232,7 +287,7 @@ export async function kiRecherche(sachverhalt: string, opts: { live: boolean; si
     if (!treffer.length) {
       return { treffer: offline(), quelle: "offline", hinweis: `Die Live-KI hat keine Entscheidung aus der Datenbank ausgewählt – angezeigt wird die Recherche der ${DEMO_KI_NAME}.`, dauerMs: performance.now() - t0 };
     }
-    return { treffer, quelle: "live", verworfen, dauerMs: performance.now() - t0 };
+    return { treffer: ordneNachStaerke(treffer, { nurSchwelle: true }), quelle: "live", verworfen, dauerMs: performance.now() - t0 };
   } catch (e) {
     if (opts.signal?.aborted) throw e;
     // KeineAntwort ist eine Unterart von DemoModus – dann trotzdem sagen, warum die Demo-KI antwortet

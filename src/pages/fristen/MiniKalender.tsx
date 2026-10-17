@@ -69,16 +69,44 @@ function Monat({ monat, marken, land, index }: { monat: string; marken: Kalender
   );
 }
 
+/** Monatsabstand zweier Monate „JJJJ-MM“. */
+const monatsIndex = (mo: string) => Number(mo.slice(0, 4)) * 12 + Number(mo.slice(5, 7)) - 1;
+
+/**
+ * Welche Monate zeigt der Kalender? Alle Monate mit einer Markierung (Ereignis, Vorfrist, rechnerisches Ende, Fristende) –
+ * höchstens drei; bei mehr nur Ereignis-, Rechen- und Endmonat. Lücken zwischen nicht benachbarten Monaten als „…“ (I4-T18-02).
+ */
+export function kalenderMonate(marken: KalenderMarken): (string | "…")[] {
+  const alle = [marken.ereignis, marken.vorfrist, marken.roh, marken.ende].filter((d): d is string => !!d && /^\d{4}-\d{2}/.test(d)).map((d) => d.slice(0, 7));
+  let monate = [...new Set(alle)].sort();
+  if (monate.length > 3) monate = [...new Set([marken.ereignis, marken.roh, marken.ende].map((d) => d.slice(0, 7)))].sort();
+  const out: (string | "…")[] = [];
+  monate.forEach((mo, i) => {
+    if (i > 0 && monatsIndex(mo) - monatsIndex(monate[i - 1]) > 1) out.push("…");
+    out.push(mo);
+  });
+  return out;
+}
+
 /** Mini-Kalender: Ereignistag, rechnerisches Ende, Verschiebung (§ 222 Abs. 2 ZPO) und Fristende. */
 export function MiniKalender({ marken, land }: { marken: KalenderMarken; land: Bundesland }) {
-  const monate = Array.from(new Set([marken.ereignis.slice(0, 7), marken.ende.slice(0, 7)]));
+  const monate = kalenderMonate(marken);
   const verschoben = marken.roh !== marken.ende;
+  let nr = 0;
   return (
     <div>
-      <div className={cn("grid gap-5", monate.length > 1 && "sm:grid-cols-2")}>
-        {monate.map((mo, i) => (
-          <Monat key={`${mo}-${marken.ereignis}-${marken.ende}`} monat={mo} marken={marken} land={land} index={i} />
-        ))}
+      <div className="flex flex-wrap items-start gap-x-5 gap-y-4">
+        {monate.map((mo, i) =>
+          mo === "…" ? (
+            <div key={`luecke-${i}`} className="self-center px-0.5 text-[15px] font-semibold text-fg-3" role="img" aria-label="Monate dazwischen ausgelassen" title="Monate dazwischen ausgelassen">
+              …
+            </div>
+          ) : (
+            <div key={`${mo}-${marken.ereignis}-${marken.ende}`} className="min-w-[196px] flex-1 basis-[196px]">
+              <Monat monat={mo} marken={marken} land={land} index={nr++} />
+            </div>
+          ),
+        )}
       </div>
       <div className="mt-3 flex flex-wrap gap-x-3.5 gap-y-1.5 text-[12px] text-fg-3">
         <span className="inline-flex items-center gap-1.5">

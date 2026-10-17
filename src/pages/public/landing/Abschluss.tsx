@@ -144,7 +144,8 @@ export function Schluss() {
   const nav = useNavigate();
   return (
     <section id="kontakt" className="scroll-mt-20 px-4 pb-16 pt-4 sm:px-6 md:pb-24">
-      <Reveal className="relative mx-auto max-w-[1200px] overflow-hidden rounded-[34px] bg-[var(--fg)] px-6 py-12 text-[var(--bg)] sm:px-12 sm:py-16">
+      {/* Hell: invertierte Fläche; dunkel: erhöhte dunkle Fläche mit Akzentrand und Glühen in --ink statt einer großen hellen Fläche (I4-T00-02) */}
+      <Reveal className="schluss-karte relative mx-auto max-w-[1200px] overflow-hidden rounded-[34px] px-6 py-12 sm:px-12 sm:py-16">
         <div aria-hidden className="pointer-events-none absolute -right-24 -top-32 size-[420px] rounded-full opacity-50 blur-3xl" style={{ background: "radial-gradient(circle, var(--ink-bright), transparent 65%)" }} />
         <div aria-hidden className="pointer-events-none absolute -bottom-40 left-10 size-[360px] rounded-full opacity-25 blur-3xl" style={{ background: "radial-gradient(circle, var(--aura-3), transparent 65%)" }} />
         <div className="relative grid items-end gap-8 md:grid-cols-[minmax(0,1fr)_auto]">
@@ -157,13 +158,13 @@ export function Schluss() {
             <Button variant="primary" size="lg" iconRight={<ArrowRight className="size-4" />} onClick={() => nav("/login")}>
               Demo starten
             </Button>
-            <button type="button" onClick={() => useAnfrage.getState().oeffne("testzugang")} className="btn btn-lg bg-[color-mix(in_oklab,var(--bg)_14%,transparent)] text-[var(--bg)] hover:bg-[color-mix(in_oklab,var(--bg)_22%,transparent)]">
+            <button type="button" onClick={() => useAnfrage.getState().oeffne("testzugang")} className="btn btn-lg bg-[color-mix(in_oklab,var(--sk-fg)_14%,transparent)] text-[var(--sk-fg)] hover:bg-[color-mix(in_oklab,var(--sk-fg)_22%,transparent)]">
               Testzugang anfordern
             </button>
           </div>
         </div>
-        <div className="relative mt-10 rounded-[22px] bg-[color-mix(in_oklab,var(--bg)_10%,transparent)] p-4 sm:p-5">
-          <h3 className="mb-3 text-[13px] font-semibold uppercase tracking-[0.06em] text-[color-mix(in_oklab,var(--bg)_80%,transparent)]">Kontakt</h3>
+        <div className="relative mt-10 rounded-[22px] bg-[color-mix(in_oklab,var(--sk-fg)_10%,transparent)] p-4 sm:p-5">
+          <h3 className="mb-3 text-[13px] font-semibold uppercase tracking-[0.06em] text-[color-mix(in_oklab,var(--sk-fg)_80%,transparent)]">Kontakt</h3>
           <KontaktBlock hell />
         </div>
       </Reveal>

@@ -42,10 +42,10 @@ export function KontaktBlock({ className, hell }: { className?: string; hell?: b
     <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-2.5", className)}>
       <Avatar initialen={ap.initialen} size={40} />
       <div className="min-w-0 flex-1 basis-[200px]">
-        <div className={cn("text-[14.5px] font-semibold", hell && "text-[var(--bg)]")}>
+        <div className={cn("text-[14.5px] font-semibold", hell && "text-[var(--sk-fg,var(--bg))]")}>
           {ap.name}, {ap.rolle.replace(/^Ihre feste /, "Ihre ")}
         </div>
-        <div className={cn("mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]", hell ? "text-[color-mix(in_oklab,var(--bg)_82%,transparent)]" : "text-fg-2")}>
+        <div className={cn("mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]", hell ? "text-[color-mix(in_oklab,var(--sk-fg,var(--bg))_82%,transparent)]" : "text-fg-2")}>
           <a href={`tel:${ap.telefon.replace(/\s/g, "")}`} className="inline-flex items-center gap-1.5 font-medium underline-offset-2 hover:underline">
             <Phone className="size-3.5" /> {ap.telefon}
           </a>

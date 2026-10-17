@@ -133,3 +133,46 @@ export function snippet(text: string, query: string, radius = 90): string {
   }
   return (start > 0 ? "… " : "") + text.slice(start, end).trim() + (end < text.length ? " …" : "");
 }
+
+/** Treffer der Rechnungssuche (Strg+K): Rechnung bzw. Entwurf – oder ihre Stornorechnung (`storno`, über die Stornonummer gefunden). */
+export interface RechnungsTreffer<R> {
+  rechnung: R;
+  storno: boolean;
+  score: number;
+}
+
+/**
+ * Rechnungen und Entwürfe der Kanzlei durchsuchen (I4-T07-01): über Rechnungsnummer („RE-2026-0024“), Stornonummer, Entwurfskennung
+ * wie in der Liste („Entwurf-001“), Empfänger und Aktenzeichen bzw. Aktentitel. Eine Stornorechnung ist ein eigener Treffer, der zur
+ * stornierten Rechnung führt.
+ */
+export function sucheRechnungen<R extends { id: string; nummer: string; stornoNummer?: string; akteId: string; empfaengerId: string }>(
+  rechnungen: R[],
+  query: string,
+  namen: { akte: (id: string) => { aktenzeichen: string; titel: string } | undefined; empfaenger: (id: string) => string | undefined },
+  limit = 6,
+): RechnungsTreffer<R>[] {
+  type Z = { r: R; storno: boolean; nummer: string };
+  const zeilen: Z[] = [];
+  for (const r of rechnungen) {
+    zeilen.push({ r, storno: false, nummer: r.nummer });
+    if (r.stornoNummer) zeilen.push({ r, storno: true, nummer: r.stornoNummer });
+  }
+  const hits = search(zeilen, query, [
+    { get: (z) => z.nummer, weight: 5 },
+    { get: (z) => (z.storno ? "Storno Stornorechnung" : ""), weight: 2 },
+    { get: (z) => namen.akte(z.r.akteId)?.aktenzeichen, weight: 3 },
+    { get: (z) => namen.empfaenger(z.r.empfaengerId), weight: 2 },
+    { get: (z) => namen.akte(z.r.akteId)?.titel, weight: 1 },
+  ], zeilen.length);
+  // Je Rechnung nur der beste Treffer (Rechnung oder ihre Stornorechnung)
+  const gesehen = new Set<string>();
+  const out: RechnungsTreffer<R>[] = [];
+  for (const h of hits) {
+    if (gesehen.has(h.item.r.id)) continue;
+    gesehen.add(h.item.r.id);
+    out.push({ rechnung: h.item.r, storno: h.item.storno, score: h.score });
+    if (out.length >= limit) break;
+  }
+  return out;
+}

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { belegeIn, deckungsanfrageStatus, deckungsSatz, deckungsText, faktorenAus, OHNE_BELEG, STUFE_WORT, stufeAusProzent, stufeWort } from "./einschaetzung";
+import { belegeIn, deckungsanfrageStatus, deckungsSatz, deckungsText, faktorenAus, OHNE_BELEG, RANG_HINWEIS, STUFE_WORT, stufeAusProzent, stufeWort } from "./einschaetzung";
 import type { Aktivitaet } from "./types";
 
 test("Stufen-Wörter statt Prozent als Hauptanzeige", () => {
@@ -31,7 +31,10 @@ test("Belege: Entscheidung, Norm und Aktendokument werden erkannt – sonst ohne
   // Allgemeine Wörter („Schreiben“, „Gegenseite“) sind kein Beleg
   assert.equal(belegeIn("Das Schreiben der Gegenseite ist knapp.", k).length, 0);
   const f = faktorenAus(["A (BAG 2 AZR 541/09)", "B", "C"], ["D nach § 307 BGB"], k);
-  assert.deepEqual(f.map((x) => [x.richtung, x.gewicht, x.quellen.length]), [["pro", "stark", 1], ["pro", "mittel", 0], ["pro", "gering", 0], ["contra", "stark", 1]]);
+  // I4-T06-02: „Rang“ (Reihenfolge der Begründung je Seite) statt Gewicht stark/mittel/gering
+  assert.deepEqual(f.map((x) => [x.richtung, x.rang, x.quellen.length]), [["pro", 1, 1], ["pro", 2, 0], ["pro", 3, 0], ["contra", 1, 1]]);
+  assert.ok(f.every((x) => !("gewicht" in x)), "kein Feld „gewicht“ mehr");
+  assert.match(RANG_HINWEIS, /keine Gewichtung/);
 });
 
 test("Deckungsanfrage: Vorlage des Motors ist ein Entwurf, erst die Freigabe einer Person ein Versand", () => {

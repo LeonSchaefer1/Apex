@@ -15,7 +15,7 @@ import { geaenderteRechnungsangaben, normalisiereRechnungsangaben, pruefeRechnun
 import { istFristAutomatik } from "@/core/automationen";
 import { darfAutomatikSchalten } from "@/lib/rollen";
 import { sicheresPasswort, zufallsKennung, zufallsZahl } from "./zufall";
-import { ANMELDE_WARN_SCHWELLE, VORGANG, anmeldeVorgang, letzteEchteAktivitaet, mischeVorgaenge, pruefeConsolePasswortAnlass, vorgang, zaehleFehlversuch, zeitBerlin, type FehlGrund } from "./protokoll";
+import { ANMELDE_WARN_SCHWELLE, VORGANG, anbieterVorgang, anmeldeVorgang, letzteEchteAktivitaet, mischeVorgaenge, pruefeConsolePasswortAnlass, vorgang, zaehleFehlversuch, zeitBerlin, type FehlGrund } from "./protokoll";
 import { festeAnsprechBezeichnung, rollenLabel } from "@/lib/rollen";
 
 const LS_SESSION = "aa:session";
@@ -675,7 +675,7 @@ export function createDemoBackend(): Backend {
         const geaendert = geaenderteRechnungsangaben(t.tenant, neu);
         const o = lsGet<Record<string, Partial<Record<keyof Tenant, unknown>>>>(LS_OVERRIDES) ?? {};
         // leere Angaben entfernen (null löscht das Feld beim Einlesen)
-        o[t.tenant.id] = { ...(o[t.tenant.id] ?? {}), steuernummer: neu.steuernummer ?? null, ustIdNr: neu.ustIdNr ?? null, geschaeftskonto: neu.geschaeftskonto ?? null };
+        o[t.tenant.id] = { ...(o[t.tenant.id] ?? {}), steuernummer: neu.steuernummer ?? null, ustIdNr: neu.ustIdNr ?? null, geschaeftskonto: neu.geschaeftskonto ?? null, anderkonto: neu.anderkonto ?? null };
         lsSet(LS_OVERRIDES, o);
         if (geaendert.length) protokolliere(t.tenant.id, vorgang(VORGANG.rechnungsangabenGeaendert(geaendert, u.name), { akteur: "nutzer", userId: u.id }));
         return findTenant(t.tenant.id)?.tenant ?? { ...t.tenant, ...neu };
@@ -855,8 +855,9 @@ export function createDemoBackend(): Backend {
         lsSet(LS_REGISTRY, extra);
         // Startpasswort: Bei der ersten Anmeldung legt die Kanzlei ein eigenes Passwort fest (wie im Server-Betrieb).
         setzePasswortWechsel(admin.id, true);
-        protokolliere(tenant.id, vorgang(VORGANG.zugangAngelegt(admin.name, rollenLabel(admin)), { akteur: "system", userId: admin.id }));
-        protokolliere(tenant.id, vorgang(VORGANG.startpasswortVergeben(admin.name), { akteur: "system", userId: admin.id }));
+        // Anbieter-Eingriffe (I4-T16-01): eigener Urheber „AnwaltApex (Apex Console)“ im Kanzleiprotokoll
+        protokolliere(tenant.id, anbieterVorgang(VORGANG.zugangAngelegt(admin.name, rollenLabel(admin)), { userId: admin.id, anbieterPerson: CONSOLE_DEMO.name }));
+        protokolliere(tenant.id, anbieterVorgang(VORGANG.startpasswortVergeben(admin.name), { userId: admin.id, anbieterPerson: CONSOLE_DEMO.name }));
         return { tenant, admin, passwort };
       },
       async remove(tenantId) {
@@ -869,7 +870,7 @@ export function createDemoBackend(): Backend {
       },
       async reset(tenantId) {
         await store(`aa:data:${tenantId}`, null);
-        protokolliere(tenantId, vorgang(VORGANG.beispieldatenZurueckgesetzt(), { akteur: "system" }));
+        protokolliere(tenantId, anbieterVorgang(VORGANG.beispieldatenZurueckgesetzt(), { anbieterPerson: CONSOLE_DEMO.name }));
       },
       async setStatus(tenantId, status) {
         const o = lsGet<Record<string, Partial<Record<keyof Tenant, unknown>>>>(LS_OVERRIDES) ?? {};
@@ -892,7 +893,10 @@ export function createDemoBackend(): Backend {
         setzePasswortWechsel(userId, true);
         // Anbieter-Eingriff: Die Kanzlei sieht ihn in ihrem Protokoll (Einstellungen → Datenschutz); Partner und Administration
         // erhalten zusätzlich einen Hinweis in der Glocke (statt einer E-Mail – der Prototyp versendet keine).
-        protokolliere(ziel.t.tenant.id, anmeldeVorgang(VORGANG.consolePasswort(ziel.u.name, anlass, CONSOLE_DEMO.name), { akteur: "system", userId, meldung: true }));
+        protokolliere(
+          ziel.t.tenant.id,
+          anbieterVorgang(VORGANG.consolePasswort(ziel.u.name, anlass, CONSOLE_DEMO.name), { userId, anbieterPerson: anlass.bearbeiter?.trim() || CONSOLE_DEMO.name, kategorie: "anmeldung", meldung: true }),
+        );
         return pw;
       },
       async standardPasswort(userId) {
@@ -905,7 +909,7 @@ export function createDemoBackend(): Backend {
         setzePasswortWechsel(userId, false);
         // öffentliche Demo wiederherstellen: auch eine hier eingerichtete Zwei-Faktor-Anmeldung entfällt
         zfSetzen(userId, null);
-        if (ziel) protokolliere(ziel.t.tenant.id, vorgang(VORGANG.standardPasswort(ziel.u.name), { akteur: "system", userId }));
+        if (ziel) protokolliere(ziel.t.tenant.id, anbieterVorgang(VORGANG.standardPasswort(ziel.u.name), { userId, anbieterPerson: CONSOLE_DEMO.name }));
       },
     },
   };

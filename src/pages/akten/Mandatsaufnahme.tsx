@@ -15,10 +15,17 @@ import { toast } from "@/store/ui";
 import { Button, Chip, Field, Input, Modal, Segmented, Select, Switch, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { KontaktAuswahl, KontaktFelder, emailUngueltig, entwurfGueltig, entwurfName, entwurfZuKontakt, leererEntwurf, type KontaktEntwurf } from "@/pages/kontakte/KontaktFormular";
-import { DUBLETTE_GRUND, aktenVonKontakt, findeDublette, findeKontaktNachName, istOrganisationsName, KontaktAvatar } from "@/pages/kontakte/kontaktHelfer";
-import { SACHGEBIETE, naechstesAktenzeichen, useTeam, werktagIn } from "./helfer";
+import { aktenVonKontakt, findeKontaktNachName, istOrganisationsName, KontaktAvatar } from "@/pages/kontakte/kontaktHelfer";
+import { GLEICH_GRUND, gleicheKontakte, kollisionFuerEntwurf, kollisionFuerNeuesMandat, type KollisionsTreffer } from "@/core/kontaktpruefung";
+import { ueberText } from "@/pages/kontakte/auskunft";
+import { SACHGEBIETE, naechstesAktenzeichen, useTeam } from "./helfer";
+import { deckungsanfrageDokument, deckungsanfrageProtokollieren, deckungsWiedervorlage, rsvAusEingabe, versichererSichern } from "./rsv";
+import { VersichererAuswahl } from "./VersichererAuswahl";
 
 const SCHRITTE = ["Mandant", "Sache", "Rechtsschutz", "Zusammenfassung"] as const;
+
+/** Umfang der Kollisionsprüfung – erscheint in Zusammenfassung, Aktennotiz und Verlauf (I4-T17-01). */
+const GEPRUEFT_TEXT = "geprüft gegen den Aktenbestand: Name (ohne Rechtsform), E-Mail/Firmen-Domain, Telefon über alle Kontakte";
 
 const SCHRITT_VARIANTEN = {
   rein: (r: number) => ({ opacity: 0, x: r * 28 }),
@@ -339,6 +346,8 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
     setRichtung(1);
     setSchritt(Math.min(3, Math.max(0, e.schritt)));
     setOffenerEntwurf(null);
+    letzterWechsel.current = Date.now();
+    setFokusMarke((m) => m + 1);
   };
   const neuBeginnen = () => {
     loescheEntwurf(user.id);
@@ -389,7 +398,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
 
   // Dublette: Der neue Mandant existiert schon als Kontakt (Name ohne Rechtsform, E-Mail oder Telefon)
   const dublette = useMemo(
-    () => (modus === "neu" && (entwurfName(entwurf) || entwurf.email || entwurf.telefon) ? findeDublette(kontakte, { name: entwurfName(entwurf), email: entwurf.email, telefon: entwurf.telefon }) : undefined),
+    () => (modus === "neu" && (entwurfName(entwurf) || entwurf.email || entwurf.telefon) ? gleicheKontakte({ id: "", name: entwurfName(entwurf), email: emailUngueltig(entwurf.email) ? undefined : entwurf.email, telefon: entwurf.telefon, typ: entwurf.typ }, kontakte)[0] : undefined),
     [modus, entwurf, kontakte],
   );
   const bestehendenVerwenden = (k: Kontakt) => {
@@ -398,22 +407,33 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
     toast("Bestehender Kontakt übernommen", { text: `${k.name} wird als Mandant verknüpft – keine Dublette.`, ton: "erfolg" });
   };
 
-  // Kollisionsprüfung (§ 43a Abs. 4 BRAO): Mandant ist anderswo Gegner, Gegner ist anderswo Mandant
-  const mandantKonflikt = useMemo(() => {
-    const k = modus === "bestehend" ? mandant : dublette?.grund === "name" ? dublette.kontakt : findeKontaktNachName(kontakte, entwurfName(entwurf));
-    if (!k) return [];
-    return aktenVonKontakt(k, akten).filter((x) => (x.rolle === "Gegner" || x.rolle === "Schuldner") && x.akte.status !== "abgeschlossen");
-  }, [modus, mandant, dublette, entwurf, kontakte, akten]);
-  const gegnerDublette = useMemo(() => (sache.gegner.trim() ? findeDublette(kontakte, { name: sache.gegner }) : undefined), [kontakte, sache.gegner]);
-  const gegnerKontakt = findeKontaktNachName(kontakte, sache.gegner) ?? (gegnerDublette?.grund === "name" ? gegnerDublette.kontakt : undefined);
-  const gegnerKonflikt = useMemo(() => (gegnerKontakt ? aktenVonKontakt(gegnerKontakt, akten).filter((x) => x.rolle === "Mandant" && x.akte.status !== "abgeschlossen") : []), [gegnerKontakt, akten]);
+  // Kollisionsprüfung (§ 43a Abs. 4 BRAO): Mandant ist anderswo Gegner, Gegner ist anderswo Mandant – über den Kontakt UND alle
+  // gleichen Datensätze (Name ohne Rechtsform, E-Mail, Telefon, Firmen-Domain), damit eine Dublette die Prüfung nicht aushebelt (I4-T17-01)
+  const mandantKonflikt = useMemo((): KollisionsTreffer[] => {
+    if (modus === "bestehend") return mandant ? kollisionFuerNeuesMandat(mandant, akten, "mandant", kontakte).konflikte : [];
+    const name = entwurfName(entwurf);
+    if (!name && !entwurf.email.trim() && !entwurf.telefon.trim()) return [];
+    return kollisionFuerEntwurf({ name, email: emailUngueltig(entwurf.email) ? undefined : entwurf.email, telefon: entwurf.telefon, typ: entwurf.typ }, kontakte, akten, "mandant").konflikte;
+  }, [modus, mandant, entwurf, kontakte, akten]);
+  const gegnerKontakt = findeKontaktNachName(kontakte, sache.gegner) ?? (sache.gegner.trim() ? gleicheKontakte({ id: "", name: sache.gegner, typ: istOrganisationsName(sache.gegner) ? "organisation" : "person" }, kontakte).find((g) => g.grund === "name")?.kontakt : undefined);
+  const gegnerKonflikt = useMemo((): KollisionsTreffer[] => {
+    const g = sache.gegner.trim();
+    if (!g) return [];
+    if (gegnerKontakt) return kollisionFuerNeuesMandat(gegnerKontakt, akten, "gegner", kontakte).konflikte;
+    return kollisionFuerEntwurf({ name: g, typ: istOrganisationsName(g) ? "organisation" : "person" }, kontakte, akten, "gegner").konflikte;
+  }, [gegnerKontakt, sache.gegner, kontakte, akten]);
+  /** Treffer über einen anderen Datensatz nennen ihn – bei neu getipptem gleichem Namen bleibt der Text wie bisher. */
+  const ueber = (x: KollisionsTreffer, getippt?: string) => (x.ueber && !(getippt && x.ueber.name.trim().toLowerCase() === getippt.trim().toLowerCase()) ? ` (${ueberText(x.ueber)})` : "");
   const treffer = useMemo(
     () => [
-      ...mandantKonflikt.map((x) => `${mandantName || "Mandant"}: ${x.rolle} in ${x.akte.aktenzeichen} ${x.akte.titel}`),
-      ...gegnerKonflikt.map((x) => `${gegnerKontakt?.name ?? sache.gegner.trim()}: Mandant in ${x.akte.aktenzeichen} ${x.akte.titel}`),
+      ...mandantKonflikt.map((x) => `${mandantName || "Mandant"}: ${x.rolle} in ${x.akte.aktenzeichen} ${x.akte.titel}${ueber(x, modus === "neu" ? mandantName : undefined)}`),
+      ...gegnerKonflikt.map((x) => `${gegnerKontakt?.name ?? sache.gegner.trim()}: Mandant in ${x.akte.aktenzeichen} ${x.akte.titel}${ueber(x, gegnerKontakt ? undefined : sache.gegner)}`),
     ],
-    [mandantKonflikt, gegnerKonflikt, mandantName, gegnerKontakt, sache.gegner],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mandantKonflikt, gegnerKonflikt, mandantName, gegnerKontakt, sache.gegner, modus],
   );
+  /** Gleiche Datensätze des gewählten Mandanten (Doppel-Datensatz) – die Prüfung oben bezieht sie schon ein */
+  const mandantGleiche = useMemo(() => (modus === "bestehend" && mandant ? gleicheKontakte(mandant, kontakte) : []), [modus, mandant, kontakte]);
   const trefferKey = treffer.join("|");
   const entscheidungGilt = !!kollision.entscheidung && kollision.fuer === trefferKey;
   const entscheidung = entscheidungGilt ? kollision.entscheidung : "";
@@ -437,8 +457,11 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
   }, [arbeitsrecht, zugangOk, kschg.zugang, tenant.bundesland]);
   const entgelt = kschg.entgelt.trim() ? parseEuro(kschg.entgelt) : 0;
   const wertVorschlag = arbeitsrecht && entgelt > 0 ? vierteljahresentgelt(entgelt) : 0;
-
-  const versicherungen = useMemo(() => [...new Set([...VERSICHERUNGEN, ...kontakte.filter((k) => k.rollen.includes("versicherung")).map((k) => k.name)])], [kontakte]);
+  // „Übernehmen“ verschwindet nach dem Klick – der Fokus geht ins Feld Gegenstandswert (bzw. in der Zusammenfassung auf „übernommen“)
+  const wertUebernehmen = (ziel: string) => {
+    setSache((s) => ({ ...s, wert: betragText(wertVorschlag) }));
+    window.setTimeout(() => document.getElementById(ziel)?.focus(), 30);
+  };
 
   // Was fehlt noch? – erklärt, statt den Knopf kommentarlos zu sperren
   const fehler: (string | undefined)[] = [
@@ -480,13 +503,34 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
     return () => window.clearTimeout(t);
   }, [zeigeFehler, schritt]);
 
+  // Fokus nach jedem Schrittwechsel auf die Schrittüberschrift (WCAG 2.4.3, I4-T04-02) – nie auf BODY und nie auf dem
+  // Fußknopf, der in Schritt 3 zu „Ohne Rechtsschutz weiter“ und in Schritt 4 zu „Akte anlegen“ wird.
+  const [fokusMarke, setFokusMarke] = useState(0);
+  const letzterWechsel = useRef(0);
+  useEffect(() => {
+    if (!fokusMarke) return;
+    const t = window.setTimeout(() => {
+      const h = document.getElementById(`ma-schritt-titel-${schritt}`);
+      if (!h) return;
+      h.focus({ preventScroll: true });
+      h.closest<HTMLElement>("[data-dialog-inhalt]")?.scrollTo({ top: 0 });
+    }, 30);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fokusMarke]);
+
   const gehe = (n: number) => {
     setRichtung(n > schritt ? 1 : -1);
     setSchritt(n);
     setZeigeFehler(false);
+    letzterWechsel.current = Date.now();
+    setFokusMarke((m) => m + 1);
   };
+  /** Gleich nach einem Schrittwechsel (Doppelklick, gehaltene Enter-Taste) keinen weiteren Schritt auslösen. */
+  const zuSchnell = () => Date.now() - letzterWechsel.current < 350;
 
   const weiter = () => {
+    if (zuSchnell()) return;
     if (!gueltig[schritt]) {
       setZeigeFehler(true);
       return;
@@ -508,6 +552,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
   };
 
   const anlegen = () => {
+    if (zuSchnell()) return;
     if (treffer.length && entscheidung === "abgelehnt") {
       ablehnen();
       return;
@@ -549,7 +594,8 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
     let gegnerId: string | undefined;
     const gName = sache.gegner.trim();
     if (gName) {
-      const ex = findeKontaktNachName(data.kontakte, gName);
+      // derselbe Kontakt wie im Hinweis „Bestehender Kontakt … wird verknüpft“ (auch bei Schreibweise ohne Rechtsform)
+      const ex = findeKontaktNachName(data.kontakte, gName) ?? (gegnerKontakt && data.kontakte.some((k) => k.id === gegnerKontakt.id) ? gegnerKontakt : undefined);
       if (ex) {
         gegnerId = ex.id;
         if (!ex.rollen.includes("gegner")) st.patch("kontakte", ex.id, { rollen: [...ex.rollen, "gegner"] });
@@ -566,17 +612,11 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
       }
     }
 
-    // Versicherung als Kontakt führen
-    const vName = rsv.versicherung.trim();
-    if (rsv.aktiv && vName) {
-      const ex = findeKontaktNachName(data.kontakte, vName);
-      if (!ex) st.upsert("kontakte", { id: uid("k"), typ: "organisation", name: vName, firma: vName, rollen: ["versicherung"], createdAt: jetzt });
-      else if (!ex.rollen.includes("versicherung")) st.patch("kontakte", ex.id, { rollen: [...ex.rollen, "versicherung"] });
-    }
+    // Versicherung als Kontakt führen – gemeinsamer Weg mit „Beteiligte → Rechtsschutz ergänzen“ (rsv.ts)
+    const versicherer = rsv.aktiv && rsv.versicherung.trim() ? versichererSichern(rsv.versicherung, jetzt) : undefined;
 
     const refa = team.find((u) => u.rolle === "refa");
     const ra = team.find((u) => u.id === sache.bearbeiterId) ?? user;
-    const sb = rsv.selbstbeteiligung.trim() ? parseEuro(rsv.selbstbeteiligung) : undefined;
     const akte: Akte = {
       id: uid("a"),
       aktenzeichen,
@@ -589,7 +629,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
       gegenstandswert: Number.isNaN(wert) ? 0 : wert,
       bearbeiterId: ra.id,
       sachbearbeiterId: refa?.id,
-      rsv: rsv.aktiv ? { versicherung: vName, versicherungsnummer: rsv.nummer.trim(), schadennummer: rsv.schadennummer.trim() || undefined, deckung: "offen", selbstbeteiligung: sb !== undefined && !Number.isNaN(sb) ? sb : undefined } : undefined,
+      rsv: versicherer ? { ...rsvAusEingabe(rsv), versicherung: versicherer.name } : undefined,
       beschreibung: sache.beschreibung.trim(),
       schlagworte: [sache.sachgebiet.toLowerCase()],
       prioritaet: sache.prioritaet,
@@ -601,7 +641,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
         von: user.id,
         treffer,
         entscheidung: "uebernommen",
-        vermerk: treffer.length ? kollision.vermerk.trim() : `Keine Treffer – Mandant${gName ? " und Gegner" : ""} gegen den Aktenbestand geprüft.`,
+        vermerk: treffer.length ? kollision.vermerk.trim() : `Keine Treffer – Mandant${gName ? " und Gegner" : ""} ${GEPRUEFT_TEXT}.`,
       },
     };
     st.upsert("akten", akte);
@@ -609,7 +649,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
     // Kollisionsprüfung: Vermerk als Aktennotiz und im Verlauf
     const kollisionsText = treffer.length
       ? `Kollisionsprüfung (§ 43a Abs. 4 BRAO, § 3 BORA): ${treffer.length} Treffer – ${treffer.join("; ")}. Entscheidung: Mandat trotzdem übernommen. Begründung: ${kollision.vermerk.trim()}`
-      : `Kollisionsprüfung (§ 43a Abs. 4 BRAO, § 3 BORA): keine Treffer – Mandant${gName ? " und Gegner" : ""} gegen den Aktenbestand geprüft.`;
+      : `Kollisionsprüfung (§ 43a Abs. 4 BRAO, § 3 BORA): keine Treffer – Mandant${gName ? " und Gegner" : ""} ${GEPRUEFT_TEXT}.`;
     st.upsert("notizen", { id: uid("no"), akteId: akte.id, userId: user.id, text: kollisionsText, zeit: jetzt });
 
     // Arbeitssachen: Hinweis auf den Ausschluss der Kostenerstattung vor Abschluss der Vertretungsvereinbarung (§ 12a Abs. 1 S. 2 ArbGG)
@@ -648,18 +688,10 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
     ];
     let wiedervorlage: string | undefined;
     if (akte.rsv) {
-      paket.push(
-        dok({
-          // Entwurf des 38h-Motors: erst nach anwaltlicher Freigabe versandt (Beteiligte → „Freigeben und versenden“), nie im Portal
-          name: `Deckungsanfrage ${akte.rsv.versicherung}`, art: "brief", ordner: "Korrespondenz", format: "docx", status: "entwurf",
-          inhalt: `${akte.rsv.versicherung}\nSchadenabteilung\n\n${ort}, ${fmtDate(heute)}\n\nVersicherungsnehmer: ${m.name}\nVersicherungsnummer: ${akte.rsv.versicherungsnummer || "wird nachgereicht"}${akte.rsv.schadennummer ? `\nSchadennummer: ${akte.rsv.schadennummer}` : ""}\nUnser Zeichen: ${aktenzeichen}\n\nDeckungsanfrage – ${akte.titel}\n\nSehr geehrte Damen und Herren,\n\nwir zeigen an, dass uns Ihr Versicherungsnehmer mit der Wahrnehmung seiner rechtlichen Interessen beauftragt hat, und bitten um Erteilung der Deckungszusage für die außergerichtliche und gegebenenfalls gerichtliche Tätigkeit (${akte.sachgebiet}).\n\nSachverhalt:\n${akte.beschreibung || "Die ausführliche Sachverhaltsschilderung reichen wir kurzfristig nach."}${gName ? `\n\nGegner: ${gName}` : ""}\nGegenstandswert (vorläufig): ${fmtEUR(akte.gegenstandswert)}\n\nFür eine kurzfristige Bestätigung wären wir dankbar.\n\n${gruss}`,
-        }),
-      );
-      wiedervorlage = werktagIn(7, tenant.bundesland);
-      const f: Frist = {
-        id: uid("f"), akteId: akte.id, titel: `Wiedervorlage: Deckungszusage ${akte.rsv.versicherung}`, typ: "wiedervorlage", datum: wiedervorlage,
-        status: "offen", verantwortlichId: refa?.id ?? ra.id, quelle: "automatisch", createdAt: jetzt, notiz: "Automatisch gesetzt durch das Mandatsaufnahme-Paket.",
-      };
+      // Entwurf des 38h-Motors: erst nach anwaltlicher Freigabe versandt (Beteiligte → „Freigeben und versenden“), nie im Portal
+      paket.push(deckungsanfrageDokument({ akte, rsv: akte.rsv, mandant: m, gegnerName: gName || undefined, ra, tenant, jetzt, heute }));
+      const f = deckungsWiedervorlage({ akteId: akte.id, versicherung: akte.rsv.versicherung, verantwortlichId: refa?.id ?? ra.id, land: tenant.bundesland, jetzt, notiz: "Automatisch gesetzt durch das Mandatsaufnahme-Paket." });
+      wiedervorlage = f.datum;
       st.upsert("fristen", f);
     }
     for (const d of paket) st.upsert("dokumente", d);
@@ -692,12 +724,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
       akteur: "automation", automationKey: "mandatsaufnahme", akteId: akte.id, minutenGespart: 25,
       text: `Mandatsaufnahme-Paket (Vollmacht, Mandatsbestätigung, Datenschutzhinweise, Hinweis § 49b Abs. 5 BRAO${arbeitssache ? ", Hinweis § 12a ArbGG" : ""}) erstellt – ${aktenzeichen}`,
     });
-    if (akte.rsv && wiedervorlage) {
-      st.log({
-        akteur: "automation", automationKey: "deckungsanfrage", akteId: akte.id, minutenGespart: 15,
-        text: `Deckungsanfrage an ${akte.rsv.versicherung} erstellt, Wiedervorlage am ${fmtDate(wiedervorlage)} gesetzt – ${aktenzeichen}`,
-      });
-    }
+    if (akte.rsv && wiedervorlage) deckungsanfrageProtokollieren(akte, akte.rsv.versicherung, wiedervorlage, jetzt);
     // Ursprüngliche Anfrage aus dem Posteingang der Akte zuordnen und in der E-Akte ablegen
     if (quelle) {
       st.patch("nachrichten", quelle.id, { akteId: akte.id, zugeordnet: true, status: "erledigt" });
@@ -708,10 +735,8 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
         ki: quelle.ki?.zusammenfassung ? { zusammenfassung: quelle.ki.zusammenfassung } : undefined,
       }));
     }
-    for (const key of akte.rsv ? ["mandatsaufnahme", "deckungsanfrage"] : ["mandatsaufnahme"]) {
-      const au = data.automationen.find((a) => a.key === key);
-      if (au) st.patch("automationen", au.id, { laeufe: au.laeufe + 1, letzterLauf: jetzt });
-    }
+    const au = data.automationen.find((a) => a.key === "mandatsaufnahme");
+    if (au) st.patch("automationen", au.id, { laeufe: au.laeufe + 1, letzterLauf: jetzt });
 
     setErfolg({
       akte,
@@ -775,7 +800,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
       </Button>
     </>
   ) : (
-    <>
+    <div className="contents" onKeyDownCapture={(e) => e.key === "Enter" && e.repeat && e.preventDefault()}>
       <Button variant="ghost" onClick={schliessen} className="mr-auto">
         Abbrechen
       </Button>
@@ -797,7 +822,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
           Akte anlegen
         </Button>
       )}
-    </>
+    </div>
   );
 
   return (
@@ -840,6 +865,9 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                 exit="raus"
                 transition={{ type: "spring", stiffness: 460, damping: 38 }}
               >
+                <h3 id={`ma-schritt-titel-${schritt}`} tabIndex={-1} className="mb-3 rounded-[8px] text-[13px] font-semibold text-fg-2 outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]">
+                  Schritt {schritt + 1} von 4: {SCHRITTE[schritt]}
+                </h3>
                 {schritt === 0 && (
                   <div className="grid grid-cols-1 gap-4">
                     <Segmented
@@ -852,7 +880,18 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                       ]}
                     />
                     {modus === "bestehend" ? (
-                      <KontaktAuswahl id="ma-mandant" value={mandantId} onSelect={(k) => setMandantId(k.id)} bevorzugt={["mandant"]} nurRollen={["mandant"]} hoehe={260} />
+                      <>
+                        <KontaktAuswahl id="ma-mandant" value={mandantId} onSelect={(k) => setMandantId(k.id)} bevorzugt={["mandant"]} nurRollen={["mandant"]} hoehe={260} />
+                        {mandant && mandantGleiche.length > 0 && (
+                          <p role="status" className="flex items-start gap-2 rounded-[14px] bg-amber-soft px-3.5 py-2.5 text-[12.5px] text-fg-2">
+                            <Info className="mt-0.5 size-3.5 shrink-0 text-[var(--amber-text)]" aria-hidden />
+                            <span>
+                              <span className="font-semibold text-fg">Möglicher Doppel-Datensatz: </span>
+                              {mandantGleiche.slice(0, 2).map((g) => `„${g.kontakt.name}“${g.kontakt.ort ? ` (${g.kontakt.ort})` : ""} – ${GLEICH_GRUND[g.grund]}`).join("; ")}. Die Kollisionsprüfung bezieht {mandantGleiche.length === 1 ? "diesen Datensatz" : "diese Datensätze"} ein; zusammenführen lässt er sich unter „Kontakte“.
+                            </span>
+                          </p>
+                        )}
+                      </>
                     ) : (
                       <>
                         {dublette && (
@@ -861,7 +900,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                             <div className="min-w-[180px] flex-1">
                               <div className="font-semibold text-fg">Kontakt besteht bereits</div>
                               <div className="mt-0.5 text-fg-2">
-                                „{dublette.kontakt.name}“{dublette.kontakt.ort ? ` aus ${dublette.kontakt.ort}` : ""} – {DUBLETTE_GRUND[dublette.grund]}.
+                                „{dublette.kontakt.name}“{dublette.kontakt.ort ? ` aus ${dublette.kontakt.ort}` : ""} – {GLEICH_GRUND[dublette.grund]}.
                                 {aktenVonKontakt(dublette.kontakt, akten).length > 0 &&
                                   ` Beteiligt in ${aktenVonKontakt(dublette.kontakt, akten)
                                     .slice(0, 2)
@@ -944,7 +983,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                             </div>
                           </Field>
                         </div>
-                        <KschgVorschau klagefrist={klagefrist} entgelt={entgelt} wertVorschlag={wertVorschlag} wert={wert} onUebernehmen={() => setSache({ ...sache, wert: betragText(wertVorschlag) })} />
+                        <KschgVorschau klagefrist={klagefrist} entgelt={entgelt} wertVorschlag={wertVorschlag} wert={wert} onUebernehmen={() => wertUebernehmen("ma-wert")} />
                       </div>
                     )}
                     <Field label="Sachverhalt" htmlFor="ma-beschreibung">
@@ -985,12 +1024,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                         <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ type: "spring", stiffness: 420, damping: 38 }} className="overflow-hidden">
                           <div className="grid grid-cols-1 gap-3 p-0.5 sm:grid-cols-2">
                             <Field label="Versicherung *" htmlFor="ma-vers" className="sm:col-span-2">
-                              <Input id="ma-vers" list="ma-vers-liste" value={rsv.versicherung} onChange={(e) => setRsv({ ...rsv, versicherung: e.target.value })} onKeyDown={escapeNurListe} placeholder="z. B. Nordlicht Rechtsschutz AG" autoComplete="off" />
-                              <datalist id="ma-vers-liste">
-                                {versicherungen.map((v) => (
-                                  <option key={v} value={v} />
-                                ))}
-                              </datalist>
+                              <VersichererAuswahl id="ma-vers" value={rsv.versicherung} onChange={(v) => setRsv({ ...rsv, versicherung: v })} fehler={zeigeFehler && !!fehler[2]} describedBy={zeigeFehler && fehler[2] ? "ma-fehler" : undefined} />
                             </Field>
                             <Field label="Versicherungsnummer" htmlFor="ma-vnr" hint="Optional – wird nachgereicht, falls noch nicht bekannt. Die Deckungsanfrage nennt dann den Versicherungsnehmer.">
                               <Input id="ma-vnr" value={rsv.nummer} onChange={(e) => setRsv({ ...rsv, nummer: e.target.value })} placeholder="z. B. RS-4471209" className="mono" autoComplete="off" />
@@ -1009,7 +1043,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                         </motion.div>
                       )}
                     </AnimatePresence>
-                    {!rsv.aktiv && <p className="px-1 text-[13px] text-fg-3">Kein Rechtsschutz? Dann überspringen Sie diesen Schritt einfach. Sie können die Versicherung später in der Akte ergänzen.</p>}
+                    {!rsv.aktiv && <p className="px-1 text-[13px] text-fg-3">Kein Rechtsschutz? Dann überspringen Sie diesen Schritt einfach. Sie können die Versicherung später in der Akte unter „Beteiligte → Rechtsschutz ergänzen“ nachtragen.</p>}
                   </div>
                 )}
 
@@ -1050,7 +1084,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                         <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold">
                           <CalendarClock className="size-4 text-ink" /> Kündigungsschutz
                         </div>
-                        <KschgVorschau klagefrist={klagefrist} entgelt={entgelt} wertVorschlag={wertVorschlag} wert={wert} onUebernehmen={() => setSache({ ...sache, wert: betragText(wertVorschlag) })} mitRechenweg />
+                        <KschgVorschau klagefrist={klagefrist} entgelt={entgelt} wertVorschlag={wertVorschlag} wert={wert} onUebernehmen={() => wertUebernehmen("ma-wert-uebernommen")} mitRechenweg uebernommenId="ma-wert-uebernommen" />
                       </div>
                     )}
                     <KollisionsEntscheidung
@@ -1198,6 +1232,7 @@ function KschgVorschau({
   wert,
   onUebernehmen,
   mitRechenweg,
+  uebernommenId,
 }: {
   klagefrist: ReturnType<typeof berechneNachRegel> | null;
   entgelt: number;
@@ -1205,6 +1240,8 @@ function KschgVorschau({
   wert: number;
   onUebernehmen: () => void;
   mitRechenweg?: boolean;
+  /** Fokusziel nach „Übernehmen“, wenn kein Eingabefeld daneben steht (Zusammenfassung) */
+  uebernommenId?: string;
 }) {
   if (!klagefrist && !wertVorschlag) return null;
   const uebernommen = wertVorschlag > 0 && Math.abs(wert - wertVorschlag) < 0.005;
@@ -1235,9 +1272,11 @@ function KschgVorschau({
           </span>
           <span className="text-[12.5px] text-fg-3">(§ 42 Abs. 2 S. 1 GKG)</span>
           {uebernommen ? (
-            <Chip tone="green" icon={<Check className="size-3" />}>
-              übernommen
-            </Chip>
+            <span id={uebernommenId} tabIndex={uebernommenId ? -1 : undefined} className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]">
+              <Chip tone="green" icon={<Check className="size-3" />}>
+                übernommen
+              </Chip>
+            </span>
           ) : (
             <Button size="sm" variant="secondary" onClick={onUebernehmen}>
               Übernehmen
@@ -1269,7 +1308,7 @@ function KollisionsEntscheidung({
     return (
       <p className="flex items-start gap-2 px-1 text-[12.5px] text-fg-3">
         <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-green" />
-        <span>Kollisionsprüfung: keine Treffer im Aktenbestand. Das Ergebnis wird als Aktennotiz „Kollisionsprüfung“ dokumentiert.</span>
+        <span>Kollisionsprüfung: keine Treffer im Aktenbestand – {GEPRUEFT_TEXT}. Das Ergebnis wird als Aktennotiz „Kollisionsprüfung“ dokumentiert.</span>
       </p>
     );
   return (

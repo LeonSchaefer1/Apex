@@ -55,24 +55,11 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
   const [wer, setWer] = useState<"alle" | "meine">("alle");
   const [abrAkte, setAbrAkte] = useState("");
 
-  // Wert einer Zeit: vereinbarter Stundensatz der Akte (§ 3a RVG) vor dem Satz der Person, die die Zeit erfasst hat –
-  // dieselbe Funktion wie in der Abrechnungsvorschau, der Rechnung und dem Tätigkeitsnachweis (nie der Satz der angemeldeten Person).
-  const wert = (z: Zeiteintrag) => wertEintrag(z, akten.get(z.akteId), users);
 
   const heute = today();
   const wocheJetzt = isoWoche(heute).montag;
   const sichtbar = useMemo(() => zeiten.filter((z) => wer === "alle" || z.userId === user.id), [zeiten, wer, user.id]);
 
-  const kpi = useMemo(() => {
-    const woche = sichtbar.filter((z) => z.datum >= wocheJetzt && z.datum <= addDays(wocheJetzt, 6));
-    const offen = sichtbar.filter((z) => z.abrechenbar && !z.abgerechnet);
-    return {
-      woche: woche.reduce((s, z) => s + z.minuten, 0),
-      wocheAbr: woche.filter((z) => z.abrechenbar).reduce((s, z) => s + z.minuten, 0),
-      offenWert: round2(offen.reduce((s, z) => s + wert(z), 0)),
-      offenMin: offen.reduce((s, z) => s + z.minuten, 0),
-    };
-  }, [sichtbar, wocheJetzt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const wochen = useMemo(() => {
     const m = new Map<string, { kw: number; montag: string; tage: Map<string, Zeiteintrag[]> }>();
@@ -117,6 +104,20 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
   const satzWahl = satzFuerAbrechnung(abrAkteObj, eingabeSatz, STANDARD_STUNDENSATZ);
   const abrPositionen = stundenPositionen(abrEintraege, abrAkteObj, users, { abrechnungsSatz: eingabeSatz });
   const abrSummen = summen(abrPositionen);
+
+  // Wert einer Zeit – ein Eintrag, ein Wert (I4-T07-05): immer `satzFuerEintrag` – vereinbarter Stundensatz der Akte (§ 3a RVG)
+  // vor dem Satz der Person, die die Zeit erfasst hat; für die in „Aus Zeiten abrechnen“ gewählten Einträge der dort
+  // eingetragene Satz dieser Abrechnung. So zeigen Wochenliste, Wochensumme, Kennzahl und Abrechnung denselben Betrag.
+  const abrIds = new Set(abrEintraege.map((z) => z.id));
+  const wert = (z: Zeiteintrag) => wertEintrag(z, akten.get(z.akteId), users, abrIds.has(z.id) ? eingabeSatz : undefined);
+  const abrSatzAbweichend = (z: Zeiteintrag) => abrIds.has(z.id) && satzFuerEintrag(z, akten.get(z.akteId), users, eingabeSatz).quelle === "abrechnung";
+
+  const kpi = {
+    woche: sichtbar.filter((z) => z.datum >= wocheJetzt && z.datum <= addDays(wocheJetzt, 6)).reduce((s, z) => s + z.minuten, 0),
+    wocheAbr: sichtbar.filter((z) => z.datum >= wocheJetzt && z.datum <= addDays(wocheJetzt, 6) && z.abrechenbar).reduce((s, z) => s + z.minuten, 0),
+    offenWert: round2(sichtbar.filter((z) => z.abrechenbar && !z.abgerechnet).reduce((s, z) => s + wert(z), 0)),
+    offenMin: sichtbar.filter((z) => z.abrechenbar && !z.abgerechnet).reduce((s, z) => s + z.minuten, 0),
+  };
   // Abrechnung nach Zeit nur mit Vergütungsvereinbarung in Textform (§ 3a Abs. 1 RVG) – sonst gelten die gesetzlichen Gebühren.
   const abrVereinbarung = abrAkteObj ? hatVerguetungsvereinbarung(abrAkteObj, dokumente) : false;
   // Vergütungsvereinbarung erfassen: Datum und vereinbarter Stundensatz (netto) sind Pflichtangaben
@@ -388,7 +389,10 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                                   <div className="hidden shrink-0 items-center gap-1.5 sm:flex">{status}</div>
                                   <div className="w-[76px] shrink-0 text-right">
                                     <div className="num text-[13.5px] font-semibold">{fmtDauer(z.minuten)}</div>
-                                    <div className={cn("num text-[12.5px]", z.abrechenbar ? "text-fg-3" : "text-fg-3 line-through")}>{fmtEUR(wert(z), { cents: false })}</div>
+                                    <div className={cn("num text-[12.5px]", z.abrechenbar ? "text-fg-3" : "text-fg-3 line-through")} title={abrSatzAbweichend(z) ? "Mit dem Satz dieser Abrechnung („Aus Zeiten abrechnen“)" : undefined}>
+                                      {fmtEUR(wert(z), { cents: false })}
+                                      {abrSatzAbweichend(z) && <span className="sr-only"> – Satz dieser Abrechnung</span>}
+                                    </div>
                                   </div>
                                 </div>
                               </motion.li>

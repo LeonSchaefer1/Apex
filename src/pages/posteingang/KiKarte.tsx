@@ -21,6 +21,7 @@ import {
 import { istAbwesend, vertretungFuer } from "@/core/vertretung";
 import { TYP_META } from "@/pages/fristen/logik";
 import { fristArtZu } from "@/core/fristen";
+import { AktenSuchauswahl } from "@/pages/akten/AktenSuchauswahl";
 
 const spring = { type: "spring", stiffness: 460, damping: 36 } as const;
 /** Empfehlung „Empfangsbekenntnis abgeben …“ bzw. „eEB …“ */
@@ -208,6 +209,7 @@ function Abschnitt({ titel, icon, children, className, delay = 0 }: { titel: str
 export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachricht; ansicht: KiAnsicht | null; schritt?: number; fehler?: string; onAnalyse: () => void }) {
   const { user } = useKanzlei();
   const akten = useCol("akten");
+  const kontakteListe = useCol("kontakte");
   const fristen = useCol("fristen");
   const dokumente = useCol("dokumente");
   const nav = useNavigate();
@@ -458,18 +460,8 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
                       )}
                       {(andere || !ziel) && (
                         <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="mt-3 overflow-hidden">
-                          <label htmlFor={`akte-wahl-${n.id}`} className="label">
-                            Akte wählen
-                          </label>
-                          <Select id={`akte-wahl-${n.id}`} value={wahl} onChange={(e) => setWahl(e.target.value)}>
-                            <option value="">Akte auswählen …</option>
-                            {vorgeschlagen && <option value={vorgeschlagen.id}>{`★ ${vorgeschlagen.aktenzeichen} – ${vorgeschlagen.titel} (KI-Vorschlag)`}</option>}
-                            {offeneAkten
-                              .filter((a) => a.id !== vorgeschlagen?.id)
-                              .map((a) => (
-                                <option key={a.id} value={a.id}>{`${a.aktenzeichen} – ${a.titel}`}</option>
-                              ))}
-                          </Select>
+                          {/* Suchauswahl statt langer Liste (I4-T02-01): „Weber“, „142“ oder „28 O 211“ tippen, Enter übernimmt */}
+                          <AktenSuchauswahl id={`akte-wahl-${n.id}`} akten={offeneAkten} kontakte={kontakteListe} value={wahl} onChange={setWahl} vorschlagId={vorgeschlagen?.id} userId={user.id} hoehe={260} />
                         </motion.div>
                       )}
                       {konflikt && ziel && (

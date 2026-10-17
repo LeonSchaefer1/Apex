@@ -16,6 +16,7 @@ import { parseEuro } from "./Mandatsaufnahme";
 import { WeiterleitungsDialog } from "@/pages/abrechnung/WeiterleitungsDialog";
 import { storniereWeiterleitung } from "@/pages/abrechnung/aktionen";
 import { ibanFormatiert } from "@/pages/abrechnung/lib";
+import { fremdgeldKonto } from "@/pages/abrechnung/abgleich";
 import { beruehreAkte, kontoSummen, useKontaktMap } from "./helfer";
 import { VorschussDialog } from "./Vorschuss";
 
@@ -63,6 +64,8 @@ export function TabAktenkonto({ akte }: { akte: Akte }) {
   }, [buchungen]);
 
   const summen = useMemo(() => kontoSummen(buchungen), [buchungen]);
+  const transaktionen = useCol("transaktionen");
+  const fremdKonto = useMemo(() => fremdgeldKonto(akte.id, buchungen, transaktionen), [akte.id, buchungen, transaktionen]);
 
   /** Weiterleitungen, die noch nicht storniert sind – „Rückgängig“ bleibt dauerhaft möglich (Stornobuchung). */
   const storniert = useMemo(() => new Set(buchungen.filter((b) => b.text.startsWith("Storno: ")).map((b) => b.text.slice(8))), [buchungen]);
@@ -122,7 +125,20 @@ export function TabAktenkonto({ akte }: { akte: Akte }) {
           <div className="min-w-0 flex-1 basis-[260px]">
             <div className="text-[14px] font-semibold text-seal">Fremdgeld unverzüglich weiterleiten</div>
             <p className="text-[12.5px] leading-snug text-fg-2">
-              Auf dem Anderkonto liegen <span className="num font-semibold">{eur(summen.fremdOffen)}</span>, die {mandant?.name ?? "dem Mandanten"} zustehen. Fremdgeld ist nach § 43a Abs. 7 BRAO unverzüglich an den Berechtigten weiterzuleiten.
+              {/* Konto, auf dem das Geld eingegangen ist (I4-T08-01) */}
+              {fremdKonto === "geschaeft" ? (
+                <>
+                  Auf dem <strong className="font-semibold">Geschäftskonto</strong> eingegangen: <span className="num font-semibold">{eur(summen.fremdOffen)}</span>, die {mandant?.name ?? "dem Mandanten"} zustehen. Unverzüglich weiterleiten oder auf das Anderkonto umbuchen (§ 43a Abs. 7 BRAO, § 4 BORA).
+                </>
+              ) : fremdKonto === "gemischt" ? (
+                <>
+                  Offenes Fremdgeld <span className="num font-semibold">{eur(summen.fremdOffen)}</span>, das {mandant?.name ?? "dem Mandanten"} zusteht – eingegangen teils auf dem Geschäftskonto, teils auf dem Anderkonto. Unverzüglich weiterleiten; den Anteil auf dem Geschäftskonto weiterleiten oder umbuchen (§ 43a Abs. 7 BRAO, § 4 BORA).
+                </>
+              ) : (
+                <>
+                  {fremdKonto === "ander" ? "Auf dem Anderkonto liegen" : "Offenes Fremdgeld:"} <span className="num font-semibold">{eur(summen.fremdOffen)}</span>, die {mandant?.name ?? "dem Mandanten"} zustehen. Fremdgeld ist nach § 43a Abs. 7 BRAO unverzüglich an den Berechtigten weiterzuleiten.
+                </>
+              )}
             </p>
           </div>
           <Button variant="danger" icon={<ArrowRightLeft className="size-4" />} onClick={() => setWeiterleiten(true)}>

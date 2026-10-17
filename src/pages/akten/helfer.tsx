@@ -234,9 +234,17 @@ export function eigenesSchreiben(d: Pick<Dokument, "quelle">): boolean {
   return d.quelle === "generiert";
 }
 
-/** Eingang von außen (beA, E-Mail, Scan, Umzug, hochgeladenes Fremddokument) – wird nie verändert und nie automatisch freigegeben. */
-export function istEingang(d: Pick<Dokument, "quelle">): boolean {
-  return !eigenesSchreiben(d);
+/** Von der Kanzlei gesendete E-Mail bzw. beA-Nachricht (E-Mail schreiben → abgelegt mit Autor) – ein Ausgang, kein Eingang. */
+export function istGesendet(d: Pick<Dokument, "quelle" | "autorId">): boolean {
+  return (d.quelle === "email" || d.quelle === "bea") && !!d.autorId;
+}
+
+/**
+ * Eingang von außen (beA, E-Mail, Scan, Umzug, hochgeladenes Fremddokument) – wird nie verändert und nie automatisch freigegeben.
+ * Gesendete Nachrichten der Kanzlei zählen nicht als Eingang (Richtung, I4-T23-01).
+ */
+export function istEingang(d: Pick<Dokument, "quelle"> & Partial<Pick<Dokument, "autorId">>): boolean {
+  return !eigenesSchreiben(d) && !istGesendet({ quelle: d.quelle, autorId: d.autorId });
 }
 
 export const DOK_STATUS_INFO: Record<NonNullable<Dokument["status"]>, { label: string; tone: Tone }> = {

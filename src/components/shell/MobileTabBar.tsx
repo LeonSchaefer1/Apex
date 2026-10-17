@@ -39,12 +39,12 @@ export function MobileTabBar() {
       >
         <div className="flex w-full max-w-[520px] items-center gap-2">
         {/* deckend (kein Glas hinter Text): Inhalte scrollen nicht sichtbar unter der Leiste durch */}
-        <div className="glass-strong tabbar-deckend flex h-[62px] min-w-0 flex-1 items-center gap-1 rounded-full px-1.5">
+        <div className="tabbar-leiste glass-strong tabbar-deckend flex h-[62px] min-w-0 flex-1 items-center gap-1 rounded-full px-1.5">
           {tabs.map((t) => {
             const isActive = active === t.to;
             const badge = badges[t.to];
             return (
-              <NavLink key={t.to} to={t.to} aria-label={badge?.anzahl ? `${t.label}, ${badge.bedeutung}` : t.label} className="relative flex h-[52px] flex-1 flex-col items-center justify-center gap-0.5 rounded-full text-[12px] font-medium">
+              <NavLink key={t.to} to={t.to} aria-label={badge?.anzahl ? `${t.label}, ${badge.bedeutung}` : t.label} className="tabbar-tab relative flex h-[52px] flex-1 flex-col items-center justify-center gap-0.5 rounded-full text-[12px] font-medium">
                 {isActive && (
                   <motion.span layoutId="tab-pill" transition={{ type: "spring", stiffness: 520, damping: 36 }} className="absolute inset-0 -z-10 rounded-full bg-ink-soft" />
                 )}
@@ -58,14 +58,14 @@ export function MobileTabBar() {
               </NavLink>
             );
           })}
-          <button type="button" onClick={() => setMehr(true)} className="relative flex h-[52px] flex-1 flex-col items-center justify-center gap-0.5 rounded-full text-[12px] font-medium">
+          <button type="button" onClick={() => setMehr(true)} aria-label="Mehr – alle Bereiche" className="tabbar-tab relative flex h-[52px] flex-1 flex-col items-center justify-center gap-0.5 rounded-full text-[12px] font-medium">
             {mehrAktiv && <motion.span layoutId="tab-pill" className="absolute inset-0 -z-10 rounded-full bg-ink-soft" />}
             <MoreHorizontal className={cn("size-[21px]", mehrAktiv ? "text-ink" : "text-fg-2")} />
             <span className={cn("tab-text", mehrAktiv ? "text-ink" : "text-fg-2")}>Mehr</span>
           </button>
         </div>
         {kugel && !assistentOffen && (
-          <button type="button" onClick={() => oeffneAssistent()} className="grid size-[56px] shrink-0 place-items-center rounded-full" aria-label="Apex Assistent öffnen – per Sprache oder Text fragen">
+          <button type="button" onClick={() => oeffneAssistent()} className="tabbar-kugel grid size-[56px] shrink-0 place-items-center rounded-full" aria-label="Apex Assistent öffnen – per Sprache oder Text fragen">
             <ApexOrb size={52} />
           </button>
         )}

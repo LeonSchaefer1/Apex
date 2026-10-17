@@ -12,10 +12,10 @@ import { DEMO_KI_NAME, useAiStatus } from "@/ai/status";
 import { analysiereFall, ANALYSE_PHASEN, type Fallanalyse } from "@/ai/fallanalyse";
 import { nowLocal, relTime } from "@/core/dates";
 import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
-import { OHNE_BELEG, SCHAETZWERT_HINWEIS, STUFE_WORT, faktorenAus, stufeWort, type Faktor, type FaktorQuelle } from "@/core/einschaetzung";
+import { OHNE_BELEG, RANG_HINWEIS, SCHAETZWERT_HINWEIS, STUFE_WORT, faktorenAus, stufeWort, type Faktor, type FaktorQuelle } from "@/core/einschaetzung";
 import type { Akte } from "@/core/types";
 import { EntscheidungDrawer } from "@/pages/falldb/EntscheidungDrawer";
-import { Button, Card, Chip, confirmDialog } from "@/components/ui";
+import { Button, Card, Chip, PapierSchalter, confirmDialog } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { kopiereText } from "@/lib/zwischenablage";
 
@@ -451,6 +451,8 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
         <Card>
           <div className="mb-4 flex flex-wrap items-center gap-3">
             <SectionTitle icon={<FileText className="size-4" />} title={r.entwurf.titel} className="!mb-0 flex-1" />
+            {/* Papier im Dunkelmodus gedimmt bzw. Original – gemeinsame Einstellung aller Vorschauen (I4-T06-01) */}
+            <PapierSchalter />
             <Button size="sm" icon={<Copy className="size-3.5" />} onClick={kopieren}>
               Kopieren
             </Button>
@@ -541,9 +543,7 @@ function Belege({ f, onQuelle }: { f: Faktor; onQuelle: (q: FaktorQuelle) => voi
   );
 }
 
-const GEWICHT_TON = { stark: "text-fg", mittel: "text-fg-2", gering: "text-fg-3" } as const;
-
-/** Aufklappbereich: Schätzwert (nicht als Wahrscheinlichkeit) und Tabelle Faktor – Gewicht – Quelle. */
+/** Aufklappbereich: Schätzwert (nicht als Wahrscheinlichkeit) und Tabelle Faktor – Rang – Quelle (I4-T06-02: Rang statt Gewicht). */
 function Herleitung({ prozent, faktoren, onQuelle }: { prozent: number; faktoren: Faktor[]; onQuelle: (q: FaktorQuelle) => void }) {
   return (
     <details className="group mt-5 rounded-[16px] bg-[var(--ink-softer)] px-4 py-3 open:pb-4">
@@ -557,14 +557,14 @@ function Herleitung({ prozent, faktoren, onQuelle }: { prozent: number; faktoren
       </p>
       <div className="mt-3 overflow-x-auto rounded-[12px] bg-[var(--surface)] ring-1 ring-[var(--line)]">
         <table className="w-full min-w-[520px] text-left text-[12.5px]">
-          <caption className="sr-only">Faktoren der Einschätzung mit Gewicht und Quelle</caption>
+          <caption className="sr-only">Faktoren der Einschätzung mit Rang und Quelle</caption>
           <thead className="text-fg-3">
             <tr className="border-b border-[var(--line)]">
               <th scope="col" className="px-3 py-2 font-semibold">
                 Faktor
               </th>
               <th scope="col" className="px-3 py-2 font-semibold">
-                Gewicht
+                Rang
               </th>
               <th scope="col" className="px-3 py-2 font-semibold">
                 Quelle
@@ -578,7 +578,10 @@ function Herleitung({ prozent, faktoren, onQuelle }: { prozent: number; faktoren
                   <span className={cn("mr-1.5 font-semibold", f.richtung === "pro" ? "text-green" : "text-seal")}>{f.richtung === "pro" ? "Für uns:" : "Dagegen:"}</span>
                   {f.text}
                 </td>
-                <td className={cn("whitespace-nowrap px-3 py-2 align-top font-medium", GEWICHT_TON[f.gewicht])}>{f.gewicht}</td>
+                <td className="num whitespace-nowrap px-3 py-2 align-top font-medium text-fg-2">
+                  {f.rang}
+                  <span className="sr-only"> von {faktoren.filter((x) => x.richtung === f.richtung).length} {f.richtung === "pro" ? "dafür" : "dagegen"}</span>
+                </td>
                 <td className="px-3 py-2 align-top">
                   <Belege f={f} onQuelle={onQuelle} />
                 </td>
@@ -587,7 +590,7 @@ function Herleitung({ prozent, faktoren, onQuelle }: { prozent: number; faktoren
           </tbody>
         </table>
       </div>
-      <p className="mt-2 text-[12.5px] text-fg-3">Gewicht: Einordnung nach der Reihenfolge der KI-Begründung (erstes Argument stark, zweites mittel, weitere gering) – keine Rechengröße.</p>
+      <p className="mt-2 text-[12.5px] text-fg-3">{RANG_HINWEIS}</p>
     </details>
   );
 }

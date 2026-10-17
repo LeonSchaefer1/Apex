@@ -70,29 +70,47 @@ export function Hero() {
   );
 }
 
+/** Herleitung der Kennzahlen (Fußnoten ¹ ² ³) – inhaltlich unverändert. */
+const FUSSNOTEN = [
+  "Zielwert, kein garantiertes Ergebnis – die tatsächliche Ersparnis hängt von Kanzleigröße, Fallzahlen und Abläufen; der 38h-Motor misst sie je bearbeitetem Vorgang.",
+  "38 Std. × 48 Arbeitswochen × ≈ 19,74 € interner Kostensatz je Stunde – ein bewusst niedrig angesetzter Zielwert; mit ReFa-Vollkosten von ca. 26 €/Std. wären es ≈ 47.500 €.",
+  "Messbar im Produkt: Die Suche in der Fall-Datenbank zeigt ihre Dauer in Millisekunden an (Strg+K), die KI-Fallanalyse nennt ihre Laufzeit im Ergebnis – im Prototyp über einen kuratierten Auszug echter Leitentscheidungen.",
+];
+
 /** Kennzahlenleiste unter dem Hero. */
 export function Kennzahlen() {
   const items = [
-    { icon: <Clock3 className="size-[18px]" />, wert: <><span className="font-semibold text-fg-3">Ø</span> <AnimatedNumber value={38} /> Std.</>, text: "Zielwert: Routinearbeit pro Woche und Kanzlei, erledigt oder zur Freigabe vorbereitet¹" },
-    { icon: <Euro className="size-[18px]" />, wert: <>≈ <AnimatedNumber value={36000} /> €</>, text: "Wert der gesparten Zeit pro Jahr – im Rechenbeispiel²" },
+    { icon: <Clock3 className="size-[18px]" />, wert: <><span className="font-semibold text-fg-3">Ø</span> <AnimatedNumber value={38} /> Std.</>, text: "Zielwert: Routinearbeit pro Woche und Kanzlei, erledigt oder zur Freigabe vorbereitet¹", fussnote: 1 },
+    { icon: <Euro className="size-[18px]" />, wert: <>≈ <AnimatedNumber value={36000} /> €</>, text: "Wert der gesparten Zeit pro Jahr – im Rechenbeispiel²", fussnote: 2 },
     { icon: <InfinityIcon className="size-[18px]" />, wert: <><AnimatedNumber value={0} /> €</>, text: "Monatliche Abo-Gebühren mit der Lifetime-Lizenz" },
-    { icon: <Library className="size-[18px]" />, wert: <>Sekunden</>, text: "bis zum passenden Präzedenzfall³" },
+    { icon: <Library className="size-[18px]" />, wert: <>Sekunden</>, text: "bis zum passenden Präzedenzfall³", fussnote: 3 },
   ];
   return (
     <section aria-label="AnwaltApex in Zahlen" className="px-4 sm:px-6">
       <Reveal className="mx-auto max-w-[1200px]">
         <ul className="glass grid grid-cols-2 gap-px overflow-hidden rounded-[26px] lg:grid-cols-4">
           {items.map((x, k) => (
-            <li key={k} className="relative z-[2] flex flex-col gap-2 p-5 sm:p-6">
+            <li key={k} className="relative z-[2] flex flex-col gap-2 p-5 sm:p-6" aria-describedby={x.fussnote ? `fussnote-${x.fussnote}` : undefined}>
               <span className="grid size-9 place-items-center rounded-[12px] bg-ink-soft text-ink">{x.icon}</span>
               <span className="num text-[clamp(24px,3vw,34px)] font-bold leading-none tracking-[-0.04em]">{x.wert}</span>
               <span className="text-[13px] leading-snug text-fg-3">{x.text}</span>
             </li>
           ))}
         </ul>
-        <p className="mt-3 px-2 text-[13px] leading-relaxed text-fg-2">
-          ¹ Zielwert, kein garantiertes Ergebnis – die tatsächliche Ersparnis hängt von Kanzleigröße, Fallzahlen und Abläufen; der 38h-Motor misst sie je bearbeitetem Vorgang. ² 38 Std. × 48 Arbeitswochen × ≈ 19,74 € interner Kostensatz je Stunde – ein bewusst niedrig angesetzter Zielwert; mit ReFa-Vollkosten von ca. 26 €/Std. wären es ≈ 47.500 €. ³ Messbar im Produkt: Die Suche in der Fall-Datenbank zeigt ihre Dauer in Millisekunden an (Strg+K), die KI-Fallanalyse nennt ihre Laufzeit im Ergebnis – im Prototyp über einen kuratierten Auszug echter Leitentscheidungen.
-        </p>
+        {/* Fußnoten als Liste – eine je Zeile, lesbare Zeilenlänge (≤ 65 Zeichen) und eine Stufe größer (I4-T00-03) */}
+        <ol aria-label="Fußnoten" className="mt-4 grid max-w-[54ch] gap-1.5 px-2 text-[14px] leading-relaxed text-fg-2">
+          {FUSSNOTEN.map((f, k) => (
+            <li key={k} id={`fussnote-${k + 1}`} className="flex gap-1.5">
+              <span aria-hidden className="shrink-0">
+                {"¹²³"[k]}
+              </span>
+              <span>
+                <span className="sr-only">Fußnote {k + 1}: </span>
+                {f}
+              </span>
+            </li>
+          ))}
+        </ol>
       </Reveal>
     </section>
   );

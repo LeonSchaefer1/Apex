@@ -20,6 +20,8 @@ export interface Kuerzel {
   wo?: string;
   /** Alternative, die immer wirkt (auch bei abgeschalteten Einzeltasten-Kürzeln) */
   alt?: string[];
+  /** Weitere Alternativen, die ebenfalls immer wirken (z. B. Pfeiltaste und Alt-Variante) */
+  weitere?: string[][];
 }
 
 /** Alle Tastaturkürzel – angezeigt unter „?“ (Schnellhilfe → Tastaturkürzel) und bei den Strg+K-Aktionen. */
@@ -42,6 +44,14 @@ export const POSTEINGANG_KUERZEL: Kuerzel[] = [
   { tasten: ["Enter"], was: "Nachricht öffnen" },
   { tasten: ["U"], was: "Erkannte Fristen übernehmen" },
   { tasten: ["E"], was: "eEB-Dialog öffnen" },
+];
+
+/** Kürzel in der Fristenliste (Schnittstellenvertrag A-00, umgesetzt auf der Fristen-Seite – I4-T03-05). */
+export const FRISTEN_KUERZEL: Kuerzel[] = [
+  { tasten: ["J"], alt: ["↓"], weitere: [["Alt", "J"]], was: "Nächste Frist", wo: "J außerhalb von Eingabefeldern, ↓ in der Liste, Alt+J auch in Eingabefeldern" },
+  { tasten: ["K"], alt: ["↑"], weitere: [["Alt", "K"]], was: "Vorige Frist", wo: "K außerhalb von Eingabefeldern, ↑ in der Liste, Alt+K auch in Eingabefeldern" },
+  { tasten: ["Enter"], was: "Details der gewählten Frist öffnen (J/K setzt den Fokus auf den Titel der Zeile); Esc bringt den Fokus zurück" },
+  { tasten: ["B"], alt: ["Alt", "B"], was: "Vier-Augen-Kontrolle der gewählten Frist bestätigen", wo: "B außerhalb von Eingabefeldern, Alt+B auch in Eingabefeldern" },
 ];
 
 /** Akte der aktuellen Route (/akten/:id). */
@@ -506,6 +516,8 @@ function Tasten({ tasten }: { tasten: string[] }) {
 /** Tabelle der Tastaturkürzel (Schnellhilfe → Reiter „Tastaturkürzel“). */
 export function KuerzelListe() {
   const { einzeltastenKuerzel, setEinzeltastenKuerzel } = useUI();
+  const { pathname } = useLocation();
+  const aufFristen = pathname === "/fristen" || pathname.startsWith("/fristen/");
   const zeile = (k: Kuerzel) => (
     <li key={k.was} className="flex items-start gap-3 rounded-[14px] px-2 py-2 hover:bg-ink-softer">
       <span className="flex min-w-[96px] shrink-0 flex-col items-start gap-1">
@@ -515,6 +527,11 @@ export function KuerzelListe() {
             oder <Tasten tasten={k.alt} />
           </span>
         )}
+        {k.weitere?.map((w) => (
+          <span key={w.join("+")} className="flex items-center gap-1 text-[12px] text-fg-3">
+            oder <Tasten tasten={w} />
+          </span>
+        ))}
       </span>
       <span className="min-w-0 text-[13.5px] leading-snug text-fg-2">
         {k.was}
@@ -522,8 +539,17 @@ export function KuerzelListe() {
       </span>
     </li>
   );
+  const fristenAbschnitt = (
+    <section aria-labelledby="kuerzel-fristen">
+      <h3 id="kuerzel-fristen" className="mb-1 px-2 text-[13px] font-semibold text-fg">
+        In der Fristenliste (diese Seite)
+      </h3>
+      <ul className="grid gap-1.5">{FRISTEN_KUERZEL.map(zeile)}</ul>
+    </section>
+  );
   return (
     <div className="grid gap-4">
+      {aufFristen && fristenAbschnitt}
       <ul className="grid gap-1.5">{TASTATURKUERZEL.map(zeile)}</ul>
       <section aria-labelledby="kuerzel-posteingang">
         <h3 id="kuerzel-posteingang" className="mb-1 px-2 text-[13px] font-semibold text-fg">
@@ -534,7 +560,7 @@ export function KuerzelListe() {
       <div className="flex items-start justify-between gap-3 rounded-[14px] bg-[var(--surface-2)] px-3 py-2.5 ring-1 ring-[var(--line)]">
         <label htmlFor="kuerzel-einzeltasten" className="min-w-0 text-[13px] leading-snug text-fg-2">
           <span className="block font-semibold text-fg">Kürzel mit einzelnen Buchstaben</span>
-          {einzeltastenKuerzel ? "An – abschalten, wenn Sie oft neben ein Feld tippen. Alt+W, Alt+F und Alt+Z wirken immer." : "Aus – W, F, Z, ? und die Posteingang-Kürzel ruhen. Alt+W, Alt+F und Alt+Z wirken weiter."} Auch unter Einstellungen → Darstellung.
+          {einzeltastenKuerzel ? "An – abschalten, wenn Sie oft neben ein Feld tippen. Alt+W, Alt+F und Alt+Z (in der Fristenliste auch Alt+J/K/B) wirken immer." : "Aus – W, F, Z, ? und die Buchstaben-Kürzel in Posteingang und Fristenliste ruhen. Alt+W, Alt+F, Alt+Z, in der Fristenliste Alt+J/K/B und die Pfeiltasten wirken weiter."} Auch unter Einstellungen → Darstellung.
         </label>
         <Switch id="kuerzel-einzeltasten" checked={einzeltastenKuerzel} onChange={setEinzeltastenKuerzel} label="Kürzel mit einzelnen Buchstaben" />
       </div>

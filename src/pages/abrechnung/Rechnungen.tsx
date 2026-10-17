@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { motion } from "motion/react";
-import { ArrowRight, BadgeCheck, Layers, Receipt, Send } from "lucide-react";
+import { ArrowRight, BadgeCheck, Info, Layers, Receipt, Send } from "lucide-react";
 import { Button, Card, Chip, DataTable, Empty, SearchField, Segmented, type ColumnDef } from "@/components/ui";
 import { useCol } from "@/store/data";
 import { useKanzlei } from "@/store/session";
@@ -194,6 +194,9 @@ export function RechnungenTab() {
         getRowId={(r) => r.id}
         initialSort={[{ id: "datum", desc: true }]}
         onRowClick={(r) => oeffne(r.stornoZu?.id ?? r.id)}
+        // Zugängliche Namen für Öffnen-Ziel und Häkchen (I4-T07-01): „Rechnung RE-2026-0024 öffnen“, „RE-2026-0024 auswählen“
+        rowLabel={(r) => (r.stornoZu ? `Stornorechnung ${r.nummer} zu ${r.stornoZu.nummer} öffnen` : r.status === "entwurf" ? `Entwurf ${r.nummer} öffnen` : `Rechnung ${r.nummer} öffnen`)}
+        selectLabel={(r) => `${r.nummer} auswählen`}
         selectable
         toolbar={
           <div className="flex flex-wrap items-center gap-2">
@@ -206,36 +209,58 @@ export function RechnungenTab() {
             )}
           </div>
         }
-        bulkActions={(rows, clear) => (
-          <>
-            <Button
-              size="sm"
-              variant="secondary"
-              icon={<Send className="size-4" />}
-              onClick={() => {
-                const n = sendeZahlungserinnerungen(rows, user.id);
-                if (n) toast(`${n} ${n === 1 ? "Zahlungserinnerung" : "Zahlungserinnerungen"} versendet`, { text: "Im Aktivitätenprotokoll vermerkt", ton: "erfolg" });
-                else toast("Keine offenen Rechnungen ausgewählt", { text: "Erinnerungen gibt es nur für gestellte oder teilbezahlte Rechnungen.", ton: "warnung" });
-                clear();
-              }}
-            >
-              Zahlungserinnerung senden
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              icon={<BadgeCheck className="size-4" />}
-              onClick={() => {
-                const n = markiereBezahlt(rows);
-                if (n) toast(`${n} ${n === 1 ? "Rechnung" : "Rechnungen"} als bezahlt markiert`, { text: "Zahlungseingang im Aktenkonto gebucht", ton: "erfolg" });
-                else toast("Keine offenen Rechnungen ausgewählt", { ton: "warnung" });
-                clear();
-              }}
-            >
-              Als bezahlt markieren
-            </Button>
-          </>
-        )}
+        bulkActions={(rows, clear) => {
+          // Erinnern und „bezahlt“ nur für gestellte oder teilbezahlte Rechnungen – sonst gesperrt mit Grund (I4-T07-04)
+          const offen = rows.filter((r) => !r.stornoZu && istOffen(r));
+          const keine = offen.length === 0;
+          const gemischt = !keine && offen.length < rows.length;
+          const nurEntwuerfe = rows.every((r) => !r.stornoZu && r.status === "entwurf");
+          const grund = nurEntwuerfe ? "Nur für gestellte oder teilbezahlte Rechnungen – die Auswahl enthält nur Entwürfe" : "Nur für gestellte oder teilbezahlte Rechnungen – die Auswahl enthält keine offene Rechnung";
+          const hinweisId = keine ? "rechnungen-bulk-grund" : gemischt ? "rechnungen-bulk-hinweis" : undefined;
+          return (
+            <>
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={<Send className="size-4" />}
+                disabled={keine}
+                aria-describedby={hinweisId}
+                onClick={() => {
+                  const n = sendeZahlungserinnerungen(offen, user.id);
+                  if (n) toast(`${n} ${n === 1 ? "Zahlungserinnerung" : "Zahlungserinnerungen"} versendet`, { text: "Im Aktivitätenprotokoll vermerkt", ton: "erfolg" });
+                  clear();
+                }}
+              >
+                {gemischt ? `${offen.length} erinnern` : "Zahlungserinnerung senden"}
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={<BadgeCheck className="size-4" />}
+                disabled={keine}
+                aria-describedby={hinweisId}
+                onClick={() => {
+                  const n = markiereBezahlt(offen);
+                  if (n) toast(`${n} ${n === 1 ? "Rechnung" : "Rechnungen"} als bezahlt markiert`, { text: "Zahlungseingang im Aktenkonto gebucht", ton: "erfolg" });
+                  clear();
+                }}
+              >
+                {gemischt ? `${offen.length} als bezahlt markieren` : "Als bezahlt markieren"}
+              </Button>
+              {keine && (
+                <span id="rechnungen-bulk-grund" className="flex items-center gap-1.5 self-center text-[12.5px] text-fg-2">
+                  <Info className="size-3.5 shrink-0 text-fg-3" aria-hidden />
+                  {grund}
+                </span>
+              )}
+              {gemischt && (
+                <span id="rechnungen-bulk-hinweis" className="self-center text-[12.5px] text-fg-3">
+                  {offen.length} von {rows.length} ausgewählten sind offen – Entwürfe, bezahlte und stornierte bleiben unberührt.
+                </span>
+              )}
+            </>
+          );
+        }}
         mobileRow={(r) => {
           const a = akten.get(r.akteId);
           return (

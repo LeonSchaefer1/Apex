@@ -1,6 +1,8 @@
 import { cn } from "@/lib/cn";
 
-export function Avatar({ initialen, farbe = "#2440D8", size = 32, className, title }: { initialen: string; farbe?: string; size?: number; className?: string; title?: string }) {
+export function Avatar({ initialen, farbe: farbeRoh = "#2440D8", size = 32, className, title }: { initialen: string; farbe?: string; size?: number; className?: string; title?: string }) {
+  // Markenfarbe als Fläche: im Dunkelmodus --ink-fill (weiße Initialen ≥ 4,5 : 1, I4-T09-01), im Hellmodus identisch mit --ink
+  const farbe = farbeRoh.replace(/\s/g, "") === "var(--ink)" ? "var(--ink-fill)" : farbeRoh;
   return (
     <span
       title={title}

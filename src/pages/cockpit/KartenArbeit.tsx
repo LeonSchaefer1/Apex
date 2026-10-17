@@ -76,6 +76,24 @@ export function FristenKarte({ d, i, className }: { d: CockpitDaten; i: number; 
         mehr={{ to: "/fristen", label: "Alle Fristen" }}
       />
 
+      {d.vertretungVorab.length > 0 && (
+        // Vertretung vor dem ersten Abwesenheitstag (I4-T18-04, § 53 BRAO): Bernstein, Symbol und Text
+        <div className="relative z-[1] mb-3 grid gap-1.5">
+          {d.vertretungVorab.map((v) => (
+            <div key={v.person.id} className="flex items-start gap-2.5 rounded-[14px] bg-amber-soft px-3 py-2 text-[13px] leading-snug text-fg-2" role="note">
+              <CalendarClock className="mt-0.5 size-4 shrink-0 text-amber" aria-hidden />
+              <span className="min-w-0">
+                <span className="font-semibold text-fg">Vertretung vorab: </span>
+                {v.text}
+                <Link to="/fristen?vertretung=vorab" className="ml-1.5 inline-flex min-h-6 items-center gap-0.5 whitespace-nowrap font-semibold text-[var(--amber-text)] underline decoration-[color-mix(in_oklab,var(--amber)_45%,transparent)] underline-offset-2 hover:decoration-[var(--amber)]">
+                  Fristen ansehen <ArrowRight className="size-3.5" aria-hidden />
+                </Link>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {d.vertretung.length > 0 && (
         <div className="relative z-[1] mb-3 grid gap-1.5">
           {d.vertretung.map((v) => (
@@ -237,7 +255,7 @@ function FristZeile({ f, d, mitDatum }: { f: Frist; d: CockpitDaten; mitDatum?: 
       >
         <Streifen ton={streifenTon(f, d.heute)} />
         <Link to={`/akten/${f.akteId}?tab=fristen`} className="min-w-0 flex-1">
-          <div className={cn("truncate text-[13.5px] font-semibold leading-snug group-hover:text-ink", notfrist && "text-seal group-hover:text-seal")}>
+          <div className={cn("truncate text-[13.5px] font-semibold leading-snug group-hover:text-ink max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:break-words", notfrist && "text-seal group-hover:text-seal")}>
             {f.titel}
             {f.uhrzeit && <span className="num ml-1.5 font-normal text-fg-3">{f.uhrzeit} Uhr</span>}
           </div>
@@ -293,7 +311,7 @@ function TermineHeute({ d }: { d: CockpitDaten }) {
               <li key={t.id}>
                 <Link to={`/akten/${t.akteId}?tab=fristen`} className="group flex min-w-0 items-baseline gap-2 rounded-[10px] px-1 py-1 text-[13px] hover:bg-ink-soft">
                   <span className="num shrink-0 font-semibold text-violet">{t.uhrzeit ? `${t.uhrzeit} Uhr` : "ganztägig"}</span>
-                  <span className="min-w-0 truncate font-medium group-hover:text-ink">{t.titel}</span>
+                  <span className="min-w-0 truncate font-medium group-hover:text-ink max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:break-words">{t.titel}</span>
                   {t.ort && <span className="hidden min-w-0 truncate text-fg-3 @md:inline">· {t.ort}</span>}
                   {a && <span className="mono ml-auto shrink-0 text-[12.5px] text-fg-3">{a.aktenzeichen}</span>}
                 </Link>
@@ -380,10 +398,10 @@ function PostZeile({ n, d }: { n: Nachricht; d: CockpitDaten }) {
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2">
-            <span className="truncate text-[13.5px] font-semibold">{n.von}</span>
+            <span className="truncate text-[13.5px] font-semibold max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:break-words">{n.von}</span>
             <span className="ml-auto shrink-0 text-[12.5px] text-fg-3">{relTime(n.eingang)}</span>
           </span>
-          <span className="mt-0.5 block truncate text-[13px] text-fg-2">{n.betreff}</span>
+          <span className="mt-0.5 block truncate text-[13px] text-fg-2 max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:break-words">{n.betreff}</span>
           {fertig && n.ki ? (
             <span className="mt-1.5 block rounded-[12px] bg-violet-soft px-2.5 py-2 text-[12.5px] leading-snug text-fg-2">
               <span className="line-clamp-2">
@@ -465,7 +483,7 @@ export function TermineKarte({ d, i, className }: { d: CockpitDaten; i: number; 
                     <span className="num text-[18px] font-semibold leading-tight">{dt.getUTCDate()}</span>
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13.5px] font-semibold group-hover:text-ink">{t.titel}</span>
+                    <span className="block truncate text-[13.5px] font-semibold group-hover:text-ink max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:break-words">{t.titel}</span>
                     <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[12.5px] text-fg-3">
                       <span className="shrink-0 font-medium text-fg-2">
                         {tagLabel(t.datum, d.heute)}
@@ -523,7 +541,7 @@ export function AktenKarte({ d, i, className }: { d: CockpitDaten; i: number; cl
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline gap-2">
                       <span className="mono shrink-0 text-[12.5px] font-semibold text-ink">{akte.aktenzeichen}</span>
-                      <span className="truncate text-[13.5px] font-semibold group-hover:text-ink">{akte.titel}</span>
+                      <span className="truncate text-[13.5px] font-semibold group-hover:text-ink max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:break-words">{akte.titel}</span>
                     </span>
                     <span className="mt-1 flex flex-wrap items-center gap-1.5">
                       {gruende.map((g) => (

@@ -27,6 +27,12 @@ export function ZinsrechnerTab() {
   const [bis, setBis] = useState("2026-07-30");
   const [art, setArt] = useState<Satzart>("9");
   const [fest, setFest] = useState("4");
+  // Startwerte sind Beispielwerte – gekennzeichnet, bis die erste eigene Eingabe erfolgt (I4-T09-02)
+  const [beispiel, setBeispiel] = useState(true);
+  const eigen = <T,>(set: (v: T) => void) => (v: T) => {
+    setBeispiel(false);
+    set(v);
+  };
   const tabelleRef = useRef<HTMLTableElement>(null);
 
   const kapital = parseBetrag(betrag);
@@ -75,22 +81,23 @@ export function ZinsrechnerTab() {
         <Card>
           <CardHeader icon={<Percent className="size-4" />} title="Eingaben" subtitle="Zeitraum: Beginn und Ende jeweils einschließlich – Tageszählung act/365." />
           <div className="grid gap-3.5">
+            {beispiel && <BeispielHinweis />}
             <Field label="Betrag (€)" htmlFor="zr-betrag">
-              <Input id="zr-betrag" value={betrag} onChange={(e) => setBetrag(e.target.value)} inputMode="decimal" className="num" />
+              <Input id="zr-betrag" value={betrag} onChange={(e) => eigen(setBetrag)(e.target.value)} inputMode="decimal" className="num" aria-describedby={beispiel ? "beispiel-hinweis" : undefined} />
             </Field>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="von (einschließlich)" htmlFor="zr-von">
-                <Input id="zr-von" type="date" value={von} onChange={(e) => setVon(e.target.value)} />
+                <Input id="zr-von" type="date" value={von} onChange={(e) => eigen(setVon)(e.target.value)} />
               </Field>
               <Field label="bis (einschließlich)" htmlFor="zr-bis">
-                <Input id="zr-bis" type="date" value={bis} onChange={(e) => setBis(e.target.value)} />
+                <Input id="zr-bis" type="date" value={bis} onChange={(e) => eigen(setBis)(e.target.value)} />
               </Field>
             </div>
             <Field label="Zinssatz">
               <Segmented<Satzart>
                 full
                 value={art}
-                onChange={setArt}
+                onChange={eigen(setArt)}
                 options={[
                   { value: "5", label: "5 PP" },
                   { value: "9", label: "9 PP" },
@@ -100,7 +107,7 @@ export function ZinsrechnerTab() {
             </Field>
             {art === "fest" && (
               <Field label="Fester Jahreszinssatz (%)" htmlFor="zr-fest">
-                <Input id="zr-fest" value={fest} onChange={(e) => setFest(e.target.value)} inputMode="decimal" className="num" />
+                <Input id="zr-fest" value={fest} onChange={(e) => eigen(setFest)(e.target.value)} inputMode="decimal" className="num" />
               </Field>
             )}
             <p className="flex items-start gap-2 rounded-[12px] bg-ink-softer px-3 py-2 text-[12.5px] text-fg-2">
@@ -178,5 +185,15 @@ export function ZinsrechnerTab() {
         </Card>
       </div>
     </>
+  );
+}
+
+/** „Beispielwerte – bitte überschreiben“: Startwerte des Rechners sind kein Ergebnis aus einer Akte (I4-T09-02). */
+export function BeispielHinweis({ id = "beispiel-hinweis" }: { id?: string }) {
+  return (
+    <p id={id} className="flex items-start gap-2 rounded-[12px] bg-amber-soft px-3 py-2 text-[12.5px] font-medium text-fg">
+      <Info className="mt-0.5 size-3.5 shrink-0 text-[var(--amber-text)]" aria-hidden />
+      <span>Beispielwerte – bitte überschreiben. Das Ergebnis gilt erst für Ihre eigenen Angaben.</span>
+    </p>
   );
 }

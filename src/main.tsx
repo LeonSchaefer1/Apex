@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import "./styles/index.css";
 import App from "./App";
 import { applySchrift, applyTheme, useUI } from "./store/ui";
+import { bewegungReduzierenAnwenden } from "./lib/bewegung";
 
 // Eingebettete Ansichten (Artefakt) liefern ein eigenes Gerüst ohne <html lang> – für Vorlesen, Silbentrennung und Rechtschreibprüfung.
 if (!document.documentElement.lang) document.documentElement.lang = "de";
@@ -11,6 +12,7 @@ applyTheme(useUI.getState().theme);
 document.documentElement.setAttribute("data-density", useUI.getState().dichte);
 applySchrift(useUI.getState().schrift);
 formulareInSandboxErmoeglichen();
+bewegungReduzierenAnwenden();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

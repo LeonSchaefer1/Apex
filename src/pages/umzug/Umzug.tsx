@@ -11,7 +11,8 @@ import { cn } from "@/lib/cn";
 import { leseDatei, parseCsv, type CsvErgebnis, type DateiInfo } from "./csv";
 import { autoZuordnung, baueZeilen, systemName as sysName, type DateiDublettenAktion, type DublettenAktion, type OhneDatumAktion, type QuellSystem, type Umfang, type ZielFeld } from "./zuordnung";
 import { beispielExport } from "./beispiel";
-import { fuehreUmzugAus, macheRueckgaengig, umzugPlan, type Entitaet, type Ergebnis, type Fortschritt } from "./uebernahme";
+import { fristenAusErgebnis, fristenAusLauf, fristenZaehlung, fuehreUmzugAus, macheRueckgaengig, umzugPlan, type Entitaet, type Ergebnis, type Fortschritt } from "./uebernahme";
+import { erreichbarkeit } from "./erreichbarkeit";
 import { SchrittDaten, SchrittFertig, SchrittQuelle, SchrittUebernahme, SchrittZuordnung } from "./Schritte";
 import {
   istAbgebrochen, ladeLaufMarke, protokolliereAbbruch, ladeStand, laufAusErgebnis, markiereRueckgaengig, setzeLaufMarke, sortiereLaeufe, speichereLauf, speichereStand, uebernehmeAlteLaeufe,
@@ -232,7 +233,8 @@ export default function Umzug() {
       setzeLaufMarke(tenant.id, null);
       setErgebnis(e);
       speichereStand(tenant.id, null);
-      toast("Umzug abgeschlossen", { text: `${e.aktenNeu + e.aktenAktualisiert} ${e.aktenNeu + e.aktenAktualisiert === 1 ? "Akte" : "Akten"}, ${e.kontakteNeu} ${e.kontakteNeu === 1 ? "Kontakt" : "Kontakte"} und ${e.fristen} ${e.fristen === 1 ? "Frist" : "Fristen"} übernommen.`, ton: "erfolg" });
+      // Dieselbe Zählung wie Kachel und Protokoll: „2 Fristen und 1 Wiedervorlage“ (I4-T11-02)
+      toast("Umzug abgeschlossen", { text: `${e.aktenNeu + e.aktenAktualisiert} ${e.aktenNeu + e.aktenAktualisiert === 1 ? "Akte" : "Akten"}, ${e.kontakteNeu} ${e.kontakteNeu === 1 ? "Kontakt" : "Kontakte"}, ${fristenZaehlung(fristenAusErgebnis(e))} übernommen.`, ton: "erfolg" });
       setTimeout(() => geheZu(4), 650);
     } catch (err) {
       // Halber Lauf bleibt nicht stehen: alles zurücknehmen, im Protokoll als abgebrochen festhalten
@@ -293,6 +295,13 @@ export default function Umzug() {
     (schritt === 2 && zeilen.some((z) => !z.fehler) && (zuordnung.includes("titel") || zuordnung.includes("aktenzeichen") || zuordnung.includes("mandant")));
   const weiterText = ["Weiter zu den Daten", "Weiter zur Zuordnung", "Weiter zur Übernahme"][schritt];
   const ap = tenant.ansprechpartner;
+  // Erreichbarkeit nach Servicezeit (inServicezeit/naechsteServicezeit) – minütlich neu berechnet
+  const [jetzt, setJetzt] = useState(() => new Date());
+  useEffect(() => {
+    const t = window.setInterval(() => setJetzt(new Date()), 60_000);
+    return () => window.clearInterval(t);
+  }, []);
+  const apStatus = erreichbarkeit(jetzt, ap.verfuegbar, tenant.bundesland);
 
   return (
     <div>
@@ -516,15 +525,25 @@ export default function Umzug() {
           </Card>
 
           <Card>
-            <div className="flex items-center gap-3">
+            <div className="flex items-start gap-3">
               <Avatar initialen={ap.initialen} size={40} />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[13.5px] font-semibold">{ap.name}</div>
-                <div className="truncate text-[12px] text-fg-3">begleitet Ihren Umzug persönlich</div>
+                <div className="break-words text-[13.5px] font-semibold">{ap.name}</div>
+                {/* Untertitel umbrechen statt kürzen (I4-T11-01) */}
+                <div className="break-words text-[12px] text-fg-3">begleitet Ihren Umzug persönlich</div>
+                <div className="mt-1.5">
+                  {/* Status aus der Servicezeit – wie der Apex Assistent, minütlich aktualisiert (Text und Symbol, nicht nur Farbe) */}
+                  {apStatus.erreichbar ? (
+                    <Chip tone="green" dot>
+                      erreichbar
+                    </Chip>
+                  ) : (
+                    <Chip tone="amber" icon={<Clock className="size-3" aria-hidden />} className="!h-auto min-h-6 !whitespace-normal py-0.5 leading-snug">
+                      {apStatus.text}
+                    </Chip>
+                  )}
+                </div>
               </div>
-              <Chip tone="green" dot>
-                erreichbar
-              </Chip>
             </div>
             <div className="mt-3 flex items-center gap-2.5 rounded-[12px] bg-[var(--ink-softer)] px-3 py-2 text-[12.5px]">
               <Phone className="size-3.5 shrink-0 text-ink" />
@@ -545,6 +564,13 @@ export default function Umzug() {
 
 /** Umzugsprotokoll: alle Läufe mit Datum, Datei und Zahlen – „Rückgängig machen“ je Lauf, auch nach dem Neuladen. */
 function Umzugsprotokoll({ laeufe, onRueckgaengig, team, laufendeId }: { laeufe: UmzugLauf[]; onRueckgaengig: (l: UmzugLauf) => void; team: { id: string; name: string }[]; laufendeId: string | null }) {
+  const fristen = useCol("fristen");
+  /** Dieselbe Zählung wie Meldung und Kachel (I4-T11-02); nach „Rückgängig“ sind die Fristen gelöscht – dann die Gesamtzahl */
+  const protokollFristen = (l: UmzugLauf) => {
+    const z = fristenAusLauf(l.id, fristen);
+    if (z.fristen + z.wiedervorlagen + z.termine === l.zahlen.fristen) return fristenZaehlung(z);
+    return `${l.zahlen.fristen} ${l.zahlen.fristen === 1 ? "Frist bzw. Wiedervorlage" : "Fristen und Wiedervorlagen"}`;
+  };
   if (!laeufe.length) return null;
   return (
     <Card>
@@ -576,7 +602,7 @@ function Umzugsprotokoll({ laeufe, onRueckgaengig, team, laufendeId }: { laeufe:
               ) : (
                 <div className="mt-0.5 text-[12.5px] text-fg-3">
                   {z.aktenNeu} {z.aktenNeu === 1 ? "Akte" : "Akten"} neu{z.archiviert ? ` (${z.archiviert} abgeschlossen)` : ""}
-                  {z.aktenAktualisiert ? `, ${z.aktenAktualisiert} aktualisiert` : ""}, {z.kontakteNeu} {z.kontakteNeu === 1 ? "Kontakt" : "Kontakte"}, {z.fristen} {z.fristen === 1 ? "Frist bzw. Wiedervorlage" : "Fristen und Wiedervorlagen"}
+                  {z.aktenAktualisiert ? `, ${z.aktenAktualisiert} aktualisiert` : ""}, {z.kontakteNeu} {z.kontakteNeu === 1 ? "Kontakt" : "Kontakte"}, {protokollFristen(l)}
                   {z.zusammengefuehrt ? `, ${z.zusammengefuehrt} ${z.zusammengefuehrt === 1 ? "Dublette" : "Dubletten"} zusammengeführt` : ""}
                   {l.undo.erstellt.some((x) => x.col === "dokumente") ? `, Datenblatt je Akte: ${l.undo.erstellt.filter((x) => x.col === "dokumente").length}` : ""}
                 </div>

@@ -551,6 +551,9 @@ export default function AktenListe() {
         // Tablet: „Bearbeitung“ als Kürzel unter der Akte, „Geändert“ ausgeblendet – so passt die Tabelle ohne Querscrollen
         defaultHidden={tablet ? ["Gericht", "Bearbeitung", "Letzte Änderung"] : ["Gericht"]}
         onRowClick={(a) => nav(`/akten/${a.id}`)}
+        // Zugängliche Namen: Öffnen-Ziel der Zeile und Auswahl-Häkchen mit Az. (I4-T07-01, WCAG 2.1.1 / 4.1.2)
+        rowLabel={(a) => `Akte ${a.aktenzeichen} ${a.titel} öffnen`}
+        selectLabel={(a) => `${a.aktenzeichen} auswählen`}
         selectable
         toolbar={
           <div className="flex flex-wrap items-center gap-2">

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { CalendarClock, CalendarPlus, Clock, FolderOpen, MapPin, PenLine, ShieldAlert, Trash2 } from "lucide-react";
-import { fmtDateShort, fmtDateWd, relDays, schuetzeLeerzeichen, wochentagName, fmtDateLong } from "@/core/dates";
+import { fmtDate, fmtDateShort, fmtDateWd, fmtTime, relDays, schuetzeLeerzeichen, wochentagName, fmtDateLong } from "@/core/dates";
 import { fristArtZu } from "@/core/fristen";
 import type { Akte, Frist, User } from "@/core/types";
 import { Avatar, Button, Drawer } from "@/components/ui";
@@ -10,6 +10,28 @@ import { ErledigtKnopf, KontrolleAktion, KontrollStatus, KorrekturHinweis, Nachw
 import { TYP_META, kalenderMeta } from "./logik";
 import { DateiDialog, type AusgabeDatei } from "./dateiAusgabe";
 import { erzeugeIcs, icsDateiname } from "./ics";
+
+/**
+ * Korrektur-Historie: „17.10.2026, 05:42 Uhr · Dr. Julia Hartmann · 17.11.2026 → 17.11.2026 · Grund: …“ – der neue Wert ist das
+ * Datum vor der nächsten Korrektur bzw. das aktuelle Fristende (I4-T03-04).
+ */
+export function korrekturVerlauf(f: Pick<Frist, "datum" | "titel" | "korrekturen">, team: Pick<User, "id" | "name">[]) {
+  const liste = f.korrekturen ?? [];
+  return liste.map((k, i) => {
+    const naechste = liste[i + 1];
+    const neuDatum = naechste ? naechste.vorher.datum : f.datum;
+    const neuTitel = naechste ? naechste.vorher.titel : f.titel;
+    return {
+      am: k.am,
+      zeit: `${fmtDate(k.am.slice(0, 10))}, ${fmtTime(k.am)} Uhr`,
+      person: team.find((u) => u.id === k.vonId)?.name ?? "unbekannte Person",
+      alt: fmtDate(k.vorher.datum),
+      neu: fmtDate(neuDatum),
+      titelAlt: k.vorher.titel && k.vorher.titel !== neuTitel ? k.vorher.titel : undefined,
+      grund: k.grund,
+    };
+  });
+}
 
 /** Kompakte Kalender-Pille (Woche/Monat) – kritische Fristen rot wie Notfristen, mit sichtbarem „nicht verlängerbar“. */
 export function FristPille({ f, akte, onClick, ohneAz }: { f: Frist; akte?: Akte; onClick: () => void; ohneAz?: boolean }) {
@@ -146,10 +168,12 @@ function DetailInhalt({ f, akte, team, user, onClose }: { f: Frist; akte?: Akte;
       {f.korrekturen?.length ? (
         <div>
           <div className="eyebrow mb-1.5">Korrekturen</div>
-          <ul className="grid gap-1 text-[12.5px] text-fg-2">
-            {f.korrekturen.map((k) => (
-              <li key={k.am}>
-                {fmtDateShort(k.am.slice(0, 10))}: vorher {fmtDateShort(k.vorher.datum)} – {k.grund}
+          {/* Vollständige Historie: Zeitpunkt, Person, alt → neu, Grund (I4-T03-04) */}
+          <ul className="grid gap-1.5 text-[12.5px] text-fg-2">
+            {korrekturVerlauf(f, team).map((k) => (
+              <li key={k.am} className="break-words rounded-[10px] bg-[var(--ink-softer)] px-2.5 py-1.5">
+                <span className="num">{k.zeit}</span> · {k.person} · <span className="num">{k.alt} → {k.neu}</span>
+                {k.titelAlt ? <span className="text-fg-3"> (vorher „{k.titelAlt}“)</span> : null} · Grund: {k.grund}
               </li>
             ))}
           </ul>

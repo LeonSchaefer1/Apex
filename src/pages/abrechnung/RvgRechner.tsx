@@ -1,5 +1,5 @@
 // Reiter „RVG-Rechner“: Wertgebühren nach § 13 RVG mit automatischer Tabellenwahl (§ 60 RVG), Anrechnung und Auslagen.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { Calculator, CalendarDays, ChevronDown, FilePlus2, Info, Minus, Plus, Table2, Users } from "lucide-react";
@@ -14,6 +14,7 @@ import { cn } from "@/lib/cn";
 import { erstelleRechnungen } from "./aktionen";
 import { FASSUNG_LABEL, fmtSatz, parseBetrag, type TabKey } from "./lib";
 import { useAbrechnungUI } from "./store";
+import { BeispielHinweis } from "./Zinsrechner";
 
 const PHASEN: VVPosition["phase"][] = ["Beratung", "Außergerichtlich", "Mahnverfahren", "Gerichtlich", "Berufung", "Vollstreckung", "Allgemein"];
 const SCHNELL = [1000, 5000, 10000, 50000];
@@ -44,6 +45,8 @@ interface Eingaben {
   pauschale: boolean;
   ust: boolean;
   akteId: string;
+  /** Noch die Startwerte (Beispiel) – keine eigene Eingabe */
+  beispiel?: boolean;
 }
 function ladeEingaben(userId: string): Partial<Eingaben> {
   for (const lies of [() => localStorage.getItem(speicherKey(userId)), () => sessionStorage.getItem(SPEICHER)]) {
@@ -64,7 +67,7 @@ function SatzRegler({ p, satz, onChange }: { p: VVPosition; satz: number; onChan
   const set = (v: number) => onChange(Math.min(max, Math.max(min, Math.round(v * 10) / 10)));
   return (
     <div className="flex w-full items-center gap-2 sm:w-[230px]" onClick={(e) => e.stopPropagation()}>
-      <button type="button" className="icon-btn !size-7 shrink-0" aria-label="Satz verringern" onClick={() => set(satz - 0.1)} disabled={satz <= min}>
+      <button type="button" tabIndex={-1} className="icon-btn !size-7 shrink-0" aria-label="Satz verringern" onClick={() => set(satz - 0.1)} disabled={satz <= min}>
         <Minus className="size-3.5" />
       </button>
       <input
@@ -77,7 +80,7 @@ function SatzRegler({ p, satz, onChange }: { p: VVPosition; satz: number; onChan
         aria-label={`Gebührensatz Nr. ${p.nr} VV RVG`}
         className="h-1.5 min-w-0 flex-1 cursor-pointer accent-[var(--ink)]"
       />
-      <button type="button" className="icon-btn !size-7 shrink-0" aria-label="Satz erhöhen" onClick={() => set(satz + 0.1)} disabled={satz >= max}>
+      <button type="button" tabIndex={-1} className="icon-btn !size-7 shrink-0" aria-label="Satz erhöhen" onClick={() => set(satz + 0.1)} disabled={satz >= max}>
         <Plus className="size-3.5" />
       </button>
       <span className="num w-8 shrink-0 text-right text-[13px] font-semibold">{fmtSatz(satz)}</span>
@@ -114,6 +117,9 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
   const [pauschale, setPauschale] = useState(gespeichert.pauschale ?? true);
   const [ust, setUst] = useState(gespeichert.ust ?? true);
   const [akteId, setAkteId] = useState(gespeichert.akteId ?? "");
+  // Beispielwerte (10.000 €, Geschäftsgebühr) gekennzeichnet, bis zur ersten eigenen Eingabe – gespeicherte eigene Eingaben gelten nicht als Beispiel (I4-T09-02)
+  const [beispiel, setBeispiel] = useState(gespeichert.wertText === undefined || gespeichert.beispiel === true);
+  const eigen = () => setBeispiel(false);
   useEffect(() => {
     try {
       localStorage.setItem(
@@ -127,13 +133,27 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
           pauschale,
           ust,
           akteId,
+          beispiel,
         } satisfies Eingaben),
       );
     } catch {
       /* Speicher nicht verfügbar – Eingaben gelten dann nur bis zum Neuladen */
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wertText, auftrag, pos, auftraggeber, anrechnung, pauschale, ust, akteId]);
+  }, [wertText, auftrag, pos, auftraggeber, anrechnung, pauschale, ust, akteId, beispiel]);
+
+  // Tastatur (I4-T07-02): beim Öffnen des Rechners (Reiter, Strg+K, Direktlink) Fokus ins Feld Gegenstandswert – nicht auf BODY
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      if (document.querySelector('[aria-modal="true"]')) return;
+      const akt = document.activeElement;
+      // Nur, wenn der Fokus nicht schon bewusst in einem Eingabefeld steht
+      if (akt && akt !== document.body && /^(INPUT|TEXTAREA|SELECT)$/.test(akt.tagName)) return;
+      document.getElementById("rvg-wert")?.focus({ preventScroll: true });
+    }, 180);
+    return () => window.clearTimeout(t);
+  }, []);
+  const erstellenRef = useRef<HTMLButtonElement>(null);
   const [tabelleOffen, setTabelleOffen] = useState(false);
 
   const wert = parseBetrag(wertText);
@@ -162,17 +182,26 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
   const an = (nr: string) => !!pos[nr]?.an;
   const anrechnungMoeglich = (an("2300") && (an("3100") || an("3305"))) || (an("3305") && an("3100"));
 
-  const toggle = (nr: string) => setPos((s) => ({ ...s, [nr]: { ...s[nr], an: !s[nr].an } }));
-  const setSatz = (nr: string, satz: number) => setPos((s) => ({ ...s, [nr]: { ...s[nr], satz, an: true } }));
+  const toggle = (nr: string) => {
+    eigen();
+    setPos((s) => ({ ...s, [nr]: { ...s[nr], an: !s[nr].an } }));
+  };
+  const setSatz = (nr: string, satz: number) => {
+    eigen();
+    setPos((s) => ({ ...s, [nr]: { ...s[nr], satz, an: true } }));
+  };
 
   const uebernehmen = () => {
     if (!akte) return;
+    eigen();
     setWertText(akte.gegenstandswert.toLocaleString("de-DE"));
     setAuftrag(akte.createdAt.slice(0, 10));
     toast("Werte übernommen", {
       text: `Gegenstandswert und Auftragsdatum aus Akte ${akte.aktenzeichen}`,
       ton: "info",
     });
+    // Der Knopf verschwindet – Fokus auf „Als Rechnung für Akte erstellen“ (nicht BODY)
+    window.setTimeout(() => (erstellenRef.current && !erstellenRef.current.disabled ? erstellenRef.current : document.getElementById("rvg-ergebnis-titel"))?.focus(), 30);
   };
 
   const alsRechnung = (trotzdem = false) => {
@@ -211,19 +240,46 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
   return (
     <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_400px]">
       <div className="grid grid-cols-1 min-w-0 gap-4">
+        {/* Sprungmarken für die Tastatur: ohne 29 Tab-Stopps zur Aktenwahl bzw. zum Ergebnis (I4-T07-02) */}
+        <nav aria-label="Sprungmarken im RVG-Rechner" className="-mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-[12.5px] text-fg-3">
+          <span>Springen zu:</span>
+          <button type="button" className="rounded-full px-1.5 py-0.5 font-medium text-ink hover:underline max-sm:min-h-11" onClick={() => document.getElementById("rvg-akte")?.focus()}>
+            Aktenwahl
+          </button>
+          <button
+            type="button"
+            className="rounded-full px-1.5 py-0.5 font-medium text-ink hover:underline max-sm:min-h-11"
+            onClick={() => {
+              const h = document.getElementById("rvg-ergebnis-titel");
+              h?.focus({ preventScroll: true });
+              document.getElementById("rvg-ergebnis")?.scrollIntoView({ block: "start" });
+            }}
+          >
+            Ergebnis
+          </button>
+        </nav>
         <Card>
           <CardHeader
             icon={<Calculator className="size-4" />}
             title="Gegenstandswert und Auftrag"
             subtitle="Die Gebührentabelle richtet sich nach dem Tag der unbedingten Auftragserteilung (§ 60 RVG)."
           />
+          {beispiel && (
+            <div className="mb-4">
+              <BeispielHinweis id="rvg-beispiel-hinweis" />
+            </div>
+          )}
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Gegenstandswert (€)" htmlFor="rvg-wert">
               <Input
                 id="rvg-wert"
                 inputMode="decimal"
                 value={wertText}
-                onChange={(e) => setWertText(e.target.value)}
+                aria-describedby={beispiel ? "rvg-beispiel-hinweis" : undefined}
+                onChange={(e) => {
+                  eigen();
+                  setWertText(e.target.value);
+                }}
                 onBlur={() => wert > 0 && setWertText(wert.toLocaleString("de-DE", { maximumFractionDigits: 2 }))}
                 className="num !h-11 !text-[16px] font-semibold"
               />
@@ -232,7 +288,12 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
                   <button
                     key={v}
                     type="button"
-                    onClick={() => setWertText(v.toLocaleString("de-DE"))}
+                    // Schnellwahl für die Maus – per Tastatur tippt man den Wert (kein Tab-Stopp zwischen den Pflichtfeldern)
+                    tabIndex={-1}
+                    onClick={() => {
+                      eigen();
+                      setWertText(v.toLocaleString("de-DE"));
+                    }}
                     className={cn("chip num cursor-pointer transition-colors", wert === v ? "chip-ink" : "hover:bg-ink-soft")}
                   >
                     {v.toLocaleString("de-DE")} €
@@ -243,7 +304,16 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
             <Field label="Auftrag erteilt am" htmlFor="rvg-auftrag">
               <div className="relative">
                 <CalendarDays className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-fg-3" />
-                <Input id="rvg-auftrag" type="date" value={auftrag} onChange={(e) => setAuftrag(e.target.value)} className="!h-11 !pl-10" />
+                <Input
+                  id="rvg-auftrag"
+                  type="date"
+                  value={auftrag}
+                  onChange={(e) => {
+                    eigen();
+                    setAuftrag(e.target.value);
+                  }}
+                  className="!h-11 !pl-10"
+                />
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <AnimatePresence mode="popLayout" initial={false}>
@@ -466,7 +536,9 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
         <Card className="glow overflow-hidden">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="eyebrow">Ergebnis</div>
+              <h2 id="rvg-ergebnis-titel" tabIndex={-1} className="eyebrow rounded-[6px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]">
+                Ergebnis
+              </h2>
               <div className="mt-1 text-[12.5px] text-fg-3">
                 Gegenstandswert <span className="num font-medium text-fg-2">{fmtEUR(Math.max(0, wert))}</span>
               </div>
@@ -522,7 +594,7 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
 
           <div className="mt-5 border-t border-[var(--line)] pt-4">
             <Field label="Akte" htmlFor="rvg-akte">
-              <Select id="rvg-akte" value={akteId} onChange={(e) => setAkteId(e.target.value)}>
+              <Select id="rvg-akte" value={akteId} onChange={(e) => setAkteId(e.target.value)} aria-describedby={akteWeicht ? "rvg-uebernehmen" : undefined}>
                 <option value="">Akte wählen …</option>
                 {offeneAkten.map((a) => (
                   <option key={a.id} value={a.id}>
@@ -534,13 +606,13 @@ export function RvgRechnerTab({ onTab }: { onTab: (t: TabKey) => void }) {
             <AnimatePresence initial={false}>
               {akteWeicht && (
                 <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                  <button type="button" onClick={uebernehmen} className="mt-2 text-left text-[12.5px] font-medium text-ink hover:underline">
+                  <button id="rvg-uebernehmen" type="button" onClick={uebernehmen} className="mt-2 text-left text-[12.5px] font-medium text-ink hover:underline">
                     Werte der Akte übernehmen ({fmtEUR(akte!.gegenstandswert, { cents: false })}, Auftrag {fmtDate(akte!.createdAt.slice(0, 10))})
                   </button>
                 </motion.div>
               )}
             </AnimatePresence>
-            <Button variant="primary" className="mt-3 w-full" icon={<FilePlus2 className="size-4" />} disabled={!akte || !hatPositionen} onClick={() => alsRechnung()}>
+            <Button ref={erstellenRef} variant="primary" className="mt-3 w-full" icon={<FilePlus2 className="size-4" />} disabled={!akte || !hatPositionen} onClick={() => alsRechnung()}>
               Als Rechnung für Akte erstellen
             </Button>
             <p className="mt-2 text-center text-[12.5px] text-fg-3">Wird als Entwurf angelegt – Sie prüfen und stellen die Rechnung anschließend.</p>

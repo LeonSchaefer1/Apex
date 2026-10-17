@@ -34,13 +34,15 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(function Card({ intera
 
 export function CardHeader({ title, subtitle, action, icon, className }: { title: React.ReactNode; subtitle?: React.ReactNode; action?: React.ReactNode; icon?: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("mb-4 flex items-start gap-3", className)}>
+    // Schmal (z. B. 320 px): Reicht der Platz neben Symbol und Aktion nicht für den Titel (mind. 9rem), rückt die Aktion in die
+    // nächste Zeile – statt den Titel abzuschneiden oder mitten im Wort zu trennen (I4-T14-02, Rest aus B-10).
+    <div className={cn("mb-4 flex flex-wrap items-start gap-x-3 gap-y-2", className)}>
       {icon && <div className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-[10px] bg-ink-soft text-ink">{icon}</div>}
-      <div className="min-w-0 flex-1">
-        <div className="title-md line-clamp-2">{title}</div>
+      <div className="min-w-0 flex-1 basis-[9rem]">
+        <div className="title-md line-clamp-2 break-words hyphens-auto">{title}</div>
         {subtitle && <div className="mt-0.5 text-[12.5px] text-fg-3">{subtitle}</div>}
       </div>
-      {action && <div className="shrink-0">{action}</div>}
+      {action && <div className="ml-auto max-w-full shrink-0">{action}</div>}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 // Bankabgleich: ordnet Kontoumsätze offenen Rechnungen zu – regelbasiert, nachvollziehbar, mit Sicherheitswert.
 import { useData } from "@/store/data";
 import { fmtDate, fmtEUR, nowLocal, round2, today, uid } from "@/core/dates";
-import type { Akte, Aktivitaet, Kontakt, Rechnung, Transaktion } from "@/core/types";
+import type { Akte, Aktivitaet, Buchung, Kontakt, Rechnung, Transaktion } from "@/core/types";
 import { erfasseZahlung, nimmZahlungZurueck, type ZahlungsErgebnis } from "./aktionen";
 import { istOffen, offenerBetrag } from "./lib";
 import { escapeRe, fremdgeldTreffer, namensTeile, norm, VERSICHERER } from "@/core/abrechnung";
@@ -10,6 +10,50 @@ export { fremdgeldTreffer };
 
 /** Ab dieser Sicherheit bucht AnwaltApex selbstständig. */
 export const AUTO_SCHWELLE = 0.9;
+
+// ───────────── Konto je Umsatz (I4-T08-01): Geschäftskonto oder Anderkonto (§ 43a Abs. 7 BRAO, § 4 BORA) ─────────────
+
+export type KontoArt = NonNullable<Transaktion["konto"]>;
+/** Konto eines Umsatzes – fehlt die Angabe, ist es das Geschäftskonto (Altbestände). */
+export const kontoVon = (t?: Pick<Transaktion, "konto">): KontoArt => (t?.konto === "ander" ? "ander" : "geschaeft");
+export const KONTO_NAME: Record<KontoArt, string> = { geschaeft: "Geschäftskonto", ander: "Anderkonto" };
+export const KONTO_GENITIV: Record<KontoArt, string> = { geschaeft: "Geschäftskontos", ander: "Anderkontos" };
+
+/**
+ * Meldung beim Buchen von Fremdgeld – nach dem tatsächlichen Konto des Eingangs:
+ * Anderkonto → weiterleiten; Geschäftskonto → weiterleiten oder auf das Anderkonto umbuchen.
+ */
+export function fremdgeldMeldung(betrag: number, konto: KontoArt, aktenzeichen?: string): string {
+  const az = aktenzeichen ? ` · ${aktenzeichen}` : "";
+  return konto === "ander"
+    ? `${fmtEUR(betrag)} auf dem Anderkonto${az} – bitte unverzüglich weiterleiten (§ 43a Abs. 7 BRAO)`
+    : `${fmtEUR(betrag)} auf dem Geschäftskonto eingegangen${az} – unverzüglich weiterleiten oder auf das Anderkonto umbuchen (§ 43a Abs. 7 BRAO, § 4 BORA)`;
+}
+
+/**
+ * Auf welchem Konto ist das Fremdgeld einer Akte eingegangen? Nur Eingänge mit Bankumsatz sind bekannt; ohne Umsatz
+ * (von Hand gebucht, Altbestand) bleibt es offen. „gemischt“, wenn Eingänge auf beiden Konten liegen.
+ */
+export function fremdgeldKonto(akteId: string, buchungen: Buchung[], transaktionen: Pick<Transaktion, "id" | "konto">[]): KontoArt | "gemischt" | undefined {
+  const tx = new Map(transaktionen.map((t) => [t.id, t]));
+  const konten = new Set<KontoArt>();
+  for (const b of buchungen) {
+    if (b.akteId !== akteId || !b.fremdgeld || b.betrag <= 0 || b.text.startsWith("Storno: ") || !b.transaktionId) continue;
+    const t = tx.get(b.transaktionId);
+    if (t) konten.add(kontoVon(t));
+  }
+  if (konten.size === 2) return "gemischt";
+  return konten.size ? [...konten][0] : undefined;
+}
+
+/** Satz zum offenen Fremdgeld einer Akte (Aktenkonto, Fremdgeld-Wächter) – nennt das Konto des Eingangs. */
+export function fremdgeldLiegtText(betrag: number, konto: KontoArt | "gemischt" | undefined): string {
+  const b = fmtEUR(betrag);
+  if (konto === "geschaeft") return `Auf dem Geschäftskonto eingegangen: ${b} Fremdgeld – unverzüglich weiterleiten oder auf das Anderkonto umbuchen (§ 43a Abs. 7 BRAO, § 4 BORA)`;
+  if (konto === "gemischt") return `Offenes Fremdgeld ${b} – eingegangen teils auf dem Geschäftskonto, teils auf dem Anderkonto; Anteil auf dem Geschäftskonto weiterleiten oder umbuchen (§ 4 BORA)`;
+  if (konto === "ander") return `Auf dem Anderkonto liegen ${b} Fremdgeld`;
+  return `Offenes Fremdgeld: ${b}`;
+}
 
 export type Regel = "nummer" | "aktenzeichen" | "name-datum" | "name" | "az-betrag" | "betrag" | "fremdgeld" | "kosten" | "keine";
 
@@ -242,17 +286,19 @@ export function bucheTreffer(t: Transaktion, tr: Treffer, durch: "auto" | "manue
     return;
   }
   if (tr.art === "fremdgeld" && tr.akteId) {
-    // Eingang auf dem Anderkonto buchen – nie automatisch weiterleiten; Frist „Fremdgeld weiterleiten“ für heute
+    // Eingang als Fremdgeld buchen – auf dem Konto, auf dem er tatsächlich einging; nie automatisch weiterleiten; Frist „Fremdgeld weiterleiten“ für heute
     const akte = st.data.akten.find((a) => a.id === tr.akteId);
     const mandant = akte ? st.data.kontakte.find((k) => k.id === akte.mandantId) : undefined;
-    st.upsert("buchungen", { id: uid("b"), akteId: tr.akteId, datum: t.datum, art: "fremdgeld", betrag: round2(t.betrag), text: `Zahlung ${t.gegenpartei} (Fremdgeld) – an ${mandant?.name ?? "die Mandantschaft"} weiterzuleiten`, fremdgeld: true, transaktionId: t.id });
+    const konto = kontoVon(t);
+    st.upsert("buchungen", { id: uid("b"), akteId: tr.akteId, datum: t.datum, art: "fremdgeld", betrag: round2(t.betrag), text: `Zahlung ${t.gegenpartei} (Fremdgeld, Eingang ${KONTO_NAME[konto]}) – an ${mandant?.name ?? "die Mandantschaft"} weiterzuleiten`, fremdgeld: true, transaktionId: t.id });
     if (akte)
       st.upsert("fristen", {
         id: uid("f"), akteId: akte.id, titel: `Fremdgeld weiterleiten (${fmtEUR(t.betrag)})`, typ: "wiedervorlage", datum: today(), status: "offen",
-        verantwortlichId: akte.sachbearbeiterId ?? akte.bearbeiterId, quelle: "automatisch", createdAt: nowLocal(), notiz: "Fremdgeld unverzüglich weiterleiten (§ 43a Abs. 7 BRAO, § 4 BORA).",
+        verantwortlichId: akte.sachbearbeiterId ?? akte.bearbeiterId, quelle: "automatisch", createdAt: nowLocal(),
+        notiz: konto === "ander" ? "Fremdgeld auf dem Anderkonto unverzüglich weiterleiten (§ 43a Abs. 7 BRAO, § 4 BORA)." : "Fremdgeld ist auf dem Geschäftskonto eingegangen – unverzüglich weiterleiten oder auf das Anderkonto umbuchen (§ 43a Abs. 7 BRAO, § 4 BORA).",
       });
     st.patch("transaktionen", t.id, { status: "zugeordnet", vorschlag: undefined, zuordnung: { akteId: tr.akteId, sicherheit: tr.sicherheit, durch, grund: tr.grund, am: nowLocal(), von: userId, art: "fremdgeld" } });
-    st.log({ akteur: "nutzer", userId, akteId: tr.akteId, text: `${umsatzKennung(t)} als Fremdgeld gebucht (${wie}) – weiterleiten im Fremdgeld-Wächter${akte ? ` – ${akte.aktenzeichen}` : ""}` });
+    st.log({ akteur: "nutzer", userId, akteId: tr.akteId, text: `${umsatzKennung(t)} als Fremdgeld gebucht (${wie}, Eingang auf dem ${KONTO_NAME[konto]}) – ${konto === "ander" ? "weiterleiten" : "weiterleiten oder auf das Anderkonto umbuchen"} im Fremdgeld-Wächter${akte ? ` – ${akte.aktenzeichen}` : ""}` });
     return;
   }
   if (tr.art === "vorschuss" && tr.akteId) {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { Bell, Search, Sun, Moon, MonitorSmartphone, LogOut, Settings, LifeBuoy, Building2, Sparkles, Zap, User as UserIcon, Keyboard, ShieldAlert, RadioTower } from "lucide-react";
 import { navFor, SYSTEMSTATUS } from "@/app/nav";
@@ -13,6 +13,7 @@ import { cn } from "@/lib/cn";
 import { useAiStatus } from "@/ai/status";
 import { rollenLabel } from "@/lib/rollen";
 import { darfVerwalten } from "@/lib/backend";
+import { useMedia } from "@/lib/useMedia";
 
 /** Im Prototyp sind beA, E-Mail und Bank simuliert – einheitlicher Wortlaut mit Posteingang, Bankabgleich und Systemstatus. */
 import { SIMULIERT_STATUS, SYSTEMSTATUS_NAME } from "@/lib/betriebsstatus";
@@ -32,6 +33,45 @@ function useGescrollt(): boolean {
   return gescrollt;
 }
 
+/**
+ * Geringe Höhe (z. B. 200 % Zoom auf dem Notebook: 720 × 450 CSS-px, I4-T15-03): Die kompakte Kopfleiste blendet sich beim
+ * Scrollen nach unten aus und beim Scrollen nach oben wieder ein; Fokus in der Kopfleiste und ein Seitenwechsel blenden sie ein.
+ * Ohne Animation bei „Bewegung reduzieren“ (globale CSS-Regel für Übergänge).
+ */
+function useKopfAusblenden(pfad: string): [boolean, () => void] {
+  const niedrig = useMedia("(max-height: 520px)");
+  const [weg, setWeg] = useState(false);
+  useEffect(() => setWeg(false), [pfad, niedrig]);
+  useEffect(() => {
+    if (!niedrig) return;
+    const el = document.getElementById("haupt-scroll");
+    if (!el) return;
+    let letzte = el.scrollTop;
+    // Nach dem Ein- bzw. Ausblenden ändert sich die Höhe der Scrollfläche – kurz nicht reagieren, sonst flackert es am Seitenende
+    let ruheBis = 0;
+    const umschalten = (v: boolean) =>
+      setWeg((alt) => {
+        if (alt !== v) ruheBis = performance.now() + 300;
+        return v;
+      });
+    const h = () => {
+      const y = el.scrollTop;
+      const d = y - letzte;
+      if (performance.now() < ruheBis) {
+        letzte = y;
+        return;
+      }
+      if (y < 8) umschalten(false);
+      else if (d > 6) umschalten(true);
+      else if (d < -6) umschalten(false);
+      if (Math.abs(d) > 6) letzte = y;
+    };
+    el.addEventListener("scroll", h, { passive: true });
+    return () => el.removeEventListener("scroll", h);
+  }, [niedrig]);
+  return [niedrig && weg, () => setWeg(false)];
+}
+
 const THEME_ICON: Record<ThemeWahl, React.ReactNode> = {
   system: <MonitorSmartphone className="size-[18px]" />,
   light: <Sun className="size-[18px]" />,
@@ -44,6 +84,8 @@ export function TopBar() {
   const item = navFor(loc.pathname);
   const { theme, setTheme, setPalette, setKuerzel } = useUI();
   const gescrollt = useGescrollt();
+  const [kopfWeg, kopfZeigen] = useKopfAusblenden(loc.pathname);
+  const kopfRef = useRef<HTMLElement>(null);
   const { user, tenant } = useKanzlei();
   const logout = useSession((s) => s.logout);
   const clear = useData((s) => s.clear);
@@ -77,12 +119,20 @@ export function TopBar() {
   };
 
   return (
-    <header className={cn("kopfleiste relative z-40 shrink-0 px-3 pt-[max(12px,env(safe-area-inset-top))] md:px-5", gescrollt && "kopfleiste-gescrollt")}>
-      <div className={cn("glass flex h-14 items-center gap-1 rounded-[22px] pl-3 pr-2 sm:gap-2 md:pl-4", gescrollt && "glass-deckend")}>
-        {/* Mobil: App-Icon + Seitentitel */}
+    <header
+      ref={kopfRef}
+      className={cn("kopfleiste relative z-40 shrink-0 px-3 pt-[max(12px,env(safe-area-inset-top))] transition-[margin-top] duration-200 md:px-5", gescrollt && "kopfleiste-gescrollt")}
+      style={kopfWeg ? { marginTop: -(kopfRef.current?.offsetHeight ?? 48) } : undefined}
+      data-ausgeblendet={kopfWeg || undefined}
+      onFocusCapture={kopfZeigen}
+    >
+      <div className={cn("kopf-innen glass flex h-14 items-center gap-1 rounded-[22px] pl-3 pr-2 sm:gap-2 md:pl-4", gescrollt && "glass-deckend")}>
+        {/* Mobil: App-Icon + Seitentitel – unter 360 px ohne App-Icon, der Titel bricht bei Bedarf in eine zweite Zeile um (I4-T01-01) */}
         <div className="flex min-w-0 flex-1 items-center gap-2 md:hidden">
-          <AppIcon size={28} />
-          <span className="truncate text-[15px] font-semibold tracking-[-0.02em] max-[379px]:text-[14px] max-[379px]:tracking-[-0.03em]">{item?.label ?? "AnwaltApex"}</span>
+          <AppIcon size={28} className="max-[359px]:hidden" />
+          <span className="truncate text-[15px] font-semibold tracking-[-0.02em] max-[379px]:text-[14px] max-[379px]:tracking-[-0.03em] max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:text-[13.5px] max-[359px]:leading-[1.15] max-[359px]:hyphens-auto">
+            {item?.label ?? "AnwaltApex"}
+          </span>
         </div>
 
         <button
@@ -173,7 +223,7 @@ export function TopBar() {
 
         <Menu
           trigger={({ toggle }) => (
-            <button type="button" onClick={toggle} className="ml-0.5 flex shrink-0 items-center justify-center gap-2 rounded-full p-0.5 pr-0.5 transition-colors hover:bg-ink-softer max-sm:size-11 xl:pr-3" aria-label="Benutzermenü">
+            <button type="button" onClick={toggle} className="kopf-knopf ml-0.5 flex shrink-0 items-center justify-center gap-2 rounded-full p-0.5 pr-0.5 transition-colors hover:bg-ink-softer max-sm:size-11 xl:pr-3" aria-label="Benutzermenü">
               <Avatar initialen={user.initialen} farbe={user.farbe} size={34} />
               <span className="kopf-optional hidden text-left leading-tight xl:block">
                 <span className="block max-w-[150px] truncate text-[13px] font-semibold">{user.name}</span>

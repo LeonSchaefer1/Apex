@@ -1,7 +1,7 @@
 // Reiter „Verlauf“: lückenlose Zeitleiste aus Aktivitäten, Notizen und Nachrichten der Akte.
 import { useMemo, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Bot, Inbox, Send, Sparkles, StickyNote, UserRound, Zap, History } from "lucide-react";
+import { Bot, Inbox, Info, Send, Sparkles, StickyNote, UserRound, Zap, History } from "lucide-react";
 import type { Akte } from "@/core/types";
 import { fmtDateLong, fmtTime, relDays, today } from "@/core/dates";
 import { useCol } from "@/store/data";
@@ -19,6 +19,8 @@ interface Eintrag {
   text?: string;
   userId?: string;
   minuten?: number;
+  /** Beispieleintrag aus den Demodaten */
+  beispiel?: boolean;
   kanal?: "bea" | "email";
 }
 
@@ -41,7 +43,7 @@ export function TabVerlauf({ akte }: { akte: Akte }) {
 
   const eintraege = useMemo(() => {
     const out: Eintrag[] = [];
-    for (const a of aktivitaeten) if (a.akteId === akte.id) out.push({ id: a.id, zeit: a.zeit, art: a.akteur, titel: a.text, userId: a.userId, minuten: a.minutenGespart });
+    for (const a of aktivitaeten) if (a.akteId === akte.id) out.push({ id: a.id, zeit: a.zeit, art: a.akteur, titel: a.text, userId: a.userId, minuten: a.minutenGespart, beispiel: a.beispiel });
     for (const n of notizen) if (n.akteId === akte.id) out.push({ id: n.id, zeit: n.zeit, art: "notiz", titel: "Notiz", text: n.text, userId: n.userId });
     // Ausgehende Nachrichten sind bereits als Aktivität protokolliert – nur Eingänge ergänzen
     for (const n of nachrichten)
@@ -56,6 +58,9 @@ export function TabVerlauf({ akte }: { akte: Akte }) {
 
   const gefiltert = eintraege.filter((e) => (filter === "alle" ? true : filter === "menschen" ? ["nutzer", "notiz", "nachricht-ein", "nachricht-aus"].includes(e.art) : e.art === "ki" || e.art === "automation"));
   const gespart = eintraege.reduce((s, e) => s + (e.minuten ?? 0), 0);
+  // Zeitersparnis ist eine Schätzung (Annahme je Vorgang aus dem 38h-Motor) – wie im Bankabgleich gekennzeichnet (I4-T05-01)
+  const mitBeispiel = eintraege.some((e) => e.minuten && e.beispiel);
+  const ANNAHME = "Schätzung: Annahme je Vorgang aus dem 38h-Motor – keine gemessene Arbeitszeit";
 
   // nach Tagen gruppieren
   const gruppen = useMemo(() => {
@@ -81,11 +86,17 @@ export function TabVerlauf({ akte }: { akte: Akte }) {
           ]}
         />
         {gespart > 0 && (
-          <Chip tone="green" icon={<Zap className="size-3 shrink-0" />} className="max-w-full" title={`${gespart} Min. Routinearbeit in dieser Akte automatisch erledigt`}>
-            <span className="truncate">
-              {gespart} Min.<span className="hidden sm:inline"> Routinearbeit in dieser Akte</span> automatisch erledigt
-            </span>
-          </Chip>
+          <span className="inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-1">
+            <Chip tone="green" icon={<Zap className="size-3 shrink-0" />} className="max-w-full" title={`≈ ${gespart} Min. Routinearbeit in dieser Akte automatisch erledigt – ${ANNAHME}`}>
+              <span className="truncate">
+                ≈ {gespart} Min.<span className="hidden sm:inline"> Routinearbeit in dieser Akte</span> automatisch erledigt
+              </span>
+            </Chip>
+            <Chip tone="amber" icon={<Info className="size-3 shrink-0" aria-hidden />} className="!h-5 !px-1.5 !text-[11px]" title={ANNAHME}>
+              Schätzung{mitBeispiel ? " (Beispielwerte)" : ""}
+            </Chip>
+            <span className="hidden text-[12.5px] text-fg-3 md:inline">Annahme je Vorgang aus dem 38h-Motor</span>
+          </span>
         )}
       </div>
       <Card>
@@ -133,8 +144,8 @@ export function TabVerlauf({ akte }: { akte: Akte }) {
                                 <span>{e.kanal === "bea" ? "beA" : ic.label}</span>
                               )}
                               {e.minuten ? (
-                                <Chip tone="green" className="!h-5 !px-1.5">
-                                  {e.minuten} Min. gespart
+                                <Chip tone="green" className="!h-5 !px-1.5" title={ANNAHME}>
+                                  ≈ {e.minuten} Min. gespart (Schätzung)
                                 </Chip>
                               ) : null}
                             </div>

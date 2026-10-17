@@ -1,5 +1,5 @@
 // Abwesenheit und Vertretung (§ 53 BRAO) – reine Fachlogik ohne React.
-import { addDays } from "./dates";
+import { addDays, wochentagName } from "./dates";
 import { zaehltAlsFrist } from "./fristenLage";
 import type { Frist, ID, ISODate, User } from "./types";
 
@@ -61,4 +61,70 @@ export function vertretungsUmfang(fristen: Frist[], person: User, heute: ISODate
   const seine = fristen.filter((f) => f.status === "offen" && f.verantwortlichId === person.id && f.typ !== "termin" && f.datum <= bis);
   const echte = seine.filter(zaehltAlsFrist).length;
   return { bis, bisAbwesenheitsende, fristen: echte, weitere: seine.length - echte };
+}
+
+/** Eine Vertretung, die noch nicht begonnen hat – mit den Einträgen der abwesenden Person im Zeitraum. */
+export interface KuenftigeVertretung {
+  person: User;
+  von: ISODate;
+  bis: ISODate;
+  /** offene Fristen, Notfristen, Wiedervorlagen und Vorfristen der Person mit Datum von–bis (keine Termine), nach Datum sortiert. */
+  fristen: Frist[];
+}
+
+/**
+ * Vertretung vorab (I4-T18-04, § 53 BRAO): Abwesenheiten ANDERER Personen mit `userId` als Vertretung, die noch nicht begonnen
+ * haben und spätestens in `vorlaufTage` Tagen beginnen. Ab dem ersten Abwesenheitstag gilt `vertreteneIds`.
+ * Ist die Vertretung selbst deaktiviert, gibt es nichts zu übernehmen.
+ */
+export function kuenftigeVertretungen(team: User[], fristen: Frist[], userId: ID, heute: ISODate, vorlaufTage = 14): KuenftigeVertretung[] {
+  const ich = team.find((u) => u.id === userId);
+  if (ich?.deaktiviert) return [];
+  const tag = heute.slice(0, 10);
+  const spaetestens = addDays(tag, vorlaufTage);
+  const out: KuenftigeVertretung[] = [];
+  for (const u of team) {
+    const a = u.abwesenheit;
+    if (u.id === userId || !a?.von || !a.bis || a.vertretungId !== userId) continue;
+    const von = a.von.slice(0, 10);
+    const bis = a.bis.slice(0, 10);
+    if (von <= tag || von > spaetestens || bis < von) continue;
+    const seine = fristen
+      .filter((f) => f.status === "offen" && f.verantwortlichId === u.id && f.typ !== "termin" && f.datum >= von && f.datum <= bis)
+      .sort((x, y) => x.datum.localeCompare(y.datum) || (x.uhrzeit ?? "").localeCompare(y.uhrzeit ?? ""));
+    out.push({ person: u, von, bis, fristen: seine });
+  }
+  return out.sort((x, y) => x.von.localeCompare(y.von));
+}
+
+/** „Mo, 19.10.“ */
+export function tagKurz(iso: ISODate): string {
+  return `${wochentagName(iso, true)}, ${iso.slice(8, 10)}.${iso.slice(5, 7)}.`;
+}
+
+function zahlWort(n: number, eins: string, viele: string): string {
+  return `${n} ${n === 1 ? eins : viele}`;
+}
+
+/** Umfang einer künftigen Vertretung in Worten: „4 Fristen“, „2 Fristen, dazu 1 Wiedervorlage“ (Zählweise wie `fristenLage`). */
+export function vertretungUmfangText(fristen: Frist[]): string {
+  const echte = fristen.filter(zaehltAlsFrist).length;
+  const wv = fristen.filter((f) => f.typ === "wiedervorlage").length;
+  const vf = fristen.filter((f) => f.typ === "vorfrist").length;
+  const dazu = [wv ? zahlWort(wv, "Wiedervorlage", "Wiedervorlagen") : "", vf ? zahlWort(vf, "Vorfrist", "Vorfristen") : ""].filter(Boolean);
+  if (!echte && !dazu.length) return "keine offenen Fristen";
+  if (!echte) return `keine Frist, aber ${dazu.join(" und ")}`;
+  return `${zahlWort(echte, "Frist", "Fristen")}${dazu.length ? `, dazu ${dazu.join(" und ")}` : ""}`;
+}
+
+/**
+ * Hinweis vor dem ersten Abwesenheitstag (I4-T18-04): „Ab Mo, 19.10. vertreten Sie Jonas Brandt (bis Fr, 30.10.) – 4 Fristen im
+ * Zeitraum, die erste Mo, 19.10.: Replik auf Klageerwiderung (137/26)“. `aktenzeichen` liefert das Az. zur Akte.
+ */
+export function vertretungVorabText(v: KuenftigeVertretung, aktenzeichen: (akteId: ID) => string | undefined): string {
+  const kopf = `Ab ${tagKurz(v.von)} vertreten Sie ${v.person.name} (bis ${tagKurz(v.bis)})`;
+  if (!v.fristen.length) return `${kopf} – im Zeitraum liegen keine offenen Fristen.`;
+  const erste = v.fristen[0];
+  const az = aktenzeichen(erste.akteId);
+  return `${kopf} – ${vertretungUmfangText(v.fristen)} im Zeitraum, die erste ${tagKurz(erste.datum)}: ${erste.titel}${az ? ` (${az})` : ""}`;
 }

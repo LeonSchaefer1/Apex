@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { CheckCircle2, Info, Receipt } from "lucide-react";
 import type { Tenant } from "@/core/types";
-import { fehlendeRechnungsangaben, pruefeRechnungsangaben, type Rechnungsangaben } from "@/core/abrechnung";
+import { fehlendeRechnungsangaben, pruefeRechnungsangaben, type Rechnungsangaben, type RechnungsangabenFeld } from "@/core/abrechnung";
 import { schuetzeLeerzeichen } from "@/core/dates";
 import { darfVerwalten, fehlerFeld, getBackend, istConsole } from "@/lib/backend";
 import { useKanzlei, useSession } from "@/store/session";
@@ -10,10 +10,12 @@ import { toast } from "@/store/ui";
 import { Button, Chip, Field, Input } from "@/components/ui";
 import { Abschnitt } from "./teile";
 
-type Feld = "steuernummer" | "ustIdNr" | "iban" | "bic" | "bank";
+type Feld = RechnungsangabenFeld;
 type Formular = Record<Feld, string>;
 
-const REIHENFOLGE: Feld[] = ["steuernummer", "ustIdNr", "iban", "bic", "bank"];
+const REIHENFOLGE: Feld[] = ["steuernummer", "ustIdNr", "iban", "bic", "bank", "anderIban", "anderBank"];
+/** Felder, die auf Rechnungen stehen – der Direktsprung aus einer Rechnung fokussiert das erste leere davon. */
+const RECHNUNGSFELDER: Feld[] = ["steuernummer", "ustIdNr", "iban", "bic", "bank"];
 
 /** Fließtext ohne unglückliche Umbrüche: „§ 14“, „Abs. 4“ und „USt-IdNr.“ (geschützter Bindestrich) bleiben zusammen. */
 const satz = (t: string) => schuetzeLeerzeichen(t).replace(/USt-IdNr/g, "USt\u2011IdNr");
@@ -24,12 +26,15 @@ const formularAus = (t: Tenant): Formular => ({
   iban: t.geschaeftskonto?.iban ?? "",
   bic: t.geschaeftskonto?.bic ?? "",
   bank: t.geschaeftskonto?.bank ?? "",
+  anderIban: t.anderkonto?.iban ?? "",
+  anderBank: t.anderkonto?.bank ?? "",
 });
 
 const angabenAus = (f: Formular): Rechnungsangaben => ({
   steuernummer: f.steuernummer.trim() || undefined,
   ustIdNr: f.ustIdNr.trim() || undefined,
   geschaeftskonto: f.iban.trim() || f.bic.trim() || f.bank.trim() ? { iban: f.iban.trim(), bic: f.bic.trim() || undefined, bank: f.bank.trim() || undefined } : undefined,
+  anderkonto: f.anderIban.trim() || f.anderBank.trim() ? { iban: f.anderIban.trim(), bank: f.anderBank.trim() || undefined } : undefined,
 });
 
 /**
@@ -63,7 +68,7 @@ export function RechnungsangabenAbschnitt() {
       const el = document.getElementById("kanzlei-rechnung");
       el?.scrollIntoView({ block: "start" });
       const aktuell = formularAus(aktuellerTenant());
-      const leer = darf ? REIHENFOLGE.find((k) => !aktuell[k]) : undefined;
+      const leer = darf ? RECHNUNGSFELDER.find((k) => !aktuell[k]) : undefined;
       const ziel = leer ? refs.current[leer] : null;
       if (ziel) ziel.focus({ preventScroll: true });
       else el?.focus({ preventScroll: true });
@@ -186,6 +191,18 @@ export function RechnungsangabenAbschnitt() {
             </Field>
             <Field label="Bank" htmlFor="kr-bank" hint="Optional">
               {feld("bank", { maxLength: 120 })}
+            </Field>
+          </div>
+          <div className="grid grid-cols-1 gap-3.5 border-t border-[var(--line)] pt-4 md:grid-cols-2">
+            <div className="md:col-span-2">
+              <div className="text-[13.5px] font-semibold text-fg">Anderkonto für Fremdgeld</div>
+              <p className="mt-0.5 text-[12.5px] leading-snug text-fg-3">{satz("Optional. Steht nicht auf Rechnungen. AnwaltApex setzt diese IBAN als Auftraggeberkonto in die SEPA-Datei, wenn Sie Fremdgeld vom Anderkonto weiterleiten (§ 43a Abs. 7 BRAO, § 4 BORA).")}</p>
+            </div>
+            <Field label="IBAN (Anderkonto)" htmlFor="kr-anderIban" className="md:col-span-2" hint={<span id="kr-anderIban-hinweis">Ein eigenes Konto – nicht das Geschäftskonto. Die Prüfziffer wird beim Speichern geprüft.</span>}>
+              {feld("anderIban", { autoCapitalize: "characters", inputMode: "text", hinweisId: "kr-anderIban-hinweis", className: "num" })}
+            </Field>
+            <Field label="Bank (Anderkonto)" htmlFor="kr-anderBank" hint="Optional">
+              {feld("anderBank", { maxLength: 120 })}
             </Field>
           </div>
         </fieldset>

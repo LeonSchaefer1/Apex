@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { AlarmClock, Calculator, Check, CalendarDays, CalendarRange, List, MoreHorizontal, ShieldAlert, ShieldCheck, UserCheck, X, CalendarClock, CalendarPlus, Download, Printer } from "lucide-react";
-import { addDays, fmtDateShort, today } from "@/core/dates";
+import { AlarmClock, Calculator, Check, CalendarDays, CalendarRange, List, MoreHorizontal, ShieldAlert, ShieldCheck, UserCheck, Users, X, CalendarClock, CalendarPlus, Download, Printer } from "lucide-react";
+import { addDays, fmtDate, fmtDateShort, today, wochentagName } from "@/core/dates";
 import { FENSTER_TAGE, fristenImZeitraum, fristenLage, istKritisch, nachDringlichkeit, zaehltAlsFrist } from "@/core/fristenLage";
 import type { Akte, Frist, FristTyp } from "@/core/types";
 import { useCol } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { useUI } from "@/store/ui";
-import { vertreteneIds } from "@/core/vertretung";
+import { kuenftigeVertretungen, vertreteneIds } from "@/core/vertretung";
 import { AnimatedNumber, Button, Menu, PageHeader, Segmented, Select, Stat, Switch } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { FristListe } from "./FristListe";
@@ -63,6 +63,9 @@ function aufschluesselung(liste: Frist[]): string {
   return text || "keine Einträge";
 }
 
+/** „Mo, 19.10.“ – Wochentag und Tag ohne Jahr (Hinweis Vertretung vorab) */
+const tagKurz = (iso: string) => `${wochentagName(iso, true)}, ${fmtDate(iso).slice(0, 6)}`;
+
 const istDatum = (d: string | null): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(`${d}T12:00:00Z`));
 
 function ladeAnsicht(): Ansicht {
@@ -92,11 +95,14 @@ export default function Fristen() {
   const dlFokus = (pFilter && FILTER_PARAM[pFilter]) || null;
   const dlDatum = istDatum(pDatum) ? pDatum : null;
 
-  const [ansicht, setAnsichtRaw] = useState<Ansicht>(() => (dlFokus || params.get("nur") === "meine" ? "liste" : dlDatum ? "woche" : ladeAnsicht()));
+  const [ansicht, setAnsichtRaw] = useState<Ansicht>(() => (dlFokus || params.get("nur") === "meine" || params.get("vertretung") === "vorab" ? "liste" : dlDatum ? "woche" : ladeAnsicht()));
   const [typ, setTyp] = useState<"alle" | FristTyp>("alle");
   // ?nur=meine (z. B. aus dem Cockpit-Hinweis „Sie vertreten heute …“): eigene Fristen samt Vertretung
   const pNur = params.get("nur");
-  const [nurMeine, setNurMeineRaw] = useState(pNur === "meine");
+  // ?vertretung=vorab (Cockpit-Hinweis „Ab Mo … vertreten Sie …“): künftige Vertretungsfristen gleich eingeblendet (I4-T18-04)
+  const pVertretung = params.get("vertretung");
+  const [nurMeine, setNurMeineRaw] = useState(pNur === "meine" || pVertretung === "vorab");
+  const [vorab, setVorabRaw] = useState(pVertretung === "vorab");
   const [erledigte, setErledigte] = useState(false);
   const [fokus, setFokusRaw] = useState<Fokus | null>(dlFokus);
   const [wocheStart, setWocheStart] = useState(() => (dlDatum ? wochenStart(dlDatum) : wochenAnsichtStart(heute)));
@@ -108,6 +114,14 @@ export default function Fristen() {
   // Vertretung (§ 53 BRAO): Personen, die heute abwesend sind und mich als Vertretung eingetragen haben
   const vertretene = useMemo(() => vertreteneIds(team, user.id, heute), [team, user.id, heute]);
   const vertretungFuer = useMemo(() => new Map(vertretene.map((id) => [id, team.find((u) => u.id === id)?.name ?? "Kollegin/Kollege"])), [vertretene, team]);
+  // Vertretung vorab (§ 53 BRAO): Abwesenheiten mit Beginn in ≤ 14 Tagen, für die ich als Vertretung eingetragen bin
+  const kuenftig = useMemo(() => kuenftigeVertretungen(team, fristen, user.id, heute), [team, fristen, user.id, heute]);
+  /** Frist-ID → „Jonas Brandt ab Mo, 19.10.“ – Kennzeichnung der vorab eingeblendeten Vertretungsfristen */
+  const vorabFuer = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const v of kuenftig) for (const f of v.fristen) m.set(f.id, `${v.person.name} ab ${tagKurz(v.von)}`);
+    return m;
+  }, [kuenftig]);
   /** Deep-Link-Filter auf eine Akte (`?akte=` ohne Rechner) */
   const [akteFilter, setAkteFilterRaw] = useState<string | null>(pAkte);
   /** Per Deep-Link angesprungener Tag (`?datum=`), wird im Kalender hervorgehoben */
@@ -124,6 +138,11 @@ export default function Fristen() {
       setNurMeineRaw(true);
       if (!dlDatum) setAnsichtRaw("liste");
     }
+    if (pVertretung === "vorab") {
+      setNurMeineRaw(true);
+      setVorabRaw(true);
+      if (!dlDatum) setAnsichtRaw("liste");
+    }
     if (dlDatum) {
       setTag(dlDatum);
       setWocheStart(wochenStart(dlDatum));
@@ -131,7 +150,7 @@ export default function Fristen() {
       setMarkiert(dlDatum);
       if (!dlFokus) setAnsichtRaw("woche");
     }
-  }, [dlFokus, pAkte, dlDatum, pNur]);
+  }, [dlFokus, pAkte, dlDatum, pNur, pVertretung]);
 
   /** Entfernt Deep-Link-Parameter, sobald der Nutzer den Filter selbst ändert. */
   const entferneParam = (...keys: string[]) => {
@@ -146,7 +165,11 @@ export default function Fristen() {
   };
   const setNurMeine = (v: boolean) => {
     setNurMeineRaw(v);
-    entferneParam("nur");
+    entferneParam("nur", "vertretung");
+  };
+  const setVorab = (v: boolean) => {
+    setVorabRaw(v);
+    entferneParam("vertretung");
   };
   const setAkteFilter = (a: string | null) => {
     setAkteFilterRaw(a);
@@ -208,7 +231,7 @@ export default function Fristen() {
     return fristen.filter((f) => {
       if (!erledigte && f.status === "erledigt") return false;
       if (typ !== "alle" && f.typ !== typ) return false;
-      if (nurMeine && f.verantwortlichId !== user.id && !vertretene.includes(f.verantwortlichId)) return false;
+      if (nurMeine && f.verantwortlichId !== user.id && !vertretene.includes(f.verantwortlichId) && !(vorab && vorabFuer.has(f.id))) return false;
       if (akteFilter && f.akteId !== akteFilter) return false;
       if (quelleFilter && f.quelle !== quelleFilter) return false;
       // Kennzahl-Filter zeigen Fristen und die getrennt genannten Einträge (Wiedervorlagen, Vorfristen, Termine) mit Typ
@@ -218,7 +241,7 @@ export default function Fristen() {
       if (fokus === "unkontrolliert" && !brauchtKontrolle(f)) return false;
       return true;
     });
-  }, [fristen, erledigte, typ, nurMeine, user.id, fokus, heute, akteFilter, quelleFilter, vertretene]);
+  }, [fristen, erledigte, typ, nurMeine, user.id, fokus, heute, akteFilter, quelleFilter, vertretene, vorab, vorabFuer]);
 
   /** „Meine Fristen als .ics“: offene Einträge, für die ich verantwortlich bin (inkl. Vertretung) */
   const meineIcs = () => {
@@ -458,6 +481,41 @@ export default function Fristen() {
         )}
       </AnimatePresence>
 
+      {/* Vertretung vorab (I4-T18-04): Hinweis unter „Nur meine“ mit Schalter zum Einblenden – Text und Symbol, nicht nur Farbe */}
+      {(nurMeine || vorab) && kuenftig.length > 0 && ansicht !== "ausgang" && (
+        <div role="status" className="mb-4 grid gap-2 rounded-[18px] bg-amber-soft px-4 py-3 text-[13px] text-fg-2">
+          {kuenftig.map((v) => (
+            <div key={v.person.id} className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <Users className="size-4 shrink-0 text-[var(--amber-text)]" aria-hidden />
+              <span className="min-w-0 flex-1 basis-[260px]">
+                <strong className="font-semibold text-fg">
+                  Ab {tagKurz(v.von)} vertreten Sie {v.person.name}
+                </strong>{" "}
+                (bis {tagKurz(v.bis)}) – {v.fristen.length ? `${aufschluesselung(v.fristen)} im Zeitraum` : "keine offenen Fristen im Zeitraum"}
+                {v.person.abwesenheit?.grund ? ` · ${v.person.abwesenheit.grund}` : ""}.
+              </span>
+              {v.fristen.length > 0 && (
+                <button
+                  type="button"
+                  aria-pressed={vorab}
+                  onClick={() => {
+                    setVorab(!vorab);
+                    if (!nurMeine) setNurMeineRaw(true);
+                  }}
+                  className={cn(
+                    "inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium ring-1 ring-inset transition-colors max-sm:min-h-11",
+                    vorab ? "bg-[var(--surface)] text-fg ring-[var(--ink)]" : "bg-[var(--surface)] text-fg-2 ring-[var(--line-strong)] hover:text-fg",
+                  )}
+                >
+                  {vorab ? <Check className="size-3.5" aria-hidden /> : <span aria-hidden>+</span>}
+                  {vorab ? `Vertretung ab ${fmtDate(v.von).slice(0, 6)} eingeblendet` : `Vertretung ab ${fmtDate(v.von).slice(0, 6)} einblenden`}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       <AnimatePresence mode="wait" initial={false}>
         <motion.div key={ansicht} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}>
           {ansicht === "liste" && (
@@ -472,7 +530,9 @@ export default function Fristen() {
               ohneHorizont={!!akteFilter || !!quelleFilter || fokus === "unkontrolliert" || fokus === "kritisch"}
               markiert={markiert ?? undefined}
               vertretungFuer={vertretungFuer}
+              vertretungVorab={vorab ? vorabFuer : undefined}
               onOpen={(f) => setDetailId(f.id)}
+              leerTitel={fokus === "unkontrolliert" ? "Keine offene Kontrolle mehr" : undefined}
             />
           )}
           {ansicht === "ausgang" && <Ausgangskontrolle fristen={fristen} akten={akten} team={team} user={user} heute={heute} />}

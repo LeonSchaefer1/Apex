@@ -16,6 +16,8 @@ import { CopyButton, KontaktAvatar, kontaktAdresse } from "@/pages/kontakte/kont
 import { KontaktAuswahl } from "@/pages/kontakte/KontaktFormular";
 import { DECKUNG_INFO, DOK_STATUS_INFO, dokumentBezeichnung, offenePlatzhalter, ohneEntwurfsVermerk } from "./helfer";
 import { parseEuro } from "./Mandatsaufnahme";
+import { LEERE_RSV_EINGABE, rsvNachtragen, sbFehlerhaft, type RsvEingabe } from "./rsv";
+import { VersichererAuswahl } from "./VersichererAuswahl";
 import { VorschussDialog } from "./Vorschuss";
 
 type Slot = "mandantId" | "gegnerId" | "gegneranwaltId" | "gerichtId";
@@ -31,6 +33,7 @@ export function TabBeteiligte({ akte }: { akte: Akte }) {
   const kontakte = useCol("kontakte");
   const { user } = useKanzlei();
   const [zuordnen, setZuordnen] = useState<(typeof SLOTS)[number] | null>(null);
+  const [rsvNeu, setRsvNeu] = useState(false);
   const [az, setAz] = useState("");
   const [rsvDialog, setRsvDialog] = useState<"deckung" | "bearbeiten" | null>(null);
   const [vorschuss, setVorschuss] = useState(false);
@@ -151,10 +154,12 @@ export function TabBeteiligte({ akte }: { akte: Akte }) {
               <VorschussDialog akte={akte} open={vorschuss} onClose={() => setVorschuss(false)} />
             </Card>
           ) : (
-            <LeerKarte rolle="Rechtsschutzversicherung" text="Kein Rechtsschutz hinterlegt. Ergänzen Sie ihn bei Bedarf über die Mandatsdaten." />
+            <LeerKarte rolle="Rechtsschutzversicherung" text="Kein Rechtsschutz hinterlegt." aktion="Rechtsschutz ergänzen" aktionIcon={<ShieldCheck className="size-4" />} onZuordnen={() => setRsvNeu(true)} />
           )}
         </motion.div>
       </div>
+
+      <RsvErgaenzenDialog akte={akte} open={rsvNeu && !akte.rsv} onClose={() => setRsvNeu(false)} />
 
       <Modal
         open={!!zuordnen}
@@ -527,16 +532,99 @@ function DatenZeile({ icon, label, wert, mono, kopierbar = true }: { icon: React
   );
 }
 
-function LeerKarte({ rolle, text, onZuordnen }: { rolle: string; text: string; onZuordnen?: () => void }) {
+function LeerKarte({ rolle, text, onZuordnen, aktion, aktionIcon }: { rolle: string; text: string; onZuordnen?: () => void; aktion?: string; aktionIcon?: ReactNode }) {
   return (
     <div className="flex h-full min-h-[180px] flex-col rounded-[22px] border border-dashed border-[var(--line-strong)] p-5">
       <span className="eyebrow">{rolle}</span>
       <p className="mt-3 flex-1 text-[13px] text-fg-3">{text}</p>
       {onZuordnen && (
-        <Button size="sm" variant="secondary" icon={<Plus className="size-4" />} onClick={onZuordnen} className="mt-3 self-start">
-          {rolle} zuordnen
+        <Button size="sm" variant="secondary" icon={aktionIcon ?? <Plus className="size-4" />} onClick={onZuordnen} className="mt-3 self-start">
+          {aktion ?? `${rolle} zuordnen`}
         </Button>
       )}
     </div>
+  );
+}
+
+/**
+ * „Rechtsschutz ergänzen“ (I4-T04-01): dieselben Felder wie Schritt 3 der Mandatsaufnahme. Speichern macht dasselbe wie die
+ * Aufnahme mit Rechtsschutz – Deckung „offen“, Versicherer als Kontakt, Deckungsanfrage-Entwurf, Wiedervorlage, Verlauf (rsv.ts).
+ */
+function RsvErgaenzenDialog({ akte, open, onClose }: { akte: Akte; open: boolean; onClose: () => void }) {
+  const { user, team, tenant } = useKanzlei();
+  const [e, setE] = useState<RsvEingabe>(LEERE_RSV_EINGABE);
+  const [zeigeFehler, setZeigeFehler] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    setE(LEERE_RSV_EINGABE);
+    setZeigeFehler(false);
+  }, [open]);
+  const versFehler = !e.versicherung.trim() ? "Bitte die Rechtsschutzversicherung eintragen oder aus der Liste wählen." : undefined;
+  const sbFehler = sbFehlerhaft(e.selbstbeteiligung) ? "Bitte einen Betrag wie 150 oder 250,00 eingeben – oder das Feld leeren." : undefined;
+  const speichern = () => {
+    if (versFehler || sbFehler) {
+      setZeigeFehler(true);
+      // Fokus ins erste ungültige Feld
+      window.setTimeout(() => document.getElementById(versFehler ? "rsvn-vers" : "rsvn-sb")?.focus(), 0);
+      return;
+    }
+    const { rsv, wiedervorlage } = rsvNachtragen({ akte, eingabe: e, user, team, tenant });
+    onClose();
+    toast("Rechtsschutz ergänzt", {
+      ton: "erfolg",
+      text: `${rsv.versicherung} · Deckung offen · Deckungsanfrage als Entwurf in der E-Akte, Wiedervorlage am ${fmtDate(wiedervorlage.datum)}`,
+    });
+  };
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="md"
+      icon={<ShieldCheck className="size-[18px]" />}
+      title="Rechtsschutz ergänzen"
+      subtitle={`${akte.aktenzeichen} · ${akte.titel}`}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Abbrechen
+          </Button>
+          <Button variant="primary" icon={<ShieldCheck className="size-4" />} onClick={speichern}>
+            Rechtsschutz speichern
+          </Button>
+        </>
+      }
+    >
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field label="Versicherung *" htmlFor="rsvn-vers" className="sm:col-span-2">
+          <VersichererAuswahl id="rsvn-vers" value={e.versicherung} onChange={(v) => setE((x) => ({ ...x, versicherung: v }))} fehler={zeigeFehler && !!versFehler} describedBy={zeigeFehler && versFehler ? "rsvn-vers-fehler" : undefined} />
+          {zeigeFehler && versFehler && (
+            <p id="rsvn-vers-fehler" role="alert" className="mt-1.5 flex items-start gap-1.5 text-[12.5px] font-medium text-seal">
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden /> {versFehler}
+            </p>
+          )}
+        </Field>
+        <Field label="Versicherungsnummer" htmlFor="rsvn-vnr" hint="Optional – wird nachgereicht, falls noch nicht bekannt.">
+          <Input id="rsvn-vnr" value={e.nummer} onChange={(ev) => setE({ ...e, nummer: ev.target.value })} placeholder="z. B. RS-4471209" className="mono" autoComplete="off" />
+        </Field>
+        <Field label="Schadennummer" htmlFor="rsvn-snr" hint="Falls schon vergeben.">
+          <Input id="rsvn-snr" value={e.schadennummer} onChange={(ev) => setE({ ...e, schadennummer: ev.target.value })} className="mono" autoComplete="off" />
+        </Field>
+        <Field
+          label="Selbstbeteiligung"
+          htmlFor="rsvn-sb"
+          className="sm:col-span-2"
+          hint={zeigeFehler && sbFehler ? <span id="rsvn-sb-fehler" role="alert" className="font-medium text-seal">{sbFehler}</span> : "Optional – die Rechnung weist sie getrennt vom Versichereranteil aus."}
+        >
+          <div className="relative">
+            <Input id="rsvn-sb" inputMode="decimal" value={e.selbstbeteiligung} onChange={(ev) => setE({ ...e, selbstbeteiligung: ev.target.value })} placeholder="0" className="num !pr-9" aria-invalid={zeigeFehler && !!sbFehler ? true : undefined} aria-describedby={zeigeFehler && sbFehler ? "rsvn-sb-fehler" : undefined} />
+            <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[13px] text-fg-3">€</span>
+          </div>
+        </Field>
+        <div className="flex items-start gap-2 rounded-[14px] bg-ink-softer p-3 text-[12.5px] leading-snug text-fg-2 shadow-[inset_0_0_0_1px_var(--line)] sm:col-span-2">
+          <Info className="mt-0.5 size-3.5 shrink-0 text-ink" aria-hidden />
+          <span>Beim Speichern legt AnwaltApex wie in der Mandatsaufnahme die Deckungsanfrage als Entwurf an (wartet auf Ihre Freigabe) und setzt eine Wiedervorlage „Deckungszusage“ in 7 Tagen. Deckung: offen.</span>
+        </div>
+      </div>
+    </Modal>
   );
 }

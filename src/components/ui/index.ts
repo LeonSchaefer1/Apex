@@ -12,3 +12,4 @@ export * from "./Empty";
 export * from "./Stat";
 export * from "./Menu";
 export * from "./DataTable";
+export * from "./PapierSchalter";

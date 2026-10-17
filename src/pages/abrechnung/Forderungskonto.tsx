@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Banknote, CalendarDays, Copy, FileSignature, FolderInput, Lock, Percent, PiggyBank, Plus, Scale, Wallet } from "lucide-react";
-import { AnimatedNumber, Button, Card, CardHeader, Chip, Drawer, Empty, Field, Input, Modal, Segmented, Select, Stat, Switch, confirmDialog } from "@/components/ui";
+import { AnimatedNumber, Button, Card, CardHeader, Chip, Drawer, Empty, Field, Input, Modal, PapierSchalter, Segmented, Select, Stat, Switch, confirmDialog } from "@/components/ui";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
@@ -993,6 +993,10 @@ function Forderungsaufstellung({
           </Button>
         </div>
       )}
+      {/* Papier im Dunkelmodus gedimmt – „Original“ gilt für alle Vorschauen (I4-T06-01) */}
+      <div className="mb-3 flex justify-end empty:hidden">
+        <PapierSchalter />
+      </div>
       <div id="forderungsaufstellung-text" className="paper px-5 py-6 sm:px-10 sm:py-9">
         <Briefkopf tenant={tenant} absenderZeile={false} />
         <div className="mt-6 text-[19px] font-semibold tracking-[-0.02em]">Forderungsaufstellung</div>

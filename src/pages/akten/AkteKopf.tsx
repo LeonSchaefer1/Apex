@@ -270,6 +270,20 @@ export function AkteKopf({
               <span className="sm:hidden">Frist</span>
               <span className="hidden sm:inline">Frist anlegen</span>
             </Button>
+            {/* Telefon: Schnellaktionen im Aktenkopf statt schwebender Leiste – nichts liegt über Termin, Gericht oder „KI-Analyse“ (I4-T14-01) */}
+            {onNotiz && (
+              <Button variant="secondary" icon={<StickyNote className="size-4" />} onClick={onNotiz} className="flex-1 [--h:44px] sm:!hidden">
+                Notiz
+              </Button>
+            )}
+            {onWiedervorlage && (
+              <Button variant="secondary" icon={<CalendarClock className="size-4" />} onClick={onWiedervorlage} className="flex-1 [--h:44px] sm:!hidden">
+                <span className="min-[380px]:hidden" aria-hidden>
+                  WV
+                </span>
+                <span className="max-[379px]:sr-only">Wiedervorlage</span>
+              </Button>
+            )}
             <Button variant="ai" icon={<Sparkles className="size-4" />} onClick={onKi} className="flex-1 max-sm:[--h:44px] sm:flex-none">
               <span className="sm:hidden">KI-Analyse</span>
               <span className="hidden sm:inline">KI-Fallanalyse</span>

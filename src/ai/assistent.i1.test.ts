@@ -256,3 +256,59 @@ test("Kurzformen der Aktensuche: „akte müller“, „müller“, „akte 12�
   assert.match(r.text, /12\/26/);
   assert.match(r.text, /Müller \.\/\. Stadtwerke Nord/);
 }));
+
+test("beA-Notfallantwort (I4-T12-02): außerhalb der Servicezeit ehrlich „nicht erreichbar“ mit nächster Servicezeit, in der Servicezeit mit Durchwahl", still(async () => {
+  const { beaStoerungAntwort } = await import("./assistent");
+  const ap = t.tenant.ansprechpartner!;
+  // Sa 17.10.2026, 05:45 Uhr (Berlin)
+  const samstag = beaStoerungAntwort("arbeit", ap, { jetzt: new Date(2026, 9, 17, 5, 45), land: "BE" });
+  assert.match(samstag, /nicht erreichbar/);
+  assert.match(samstag, /Mo, 19\.10\.2026 ab 7:30 Uhr/);
+  assert.match(samstag, /warten Sie nicht, reichen Sie jetzt ersatzweise ein/);
+  assert.ok(!/anrufen: \+49/.test(samstag), "keine Aufforderung zum Anrufen außerhalb der Servicezeit");
+  // Di 20.10.2026, 10:00 Uhr
+  const dienstag = beaStoerungAntwort("arbeit", ap, { jetzt: new Date(2026, 9, 20, 10, 0), land: "BE" });
+  assert.ok(!/nicht erreichbar/.test(dienstag));
+  assert.ok(!/Mo, 19\.10\.2026 ab 7:30 Uhr/.test(dienstag));
+  assert.match(dienstag, /Lena Vogt anrufen: \+49 30 555 018 42/);
+  // über den Assistenten mit fester Uhr (Demo-Pfad)
+  await vorbereiten();
+  const { mock } = await import("node:test");
+  mock.timers.enable({ apis: ["Date"], now: new Date(2026, 9, 17, 5, 45) });
+  try {
+    const r = await frag([{ role: "user", content: "Das beA ist gestört und meine Berufung zum LAG muss heute raus – was tun?" }]);
+    assert.match(r.text, /nicht erreichbar \(wieder Mo, 19\.10\.2026 ab 7:30 Uhr\)/);
+  } finally {
+    mock.timers.reset();
+  }
+}));
+
+test("Doppelungsprüfung (I4-T20-01): „wv 137 in 3 tagen zeugenliste prüfen“ mit bestehender WV am selben Tag → Hinweis, ohne Doppelung keiner", still(async () => {
+  const useData = await vorbereiten();
+  const { mock } = await import("node:test");
+  const { doppelterEintrag } = await import("./assistent");
+  mock.timers.enable({ apis: ["Date"], now: new Date(2026, 9, 17, 9, 0) });
+  try {
+    const akte137 = useData.getState().data.akten.find((a) => a.aktenzeichen === "137/26")!;
+    // ohne Doppelung: keine bestehende offene WV am 20.10. in 137/26
+    const st0 = useData.getState();
+    useData.setState({ data: { ...st0.data, fristen: st0.data.fristen.filter((f) => !(f.akteId === akte137.id && f.datum === "2026-10-20" && f.typ === "wiedervorlage")) } });
+    const ohne = await frag([{ role: "user", content: "wv 137 in 3 tagen zeugenliste prüfen" }]);
+    assert.equal(ohne.vorschlag?.datum, "2026-10-20");
+    assert.equal(ohne.vorschlag?.doppelt, undefined);
+    assert.ok(!/schon eine Wiedervorlage/.test(ohne.text));
+    // mit bestehender WV am Di, 20.10.
+    const st = useData.getState();
+    const wv = { id: "f-wv-dop", akteId: akte137.id, titel: "Stellungnahme der Mandantin zur Replik einholen", typ: "wiedervorlage" as const, datum: "2026-10-20", status: "offen" as const, verantwortlichId: sitzung.user.id, quelle: "manuell" as const, createdAt: "2026-10-16T08:00:00" };
+    useData.setState({ data: { ...st.data, fristen: [...st.data.fristen, wv] } });
+    const mit = await frag([{ role: "user", content: "wv 137 in 3 tagen zeugenliste prüfen" }]);
+    assert.equal(mit.vorschlag?.doppelt?.hinweis, "Für 137/26 liegt am Di, 20.10. schon eine Wiedervorlage: ‚Stellungnahme der Mandantin zur Replik einholen‘");
+    assert.match(mit.text, /Trotzdem eintragen/);
+    // erledigte oder andersartige Einträge zählen nicht
+    assert.equal(doppelterEintrag({ art: "wiedervorlage", akteId: akte137.id, datum: "2026-10-20", aktenzeichen: "137/26" }, [{ ...wv, status: "erledigt" }]), undefined);
+    assert.equal(doppelterEintrag({ art: "frist", akteId: akte137.id, datum: "2026-10-20", aktenzeichen: "137/26" }, [wv]), undefined);
+    assert.ok(doppelterEintrag({ art: "notfrist", akteId: akte137.id, datum: "2026-10-20", aktenzeichen: "137/26" }, [{ ...wv, typ: "frist" }]));
+  } finally {
+    mock.timers.reset();
+  }
+}));

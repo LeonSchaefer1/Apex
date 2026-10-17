@@ -110,3 +110,21 @@ test("fehlendeRechnungsangaben: Steuernummer/USt-IdNr. und IBAN mit Prüfziffer"
   assert.match(pruefeRechnungsangaben({ ustIdNr: "DE000000000" }).ustIdNr!, /Platzhalter/);
   assert.match(pruefeRechnungsangaben({ geschaeftskonto: { iban: "", bank: "Sparkasse" } }).iban!, /IBAN des Geschäftskontos/);
 });
+
+// Usability-Iteration 4 (Prüfung, Rest B-04 zu I4-T08-01): Anderkonto im Kanzleiprofil als Auftraggeberkonto der Fremdgeld-Weiterleitung
+test("Rechnungsangaben: Anderkonto prüfen, normalisieren, protokollieren – nie gleich dem Geschäftskonto", async () => {
+  const { fehlendeRechnungsangaben, pruefeRechnungsangaben, normalisiereRechnungsangaben, geaenderteRechnungsangaben } = await import("./abrechnung");
+  const gk = { iban: "DE89 3704 0044 0532 0130 00" };
+  // gültiges, eigenes Anderkonto → keine Meldung, Schreibweise in Vierergruppen
+  assert.deepEqual(pruefeRechnungsangaben({ geschaeftskonto: gk, anderkonto: { iban: "de02120300000000202051", bank: " Deutsche Kreditbank " } }), {});
+  assert.deepEqual(normalisiereRechnungsangaben({ geschaeftskonto: gk, anderkonto: { iban: "de02120300000000202051", bank: " Deutsche Kreditbank " } }).anderkonto, { iban: "DE02 1203 0000 0000 2020 51", bank: "Deutsche Kreditbank" });
+  // falsche Prüfziffer, nur Bank, gleiche IBAN wie das Geschäftskonto
+  assert.match(pruefeRechnungsangaben({ anderkonto: { iban: "DE02120300000000202052" } }).anderIban!, /Prüfziffer/);
+  assert.match(pruefeRechnungsangaben({ anderkonto: { iban: "", bank: "Sparkasse" } }).anderIban!, /IBAN des Anderkontos/);
+  assert.match(pruefeRechnungsangaben({ geschaeftskonto: gk, anderkonto: { iban: "DE89370400440532013000" } }).anderIban!, /verschiedene Konten.*§ 4 BORA/);
+  // leer bleibt leer; keine Pflichtangabe auf Rechnungen
+  assert.equal(normalisiereRechnungsangaben({ anderkonto: { iban: " " } }).anderkonto, undefined);
+  assert.deepEqual(fehlendeRechnungsangaben({ steuernummer: "12/345/67890", geschaeftskonto: gk }), []);
+  // Protokoll nennt die Änderung
+  assert.deepEqual(geaenderteRechnungsangaben({ geschaeftskonto: gk }, { geschaeftskonto: gk, anderkonto: { iban: "DE02 1203 0000 0000 2020 51" } }), ["Anderkonto-IBAN"]);
+});

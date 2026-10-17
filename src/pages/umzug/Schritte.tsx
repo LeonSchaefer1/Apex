@@ -11,7 +11,7 @@ import { cn } from "@/lib/cn";
 import { festeAnsprechBezeichnung } from "@/lib/rollen";
 import { TRENNZEICHEN_NAME, type CsvErgebnis, type DateiInfo } from "./csv";
 import { SYSTEME, ZIELFELDER, type DateiDublettenAktion, type DublettenAktion, type MigZeile, type OhneDatumAktion, type QuellSystem, type Umfang, type ZielFeld } from "./zuordnung";
-import type { Entitaet, Ergebnis, Fortschritt, UmzugPlan } from "./uebernahme";
+import { weitereText, type Entitaet, type Ergebnis, type Fortschritt, type UmzugPlan } from "./uebernahme";
 
 /* ───────── Schritt 1: Altsystem ───────── */
 
@@ -634,7 +634,7 @@ export function SchrittUebernahme({
             />
             <PlanZahl label="Akten aktualisieren" wert={plan.aktualisieren} />
             <PlanZahl label="Neue Kontakte" wert={neueKontakte} sub={plan.kontakteVorhanden ? `${plan.kontakteVorhanden} mit vorhandenen zusammengeführt` : undefined} />
-            <PlanZahl label="Fristen zur Kontrolle" wert={plan.fristen} sub={plan.wiedervorlagen ? `+ ${plan.wiedervorlagen} ${plan.wiedervorlagen === 1 ? "Wiedervorlage/Termin" : "Wiedervorlagen/Termine"}` : undefined} />
+            <PlanZahl label="Fristen zur Kontrolle" wert={plan.fristen} sub={plan.wiedervorlagen ? `+ ${weitereText({ wiedervorlagen: plan.wiedervorlagen - plan.termine, termine: plan.termine })}` : undefined} />
           </div>
           {(plan.ueberspringen > 0 || !!plan.zusammengefuehrt || !!plan.ausserhalb) && (
             <p className="text-[12.5px] text-fg-3">
@@ -783,7 +783,8 @@ export function SchrittFertig({
       icon: <FolderOpen className="size-4" />,
     },
     { label: "Kontakte angelegt", wert: e.kontakteNeu, sub: e.kontakteZusammengefuehrt ? `${e.kontakteZusammengefuehrt} mit vorhandenen zusammengeführt` : "ohne Dubletten", icon: <Users className="size-4" /> },
-    { label: "Fristen zur Kontrolle", wert: e.fristenKontrolle, sub: e.fristen > e.fristenKontrolle ? `mit Vorfrist · dazu ${e.fristen - e.fristenKontrolle} ${e.fristen - e.fristenKontrolle === 1 ? "Wiedervorlage/Termin" : "Wiedervorlagen/Termine"}` : "mit Vorfrist, Vier-Augen-Prinzip", icon: <CalendarClock className="size-4" /> },
+    // Dieselbe Zählung wie Meldung und Protokoll (I4-T11-02)
+    { label: "Fristen zur Kontrolle", wert: e.fristenKontrolle, sub: e.wiedervorlagen + e.termine ? `mit Vorfrist · dazu ${weitereText(e)}` : "mit Vorfrist, Vier-Augen-Prinzip", icon: <CalendarClock className="size-4" /> },
     { label: "Datenblatt je Akte", wert: e.dokumente, sub: "mit allen Originalwerten des Altsystems", icon: <FileText className="size-4" /> },
   ];
   return (

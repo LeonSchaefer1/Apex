@@ -68,7 +68,8 @@ export function Fristenrechner({
   const kontakte = useCol("kontakte");
   const nav = useNavigate();
   const [suche, setSuche] = useState("");
-  const [key, setKey] = useState(startRegel && FRIST_REGELN.some((r) => r.key === startRegel) ? startRegel : "berufung");
+  // Ohne `regel`-Parameter keine Vorwahl (I4-T18-03) – die Fristart wählt die Nutzerin bewusst
+  const [key, setKey] = useState(startRegel && FRIST_REGELN.some((r) => r.key === startRegel) ? startRegel : "");
   // Ereignisdatum leer und Pflicht – vorbelegt nur, wenn es ausdrücklich übergeben wird (startEreignis)
   const [ereignis, setEreignis] = useState(() => startEreignisZustand(startEreignis).ereignis);
   const [ereignisHerkunft, setEreignisHerkunft] = useState<EreignisHerkunft>(() => startEreignisZustand(startEreignis).herkunft);
@@ -101,12 +102,11 @@ export function Fristenrechner({
     setOhneAktenGericht(false);
     setErsetzteWahl("");
     if (startAkteId) setAkteId(startAkteId);
-    if (startRegel && FRIST_REGELN.some((r) => r.key === startRegel)) {
-      setKey(startRegel);
-      setDauer("");
-      setFestesEnde("");
-      setSuche("");
-    }
+    // Mit `?regel=` (Akte, Posteingang, Assistent) vorgewählt, sonst ohne Vorwahl – nie die Fristart einer früheren Berechnung
+    setKey(startRegel && FRIST_REGELN.some((r) => r.key === startRegel) ? startRegel : "");
+    setDauer("");
+    setFestesEnde("");
+    setSuche("");
     // Ohne übergebenes Ereignis beim Öffnen leer – kein Datum aus einer früheren Berechnung stehen lassen
     const start = startEreignisZustand(startEreignis);
     setEreignis(start.ereignis);
@@ -153,7 +153,7 @@ export function Fristenrechner({
   const landGesperrt = !!gerichtLand && !abweichend && !regel.handlungsort;
   const effLand = ort?.land;
   const fehlt = !gewaehlt
-    ? "Bitte Fristart wählen"
+    ? "Bitte die Fristart wählen"
     : ereignisFehlt(ereignis, regel.ereignis)
       ? ereignisFehlt(ereignis, regel.ereignis)
       : !ort
@@ -189,7 +189,9 @@ export function Fristenrechner({
           ? `Abweichend vom Gericht (${bundeslandName(gerichtLand?.land ?? ort.land)}) – nur nach Bestätigung eintragbar.`
           : ort?.quelle === "wahl"
           ? `Von Hand gewählt${ort.land !== tenant.bundesland ? ` – abweichend vom Kanzleisitz (${bundeslandName(tenant.bundesland)})` : ""}.`
-          : istRechtsmittelfrist(regel)
+          : !gewaehlt
+            ? "Maßgeblich sind die Feiertage am Ort des Gerichts (§ 222 Abs. 2 ZPO)."
+            : istRechtsmittelfrist(regel)
             ? "Pflichtangabe bei Rechtsmitteln: Maßgeblich sind die Feiertage am Ort des Gerichts."
             : `Ohne Angabe gelten die Feiertage am Kanzleisitz (${bundeslandName(tenant.bundesland)}).`;
   const gerichtAendern = (wert: string) => {
@@ -215,6 +217,13 @@ export function Fristenrechner({
     () => [...new Set([...kontakte.filter((k) => k.rollen.includes("gericht")).map((k) => k.name), "Hessisches LAG", "LAG Hessen Frankfurt", "OLG Brandenburg", "Kammergericht", "Landesarbeitsgericht Hamm", "Oberlandesgericht Hamm"])].sort((a, b) => a.localeCompare(b, "de")),
     [kontakte],
   );
+
+  // Grund, warum „Als Frist in Akte eintragen“ gesperrt ist – sichtbar am Knopf (I4-T18-01, Teil B)
+  const sperrGruende = [
+    !gewaehlt ? "die Fristart wählen" : ereignisFehlt(ereignis, regel.ereignis) ? "das Datum eintragen" : !ort ? "Gericht oder Bundesland wählen" : mitDatum && !/^\d{4}-\d{2}-\d{2}$/.test(festesEnde) ? "das Fristende eintragen" : !mitDatum && regel.dauerPflicht && !dauerNum ? "die Dauer eintragen" : "",
+    !akte ? "eine Akte wählen" : "",
+  ].filter(Boolean);
+  const sperrGrund = sperrGruende.length ? `Erst ${sperrGruende.join(" und ")}` : widerspruch && !abweichendBestaetigt ? "Erst die Abweichung vom Gerichtsort bestätigen" : "";
 
   const offeneAkten = useMemo(() => akten.filter((a) => a.status !== "abgeschlossen").sort((a, b) => b.aktenzeichen.localeCompare(a.aktenzeichen, "de", { numeric: true })), [akten]);
   // rot hervorheben: Notfrist oder gesetzlich nicht verlängerbare Frist (§ 4 KSchG, StPO, OWiG, VwGO)
@@ -295,9 +304,17 @@ export function Fristenrechner({
               Eingetragen · Schließen
             </Button>
           ) : (
-            <Button variant="primary" icon={<CalendarPlus className="size-4" />} disabled={!akte || !erg || (widerspruch && !abweichendBestaetigt)} onClick={eintragen} title={widerspruch && !abweichendBestaetigt ? "Erst die Abweichung vom Gerichtsort bestätigen" : undefined}>
-              Als Frist in Akte eintragen
-            </Button>
+            <div className="flex min-w-0 flex-col items-stretch gap-1 sm:items-end">
+              <Button variant="primary" icon={<CalendarPlus className="size-4" />} disabled={!akte || !erg || (widerspruch && !abweichendBestaetigt)} onClick={eintragen} aria-describedby={sperrGrund ? "rechner-sperrgrund" : undefined}>
+                Als Frist in Akte eintragen
+              </Button>
+              {sperrGrund && (
+                <p id="rechner-sperrgrund" className="flex items-center gap-1.5 text-[12px] text-fg-2 sm:justify-end">
+                  <Info className="size-3.5 shrink-0 text-fg-3" aria-hidden />
+                  {sperrGrund}
+                </p>
+              )}
+            </div>
           )}
         </div>
       }
@@ -320,7 +337,13 @@ export function Fristenrechner({
               setEingetragen(null);
             }}
           />
-          {regel.festesDatum === "moeglich" && (
+          {startRegel && gewaehlt && key === startRegel && (
+            <p className="-mt-2 flex items-start gap-1.5 text-[12px] text-fg-3">
+              <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              Fristart vorgewählt aus {startQuelle?.trim() || "dem Aufruf"} – bitte prüfen.
+            </p>
+          )}
+          {gewaehlt && regel.festesDatum === "moeglich" && (
             <Segmented
               size="sm"
               value={modus}
@@ -333,7 +356,7 @@ export function Fristenrechner({
           )}
           <div className="grid gap-3 sm:grid-cols-2">
             <Field
-              label={`${regel.ereignis} (Pflicht)`}
+              label={`${gewaehlt ? regel.ereignis : "Fristauslösendes Ereignis"} (Pflicht)`}
               htmlFor="rechner-ereignis"
               hint={ereignisHerkunft === "start" && gueltig ? `Aus ${startQuelle?.trim() || "dem Aufruf"} übernommen – bitte prüfen.` : ereignisHerkunft === "heute" && gueltig ? "heute (Schnellwahl)" : undefined}
             >
@@ -367,7 +390,7 @@ export function Fristenrechner({
                 </Button>
               </div>
             </Field>
-            {mitDatum ? (
+            {!gewaehlt ? null : mitDatum ? (
               <Field label={`Fristende laut ${regel.key === "widerruf_vergleich" ? "Vergleich" : "Vereinbarung"}`} htmlFor="rechner-festes-ende">
                 <Input id="rechner-festes-ende" type="date" required aria-required="true" value={festesEnde} min={ereignis} onChange={(e) => { setFestesEnde(e.target.value); setEingetragen(null); }} />
               </Field>
@@ -499,7 +522,7 @@ export function Fristenrechner({
               )}
             </div>
           )}
-          {regel.hinweis && (
+          {gewaehlt && regel.hinweis && (
             <div className="flex gap-2 rounded-[14px] bg-ink-softer p-3 text-[12.5px] leading-relaxed text-fg-2 ring-1 ring-inset ring-[var(--line)]">
               <Info className="mt-0.5 size-3.5 shrink-0 text-ink" />
               <span>{regel.hinweis}</span>

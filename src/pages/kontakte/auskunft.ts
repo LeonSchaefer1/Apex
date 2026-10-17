@@ -2,7 +2,7 @@
 // Kollisionsprüfung für ein neues Mandat. Reine Funktionen ohne React – die Oberfläche liegt in KontaktDrawer.tsx.
 import type { Akte, Dokument, Kontakt, Nachricht, Tenant } from "@/core/types";
 import { fmtDate } from "@/core/dates";
-import { aktenVonKontakt, kollisionFuerNeuesMandat, loeschSperre, type BeteiligtenRolle } from "@/core/kontaktpruefung";
+import { aktenVonKontakt, kollisionFuerNeuesMandat, loeschSperre, type BeteiligtenRolle, type KollisionsTreffer } from "@/core/kontaktpruefung";
 import { kontaktAdresse, ROLLE_LABEL } from "./kontaktHelfer";
 // Löschsperre und Kollisionsprüfung liegen in src/core/kontaktpruefung.ts (mit Tests) – hier für bestehende Importe weitergereicht.
 export { kollisionFuerNeuesMandat, loeschSperre };
@@ -44,14 +44,23 @@ export interface Auskunft {
 const PRUEFHINWEIS =
   "Vor Herausgabe auf Rechte Dritter und das Mandatsgeheimnis prüfen (Art. 15 Abs. 4 DSGVO, § 43a Abs. 2 BRAO) – insbesondere bei Gegnern und Dritten: Angaben aus der Handakte des Mandanten nur, soweit die Verschwiegenheit nicht entgegensteht.";
 
-/** „Konflikt: Gegner in 142/26 (Weber ./. Kröger Logistik GmbH)“ */
-export function kollisionsText(k: Kontakt, akten: Akte[], als: "mandant" | "gegner"): { konflikt: boolean; text: string } {
-  const { konflikte, frueher } = kollisionFuerNeuesMandat(k, akten, als);
-  const liste = (l: { akte: Akte; rolle: BeteiligtenRolle }[]) => l.map((x) => `${x.rolle} in ${x.akte.aktenzeichen} (${x.akte.titel})`).join("; ");
+/** „über den Kontakt „Kröger Logistik GmbH“ aus Berlin“ – Treffer über einen gleichen Datensatz (Dublette) */
+export function ueberText(ueber?: Kontakt): string {
+  return ueber ? `über den Kontakt „${ueber.name}“${ueber.ort ? ` aus ${ueber.ort}` : ""}` : "";
+}
+
+/**
+ * „Konflikt: Gegner in 142/26 (Weber ./. Kröger Logistik GmbH, über den Kontakt „Kröger Logistik GmbH“ aus Berlin)“ –
+ * mit `kontakte` über den Kontakt UND alle gleichen Datensätze (Name ohne Rechtsform, E-Mail, Telefon, Firmen-Domain; I4-T17-01).
+ */
+export function kollisionsText(k: Kontakt, akten: Akte[], als: "mandant" | "gegner", kontakte?: Kontakt[]): { konflikt: boolean; text: string } {
+  const { konflikte, frueher } = kollisionFuerNeuesMandat(k, akten, als, kontakte);
+  const liste = (l: KollisionsTreffer[]) => l.map((x) => `${x.rolle} in ${x.akte.aktenzeichen} (${x.akte.titel}${x.ueber ? `, ${ueberText(x.ueber)}` : ""})`).join("; ");
+  const geprueft = kontakte ? " – geprüft über Name (ohne Rechtsform), E-Mail, Telefon und Firmen-Domain aller Kontakte" : "";
   if (konflikte.length) return { konflikt: true, text: `Konflikt: ${liste(konflikte)}${frueher.length ? ` · früher: ${liste(frueher)}` : ""}` };
   return {
     konflikt: false,
-    text: `Keine widerstreitende Rolle für „${als === "mandant" ? "Mandant" : "Gegner"}“ gefunden${frueher.length ? ` – in abgeschlossenen Akten: ${liste(frueher)} (gleicher Lebenssachverhalt?)` : ""}`,
+    text: `Keine widerstreitende Rolle für „${als === "mandant" ? "Mandant" : "Gegner"}“ gefunden${geprueft}${frueher.length ? ` – in abgeschlossenen Akten: ${liste(frueher)} (gleicher Lebenssachverhalt?)` : ""}`,
   };
 }
 

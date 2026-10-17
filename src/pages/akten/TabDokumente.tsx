@@ -111,8 +111,21 @@ export function TabDokumente({ akte }: { akte: Akte }) {
     });
   }, [sichtbar]);
 
-  const oeffne = (id: string | null) =>
-    setParams(
+  // Direktlink ?dok=<id> (Fallanalyse „Im Ordner … öffnen“, Übersicht, Suche): den Ordner dieses Dokuments wählen (I4-T06-04).
+  // Öffnen innerhalb der E-Akte lässt den gewählten Ordner stehen.
+  const ordnerGesetztFuer = useRef<string | null>(null);
+  useEffect(() => {
+    if (!dokId || ordnerGesetztFuer.current === dokId) return;
+    const d = doks.find((x) => x.id === dokId);
+    if (!d) return;
+    ordnerGesetztFuer.current = dokId;
+    setOrdner(d.ordner);
+    setQ("");
+  }, [dokId, doks]);
+
+  const oeffne = (id: string | null) => {
+    ordnerGesetztFuer.current = id;
+    return setParams(
       (p) => {
         const n = new URLSearchParams(p);
         if (id) n.set("dok", id);
@@ -121,6 +134,7 @@ export function TabDokumente({ akte }: { akte: Akte }) {
       },
       { replace: true },
     );
+  };
 
   const offenesDok = dokId ? doks.find((d) => d.id === dokId) : undefined;
 
@@ -302,7 +316,7 @@ export function TabDokumente({ akte }: { akte: Akte }) {
     const ghost = document.createElement("div");
     ghost.textContent = ids.length === 1 ? d.name : `${ids.length} Dokumente`;
     Object.assign(ghost.style, {
-      position: "fixed", top: "-1000px", left: "-1000px", padding: "8px 14px", borderRadius: "999px", background: "var(--ink)", color: "var(--on-ink)",
+      position: "fixed", top: "-1000px", left: "-1000px", padding: "8px 14px", borderRadius: "999px", background: "var(--ink-fill)", color: "var(--on-ink)",
       font: "600 13px var(--font-ui)", whiteSpace: "nowrap", maxWidth: "280px", overflow: "hidden", textOverflow: "ellipsis",
     });
     document.body.appendChild(ghost);

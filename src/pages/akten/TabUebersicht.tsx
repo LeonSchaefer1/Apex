@@ -2,8 +2,8 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { BookMarked, CalendarClock, CalendarPlus, ChevronRight, Eye, FileText, Globe, Hourglass, Library, NotebookPen, PenLine, ReceiptEuro, Send, StickyNote } from "lucide-react";
-import type { Akte } from "@/core/types";
+import { BookMarked, CalendarClock, CalendarPlus, ChevronDown, ChevronRight, Eye, FileText, Globe, Hourglass, Library, NotebookPen, PenLine, Pin, ReceiptEuro, Send, StickyNote } from "lucide-react";
+import type { Akte, Dokument } from "@/core/types";
 import { istKritisch, zaehltAlsFrist } from "@/core/fristenLage";
 import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
 import { fmtDate, fmtDateWd, fmtEUR, nowLocal, relTime, uid } from "@/core/dates";
@@ -17,6 +17,14 @@ import { DOK_ART_LABEL, FRIST_TYP_LABEL, FristChip, MOBIL_TREFFER, beruehreAkte,
 import { DokIcon } from "./TabDokumente";
 import { DiktatKnopf } from "./Diktat";
 import { useMandantenportal } from "./Mandantenportal";
+
+/** Kerndokumente einer Akte – in dieser Reihenfolge vorn angeheftet (Kündigung, Klage, Ladung, Urteil). */
+const KERN: RegExp[] = [/kündigung(?!sschutz)|kuendigung/i, /klage(?!erwiderung)|kündigungsschutz/i, /ladung/i, /urteil/i];
+function kernRang(d: Pick<Dokument, "name" | "art">): number {
+  const i = KERN.findIndex((re) => re.test(d.name));
+  if (i >= 0) return i;
+  return d.art === "urteil" ? 3 : KERN.length;
+}
 
 export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onTab: (t: string) => void; onDok: (id: string) => void; onFrist: () => void }) {
   const nav = useNavigate();
@@ -39,6 +47,13 @@ export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onT
 
   const offen = useMemo(() => fristen.filter((f) => f.akteId === akte.id && f.status === "offen" && f.typ !== "vorfrist").sort((a, b) => a.datum.localeCompare(b.datum)), [fristen, akte.id]);
   const doks = useMemo(() => dokumente.filter((d) => d.akteId === akte.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [dokumente, akte.id]);
+  // Kerndokumente (Kündigung, Klage, Ladung, Urteil) vorn angeheftet, danach die neuesten – „Alle … anzeigen“ klappt auf (I4-T14-02)
+  const [alleDoks, setAlleDoks] = useState(false);
+  const dokListe = useMemo(() => {
+    const kern = doks.filter((d) => kernRang(d) < KERN.length).sort((a, b) => kernRang(a) - kernRang(b) || b.createdAt.localeCompare(a.createdAt));
+    return [...kern, ...doks.filter((d) => !kern.includes(d))];
+  }, [doks]);
+  const DOKS_KURZ = 5;
   const notizen = useMemo(() => notizenAlle.filter((n) => n.akteId === akte.id).sort((a, b) => b.zeit.localeCompare(a.zeit)), [notizenAlle, akte.id]);
   const minuten = useMemo(() => zeiten.filter((z) => z.akteId === akte.id).reduce((s, z) => s + z.minuten, 0), [zeiten, akte.id]);
   const honorarOffen = useMemo(() => {
@@ -146,29 +161,44 @@ export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onT
               subtitle={`${doks.length} ${doks.length === 1 ? "Dokument" : "Dokumente"} in der E-Akte`}
               action={
                 <Button size="sm" variant="ghost" iconRight={<ChevronRight className="size-4" />} onClick={() => onTab("dokumente")}>
-                  E-Akte öffnen
+                  {/* unter 380 px nur „E-Akte“ – sonst wird die Überschrift „Letzte Dokumente“ abgeschnitten */}
+                  E-Akte<span className="max-[379px]:sr-only"> öffnen</span>
                 </Button>
               }
             />
             {doks.length === 0 ? (
               <p className="text-[13px] text-fg-3">Noch keine Dokumente. Laden Sie Unterlagen im Reiter „Dokumente“ hoch.</p>
             ) : (
-              <ul className="-mx-2 grid grid-cols-1 gap-0.5">
-                {doks.slice(0, 5).map((d) => (
-                  <li key={d.id}>
-                    <button type="button" onClick={() => onDok(d.id)} className="flex w-full items-center gap-3 rounded-[14px] px-2 py-2 text-left transition-colors hover:bg-ink-softer">
-                      <DokIcon d={d} size={34} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block break-words text-[13.5px] font-medium">{d.name}</span>
-                        <span className="block text-[12.5px] text-fg-3">
-                          {DOK_ART_LABEL[d.art]} · {d.ordner} · {relTime(d.createdAt)}
+              <>
+                <ul id="ue-dokumente" className="-mx-2 grid grid-cols-1 gap-0.5">
+                  {(alleDoks ? dokListe : dokListe.slice(0, DOKS_KURZ)).map((d) => (
+                    <li key={d.id}>
+                      <button type="button" onClick={() => onDok(d.id)} className="flex min-h-11 w-full items-center gap-3 rounded-[14px] px-2 py-2 text-left transition-colors hover:bg-ink-softer">
+                        <DokIcon d={d} size={34} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block break-words text-[13.5px] font-medium">{d.name}</span>
+                          <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12.5px] text-fg-3">
+                            {kernRang(d) < KERN.length && (
+                              <Chip tone="ink" icon={<Pin className="size-3" aria-hidden />} className="!h-5 !px-1.5 !text-[11px]">
+                                Kerndokument
+                              </Chip>
+                            )}
+                            <span>
+                              {DOK_ART_LABEL[d.art]} · {d.ordner} · {relTime(d.createdAt)}
+                            </span>
+                          </span>
                         </span>
-                      </span>
-                      <ChevronRight className="size-4 shrink-0 text-fg-3" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
+                        <ChevronRight className="size-4 shrink-0 text-fg-3" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {doks.length > DOKS_KURZ && (
+                  <Button size="sm" variant="ghost" className="mt-1.5 max-sm:[--h:44px]" aria-expanded={alleDoks} aria-controls="ue-dokumente" icon={<ChevronDown className={cn("size-4 transition-transform", alleDoks && "rotate-180")} />} onClick={() => setAlleDoks((x) => !x)}>
+                    {alleDoks ? "Weniger anzeigen" : `Alle ${doks.length} anzeigen`}
+                  </Button>
+                )}
+              </>
             )}
           </Card>
 

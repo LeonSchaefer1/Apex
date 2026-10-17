@@ -9,6 +9,7 @@ import { search, normalize, tokenize } from "@/core/search";
 import { addDays, fmtDate, fmtDateWd, fmtEUR, fmtNum, nowLocal, relDays, today, uid, weekday } from "@/core/dates";
 import { istWerktag } from "@/core/feiertage";
 import { RUECKRUF_SIMULIERT, inServicezeit, naechsteServicezeit, rueckrufNachFristende, rueckrufRegel, rueckrufZusage } from "@/core/rueckruf";
+import { tagKurz } from "@/core/vertretung";
 import { artikel, wikiFuer, type WikiArtikel } from "@/content/wiki";
 import { NAV } from "@/app/nav";
 import { useData } from "@/store/data";
@@ -46,6 +47,11 @@ export interface SchreibVorschlag {
   text?: string;
   /** Wortlaut des Auftrags (für das Protokoll) */
   auftrag: string;
+  /**
+   * Doppelung (I4-T20-01): Für die Akte liegt am selben Tag schon ein offener Eintrag gleicher Art – die Karte zeigt das vor dem
+   * Eintragen und verlangt „Trotzdem eintragen“.
+   */
+  doppelt?: { fristId: string; titel: string; hinweis: string };
 }
 
 /** Ergebnis von „Eintragen“ – Grundlage für „Rückgängig“. */
@@ -578,8 +584,16 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
         const datum = String(i.datum).slice(0, 10);
         const typ = (["frist", "wiedervorlage", "termin", "notfrist"].includes(String(i.typ)) ? String(i.typ) : "wiedervorlage") as VorschlagArt;
         ctx.vorschlag = { id: uid("vs"), art: typ, akteId: a.id, aktenzeichen: a.aktenzeichen, akteTitel: a.titel, titel: String(i.titel).trim() || TYP_NAME[typ as FristTyp], datum, uhrzeit: i.uhrzeit ? String(i.uhrzeit).slice(0, 5) : undefined, auftrag: String(i.auftrag ?? "").trim() || String(i.titel) };
+        // Doppelungsprüfung wie im Frist-Dialog (I4-T20-01): gleicher Tag, gleiche Art, offen
+        const doppel = doppelterEintrag(ctx.vorschlag, daten().fristen);
+        if (doppel) ctx.vorschlag.doppelt = { fristId: doppel.frist.id, titel: doppel.frist.titel, hinweis: doppel.hinweis };
         const p = pruefeDatum(datum, land);
-        return { status: "zur_bestaetigung", hinweis: "Noch nicht eingetragen – die Person bestätigt mit „Eintragen“ in der Karte unter Ihrer Antwort.", akte: `${a.aktenzeichen} ${a.titel}`, titel: ctx.vorschlag.titel, datum: fmtDateWd(datum), werktag: p.werktag, vorschlagNaechsterWerktag: p.naechster ? fmtDateWd(p.naechster) : null };
+        return {
+          status: "zur_bestaetigung",
+          hinweis: doppel ? "Noch nicht eingetragen – am selben Tag liegt schon ein gleichartiger Eintrag; die Person entscheidet mit „Trotzdem eintragen“ in der Karte." : "Noch nicht eingetragen – die Person bestätigt mit „Eintragen“ in der Karte unter Ihrer Antwort.",
+          akte: `${a.aktenzeichen} ${a.titel}`, titel: ctx.vorschlag.titel, datum: fmtDateWd(datum), werktag: p.werktag, vorschlagNaechsterWerktag: p.naechster ? fmtDateWd(p.naechster) : null,
+          doppelung: doppel ? doppel.hinweis : null,
+        };
       },
     },
     {
@@ -936,8 +950,15 @@ export function istBeaStoerung(text: string): boolean {
   return BEA_STOERUNG.test(normalize(text));
 }
 
-/** Notfallantwort zur beA-Störung – nach Gerichtsbarkeit, mit Normen, Ersatzeinreichung, Glaubhaftmachung und Dokumentation. */
-export function beaStoerungAntwort(g: Gerichtsbarkeit | undefined, ap: Ansprechpartner): string {
+/**
+ * Notfallantwort zur beA-Störung – nach Gerichtsbarkeit, mit Normen, Ersatzeinreichung, Glaubhaftmachung und Dokumentation.
+ * Die Ansprechperson nennt sie ehrlich nach Servicezeit (I4-T12-02): außerhalb „jetzt nicht erreichbar (wieder …) – warten Sie
+ * nicht, reichen Sie jetzt ersatzweise ein“; keine erfundene Notfallnummer.
+ */
+export function beaStoerungAntwort(g: Gerichtsbarkeit | undefined, ap: Ansprechpartner, opts: { jetzt?: Date; land?: Bundesland } = {}): string {
+  const jetzt = opts.jetzt ?? new Date();
+  const land = opts.land ?? "BE";
+  const erreichbar = inServicezeit(jetzt, ap.verfuegbar, land);
   const gb = g ?? "zivil";
   const n = NORM[gb];
   const ort = (() => {
@@ -964,7 +985,9 @@ export function beaStoerungAntwort(g: Gerichtsbarkeit | undefined, ap: Ansprechp
       "Dokumentation: Störung sofort dokumentieren – Screenshot mit Uhrzeit, Fehlermeldung, Störungsmeldung der BRAK bzw. beA-Status, Uhrzeiten Ihrer Versuche.",
       "Auf Anforderung des Gerichts das elektronische Dokument nachreichen.",
       "Die Frist erst nach Sendebericht bzw. Eingangsbestätigung als erledigt markieren (Ausgangskontrolle).",
-      `${festeAnsprechBezeichnung(ap)} ${ap.name} anrufen: ${ap.telefon} (${ap.verfuegbar}) – prüft mit Ihnen den beA-Status.`,
+      erreichbar
+        ? `${festeAnsprechBezeichnung(ap)} ${ap.name} anrufen: ${ap.telefon} (${ap.verfuegbar}) – prüft mit Ihnen den beA-Status.`
+        : `${festeAnsprechBezeichnung(ap)} ${ap.name} ist jetzt nicht erreichbar (wieder ${naechsteServicezeit(jetzt, ap.verfuegbar, land).text}) – warten Sie nicht, reichen Sie jetzt ersatzweise ein.`,
     ]),
     `${andere}; entsprechend § 55d VwGO, § 65d SGG, § 52d FGO, § 32d StPO. Bitte im Einzelfall am Gesetzestext prüfen.`,
   ].join("\n");
@@ -987,6 +1010,25 @@ export function vorschlagArtName(v: Pick<SchreibVorschlag, "art">): string {
 }
 
 /** Trägt einen bestätigten Vorschlag ein (über useData) und protokolliert – Grundlage für „Rückgängig“. */
+/** Gleichartige Einträge für die Doppelungsprüfung: Fristen und Notfristen zählen zusammen, Wiedervorlagen und Termine je für sich. */
+function gleicheArt(a: FristTyp | VorschlagArt, b: FristTyp): boolean {
+  const klasse = (t: string) => (t === "notfrist" ? "frist" : t);
+  return klasse(a) === klasse(b);
+}
+
+const ART_MIT_ARTIKEL: Record<FristTyp, string> = { wiedervorlage: "eine Wiedervorlage", frist: "eine Frist", notfrist: "eine Notfrist", termin: "ein Termin", vorfrist: "eine Vorfrist" };
+
+/**
+ * Doppelungsprüfung für einen Vorschlag des Assistenten (I4-T20-01): offener Eintrag gleicher Art für dieselbe Akte am selben Tag.
+ * Hinweis: „Für 137/26 liegt am Di, 20.10. schon eine Wiedervorlage: ‚Stellungnahme der Mandantin zur Replik einholen‘“.
+ */
+export function doppelterEintrag(v: Pick<SchreibVorschlag, "art" | "akteId" | "datum" | "aktenzeichen">, fristen: Frist[]): { frist: Frist; hinweis: string } | undefined {
+  if (v.art === "notiz" || !v.datum) return undefined;
+  const f = fristen.find((x) => x.status === "offen" && x.akteId === v.akteId && x.datum === v.datum && gleicheArt(v.art, x.typ));
+  if (!f) return undefined;
+  return { frist: f, hinweis: `Für ${v.aktenzeichen} liegt am ${tagKurz(v.datum)} schon ${ART_MIT_ARTIKEL[f.typ]}: ‚${f.titel}‘` };
+}
+
 export function vorschlagEintragen(v: SchreibVorschlag, s: SessionInfo): Eintragung {
   const st = useData.getState();
   if (!st.data.akten.some((a) => a.id === v.akteId)) throw new Error(`Die Akte ${v.aktenzeichen} gibt es nicht mehr.`);
@@ -1002,7 +1044,8 @@ export function vorschlagEintragen(v: SchreibVorschlag, s: SessionInfo): Eintrag
     verantwortlichId: s.user.id, quelle: "ki", createdAt: nowLocal(), notiz: `Vom Apex Assistenten angelegt – Auftrag: „${v.auftrag}“`,
   };
   st.upsert("fristen", f);
-  st.log({ akteur: "nutzer", userId: s.user.id, akteId: v.akteId, text: `${ART_NAME[v.art]} „${v.titel}“ für ${fmtDateWd(v.datum)} eingetragen (über den Apex Assistenten, bestätigt) – ${v.aktenzeichen}` });
+  const doppel = doppelterEintrag(v, st.data.fristen.filter((x) => x.id !== f.id));
+  st.log({ akteur: "nutzer", userId: s.user.id, akteId: v.akteId, text: `${ART_NAME[v.art]} „${v.titel}“ für ${fmtDateWd(v.datum)} eingetragen (über den Apex Assistenten, bestätigt${doppel ? ", trotz gleichartigem Eintrag am selben Tag" : ""}) – ${v.aktenzeichen}` });
   return { col: "fristen", id: f.id };
 }
 
@@ -1492,7 +1535,7 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
   if (istBeaStoerung(frage) || folgefrage) {
     if (!ctx.werkzeuge.includes("notfall_bea")) ctx.werkzeuge.push("notfall_bea");
     ctx.links.push({ label: "beA-Status (Systemstatus)", to: "/hilfe#status" }, { label: "Wissenskarte beA-Störung", to: "/hilfe?wiki=bea-stoerung" });
-    return beaStoerungAntwort(gerichtsbarkeitAus(frage), ap);
+    return beaStoerungAntwort(gerichtsbarkeitAus(frage), ap, { land: ctx.sitzung.tenant.bundesland });
   }
 
   // ── Nur ein Bereichsname („Einstellungen“, „Bankabgleich“) → Bereich öffnen; danach Mensch / Ansprechpartner ──
@@ -1634,8 +1677,11 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
       return `Worum geht es bei der ${ART_NAME[typ]} für ${akte.aktenzeichen} am ${fmtDateWd(datum)}? Nennen Sie mir den Auftrag, z. B. „Zeugen Seifert benennen“ – er wird zum Titel. Oder sagen Sie „ohne Titel“.`;
     }
     const titel = auftrag ?? (typ === "termin" ? "Termin" : typ === "frist" ? "Frist (manuell)" : typ === "notfrist" ? "Notfrist (manuell)" : "Wiedervorlage");
-    const r = (await run("frist_anlegen", { aktenzeichen: akte.aktenzeichen, titel, datum, typ, auftrag: (ctx.originalFrage ?? frage).trim() })) as { akte: string; datum: string; werktag: boolean; vorschlagNaechsterWerktag: string | null };
+    const r = (await run("frist_anlegen", { aktenzeichen: akte.aktenzeichen, titel, datum, typ, auftrag: (ctx.originalFrage ?? frage).trim() })) as { akte: string; datum: string; werktag: boolean; vorschlagNaechsterWerktag: string | null; doppelung: string | null };
     const hinweis = !r.werktag && r.vorschlagNaechsterWerktag ? ` Achtung: ${r.datum} ist kein Werktag – Vorschlag: ${r.vorschlagNaechsterWerktag}.` : "";
+    if (r.doppelung) {
+      return `Bitte prüfen Sie zuerst: ${r.doppelung}. Soll trotzdem eine zweite ${ART_NAME[typ]} „${titel}“ für ${r.akte} am ${r.datum} entstehen?${hinweis} Eingetragen wird erst nach „Trotzdem eintragen“ – danach können Sie es rückgängig machen.`;
+    }
     return `Bitte bestätigen Sie: ${ART_NAME[typ]} „${titel}“ für ${r.akte} am ${r.datum}.${hinweis} Eingetragen wird erst nach „Eintragen“ – danach können Sie es rückgängig machen.`;
   }
 
