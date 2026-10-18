@@ -493,8 +493,8 @@ export default function Umzug() {
             <ol className="mt-3 grid grid-cols-1 gap-3 text-[13px]">
               {[
                 ["Probelauf", "Export einlesen, Vorschau prüfen, Lauf rückgängig machen – so oft Sie möchten."],
-                ["Parallelbetrieb", "Beide Systeme laufen; neue Fristen tragen Sie in AnwaltApex ein, das Altsystem bleibt unverändert."],
-                ["Umschalten", "Letzter Export, Kontrolle der Fristen im Vier-Augen-Prinzip, danach arbeiten Sie nur noch in AnwaltApex."],
+                ["Parallelbetrieb", "Beide Systeme laufen; neue Fristen tragen Sie in Apex ein, das Altsystem bleibt unverändert."],
+                ["Umschalten", "Letzter Export, Kontrolle der Fristen im Vier-Augen-Prinzip, danach arbeiten Sie nur noch in Apex."],
               ].map(([t, x], i) => (
                 <li key={t} className="flex gap-2.5">
                   <span className="num grid size-6 shrink-0 place-items-center rounded-full bg-ink-soft text-[12px] font-semibold text-ink">{i + 1}</span>
@@ -522,7 +522,7 @@ export default function Umzug() {
               </div>
             </div>
             <div className="mt-3 flex items-center gap-1.5 text-[12px] text-fg-3">
-              <ShieldCheck className="size-3.5 text-green" /> Die Datei wird nur in Ihrer AnwaltApex-Umgebung verarbeitet.
+              <ShieldCheck className="size-3.5 text-green" /> Die Datei wird nur in Ihrer Apex-Umgebung verarbeitet.
             </div>
           </Card>
 

@@ -147,7 +147,7 @@ export function WikiBibliothek() {
             onClick={() => {
               const t = offen?.titel;
               setOffen(null);
-              useUI.getState().oeffneAssistent(t ? `Erkläre mir bitte „${t}“ in AnwaltApex.` : undefined);
+              useUI.getState().oeffneAssistent(t ? `Erkläre mir bitte „${t}“ in Apex.` : undefined);
             }}
           >
             Assistent fragen

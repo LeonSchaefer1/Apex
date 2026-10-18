@@ -439,7 +439,7 @@ export function KiKarte({ n, ansicht, schritt, fehler, onAnalyse }: { n: Nachric
                         </span>
                         <div className="min-w-0 flex-1">
                           <div className="text-[14px] font-semibold">Neue Mandatsanfrage – noch keine Akte</div>
-                          <p className="mt-0.5 text-[12.5px] leading-relaxed text-fg-3">Legen Sie das Mandat in der Mandatsaufnahme an – Vollmacht und Deckungsanfrage bereitet AnwaltApex als Entwurf zur Freigabe vor.</p>
+                          <p className="mt-0.5 text-[12.5px] leading-relaxed text-fg-3">Legen Sie das Mandat in der Mandatsaufnahme an – Vollmacht und Deckungsanfrage bereitet Apex als Entwurf zur Freigabe vor.</p>
                         </div>
                       </div>
                       <div className="mt-3.5 flex flex-wrap gap-2">
@@ -831,7 +831,7 @@ function EebAbschnitt({ n, ansicht, ziel, eebFrei, offeneKontrollen }: { n: Nach
           </div>
           <div className="text-[12.5px] leading-relaxed text-fg-2">
             {!eebFrei
-              ? "Das eEB weist das Zustellungsdatum nach – ab diesem Tag läuft die Frist. AnwaltApex gibt die Abgabe erst frei, wenn die Frist notiert ist – Schutz vor Haftungsfällen."
+              ? "Das eEB weist das Zustellungsdatum nach – ab diesem Tag läuft die Frist. Apex gibt die Abgabe erst frei, wenn die Frist notiert ist – Schutz vor Haftungsfällen."
               : darf
                 ? "Alle Fristen stehen im Kalender. Mit dem eEB weisen Sie dem Gericht das Zustellungsdatum nach – den Tag, an dem Sie das Schriftstück empfangsbereit zur Kenntnis genommen haben."
                 : EEB_ERKLAERUNG}
@@ -1028,7 +1028,7 @@ function AbgabeDialog({ open, onClose, n, ansicht, ziel, offeneKontrollen, land 
           ) : (
             <div className="mt-1">Die Fristenden ändern sich dadurch nicht.</div>
           )}
-          {anpassungen.length > 0 && <div className="mt-1">Nach der Abgabe passt AnwaltApex die notierten Kalenderfristen samt Vorfristen an (protokolliert).</div>}
+          {anpassungen.length > 0 && <div className="mt-1">Nach der Abgabe passt Apex die notierten Kalenderfristen samt Vorfristen an (protokolliert).</div>}
         </div>
       )}
       {kontrolleOffen && (

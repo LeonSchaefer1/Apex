@@ -1,4 +1,4 @@
-# AnwaltApex – Masterprompt für Claude Code
+# Apex – Masterprompt für Claude Code
 
 Stand: 16.10.2026, ergänzt am 17.10.2026 um den [Stand nach Umsetzung und Usability-Studie](#stand-nach-umsetzung-und-usability-studie) · ersetzt den Entwurf „Masterprompt_Software_Claude_Code.txt“
 
@@ -25,7 +25,7 @@ Stand: 16.10.2026, ergänzt am 17.10.2026 um den [Stand nach Umsetzung und Usabi
 
 ```
 # ROLLE & AUFTRAG
-Du bist Lead Architect und Principal Full-Stack Engineer von „AnwaltApex“ – der Kanzlei-Software, die deutschen
+Du bist Lead Architect und Principal Full-Stack Engineer von „Apex“ – der Kanzlei-Software, die deutschen
 Rechtsanwältinnen und Rechtsanwälten ein Werkzeug mit voller Kontrolle gibt. Du baust ein Produkt, das sich in
 Qualität, Gestaltung und Verlässlichkeit klar von RA-MICRO, ACTAPORT, Advoware (Septeo) und ReNoStar abhebt.
 Keine Standard-Software: jede Funktion muss einen echten Schmerz der Kanzleien lösen, verständlich benannt sein

@@ -65,7 +65,7 @@ const KOPF = (titel: string, k: { kanzlei: string; anschrift?: string; datum: st
     `  ${k.kanzlei}${k.anschrift ? `, ${k.anschrift}` : ""}`,
     "  – nachfolgend „Kanzlei“ –",
     "und",
-    "  AnwaltApex (Anbieter; Angaben im Prototyp nicht festgelegt)",
+    "  Apex (Anbieter; Angaben im Prototyp nicht festgelegt)",
     "  – nachfolgend „Dienstleister“ –",
     "",
     `Stand des Musters: ${k.datum}`,
@@ -89,7 +89,7 @@ export const MUSTER: MusterVertrag[] = [
       [
         KOPF("Vereinbarung über die Inanspruchnahme von Dienstleistungen nach § 43e BRAO", k),
         "§ 1 Gegenstand",
-        "Der Dienstleister stellt der Kanzlei die Kanzleisoftware AnwaltApex bereit (Betrieb auf einem eigenen Server der Kanzlei oder in einem deutschen Rechenzentrum) und erbringt Wartung und Support. Dabei kann er Kenntnis von Tatsachen erhalten, die der anwaltlichen Verschwiegenheit unterliegen.",
+        "Der Dienstleister stellt der Kanzlei die Kanzleisoftware Apex bereit (Betrieb auf einem eigenen Server der Kanzlei oder in einem deutschen Rechenzentrum) und erbringt Wartung und Support. Dabei kann er Kenntnis von Tatsachen erhalten, die der anwaltlichen Verschwiegenheit unterliegen.",
         "",
         "§ 2 Verschwiegenheit (§ 43e Abs. 3 BRAO, § 203 Abs. 3, 4 StGB)",
         "(1) Der Dienstleister verpflichtet sich zur Verschwiegenheit über alle Tatsachen, die ihm bei der Tätigkeit für die Kanzlei bekannt werden. Er ist über die strafrechtlichen Folgen einer Pflichtverletzung belehrt.",
@@ -125,7 +125,7 @@ export const MUSTER: MusterVertrag[] = [
       [
         KOPF("Vertrag über eine Auftragsverarbeitung nach Art. 28 DSGVO", k),
         "§ 1 Gegenstand und Dauer",
-        "Der Auftragsverarbeiter (Dienstleister) verarbeitet personenbezogene Daten im Auftrag der Kanzlei (Verantwortliche) im Rahmen von Betrieb, Wartung und Support der Kanzleisoftware AnwaltApex. Die Dauer entspricht der Laufzeit des Lizenz- bzw. Wartungsvertrags.",
+        "Der Auftragsverarbeiter (Dienstleister) verarbeitet personenbezogene Daten im Auftrag der Kanzlei (Verantwortliche) im Rahmen von Betrieb, Wartung und Support der Kanzleisoftware Apex. Die Dauer entspricht der Laufzeit des Lizenz- bzw. Wartungsvertrags.",
         "",
         "§ 2 Art der Daten, Kreis der Betroffenen",
         "Daten von Mandanten, Gegnern, Beteiligten, Gerichten und Behörden sowie der Beschäftigten der Kanzlei; Akteninhalte, Kommunikationsdaten, Abrechnungsdaten. Besondere Kategorien (Art. 9 DSGVO) können in Akteninhalten enthalten sein.",

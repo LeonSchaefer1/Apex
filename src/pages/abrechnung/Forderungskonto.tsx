@@ -300,7 +300,7 @@ export function ForderungskontoTab() {
           <Empty
             icon={<Scale className="size-6" />}
             title="Keine Forderungssachen"
-            text="Sobald eine Akte im Sachgebiet Forderungseinzug mit Hauptforderung und Verzugsbeginn angelegt ist, führt AnwaltApex hier das Forderungskonto."
+            text="Sobald eine Akte im Sachgebiet Forderungseinzug mit Hauptforderung und Verzugsbeginn angelegt ist, führt Apex hier das Forderungskonto."
           />
         </Card>
       </>

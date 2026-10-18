@@ -78,7 +78,7 @@ export function Sperrbildschirm() {
           </div>
         </div>
         <p className="mt-4 text-[13.5px] leading-relaxed text-fg-2">
-          AnwaltApex wurde nach {minuten ?? 15} Minuten ohne Aktivität gesperrt – zum Schutz der Mandantendaten. Bitte melden Sie sich mit Ihrem Passwort wieder an.
+          Apex wurde nach {minuten ?? 15} Minuten ohne Aktivität gesperrt – zum Schutz der Mandantendaten. Bitte melden Sie sich mit Ihrem Passwort wieder an.
         </p>
         <input type="email" autoComplete="username" value={user.email} readOnly hidden />
         <div className="relative mt-4">

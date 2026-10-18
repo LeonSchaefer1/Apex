@@ -87,7 +87,7 @@ export function Kennzahlen() {
     { icon: <Library className="size-[18px]" />, wert: <>Sekunden</>, text: "bis zum passenden Präzedenzfall³", fussnote: 3 },
   ];
   return (
-    <section aria-label="AnwaltApex in Zahlen" className="px-4 sm:px-6">
+    <section aria-label="Apex in Zahlen" className="px-4 sm:px-6">
       <Reveal className="mx-auto max-w-[1200px]">
         <ul className="glass grid grid-cols-2 gap-px overflow-hidden rounded-[26px] lg:grid-cols-4">
           {items.map((x, k) => (

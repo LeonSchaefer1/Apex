@@ -8,7 +8,7 @@ import { escapeRe, fremdgeldTreffer, namensTeile, norm, VERSICHERER } from "@/co
 // Fremdgeld-Regel (§ 43a Abs. 7 BRAO) liegt in src/core/abrechnung.ts (mit Tests).
 export { fremdgeldTreffer };
 
-/** Ab dieser Sicherheit bucht AnwaltApex selbstständig. */
+/** Ab dieser Sicherheit bucht Apex selbstständig. */
 export const AUTO_SCHWELLE = 0.9;
 
 // ───────────── Konto je Umsatz (I4-T08-01): Geschäftskonto oder Anderkonto (§ 43a Abs. 7 BRAO, § 4 BORA) ─────────────

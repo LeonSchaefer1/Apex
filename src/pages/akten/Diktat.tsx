@@ -25,7 +25,7 @@ export function DiktatKnopf({ onText, label = "Diktieren", className }: { onText
     }
     if (!spracheingabeVerfuegbar()) {
       toast("Diktat in diesem Browser nicht verfügbar", {
-        text: "Die Spracheingabe nutzt die Spracherkennung des Browsers (z. B. Chrome oder Edge) und braucht die Freigabe des Mikrofons. Bitte tippen Sie den Text – oder öffnen Sie AnwaltApex in einem unterstützten Browser.",
+        text: "Die Spracheingabe nutzt die Spracherkennung des Browsers (z. B. Chrome oder Edge) und braucht die Freigabe des Mikrofons. Bitte tippen Sie den Text – oder öffnen Sie Apex in einem unterstützten Browser.",
         ton: "info",
       });
       return;

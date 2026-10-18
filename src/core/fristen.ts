@@ -2,7 +2,7 @@
 // ZPO/ArbGG: § 222 ZPO i. V. m. §§ 187, 188 BGB · StPO: §§ 42, 43 StPO · OWiG: § 46 Abs. 1 OWiG i. V. m. §§ 42, 43 StPO ·
 // VwGO: § 57 Abs. 2 VwGO i. V. m. § 222 ZPO · FamFG: § 16 Abs. 2 FamFG i. V. m. § 222 ZPO ·
 // KSchG, materielles Recht und vertraglich vereinbarte Fristen: §§ 187, 188, 193 BGB.
-// Grundsatz von AnwaltApex: Die KI ERKENNT Fristen in Dokumenten, BERECHNET werden sie ausschließlich hier.
+// Grundsatz von Apex: Die KI ERKENNT Fristen in Dokumenten, BERECHNET werden sie ausschließlich hier.
 import { addDays, addMonthsBGB, diffDays, fmtDate, fmtDateWd, wochentagName } from "./dates";
 import { bundeslandAusGericht, bundeslandAusOrt, bundeslandName, feiertagAm, istWerktag } from "./feiertage";
 import type { Akte, Bundesland, Frist, FristGerichtsort, FristTyp, ISODate, Kontakt } from "./types";
@@ -374,11 +374,11 @@ function einheitText(dauer: number, einheit: Einheit): string {
   return `${dauer} Jahre ab Jahresende`;
 }
 
-/** Hinweis für ein Fristende auf einem nur regional geltenden Feiertag (AnwaltApex verlängert vorsorglich nicht). */
+/** Hinweis für ein Fristende auf einem nur regional geltenden Feiertag (Apex verlängert vorsorglich nicht). */
 function regionalWarnung(ende: ISODate, land: Bundesland, norm: string): string | undefined {
   const tf = feiertagAm(ende, land);
   if (!tf?.teilweise) return undefined;
-  return `${tf.name.replace(/ \(regional\)$/, "")} ist nur in Teilen von ${bundeslandName(land)} Feiertag – AnwaltApex verlängert vorsorglich nicht. Gilt er am Ort des Gerichts, endet die Frist rechtlich erst am nächsten Werktag (${norm}); der frühere Termin bleibt die sichere Seite.`;
+  return `${tf.name.replace(/ \(regional\)$/, "")} ist nur in Teilen von ${bundeslandName(land)} Feiertag – Apex verlängert vorsorglich nicht. Gilt er am Ort des Gerichts, endet die Frist rechtlich erst am nächsten Werktag (${norm}); der frühere Termin bleibt die sichere Seite.`;
 }
 
 /** Grund, warum ein Tag kein Werktag ist: Feiertagsname (mit Land) oder Samstag/Sonntag. */
@@ -577,7 +577,7 @@ export function berechneNachRegel(
 
 /**
  * Frist mit festem Enddatum (z. B. „bis zum 20.11.2026 Stellung zu nehmen“). Das genannte Datum wird übernommen.
- * Fällt es auf Wochenende/Feiertag, endet die Frist nach § 222 Abs. 2 ZPO erst am nächsten Werktag – AnwaltApex
+ * Fällt es auf Wochenende/Feiertag, endet die Frist nach § 222 Abs. 2 ZPO erst am nächsten Werktag – Apex
  * notiert vorsorglich das genannte Datum und weist darauf hin.
  */
 export function berechneFestesEnde(params: {
@@ -608,7 +608,7 @@ export function berechneFestesEnde(params: {
     const wd = new Date(ende + "T00:00:00Z").getUTCDay();
     const grund = f && !f.teilweise ? f.name : wd === 6 ? "Samstag" : "Sonntag";
     rechenweg.push(`${fmtDate(ende)} ist ${grund}${f && !f.teilweise ? ` (${bundeslandName(land)})` : ""} – nach ${norm} endet die Frist erst am ${fmtDateWd(naechster)}; vorsorglich gilt das genannte Datum`);
-    warnungen.push(`Das genannte Datum ist ein ${grund}. Rechtlich endet die Frist erst am ${fmtDateWd(naechster)} (${norm}) – AnwaltApex notiert vorsorglich den ${fmtDate(ende)}.`);
+    warnungen.push(`Das genannte Datum ist ein ${grund}. Rechtlich endet die Frist erst am ${fmtDateWd(naechster)} (${norm}) – Apex notiert vorsorglich den ${fmtDate(ende)}.`);
   } else {
     const kanzlei = kanzleisitzZeile(ende, land, params.kanzleiLand, "Gerichtsort");
     if (kanzlei) rechenweg.push(kanzlei);

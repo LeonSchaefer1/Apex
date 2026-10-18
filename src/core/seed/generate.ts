@@ -917,7 +917,7 @@ export function generateTenantData(input: SeedInput, today: string, opts: { leer
   ctx.data.meta.push({ seedVersion: SEED_VERSION, seededAt: `${today}T06:00:00` });
   if (opts.leer) {
     // Kunden-Kanzlei ohne Beispieldaten: Der simulierte Hintergrundbetrieb läuft hier nicht. Aktiv sind zu Beginn nur die
-    // Automationen, die AnwaltApex selbst beim auslösenden Schritt erledigt (Akte anlegen, Frist eintragen, Akte abschließen);
+    // Automationen, die Apex selbst beim auslösenden Schritt erledigt (Akte anlegen, Frist eintragen, Akte abschließen);
     // alle übrigen schaltet die Kanzlei nach der Einrichtung (beA, Konto, Mandantenportal) im 38h-Motor ein.
     const sofort = new Set(["mandatsaufnahme", "deckungsanfrage", "vorfristen", "archivierung"]);
     const autos: Automation[] = AUTOMATION_DEFS.map((def) => ({ ...def, id: ctx.id("au"), aktiv: sofort.has(def.key), laeufe: 0 }));

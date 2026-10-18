@@ -44,7 +44,7 @@ const WIKI_ROH: WikiArtikel[] = [
     key: "akten", titel: "Akten & E-Akte", kategorie: "Akten & Fristen", dauer: "2 Min.", pfad: "/akten",
     kurz: "Jede Akte bündelt Dokumente, Fristen, Beteiligte, Aktenkonto, Notizen und die KI-Fallanalyse.",
     schritte: [
-      { titel: "Akte finden", text: "Filtern Sie nach Sachgebiet, Status oder Bearbeiter. Spaltenbreite, Reihenfolge und Zeilendichte merkt sich AnwaltApex für Sie.", visual: "akte" },
+      { titel: "Akte finden", text: "Filtern Sie nach Sachgebiet, Status oder Bearbeiter. Spaltenbreite, Reihenfolge und Zeilendichte merkt sich Apex für Sie.", visual: "akte" },
       { titel: "Dokumente stapelweise bearbeiten", text: "In der E-Akte markieren Sie mehrere Dokumente und verschieben, benennen oder löschen sie gemeinsam – Umbenennen geht direkt per Doppelklick.", visual: "akte" },
       { titel: "Im Kontext bleiben", text: "E-Mails und beA-Nachrichten schreiben Sie direkt aus der Akte. Nach dem Senden bleiben Sie genau dort, wo Sie waren.", visual: "posteingang" },
       { titel: "KI-Fallanalyse", text: "Ein Klick auf „KI-Fallanalyse“ liefert Erfolgsaussicht, passende Präzedenzfälle und die nächsten Schritte – mit Quellen.", visual: "ki" },
@@ -55,9 +55,9 @@ const WIKI_ROH: WikiArtikel[] = [
     key: "neue-akte", titel: "Neue Akte anlegen (Mandatsaufnahme)", kategorie: "Akten & Fristen", dauer: "1 Min.", pfad: "/akten?neu=1",
     kurz: "Unter „Akten“ → „Neue Akte“ führt die Mandatsaufnahme in vier Schritten zur fertigen Akte – samt Vollmacht und Mandatsbestätigung.",
     schritte: [
-      { titel: "Mandant erfassen", text: "Bestehenden Kontakt wählen oder neu anlegen. AnwaltApex prüft dabei automatisch auf Interessenkonflikte (§ 43a Abs. 4 BRAO).", visual: "team" },
+      { titel: "Mandant erfassen", text: "Bestehenden Kontakt wählen oder neu anlegen. Apex prüft dabei automatisch auf Interessenkonflikte (§ 43a Abs. 4 BRAO).", visual: "team" },
       { titel: "Sache beschreiben", text: "Sachgebiet, Gegner, Gegenstandswert und Bearbeiter angeben – das Aktenzeichen wird automatisch vergeben.", visual: "akte" },
-      { titel: "Rechtsschutz & Zusammenfassung", text: "Rechtsschutzversicherung eintragen und prüfen. Vollmacht, Mandatsbestätigung und Datenschutzhinweise erstellt AnwaltApex automatisch – mit Rechtsschutz auch die Deckungsanfrage samt Wiedervorlage.", visual: "motor" },
+      { titel: "Rechtsschutz & Zusammenfassung", text: "Rechtsschutzversicherung eintragen und prüfen. Vollmacht, Mandatsbestätigung und Datenschutzhinweise erstellt Apex automatisch – mit Rechtsschutz auch die Deckungsanfrage samt Wiedervorlage.", visual: "motor" },
     ],
     tipps: ["Bei einer Mandatsanfrage im Posteingang öffnet „Mandat anlegen“ die Mandatsaufnahme bereits vorausgefüllt."],
   },
@@ -80,7 +80,7 @@ const WIKI_ROH: WikiArtikel[] = [
       { titel: "Ersatzeinreichung", text: "Bei vorübergehender technischer Unmöglichkeit nach den allgemeinen Vorschriften einreichen: Telefax, Papier oder Bote. Zivilgerichte (AG, LG, OLG, BGH): § 130d S. 2 ZPO; Arbeitsgerichte (ArbG, LAG, BAG): § 46g S. 3 ArbGG; entsprechend § 55d VwGO, § 65d SGG, § 52d FGO, § 32d StPO.", visual: "ersatzeinreichung" },
       { titel: "Begründung nicht fertig?", text: "Läuft eine Begründungsfrist ab und ist die Begründung nicht fertig: Verlängerungsantrag vor Fristablauf stellen – ebenfalls ersatzweise einreichen (Berufungsbegründung: LAG § 66 Abs. 1 S. 5 ArbGG; OLG § 520 Abs. 2 S. 2, 3 ZPO). Die Berufungsfrist selbst ist eine Notfrist und nicht verlängerbar.", visual: "ersatzeinreichung" },
       { titel: "Glaubhaft machen", text: "Die vorübergehende Unmöglichkeit bei der Ersatzeinreichung oder unverzüglich danach glaubhaft machen – mit anwaltlicher Versicherung und geschlossener Schilderung der Abläufe (§ 130d S. 3 ZPO, § 46g S. 4 ArbGG). Auf Anforderung des Gerichts das elektronische Dokument nachreichen.", visual: "glaubhaft" },
-      { titel: "Frist erst nach Nachweis erledigen", text: "Die Frist erst nach Sendebericht bzw. Eingangsbestätigung als erledigt markieren (Ausgangskontrolle). Und: {Ihre feste Ansprechperson} bei AnwaltApex anrufen.", visual: "frist" },
+      { titel: "Frist erst nach Nachweis erledigen", text: "Die Frist erst nach Sendebericht bzw. Eingangsbestätigung als erledigt markieren (Ausgangskontrolle). Und: {Ihre feste Ansprechperson} bei Apex anrufen.", visual: "frist" },
     ],
     tipps: ["Der Apex Assistent beantwortet „beA gestört – was tun?“ auch für das konkrete Gericht (z. B. LAG oder OLG)."],
   },
@@ -133,7 +133,7 @@ const WIKI_ROH: WikiArtikel[] = [
     schritte: [
       { titel: "RVG berechnen", text: "Gegenstandswert eingeben, Gebührentatbestände wählen – Anrechnung nach Vorbem. 3 Abs. 4 VV RVG, Auslagenpauschale und Umsatzsteuer werden automatisch ergänzt.", visual: "rvg" },
       { titel: "Sammelabrechnung", text: "Mehrere Akten auswählen und in einem Durchgang abrechnen – als PDF oder, für Unternehmen, als E-Rechnung (XRechnung, ZUGFeRD).", visual: "rvg" },
-      { titel: "Bankabgleich", text: "Kontoumsätze werden mit Rechnungen abgeglichen. Sicher erkannte Zahlungen bucht AnwaltApex selbst, unsichere legt es Ihnen vor.", visual: "bank" },
+      { titel: "Bankabgleich", text: "Kontoumsätze werden mit Rechnungen abgeglichen. Sicher erkannte Zahlungen bucht Apex selbst, unsichere legt es Ihnen vor.", visual: "bank" },
       { titel: "Forderungskonto", text: "Zinsen nach § 288 BGB taggenau, Teilzahlungen nach § 367 BGB verrechnet: erst Kosten, dann Zinsen, dann Hauptforderung.", visual: "rvg" },
     ],
   },
@@ -141,7 +141,7 @@ const WIKI_ROH: WikiArtikel[] = [
     key: "kontakte", titel: "Kontakte", kategorie: "Akten & Fristen", dauer: "1 Min.", pfad: "/kontakte",
     kurz: "Mandanten, Gegner, Gerichte, Versicherungen – jeder Kontakt mit allen verknüpften Akten.",
     schritte: [
-      { titel: "Rollen", text: "Ein Kontakt kann mehrere Rollen haben, z. B. Mandant in der einen und Gegner in einer anderen Akte. AnwaltApex warnt bei Interessenkonflikten.", visual: "team" },
+      { titel: "Rollen", text: "Ein Kontakt kann mehrere Rollen haben, z. B. Mandant in der einen und Gegner in einer anderen Akte. Apex warnt bei Interessenkonflikten.", visual: "team" },
     ],
   },
   {
@@ -153,7 +153,7 @@ const WIKI_ROH: WikiArtikel[] = [
       { titel: "Vorschau prüfen", text: "Spalten werden automatisch zugeordnet. Sie sehen vorab, was übernommen wird – und was doppelt wäre.", visual: "umzug" },
       { titel: "Übernehmen", text: "Nach Ihrer Prüfung übernehmen – jeder Lauf lässt sich rückgängig machen. Übernommene Fristen tragen „Aus Umzug“ und gehen in die Vier-Augen-Kontrolle.", visual: "frist" },
     ],
-    tipps: ["{Ihre feste Ansprechperson} bei AnwaltApex begleitet den Umzug und prüft mit Ihnen die ersten Akten."],
+    tipps: ["{Ihre feste Ansprechperson} bei Apex begleitet den Umzug und prüft mit Ihnen die ersten Akten."],
   },
   {
     key: "hilfe", titel: "Hilfe & Support", kategorie: "Erste Schritte", dauer: "1 Min.", pfad: "/hilfe",
@@ -161,7 +161,7 @@ const WIKI_ROH: WikiArtikel[] = [
     stichworte: ["Support", "Ansprechpartner", "Ansprechpartnerin", "Rückruf", "Schnellhilfe"],
     schritte: [
       { titel: "Apex Assistent", text: "Unten rechts: Fragen Sie per Text oder Sprache. Der Apex Assistent erklärt, zeigt den Weg und erledigt Aufgaben direkt.", visual: "assistent" },
-      { titel: "{Feste Ansprechperson}", text: "Keine Hotline-Warteschleife: {Ihre feste Ansprechperson} bei AnwaltApex ist mit Namen, Durchwahl und E-Mail direkt erreichbar – auf Wunsch mit Rückruf.", visual: "team" },
+      { titel: "{Feste Ansprechperson}", text: "Keine Hotline-Warteschleife: {Ihre feste Ansprechperson} bei Apex ist mit Namen, Durchwahl und E-Mail direkt erreichbar – auf Wunsch mit Rückruf.", visual: "team" },
       { titel: "Systemstatus", text: "Offen und ehrlich: Sie sehen jederzeit, ob beA, E-Mail, Bank und KI laufen – und was gerade getan wird.", visual: "status" },
     ],
   },
@@ -193,7 +193,7 @@ const WIKI_ROH: WikiArtikel[] = [
   },
   {
     key: "bankabgleich", titel: "Zahlungen automatisch zuordnen", kategorie: "Abrechnung", dauer: "1 Min.", pfad: "/abrechnung?tab=bank",
-    kurz: "So ordnet AnwaltApex Zahlungseingänge Rechnungen und Aktenkonten zu – eindeutige Treffer ab 90 % gebucht, alle anderen zur Bestätigung.",
+    kurz: "So ordnet Apex Zahlungseingänge Rechnungen und Aktenkonten zu – eindeutige Treffer ab 90 % gebucht, alle anderen zur Bestätigung.",
     schritte: [
       { titel: "Abgleich starten", text: "„Abgleich starten“ prüft alle offenen Umsätze gegen offene Rechnungen.", visual: "bank" },
       { titel: "Sicherheit prüfen", text: "Rechnungsnummer im Verwendungszweck = sicher. Nur Name und Betrag = Vorschlag zur Bestätigung.", visual: "bank" },
@@ -205,7 +205,7 @@ const WIKI_ROH: WikiArtikel[] = [
     kurz: "Jede Kanzlei hat eigene Zugänge und einen streng getrennten Datenbestand.",
     schritte: [
       { titel: "Mandantentrennung", text: "Daten jeder Kanzlei sind vollständig getrennt – technisch auf Datenbankebene erzwungen.", visual: "team" },
-      { titel: "Testzugang", text: "Über die Apex Console legt das AnwaltApex-Team Testkanzleien mit eigenem Login an – mit oder ohne Beispieldaten.", visual: "lizenz" },
+      { titel: "Testzugang", text: "Über die Apex Console legt das Apex-Team Testkanzleien mit eigenem Login an – mit oder ohne Beispieldaten.", visual: "lizenz" },
     ],
   },
 ];

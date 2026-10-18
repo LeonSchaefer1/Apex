@@ -1,8 +1,8 @@
 {
-  "name": "anwaltapex",
+  "name": "apex",
   "private": true,
   "version": "0.9.0",
-  "description": "AnwaltApex – das Kanzlei-Betriebssystem für deutsche Rechtsanwälte",
+  "description": "Apex – die Kanzleisoftware für deutsche Rechtsanwältinnen und Rechtsanwälte",
   "type": "module",
   "engines": {
     "node": ">=22.13"

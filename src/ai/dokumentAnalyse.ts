@@ -666,7 +666,7 @@ export function analysiereRegelbasiert(input: { text: string; betreff?: string; 
   let termin: DokAnalyse["termin"];
   const eeb = /empfangsbekenntnis|\beeb\b/.test(n);
   // Zustellung gegen (e)EB: zugestellt ist am Tag, an dem die Anwältin bzw. der Anwalt das Schriftstück empfangsbereit
-  // zur Kenntnis genommen hat (dieses Datum steht im eEB) – vorsorglich rechnet AnwaltApex ab dem Eingangstag.
+  // zur Kenntnis genommen hat (dieses Datum steht im eEB) – vorsorglich rechnet Apex ab dem Eingangstag.
   const zustellung = eingang;
   const ort = fristOrt(typ, input, data, match.akteId, land);
   let rechtsmittel: Rechtsmittelhinweis | undefined;

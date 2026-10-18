@@ -182,7 +182,7 @@ export default function Login() {
                   <div className="min-w-0">
                     <h2 className="title-lg">Code aus Ihrer Authenticator-App</h2>
                     <p className="mt-1 text-[13px] text-fg-2">
-                      Ihr Passwort stimmt. Bitte geben Sie jetzt den 6-stelligen Code ein, den Ihre App für <span className="break-all font-medium">AnwaltApex · {zweiFaktor.email}</span> anzeigt.
+                      Ihr Passwort stimmt. Bitte geben Sie jetzt den 6-stelligen Code ein, den Ihre App für <span className="break-all font-medium">Apex · {zweiFaktor.email}</span> anzeigt.
                     </p>
                   </div>
                 </div>
@@ -323,7 +323,7 @@ export default function Login() {
                         , {AP.verfuegbar}.
                       </p>
                       <p className="mt-1.5 flex items-start gap-1.5 text-fg-3">
-                        <Phone className="mt-0.5 size-3.5 shrink-0" /> Aus Sicherheitsgründen versendet AnwaltApex keine Passwörter per E-Mail.
+                        <Phone className="mt-0.5 size-3.5 shrink-0" /> Aus Sicherheitsgründen versendet Apex keine Passwörter per E-Mail.
                       </p>
                     </div>
                   </motion.div>

@@ -1,4 +1,4 @@
-# Kundenavatar AnwaltApex: Claudia Reinholz
+# Kundenavatar Apex: Claudia Reinholz
 
 **Claudia Reinholz, 50, Fachanwältin für Arbeitsrecht, geschäftsführende Partnerin einer kleinen Sozietät in Paderborn (fiktiv)**
 
@@ -20,7 +20,7 @@ Stand: 16.10.2026 · Finale Fassung für die 5 End-to-End-Testiterationen · Gru
 
 ---
 
-## 1. So testet der Avatar AnwaltApex
+## 1. So testet der Avatar Apex
 
 ### 1.1 Rollenanweisung für den Testagenten
 
@@ -28,7 +28,7 @@ Stand: 16.10.2026 · Finale Fassung für die 5 End-to-End-Testiterationen · Gru
 >
 > Sie arbeiten seit 20 Jahren mit RA-MICRO, kennen jedes Kürzel und sind es leid: Hotline, Updates, Masken, Buchhaltung. Sie arbeiten rund 52 Stunden pro Woche und rechnen weniger als die Hälfte davon ab. Abends machen Sie die Ausgangskontrolle allein.
 >
-> Sie testen AnwaltApex, weil der Support Ihres Windows-Servers 2016 am 12.01.2027 endet. Ihr Partner Bernd Hollmann (61) ist skeptisch und rechnet in Fünf-Jahres-Kosten, Petra Schulte hat bei der Bedienbarkeit ein Veto.
+> Sie testen Apex, weil der Support Ihres Windows-Servers 2016 am 12.01.2027 endet. Ihr Partner Bernd Hollmann (61) ist skeptisch und rechnet in Fünf-Jahres-Kosten, Petra Schulte hat bei der Bedienbarkeit ein Veto.
 >
 > Sie sind pragmatisch und nicht technikfeindlich, aber allergisch gegen KI-Hype, Anglizismen und Werbezahlen ohne Herleitung. Fristen, beA und eEB sind für Sie Haftungsfragen. Sie rechnen jede Frist, jede Gebühr und jeden Zins nach.
 >
@@ -45,7 +45,7 @@ Stand: 16.10.2026 · Finale Fassung für die 5 End-to-End-Testiterationen · Gru
 | Start-Adresse (Dev-Server) | **http://127.0.0.1:5173** – die Testleitung startet den Dev-Server (`npm run dev` im Projektordner `/home/user/anwaltapex`) und öffnet die Adresse. Die Landing liegt unter `/willkommen`, die Anmeldung unter `/login`. |
 | **Testzugang der Persona** (Präsentationszugang) | Kanzlei **Hartmann & Partner Rechtsanwälte (Berlin)** · E-Mail `julia.hartmann@hartmann-partner.de` · Passwort `Apex-Demo-2026`. Claudia meldet sich als **Dr. Julia Hartmann, Rechtsanwältin und Fachanwältin für Arbeitsrecht, Partnerin** an – stellvertretend für sich selbst. Diese Demo-Nutzerin passt in Fachgebiet und Rolle zu ihr. |
 | ReFa-Perspektive (nur T22) | Im selben Präsentationszugang: `mia.becker@hartmann-partner.de` · `Apex-Demo-2026` (Rolle ReFa). Claudia spielt hier Petra Schulte. |
-| **Apex Console** (Anbieterwerkzeug, T21) | E-Mail `admin@anwaltapex.de` · Passwort `Apex-Console-2026`. Damit legt der Avatar zusätzlich einen **eigenen Testzugang** an. |
+| **Apex Console** (Anbieterwerkzeug, T21) | E-Mail `admin@apex-kanzlei.de` · Passwort `Apex-Console-2026`. Damit legt der Avatar zusätzlich einen **eigenen Testzugang** an. |
 | Eigener Testzugang (wird in T21 je Iteration neu angelegt) | Kanzleiname **„Reinholz & Hollmann Rechtsanwälte PartG mbB – Test I{n}“** · Stadt **Paderborn** · Bundesland **Nordrhein-Westfalen** · Hauptnutzerin **Claudia Reinholz** · E-Mail **`claudia.reinholz+i{n}@reinholz-hollmann.example`** · 7 Arbeitsplätze · Schwerpunkte Arbeitsrecht, Verkehrsrecht, Mietrecht, Familienrecht, Forderungseinzug · Testzugang bis heute + 30 Tage · mit Beispieldaten. `{n}` ist die Nummer der Iteration (1–5). Das Passwort erzeugt die Console. |
 | Betriebsmodus | Die App nutzt den Server-Betrieb, wenn die API erreichbar ist, sonst den Browser-Demo-Betrieb (Daten im Browserspeicher). Die Testleitung notiert je Iteration, welcher Modus lief. Im Browser-Demo-Betrieb liegen Zugänge und Änderungen nur im Speicher dieses Browserprofils. Deshalb: alle Blöcke einer Iteration im selben Profil, jede Iteration in einem frischen Profil (bzw. Websitedaten gelöscht), damit die Demodaten neu und relativ zu „heute“ entstehen. |
 | Browser | Chromium-basiert (Chrome oder Edge); Spracheingabe und -ausgabe sind laut Demo-Skript dort vorgesehen [62]. In T20 zusätzlich Safari bzw. WebKit, falls das Testwerkzeug es bietet. |
@@ -144,7 +144,7 @@ Die Testleitung stellt den Viewport ein; gemeint ist immer der innere Fensterber
 
 **Aufgabe:** Die Seite öffnen und 5 Sekunden ansehen. Dann suchen: Preismodell (einmalig, und was kostet die Wartung?), Datenstandort, Impressum, Kontakt mit echten Menschen, „Testzugang anfordern“. Die Zahlenaussagen und den Vergleich mit klassischer Kanzleisoftware lesen.
 
-**Erfolgskriterium:** Nach 5 Sekunden sagt sie in einem Satz zutreffend, was AnwaltApex ist, **und** sie findet alle 5 Ziele in je ≤ 2 Aktionen (5 von 5).
+**Erfolgskriterium:** Nach 5 Sekunden sagt sie in einem Satz zutreffend, was Apex ist, **und** sie findet alle 5 Ziele in je ≤ 2 Aktionen (5 von 5).
 
 **Prüfpunkte:**
 - Jede Zahlenaussage (z. B. „38 Std.“, „36.000 €“) hat eine sichtbare Herleitung oder ist als Beispiel gekennzeichnet (ja/nein je Aussage).
@@ -154,7 +154,7 @@ Die Testleitung stellt den Viewport ein; gemeint ist immer der innere Fensterber
 
 #### T21 · Apex Console: eigenen Testzugang anlegen (Rollenwechsel)
 
-*Bereich:* Apex Console · *Zugang:* `admin@anwaltapex.de` / `Apex-Console-2026` · *Viewport:* D · *Richtwert Mensch:* 4 Min.
+*Bereich:* Apex Console · *Zugang:* `admin@apex-kanzlei.de` / `Apex-Console-2026` · *Viewport:* D · *Richtwert Mensch:* 4 Min.
 
 **Situation:** Nach der Online-Demo legt die Kundenbetreuerin Lena Vogt den Testzugang gemeinsam mit Claudia an. Der Agent bedient die Console als Lena Vogt; Claudia sitzt daneben und prüft Verständlichkeit und Datenschutz.
 
@@ -417,7 +417,7 @@ Aktennummer;Kurzrubrum;Mandant;Gegner;Sachgebiet;Angelegt am;Nächste Frist;Fris
 
 **Situation:** 16:50 Uhr. Eine Berufungsbegründung zum Landesarbeitsgericht muss heute raus, die beA-Signatur klappt nicht.
 
-**Aufgabe:** Ursache eingrenzen (beA oder AnwaltApex?), die Schnellhilfe „?“ öffnen, den Assistenten fragen: „Was mache ich, wenn das beA gestört ist und meine Berufungsbegründung zum Landesarbeitsgericht heute raus muss?“ Danach: „Und bei einer Berufung zum Oberlandesgericht?“ Zum Schluss: „Ich brauche meine Ansprechpartnerin.“
+**Aufgabe:** Ursache eingrenzen (beA oder Apex?), die Schnellhilfe „?“ öffnen, den Assistenten fragen: „Was mache ich, wenn das beA gestört ist und meine Berufungsbegründung zum Landesarbeitsgericht heute raus muss?“ Danach: „Und bei einer Berufung zum Oberlandesgericht?“ Zum Schluss: „Ich brauche meine Ansprechpartnerin.“
 
 **Erfolgskriterium:** Der Assistent nennt für das Landesarbeitsgericht die richtige Norm – **§ 46g S. 3, 4 ArbGG**: Ersatzeinreichung nach den allgemeinen Vorschriften, vorübergehende Unmöglichkeit bei der Ersatzeinreichung oder unverzüglich danach glaubhaft machen (F) [69] – und für das Oberlandesgericht **§ 130d S. 2, 3 ZPO** [33]; **und** ein Mensch mit Namen, Durchwahl und Rückrufangebot ist in ≤ 2 Aktionen erreichbar.
 
@@ -689,7 +689,7 @@ Auswertung: Mittelwert je Skala. Zielwert **≥ +1,5 in beiden Skalen** (A).
 
 **E) Je Iteration: Gesamturteil**
 
-- Würden Sie AnwaltApex einer Kollegin empfehlen? (0–10)
+- Würden Sie Apex einer Kollegin empfehlen? (0–10)
 - Würden Sie heute kaufen? (ja · nein · unter Bedingungen: …)
 - Die drei wichtigsten Verbesserungen, nach Dringlichkeit geordnet.
 
@@ -1069,7 +1069,7 @@ Diese Spanne ist der Kern: Ihre Preisbereitschaft hängt fast ganz davon ab, ob 
 
 Prüfpunkte dazu stehen in T04, T07, T17 und T19.
 
-### 7.4 Ängste und Einwände gegen AnwaltApex – und was sie beruhigen würde
+### 7.4 Ängste und Einwände gegen Apex – und was sie beruhigen würde
 
 | Angst | Woher sie kommt | Ihr Einwand im O-Ton | Was sie beruhigt (prüft sie im Test) |
 |---|---|---|---|
@@ -1107,7 +1107,7 @@ Prüfpunkte dazu stehen in T04, T07, T17 und T19.
   - 2.2.1 und 4.1.3: Meldungen, die verschwinden, bevor man sie gelesen hat – Claudias erklärter Ärger.
   - 3.3.8 *Barrierefreie Authentifizierung*: Passwort-Manager und Einfügen im Login (T16).
   - 1.4.4 Textgröße 200 % und 1.4.10 Reflow bei 320 CSS-px (Iteration 4).
-- **BFSG** (seit 28.06.2025): Für B2B-Kanzleisoftware wohl nicht direkt einschlägig. Ein **Mandantenportal** mit Verbraucherbezug könnte erfasst sein; Kleinstunternehmen (weniger als 10 Beschäftigte, höchstens 2 Mio. € Umsatz) sind für Dienstleistungen ausgenommen. Claudias Kanzlei fällt darunter, größere Kunden von AnwaltApex nicht (F) [74].
+- **BFSG** (seit 28.06.2025): Für B2B-Kanzleisoftware wohl nicht direkt einschlägig. Ein **Mandantenportal** mit Verbraucherbezug könnte erfasst sein; Kleinstunternehmen (weniger als 10 Beschäftigte, höchstens 2 Mio. € Umsatz) sind für Dienstleistungen ausgenommen. Claudias Kanzlei fällt darunter, größere Kunden von Apex nicht (F) [74].
 
 ### 7.7 Mobil und Tablet
 
@@ -1119,7 +1119,7 @@ Prüfpunkte dazu stehen in T04, T07, T17 und T19.
 
 ---
 
-## 8. Was sie von AnwaltApex erwartet – Abgleich mit jedem USP
+## 8. Was sie von Apex erwartet – Abgleich mit jedem USP
 
 | USP | Was sie überzeugt | Was sie skeptisch macht | Ihre Prüffrage im Test |
 |---|---|---|---|

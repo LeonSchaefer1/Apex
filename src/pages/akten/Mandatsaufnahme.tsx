@@ -847,7 +847,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
       size="lg"
       icon={erfolg ? <CheckCircle2 className="size-[18px]" /> : <FolderPlus className="size-[18px]" />}
       title={erfolg ? "Akte angelegt" : offenerEntwurf ? "Entwurf fortsetzen?" : "Mandatsaufnahme"}
-      subtitle={erfolg ? "Das Mandatsaufnahme-Paket wurde automatisch erstellt." : offenerEntwurf ? "Es gibt eine nicht abgeschlossene Mandatsaufnahme." : "Neue Akte in vier Schritten – Vollmacht, Mandatsbestätigung und Datenschutzhinweise erstellt AnwaltApex automatisch."}
+      subtitle={erfolg ? "Das Mandatsaufnahme-Paket wurde automatisch erstellt." : offenerEntwurf ? "Es gibt eine nicht abgeschlossene Mandatsaufnahme." : "Neue Akte in vier Schritten – Vollmacht, Mandatsbestätigung und Datenschutzhinweise erstellt Apex automatisch."}
       footer={footer}
     >
       {erfolg ? (
@@ -1028,7 +1028,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block text-[14px] font-semibold">Mandant ist rechtsschutzversichert</span>
-                          <span className="block text-[12.5px] text-fg-3">AnwaltApex erstellt dann automatisch die Deckungsanfrage und setzt eine Wiedervorlage in 7 Tagen.</span>
+                          <span className="block text-[12.5px] text-fg-3">Apex erstellt dann automatisch die Deckungsanfrage und setzt eine Wiedervorlage in 7 Tagen.</span>
                         </span>
                       </label>
                       <Switch id="ma-rsv" checked={rsv.aktiv} onChange={(v) => setRsv({ ...rsv, aktiv: v })} label="Mandant ist rechtsschutzversichert" />
@@ -1141,7 +1141,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                     </div>
                     <div className="rounded-[18px] bg-ink-softer p-4 shadow-[inset_0_0_0_1px_var(--line)]">
                       <div className="mb-2.5 flex items-center gap-2 text-[13px] font-semibold">
-                        <Zap className="size-4 text-ink" /> Das erledigt AnwaltApex automatisch
+                        <Zap className="size-4 text-ink" /> Das erledigt Apex automatisch
                       </div>
                       <ul className="grid grid-cols-1 gap-1.5 text-[13px] text-fg-2">
                         {["Vollmacht zur digitalen Unterschrift", "Mandatsbestätigung", "Datenschutzhinweise (Art. 13 DSGVO)", "Bestätigung Hinweis Abrechnung nach Gegenstandswert (§ 49b Abs. 5 BRAO)", ...(sache.sachgebiet === "Arbeitsrecht" ? ["Bestätigung Hinweis Kostentragung Arbeitsgericht (§ 12a Abs. 1 S. 2 ArbGG)"] : []), ...(klagefrist ? [`Klagefrist bis ${fmtDate(klagefrist.ende)} und Vorfrist eintragen (zur Vier-Augen-Kontrolle)`] : []), "Aktennotiz „Kollisionsprüfung“", ...(rsv.aktiv ? [`Deckungsanfrage an ${rsv.versicherung || "die Versicherung"}`, "Wiedervorlage in 7 Tagen (Deckungszusage)"] : [])].map((t) => (
@@ -1398,7 +1398,7 @@ function BereitsZugeordnet({ nachricht, akte, onOeffnen }: { nachricht: Nachrich
         <div className="min-w-0 flex-1">
           <div className="font-semibold text-fg">Diese Anfrage ist bereits einer Akte zugeordnet</div>
           <p className="mt-1 text-fg-2">
-            „{nachricht.betreff}“ von {nachricht.von} wurde schon übernommen. Damit keine doppelte Akte entsteht, legt AnwaltApex aus derselben Nachricht keine zweite an.
+            „{nachricht.betreff}“ von {nachricht.von} wurde schon übernommen. Damit keine doppelte Akte entsteht, legt Apex aus derselben Nachricht keine zweite an.
           </p>
         </div>
       </div>

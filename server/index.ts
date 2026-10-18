@@ -1,4 +1,4 @@
-// AnwaltApex Server: Mehrmandanten-Betrieb mit Anmeldung, strikt getrennten Kanzleidaten, Apex Console und Claude-Proxy.
+// Apex-Server: Mehrmandanten-Betrieb mit Anmeldung, strikt getrennten Kanzleidaten, Apex Console und Claude-Proxy.
 import { Hono, type Context } from "hono";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -14,7 +14,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { COLLECTIONS, type Aktivitaet, type Bundesland, type CollectionKey, type Frist, type Rolle, type Sachgebiet, type Tenant, type TenantData, type User } from "../src/core/types";
 import { DEMO_TENANTS, DEMO_PASSWORT, publicUser } from "../src/core/seed/tenants";
 import { generateTenantData, SEED_VERSION, type SeedInput } from "../src/core/seed/generate";
-import { baueKunde, baueNutzer, profilFuer } from "../src/core/seed/kunde";
+import { aktuelleAnbieterAdresse, baueKunde, baueNutzer, profilFuer } from "../src/core/seed/kunde";
 import { fmtDate, heuteBerlin, today } from "../src/core/dates";
 import { neuerSchluessel, neueWiederherstellungscodes, otpauthUri, pruefeTotp, wiederherstellungNormal } from "../src/core/totp";
 import {
@@ -25,7 +25,7 @@ import { geaenderteRechnungsangaben, normalisiereRechnungsangaben, pruefeRechnun
 import { istFristAutomatik } from "../src/core/automationen";
 import { pruefeDokument } from "../src/lib/backend/schema";
 import { sicheresPasswort, zufallsZahl } from "../src/lib/backend/zufall";
-import { ANMELDE_WARN_SCHWELLE, VORGANG, anbieterVorgang, anmeldeVorgang, letzteEchteAktivitaet, mischeVorgaenge, pruefeConsolePasswortAnlass, vorgang, zaehleFehlversuch, zeitBerlin, type FehlGrund } from "../src/lib/backend/protokoll";
+import { ANBIETER_TEAM, ANMELDE_WARN_SCHWELLE, VORGANG, anbieterVorgang, anmeldeVorgang, letzteEchteAktivitaet, mischeVorgaenge, pruefeConsolePasswortAnlass, vorgang, zaehleFehlversuch, zeitBerlin, type FehlGrund } from "../src/lib/backend/protokoll";
 import { darfAutomatikSchalten, festeAnsprechBezeichnung, rollenLabel } from "../src/lib/rollen";
 
 // ───────────── Konfiguration ─────────────
@@ -41,11 +41,13 @@ function zahlAusUmgebung(name: string, standard: number, min: number, max: numbe
 }
 
 const PORT = Number(process.env.PORT ?? 8787);
+// Dateiname „anwaltapex.db“ bleibt nach der Umbenennung in Apex (18.10.2026): bestehende Installationen finden ihre Daten weiter.
 const DB_PATH = process.env.DATABASE_PATH ?? "./data/anwaltapex.db";
-const CONSOLE_EMAIL = (process.env.CONSOLE_ADMIN_EMAIL ?? "admin@anwaltapex.de").trim().toLowerCase();
+/** Anmeldeadresse der Apex Console – kommt nur aus der Umgebung (nicht aus der Datenbank). Standard bis 18.10.2026: admin@anwaltapex.de. */
+const CONSOLE_EMAIL = (process.env.CONSOLE_ADMIN_EMAIL ?? "admin@apex-kanzlei.de").trim().toLowerCase();
 const CONSOLE_PASSWORD = process.env.CONSOLE_ADMIN_PASSWORD ?? "";
 /** Anzeigename des Console-Zugangs (z. B. „Lena Vogt“) – erscheint im Kanzleiprotokoll, wenn im Dialog niemand genannt ist. */
-const CONSOLE_NAME = (process.env.CONSOLE_ADMIN_NAME ?? "").trim().slice(0, 120) || "AnwaltApex Team";
+const CONSOLE_NAME = (process.env.CONSOLE_ADMIN_NAME ?? "").trim().slice(0, 120) || ANBIETER_TEAM;
 const QUICK_LOGIN = (process.env.DEMO_QUICK_LOGIN ?? "true") === "true";
 const SEED_DEMO = (process.env.SEED_DEMO ?? "true") === "true";
 const AI_MODEL = process.env.AI_MODEL ?? "claude-opus-5-5";
@@ -192,6 +194,8 @@ if (SEED_DEMO) {
       // Stand der eingebauten Präsentationskanzleien nachziehen: Ansprechpartner und Lizenzstatus
       // (früher als Testzugang bis 31.12.2026 angelegt, jetzt mit erworbener Lifetime-Lizenz). Vom Kunden gepflegte Profilfelder bleiben.
       const t = { ...vorhanden.tenant, ansprechpartner: dt.tenant.ansprechpartner };
+      // Lizenznummer mit dem Präfix von Apex (bis 18.10.2026 „AAX-“) – nur für die eingebauten Präsentationskanzleien
+      if (t.lizenz?.lizenzNr?.startsWith("AAX-")) t.lizenz = { ...t.lizenz, lizenzNr: dt.tenant.lizenz.lizenzNr };
       if (t.status === "test" && t.testBis === "2026-12-31" && dt.tenant.status === "aktiv") {
         t.status = "aktiv";
         delete t.testBis;
@@ -210,7 +214,8 @@ if (SEED_DEMO) {
   }
 }
 
-// Bestehende Kunden-Kanzleien: Bezeichnung des Standard-Ansprechpartners an die aktuelle Fassung angleichen (S15).
+// Bestehende Kunden-Kanzleien: Bezeichnung des Standard-Ansprechpartners an die aktuelle Fassung angleichen (S15)
+// und Anbieter-Adressen nach der Umbenennung in Apex (18.10.2026) auf die neue Domain umstellen.
 {
   const standard = baueKunde({ kanzlei: "Migration", stadt: "", bundesland: "BE", adminName: "Migration Prüfung", adminEmail: "migration@example.invalid", arbeitsplaetze: 1, schwerpunkte: [] }, "migration").tenant.ansprechpartner;
   const rows = db.prepare("SELECT id, json FROM tenants WHERE demo = 0").all() as { id: string; json: string }[];
@@ -218,15 +223,20 @@ if (SEED_DEMO) {
   for (const r of rows) {
     const t = JSON.parse(r.json) as Tenant;
     const ap = t.ansprechpartner;
-    if (!ap || (ap.rolle === standard.rolle && ap.bezeichnung === standard.bezeichnung)) continue;
-    if (ap.email !== standard.email && ap.name !== standard.name) continue; // individuell vergebener Ansprechpartner bleibt
+    if (!ap) continue;
+    const email = ap.email ? aktuelleAnbieterAdresse(ap.email) : ap.email;
+    // individuell vergebener Ansprechpartner behält seine Bezeichnung
+    const bezeichnungAlt = (email === standard.email || ap.name === standard.name) && (ap.rolle !== standard.rolle || ap.bezeichnung !== standard.bezeichnung);
+    if (email === ap.email && !bezeichnungAlt) continue;
     // Bezeichnung („Ansprechpartnerin“) auch dann setzen, wenn sie in älteren Datensätzen fehlt – alle Texte formulieren daraus.
-    t.ansprechpartner = { ...ap, rolle: standard.rolle, bezeichnung: standard.bezeichnung };
+    t.ansprechpartner = { ...ap, email, ...(bezeichnungAlt ? { rolle: standard.rolle, bezeichnung: standard.bezeichnung } : {}) };
     db.prepare("UPDATE tenants SET json = ? WHERE id = ?").run(JSON.stringify(t), r.id);
     n++;
   }
-  if (n) console.log(`Ansprechpartner-Bezeichnung in ${n} Kanzlei(en) angeglichen.`);
+  if (n) console.log(`Ansprechpartner in ${n} Kanzlei(en) angeglichen.`);
 }
+// Neue Standardadresse der Console seit der Umbenennung in Apex: Gehört sie schon einem Kanzlei-Zugang, öffnet die Anmeldung damit die Console.
+if (db.prepare("SELECT 1 FROM users WHERE email = ?").get(CONSOLE_EMAIL)) console.warn(`⚠ ${CONSOLE_EMAIL} ist auch die Adresse eines Kanzlei-Zugangs – die Anmeldung damit öffnet die Apex Console. Bitte CONSOLE_ADMIN_EMAIL anders setzen.`);
 
 const textFeld = (v: unknown) => (typeof v === "string" ? v : "");
 const gemeldetKaputt = new Set<string>();
@@ -1188,7 +1198,7 @@ function consoleOk(c: Context) {
 const STATUS_WERTE: readonly NonNullable<Tenant["status"]>[] = ["aktiv", "test", "pausiert"];
 
 app.get("/api/console/kunden", (c) => {
-  if (!consoleOk(c)) return fehler(c, 403, "Nur für das AnwaltApex-Team");
+  if (!consoleOk(c)) return fehler(c, 403, "Nur für das Apex-Team");
   const tenants = db.prepare("SELECT * FROM tenants ORDER BY created_at").all() as TenantRow[];
   return c.json(
     tenants.map((r) => {
@@ -1204,7 +1214,7 @@ app.get("/api/console/kunden", (c) => {
 });
 
 app.post("/api/console/kunden", async (c) => {
-  if (!consoleOk(c)) return fehler(c, 403, "Nur für das AnwaltApex-Team");
+  if (!consoleOk(c)) return fehler(c, 403, "Nur für das Apex-Team");
   const b = (await c.req.json().catch(() => ({}))) as { kanzlei?: unknown; stadt?: unknown; bundesland?: unknown; adminName?: unknown; adminEmail?: unknown; arbeitsplaetze?: unknown; schwerpunkte?: unknown; beispieldaten?: unknown; testBis?: unknown; adminAnrede?: unknown };
   const kanzlei = text(b.kanzlei, 160);
   const adminName = text(b.adminName, 120);
@@ -1234,14 +1244,14 @@ app.post("/api/console/kunden", async (c) => {
   // Startpasswort: Bei der ersten Anmeldung legt die Kanzlei ein eigenes Passwort fest (wie bei Team-Einladungen).
   speichereUser(admin, passwort, true);
   audit("console.kunde.neu", `${tenant.name} / ${admin.email}`, tenant.id);
-  // Anbieter-Eingriffe (I4-T16-01): eigener Urheber „AnwaltApex – … (Apex Console)“ im Kanzleiprotokoll
+  // Anbieter-Eingriffe (I4-T16-01): eigener Urheber „Apex Console – …“ im Kanzleiprotokoll
   protokolliere(tenant.id, anbieterVorgang(VORGANG.zugangAngelegt(admin.name, rollenLabel(admin)), { userId: admin.id, anbieterPerson: CONSOLE_NAME }));
   protokolliere(tenant.id, anbieterVorgang(VORGANG.startpasswortVergeben(admin.name), { userId: admin.id, anbieterPerson: CONSOLE_NAME }));
   return c.json({ tenant, admin, passwort });
 });
 
 app.delete("/api/console/kunden/:id", (c) => {
-  if (!consoleOk(c)) return fehler(c, 403, "Nur für das AnwaltApex-Team");
+  if (!consoleOk(c)) return fehler(c, 403, "Nur für das Apex-Team");
   const id = c.req.param("id");
   const t = tenantById(id);
   if (!t) return fehler(c, 404, "Kanzlei nicht gefunden");
@@ -1253,7 +1263,7 @@ app.delete("/api/console/kunden/:id", (c) => {
 });
 
 app.post("/api/console/kunden/:id/reset", (c) => {
-  if (!consoleOk(c)) return fehler(c, 403, "Nur für das AnwaltApex-Team");
+  if (!consoleOk(c)) return fehler(c, 403, "Nur für das Apex-Team");
   const id = c.req.param("id");
   const t = tenantById(id);
   if (!t) return fehler(c, 404, "Kanzlei nicht gefunden");
@@ -1264,7 +1274,7 @@ app.post("/api/console/kunden/:id/reset", (c) => {
 });
 
 app.post("/api/console/kunden/:id/status", async (c) => {
-  if (!consoleOk(c)) return fehler(c, 403, "Nur für das AnwaltApex-Team");
+  if (!consoleOk(c)) return fehler(c, 403, "Nur für das Apex-Team");
   const { status } = (await c.req.json().catch(() => ({}))) as { status?: unknown };
   const t = tenantById(c.req.param("id"));
   if (!t) return fehler(c, 404, "Kanzlei nicht gefunden");
@@ -1282,7 +1292,7 @@ app.post("/api/console/kunden/:id/status", async (c) => {
 });
 
 app.post("/api/console/nutzer/:id/standardpasswort", (c) => {
-  if (!consoleOk(c)) return fehler(c, 403, "Nur für das AnwaltApex-Team");
+  if (!consoleOk(c)) return fehler(c, 403, "Nur für das Apex-Team");
   const id = c.req.param("id");
   const demoNutzer = DEMO_TENANTS.some((t) => t.users.some((u) => u.id === id));
   if (!demoNutzer) return fehler(c, 400, "Nur Zugänge der eingebauten Präsentationskanzleien haben ein Standardpasswort.");
@@ -1296,7 +1306,7 @@ app.post("/api/console/nutzer/:id/standardpasswort", (c) => {
 });
 
 app.post("/api/console/nutzer/:id/passwort", async (c) => {
-  if (!consoleOk(c)) return fehler(c, 403, "Nur für das AnwaltApex-Team");
+  if (!consoleOk(c)) return fehler(c, 403, "Nur für das Apex-Team");
   const id = c.req.param("id");
   // Pflichtangaben: wer in der Kanzlei hat angefordert, aus welchem Anlass (I3-T21-02)
   const b = (await c.req.json().catch(() => ({}))) as { angefordertVon?: unknown; anlass?: unknown; bearbeiter?: unknown };
@@ -1477,5 +1487,5 @@ app.get("*", (c) => {
 setInterval(() => db.prepare("DELETE FROM sessions WHERE expires < ?").run(Date.now()), 3600_000).unref();
 
 serve({ fetch: app.fetch, port: PORT }, (i) => {
-  console.log(`AnwaltApex läuft auf http://localhost:${i.port}  ·  KI: ${anthropic ? `Claude (${AI_MODEL})${AI_DEMO_TENANTS ? "" : " – nicht für Präsentationskanzleien"}` : "Demo-Modus (kein ANTHROPIC_API_KEY)"}  ·  Console: ${CONSOLE_AKTIV ? "aktiv" : "deaktiviert"}`);
+  console.log(`Apex läuft auf http://localhost:${i.port}  ·  KI: ${anthropic ? `Claude (${AI_MODEL})${AI_DEMO_TENANTS ? "" : " – nicht für Präsentationskanzleien"}` : "Demo-Modus (kein ANTHROPIC_API_KEY)"}  ·  Console: ${CONSOLE_AKTIV ? `aktiv (${CONSOLE_EMAIL})` : "deaktiviert"}`);
 });

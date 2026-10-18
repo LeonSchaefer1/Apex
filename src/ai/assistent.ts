@@ -714,7 +714,7 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
     },
     {
       name: "hilfe_artikel",
-      description: "Durchsucht das AnwaltApex-Wiki (Bedienung der Software, Funktionen, Support). Für jede Frage zur Benutzung der Software verwenden. Liefert nur sichere Treffer – bei leerer Liste ehrlich nachfragen statt zu raten.",
+      description: "Durchsucht das Apex-Wiki (Bedienung der Software, Funktionen, Support). Für jede Frage zur Benutzung der Software verwenden. Liefert nur sichere Treffer – bei leerer Liste ehrlich nachfragen statt zu raten.",
       inputSchema: { type: "object", properties: { frage: { type: "string" } }, required: ["frage"] },
       execute: (i) => {
         t("hilfe_artikel");
@@ -725,7 +725,7 @@ function alleWerkzeuge(ctx: Kontext): AgentTool[] {
     },
     {
       name: "ansprechpartner",
-      description: "Gibt die feste Ansprechperson der Kanzlei bei AnwaltApex zurück (Name, Bezeichnung „Ansprechpartnerin“/„Ansprechpartner“, Telefon, E-Mail, Erreichbarkeit).",
+      description: "Gibt die feste Ansprechperson der Kanzlei bei Apex zurück (Name, Bezeichnung „Ansprechpartnerin“/„Ansprechpartner“, Telefon, E-Mail, Erreichbarkeit).",
       inputSchema: { type: "object", properties: {} },
       execute: () => {
         t("ansprechpartner");
@@ -879,8 +879,8 @@ export function wikiSuche(frage: string, ap?: Ansprechpartner): WikiTreffer[] {
 
 export function systemPrompt(s: SessionInfo, voice: boolean): string {
   const ap = s.tenant.ansprechpartner;
-  return `Du bist der „Apex Assistent“, der integrierte KI-Assistent der Kanzlei-Software AnwaltApex. Stellst du dich vor, sag „Ich bin der Apex Assistent“. Du sprichst mit ${s.user.name} (${s.user.titel}) von ${s.tenant.name} in ${s.tenant.stadt}. Sprich die Person förmlich an – Sie-Form und „${foermlicherName(s.user)}“, nie mit Vornamen. Heute ist ${fmtDateWd(today())}.
-Du hilfst bei zwei Dingen: (1) Live-Support zur Bedienung von AnwaltApex (nutze dafür hilfe_artikel) und (2) Kanzleiarbeit mit den Daten der Kanzlei (Akten, Fristen, Posteingang, Finanzen, 38h-Motor, RVG, Rechtsprechung) über die Werkzeuge.
+  return `Du bist der „Apex Assistent“, der integrierte KI-Assistent der Kanzleisoftware Apex. Stellst du dich vor, sag „Ich bin der Apex Assistent“. Du sprichst mit ${s.user.name} (${s.user.titel}) von ${s.tenant.name} in ${s.tenant.stadt}. Sprich die Person förmlich an – Sie-Form und „${foermlicherName(s.user)}“, nie mit Vornamen. Heute ist ${fmtDateWd(today())}.
+Du hilfst bei zwei Dingen: (1) Live-Support zur Bedienung von Apex (nutze dafür hilfe_artikel) und (2) Kanzleiarbeit mit den Daten der Kanzlei (Akten, Fristen, Posteingang, Finanzen, 38h-Motor, RVG, Rechtsprechung) über die Werkzeuge.
 Regeln:
 - Antworte auf Deutsch, knapp und freundlich, in 1–4 Sätzen oder einer kurzen Liste.${voice ? " Die Antwort wird vorgelesen: keine Tabellen, keine Markdown-Formatierung, Zahlen gut sprechbar." : " Leichtes Markdown (Fett, Listen) ist erlaubt."}
 - Daten der Kanzlei immer über Werkzeuge abfragen – nie erfinden. Zahlen zu Posteingang, Finanzen, Fremdgeld, 38h-Motor und Akten nur aus posteingang_status, finanzen_status, motor_status und akten_status. Fristen ausschließlich mit frist_berechnen berechnen.
@@ -1289,6 +1289,9 @@ const ABLEHNUNG = /^(nein|nee|ne|nö|noe|nicht noetig|nicht nötig|lieber nicht|
 const GRUSS = /^(hallo|hi|hey|moin|moin moin|servus|guten morgen|guten tag|guten abend|grüß gott|gruess gott|grüezi)\b[\s,!.]*/;
 const DANK = /^(danke|danke schön|dankeschön|vielen dank|danke sehr|super danke|perfekt danke|prima danke|toll danke|klasse danke|danke dir|danke ihnen)$/;
 const ABSCHIED = /^(tschüss|tschuess|ciao|bis bald|bis später|auf wiedersehen|bye)$/;
+/** Frage nach dem Assistenten selbst („Wer bist du?“) – Antwort mit Namen statt Wiki-Suche. */
+const VORSTELLUNG = /^(wer bist du|wer sind sie|was bist du|was sind sie|wie hei(ß|ss)t du|wie hei(ß|ss)en sie|stell dich (mal |bitte )?vor|stellen sie sich (bitte )?vor|wer spricht da)$/;
+const FAEHIGKEITEN = "Ich prüfe Fristen, öffne Akten, berechne Fristen und RVG-Gebühren, nenne Zahlen aus Posteingang, Finanzen und 38h-Motor, finde Urteile oder erkläre die Bedienung. Womit fange ich an?";
 
 function kurzform(text: string): string {
   return text.toLowerCase().replace(/[!.?,;:„“"]+/g, " ").replace(/\s+/g, " ").trim();
@@ -1550,8 +1553,9 @@ async function demoAntwort(frage: string, ctx: Kontext, verlauf: LlmMessage[] = 
   // ── Smalltalk ──
   const ohneGruss = frage.replace(new RegExp(GRUSS.source, "i"), "").trim();
   if (GRUSS.test(kurz) && !kurzform(ohneGruss)) {
-    return `${gruss(ctx.sitzung.user)}! Ich bin der Apex Assistent. Ich prüfe Fristen, öffne Akten, berechne Fristen und RVG-Gebühren, nenne Zahlen aus Posteingang, Finanzen und 38h-Motor, finde Urteile oder erkläre die Bedienung. Womit fange ich an?`;
+    return `${gruss(ctx.sitzung.user)}! Ich bin der Apex Assistent. ${FAEHIGKEITEN}`;
   }
+  if (VORSTELLUNG.test(kurz)) return `Ich bin der Apex Assistent, der eingebaute KI-Assistent von Apex. ${FAEHIGKEITEN}`;
   if (DANK.test(kurz)) return "Gern geschehen! Wenn noch etwas ist – einfach fragen.";
   if (ABSCHIED.test(kurz)) return "Bis bald! Ich bin jederzeit unten rechts für Sie da.";
   if (ohneGruss !== frage && ohneGruss) return demoAntwort(ohneGruss, ctx, []);

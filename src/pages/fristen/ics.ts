@@ -68,6 +68,7 @@ export function icsTitel(f: Frist, akte?: Akte): string {
 }
 
 function vevent(f: Frist, akte: Akte | undefined, stamp: string): string[] {
+  // UID bleibt nach der Umbenennung in Apex gleich: erneut importierte Einträge aktualisieren den Kalender statt sich zu verdoppeln.
   const zeilen = ["BEGIN:VEVENT", `UID:${f.id}@anwaltapex`, `DTSTAMP:${stamp}`];
   if (f.uhrzeit && /^\d{1,2}:\d{2}$/.test(f.uhrzeit)) {
     const [h, m] = f.uhrzeit.split(":").map(Number);
@@ -86,7 +87,7 @@ function vevent(f: Frist, akte: Akte | undefined, stamp: string): string[] {
     f.vorfrist && f.typ !== "vorfrist" ? `Vorfrist: ${fmtDate(f.vorfrist)}` : "",
     f.rechenweg?.length ? `Rechenweg:\n${f.rechenweg.map((r, i) => `${i + 1}. ${r}`).join("\n")}` : "",
     f.notiz ?? "",
-    "Aus AnwaltApex übernommen – maßgeblich bleibt der Fristenkalender der Kanzlei.",
+    "Aus Apex übernommen – maßgeblich bleibt der Fristenkalender der Kanzlei.",
   ].filter(Boolean);
   zeilen.push(`DESCRIPTION:${icsText(beschreibung.join("\n"))}`);
   if (f.ort) zeilen.push(`LOCATION:${icsText(f.ort)}`);
@@ -99,13 +100,13 @@ function vevent(f: Frist, akte: Akte | undefined, stamp: string): string[] {
 }
 
 /** Erzeugt eine vollständige .ics-Datei (CRLF, gefaltet) für einen oder mehrere Einträge. */
-export function erzeugeIcs(eintraege: { f: Frist; akte?: Akte }[], name = "AnwaltApex Fristen"): string {
+export function erzeugeIcs(eintraege: { f: Frist; akte?: Akte }[], name = "Apex-Fristen"): string {
   const stamp = zeitstempel();
   const mitUhrzeit = eintraege.some((e) => !!e.f.uhrzeit);
   const zeilen = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//AnwaltApex//Fristenkalender//DE",
+    "PRODID:-//Apex//Fristenkalender//DE",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     `X-WR-CALNAME:${icsText(name)}`,

@@ -117,7 +117,7 @@ export function WeiterleitungsDialog({ akte, mandant, offen, open, onClose }: { 
         <div className="grid gap-3.5">
           <p className="flex items-start gap-2 rounded-[14px] bg-amber-soft px-3.5 py-2.5 text-[12.5px] text-fg-2">
             <ShieldAlert className="mt-0.5 size-4 shrink-0 text-amber" />
-            <span>Fremdgeld unverzüglich weiterleiten (§ 43a Abs. 7 BRAO, § 4 BORA). AnwaltApex leitet nie selbstständig weiter – die Überweisung geben Sie im Online-Banking frei.</span>
+            <span>Fremdgeld unverzüglich weiterleiten (§ 43a Abs. 7 BRAO, § 4 BORA). Apex leitet nie selbstständig weiter – die Überweisung geben Sie im Online-Banking frei.</span>
           </p>
           <p className="flex items-start gap-2 rounded-[14px] bg-ink-softer px-3.5 py-2.5 text-[12.5px] text-fg-2 ring-1 ring-inset ring-[var(--line)]">
             <Landmark className="mt-0.5 size-4 shrink-0 text-ink" aria-hidden />

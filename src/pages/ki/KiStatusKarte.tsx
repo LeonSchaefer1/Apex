@@ -122,7 +122,7 @@ export function KiStatusKarte() {
               icon={<Clock className="size-3.5" />}
               label="KI gespart"
               sub={
-                <Chip tone="amber" className="!h-5 !px-1.5" title="Beispielwerte aus den Demodaten – im Echtbetrieb zählt AnwaltApex Ihre eigenen Vorgänge">
+                <Chip tone="amber" className="!h-5 !px-1.5" title="Beispielwerte aus den Demodaten – im Echtbetrieb zählt Apex Ihre eigenen Vorgänge">
                   Beispielwerte
                 </Chip>
               }

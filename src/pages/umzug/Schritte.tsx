@@ -419,7 +419,7 @@ export function SchrittZuordnung({
           <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="eyebrow">Dubletten im Bestand</div>
-              <p className="mt-1 text-[12.5px] text-fg-3">Diese Akten gibt es in AnwaltApex bereits (gleiches Aktenzeichen oder gleiche Bezeichnung).</p>
+              <p className="mt-1 text-[12.5px] text-fg-3">Diese Akten gibt es in Apex bereits (gleiches Aktenzeichen oder gleiche Bezeichnung).</p>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[12px] text-fg-3">Für alle:</span>
@@ -597,7 +597,7 @@ export function SchrittUebernahme({
       <h2 className="title-lg">{gestartet ? "Übernahme läuft …" : "Bereit zur Übernahme"}</h2>
       <p className="mt-1 text-[13.5px] text-fg-3">
         {gestartet
-          ? "Bitte lassen Sie dieses Fenster geöffnet. Wird es geschlossen, nimmt AnwaltApex den unvollständigen Lauf beim nächsten Öffnen vollständig zurück."
+          ? "Bitte lassen Sie dieses Fenster geöffnet. Wird es geschlossen, nimmt Apex den unvollständigen Lauf beim nächsten Öffnen vollständig zurück."
           : `Prüfen Sie Umfang und Zahlen für ${systemName}. Jeder Lauf lässt sich danach im Umzugsprotokoll rückgängig machen – auch nach dem Neuladen.`}
       </p>
 

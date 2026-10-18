@@ -12,7 +12,7 @@ export function DarstellungTab() {
 
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)]">
-      <Abschnitt titel="Darstellung" text="So sieht AnwaltApex auf diesem Gerät aus. Die Einstellungen gelten nur für diesen Browser." icon={<Monitor className="size-[18px]" />}>
+      <Abschnitt titel="Darstellung" text="So sieht Apex auf diesem Gerät aus. Die Einstellungen gelten nur für diesen Browser." icon={<Monitor className="size-[18px]" />}>
         <div className="divide-y divide-[var(--line)]">
           <Zeile titel="Erscheinungsbild" text={theme === "system" ? `Folgt Ihrem System – derzeit ${dunkelSystem ? "dunkel" : "hell"}.` : theme === "light" ? "Immer hell." : "Immer dunkel – angenehm am Abend."}>
             <Segmented<ThemeWahl>
@@ -101,7 +101,7 @@ export function DarstellungTab() {
             titel="Bewegung"
             text={
               reduziert
-                ? "Ihr System wünscht reduzierte Bewegung – AnwaltApex blendet nur noch sanft über."
+                ? "Ihr System wünscht reduzierte Bewegung – Apex blendet nur noch sanft über."
                 : "Animationen sind aktiv. Für weniger Bewegung aktivieren Sie „Bewegung reduzieren“ in den Bedienungshilfen Ihres Systems (macOS, iOS) bzw. schalten unter Windows die Animationseffekte aus."
             }
           >

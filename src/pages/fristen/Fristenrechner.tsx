@@ -161,7 +161,7 @@ export function Fristenrechner({
         : mitDatum && !/^\d{4}-\d{2}-\d{2}$/.test(festesEnde)
           ? `Bitte das Fristende laut ${regel.key === "widerruf_vergleich" ? "Vergleich" : "Vereinbarung"} eingeben`
           : !mitDatum && regel.dauerPflicht && !dauerNum
-            ? "Bitte die Dauer eingeben – AnwaltApex setzt keinen Standardwert"
+            ? "Bitte die Dauer eingeben – Apex setzt keinen Standardwert"
             : undefined;
   const erg = useMemo(
     () =>
@@ -606,7 +606,7 @@ export function Fristenrechner({
               <div className="max-w-[340px]">
                 <Calculator className="mx-auto size-6 text-fg-3" />
                 <div className="mt-2 text-[14px] font-semibold text-fg">{fehlt ?? "Bitte Eingaben prüfen"}</div>
-                <div className="mt-1 text-[12.5px] text-fg-3">Erst mit vollständigen Angaben rechnet AnwaltApex – ein altes Ergebnis bleibt nie stehen.</div>
+                <div className="mt-1 text-[12.5px] text-fg-3">Erst mit vollständigen Angaben rechnet Apex – ein altes Ergebnis bleibt nie stehen.</div>
               </div>
             </div>
           )}

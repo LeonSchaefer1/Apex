@@ -10,7 +10,7 @@ import { UmzugBand, Vertrauen } from "./landing/Vertrauen";
 import { Erfahrungen, Faq, Fusszeile, Schluss } from "./landing/Abschluss";
 import { AnfrageDialog } from "./landing/Anfrage";
 
-/** Öffentliche Produktseite (/willkommen) – stellt AnwaltApex Interessenten vor. Scrollt im eigenen Container. */
+/** Öffentliche Produktseite (/willkommen) – stellt Apex Interessenten vor. Scrollt im eigenen Container. */
 export default function Landing() {
   const scrollRef = useRef<HTMLDivElement>(null);
   return (

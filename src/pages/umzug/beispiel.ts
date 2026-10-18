@@ -119,7 +119,7 @@ export function beispielExport(system: QuellSystem, akten: Akte[], kontakte: Kon
   const titelFuer = (fall: Fall) => fall.titel ?? (fall.gegner ? `${kurz(fall.mandant)} ./. ${fall.gegner.split(",")[0]}` : `${kurz(fall.mandant)} – ${fall.sg}`);
   let dateiDublette: string[] | null = null;
 
-  // Ein Mandant, der in AnwaltApex bereits als Kontakt existiert (wird zusammengeführt statt doppelt angelegt)
+  // Ein Mandant, der in Apex bereits als Kontakt existiert (wird zusammengeführt statt doppelt angelegt)
   const vorhandenerMandant = kontakte.find((k) => k.rollen.includes("mandant") && k.typ === "person");
   const faelle = FAELLE.map((fall, i) => (i === 9 && vorhandenerMandant ? { ...fall, mandant: vorhandenerMandant.name } : fall));
 

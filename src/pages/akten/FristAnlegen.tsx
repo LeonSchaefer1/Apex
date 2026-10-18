@@ -125,9 +125,9 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
       : mitDatum && !/^\d{4}-\d{2}-\d{2}$/.test(festesEnde)
         ? `Bitte das Fristende laut ${regel.key === "widerruf_vergleich" ? "Vergleich" : "Vereinbarung"} eintragen – dann erscheint die Frist mit Vorfrist.`
         : !mitDatum && regel.dauerPflicht && !dauerNum
-          ? "Bitte die Dauer eingeben (Zahl und Einheit, z. B. 2 Wochen laut Verfügung) – AnwaltApex nimmt keinen Standardwert an."
+          ? "Bitte die Dauer eingeben (Zahl und Einheit, z. B. 2 Wochen laut Verfügung) – Apex nimmt keinen Standardwert an."
           : !mitDatum && regel.dauerPflicht && !einheit
-            ? "Bitte die Einheit der Dauer wählen – Tage, Wochen oder Monate. AnwaltApex nimmt keinen Standardwert an."
+            ? "Bitte die Einheit der Dauer wählen – Tage, Wochen oder Monate. Apex nimmt keinen Standardwert an."
             : undefined;
   const einheitFehlt = !!gewaehlt && !mitDatum && !!regel.dauerPflicht && !!dauerNum && !einheit;
 

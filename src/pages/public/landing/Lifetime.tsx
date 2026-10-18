@@ -53,7 +53,7 @@ export function Lifetime() {
                 <br /> <span className="text-fg-3">Für immer nutzen.</span>
               </>
             }
-            text="Klassische Kanzleisoftware kostet jeden Monat – und wird mit jeder Preiserhöhung teurer. AnwaltApex kaufen Sie einmal; die Wartung ist optional, Umfang und Preis regelt das Angebot. Danach arbeitet die Software für Sie, nicht Ihre Kanzlei für die Software."
+            text="Klassische Kanzleisoftware kostet jeden Monat – und wird mit jeder Preiserhöhung teurer. Apex kaufen Sie einmal; die Wartung ist optional, Umfang und Preis regelt das Angebot. Danach arbeitet die Software für Sie, nicht Ihre Kanzlei für die Software."
           />
           <Reveal>
             <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">

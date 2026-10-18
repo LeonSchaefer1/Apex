@@ -196,7 +196,7 @@ export function RechnungsangabenAbschnitt() {
           <div className="grid grid-cols-1 gap-3.5 border-t border-[var(--line)] pt-4 md:grid-cols-2">
             <div className="md:col-span-2">
               <div className="text-[13.5px] font-semibold text-fg">Anderkonto für Fremdgeld</div>
-              <p className="mt-0.5 text-[12.5px] leading-snug text-fg-3">{satz("Optional. Steht nicht auf Rechnungen. AnwaltApex setzt diese IBAN als Auftraggeberkonto in die SEPA-Datei, wenn Sie Fremdgeld vom Anderkonto weiterleiten (§ 43a Abs. 7 BRAO, § 4 BORA).")}</p>
+              <p className="mt-0.5 text-[12.5px] leading-snug text-fg-3">{satz("Optional. Steht nicht auf Rechnungen. Apex setzt diese IBAN als Auftraggeberkonto in die SEPA-Datei, wenn Sie Fremdgeld vom Anderkonto weiterleiten (§ 43a Abs. 7 BRAO, § 4 BORA).")}</p>
             </div>
             <Field label="IBAN (Anderkonto)" htmlFor="kr-anderIban" className="md:col-span-2" hint={<span id="kr-anderIban-hinweis">Ein eigenes Konto – nicht das Geschäftskonto. Die Prüfziffer wird beim Speichern geprüft.</span>}>
               {feld("anderIban", { autoCapitalize: "characters", inputMode: "text", hinweisId: "kr-anderIban-hinweis", className: "num" })}

@@ -1,13 +1,13 @@
-<p align="center"><img src="brand/app-icon.svg" width="88" alt="AnwaltApex"></p>
+<p align="center"><img src="brand/app-icon.svg" width="88" alt="Apex"></p>
 
-<h1 align="center">AnwaltApex</h1>
+<h1 align="center">Apex</h1>
 <p align="center"><strong>Ein Werkzeug. Volle Kontrolle.</strong> Die Kanzlei-Software, die mitdenkt.</p>
 
-AnwaltApex ist der Prototyp einer Kanzlei-Software für deutsche Rechtsanwältinnen und Rechtsanwälte. Akten, beA und E-Mail, Fristen, Abrechnung, Forderungen und eine nachvollziehbare KI liegen in einer Oberfläche – responsiv vom Smartphone bis zum Großbildschirm, in Hell und Dunkel, gestaltet nach den Prinzipien von Apple Liquid Glass.
+Apex ist der Prototyp einer Kanzlei-Software für deutsche Rechtsanwältinnen und Rechtsanwälte. Akten, beA und E-Mail, Fristen, Abrechnung, Forderungen und eine nachvollziehbare KI liegen in einer Oberfläche – responsiv vom Smartphone bis zum Großbildschirm, in Hell und Dunkel, gestaltet nach den Prinzipien von Apple Liquid Glass.
 
 > **Status:** Präsentations- und Test-Prototyp (v0.9) nach fünf Usability-Iterationen mit dem Kundenavatar „Claudia Reinholz“ (SUS 65,6 → 80,6). Alle Funktionen sind klickbar, Fachlogik und KI funktionieren, mehrere Kanzleien lassen sich getrennt testen. Die Anbindungen an beA, E-Mail-Server und Bank sind simuliert und in der App so gekennzeichnet (siehe [Was ist echt, was simuliert?](#was-ist-echt-was-simuliert)).
 
-![Cockpit von AnwaltApex mit KI-Briefing, fälligen Fristen, Posteingang und 38h-Motor](docs/screenshots/cockpit.png)
+![Cockpit von Apex mit KI-Briefing, fälligen Fristen, Posteingang und 38h-Motor](docs/screenshots/cockpit.png)
 
 ## Inhalt
 
@@ -28,7 +28,7 @@ AnwaltApex ist der Prototyp einer Kanzlei-Software für deutsche Rechtsanwältin
 
 ## Produktüberblick
 
-AnwaltApex antwortet auf die häufigsten Klagen über klassische Kanzleisoftware: ungetestete Updates, Hotline-Warteschleifen, langsame Suche, unvollständige Forderungskonten, Einzelabrechnung, Abo-Kosten und den mühsamen Umzug. Fünf Versprechen prägen das Produkt:
+Apex antwortet auf die häufigsten Klagen über klassische Kanzleisoftware: ungetestete Updates, Hotline-Warteschleifen, langsame Suche, unvollständige Forderungskonten, Einzelabrechnung, Abo-Kosten und den mühsamen Umzug. Fünf Versprechen prägen das Produkt:
 
 1. **Ein Werkzeug, volle Kontrolle** – Akten, beA, E-Mail, Fristen, Dokumente, RVG, Forderungen und KI in einer Oberfläche.
 2. **Fristen, die stimmen** – ein deterministischer, getesteter Fristenrechner mit Rechenweg, Feiertagen am Gerichtsort und Vier-Augen-Kontrolle. Das eEB lässt sich erst abgeben, wenn die Frist notiert ist.
@@ -55,7 +55,7 @@ AnwaltApex antwortet auf die häufigsten Klagen über klassische Kanzleisoftware
 | **Hilfe & Support** | Feste Ansprechpartnerin mit Durchwahl und Rückruf, Systemstatus, geprüfte Updates, animiertes Wiki und die Schnellhilfe (?) neben jedem Seitentitel. |
 | **Apex Assistent** | Sprechender KI-Avatar unten rechts (Sprache oder Text). Er fasst den Tag zusammen, nennt Fristen mit derselben Zählweise wie das Cockpit, berechnet Fristen und RVG, schlägt Wiedervorlagen mit Bestätigungskarte vor, findet Rechtsprechung, kennt die Ersatzeinreichung bei beA-Störung und verbindet mit der Ansprechpartnerin. |
 | **Einstellungen** | Kanzleiprofil mit Briefkopf und Rechnungsangaben, Team & Zugänge (Rollen, Abwesenheit, Vertretung, Übertragung von Fristen), Lizenz, KI, Darstellung (Hell/Dunkel, Schriftgröße, Apex Island, Tastaturkürzel), Datenschutz & Verträge (§ 43e BRAO, Art. 28 DSGVO, Protokoll) und Anmeldung & Sicherheit (Zwei-Faktor, Sperre bei Inaktivität). |
-| **Apex Console** | Bereich für das AnwaltApex-Team: Kundenkanzleien und Testzugänge anlegen (mit Passwortwechsel bei der Erstanmeldung), pausieren, zurücksetzen, löschen; Startpasswörter neu vergeben – jeder Eingriff steht im Protokoll der Kanzlei. |
+| **Apex Console** | Bereich für das Apex-Team: Kundenkanzleien und Testzugänge anlegen (mit Passwortwechsel bei der Erstanmeldung), pausieren, zurücksetzen, löschen; Startpasswörter neu vergeben – jeder Eingriff steht im Protokoll der Kanzlei. |
 
 **Strg+K** (Mac: **⌘K**) öffnet überall die globale Suche über Akten, Dokumente (Volltext), Fristen, Posteingang und Rechtsprechung – dazu Aktionen wie „Frist berechnen“, „Zinsrechner“ oder „Sammelabrechnung“. **?** zeigt alle Tastaturkürzel.
 
@@ -80,10 +80,10 @@ AnwaltApex antwortet auf die häufigsten Klagen über klassische Kanzleisoftware
 | Hartmann & Partner | Berlin | Arbeits-, Miet-, Verkehrs-, Erbrecht | `julia.hartmann@hartmann-partner.de` (Partnerin) · `jonas.brandt@…` (Anwalt) · `mia.becker@…` (Fachangestellte) |
 | Lindner Rechtsanwälte | München | Forderungseinzug, Vertrags-, Baurecht | `stefan.lindner@lindner-recht.de` |
 | Demir & Kollegen | Hamburg | Familien-, Straf-, Erbrecht | `selin.demir@demir-kollegen.de` |
-| Apex Console | – | Anbieter-Verwaltung | `admin@anwaltapex.de` |
+| Apex Console | – | Anbieter-Verwaltung | `admin@apex-kanzlei.de` |
 
 - Das Passwort aller Beispielzugänge ist `Apex-Demo-2026`. Weitere Personen je Kanzlei stehen in `src/core/seed/tenants.ts`. Auf der Anmeldeseite genügt für die Beispielkanzleien ein Klick auf die Karte.
-- **Apex Console:** Im Browser-Demo lautet das Passwort `Apex-Console-2026`. Im Server-Betrieb gilt ausschließlich das eigene `CONSOLE_ADMIN_PASSWORD` (mindestens 12 Zeichen, kein Platzhalter, kein öffentliches Demo-Passwort) – sonst bleibt die Console deaktiviert.
+- **Apex Console:** Im Browser-Demo lautet das Passwort `Apex-Console-2026`. Im Server-Betrieb gilt die Adresse aus `CONSOLE_ADMIN_EMAIL` (Standard `admin@apex-kanzlei.de`) und ausschließlich das eigene `CONSOLE_ADMIN_PASSWORD` (mindestens 12 Zeichen, kein Platzhalter, kein öffentliches Demo-Passwort) – sonst bleibt die Console deaktiviert.
 - Jede Kanzlei sieht ausschließlich ihre eigenen Daten. Im Server-Betrieb erzwingt das der Server je Sitzung.
 - Die Beispieldaten entstehen jeden Tag relativ zu „heute“, damit Fristen, Posteingang und Termine immer aktuell sind.
 
@@ -123,7 +123,7 @@ Für die Entwicklung mit Server laufen `npm run dev:server` (API auf Port 8787) 
 
 ```bash
 cp .env.example .env      # Werte anpassen
-docker compose up -d      # http://localhost:8787 – Daten im Volume „anwaltapex-daten“
+docker compose up -d      # http://localhost:8787 – Daten im Volume „anwaltapex-daten“ (Name bleibt nach der Umbenennung)
 ```
 
 Ein Container enthält Web-App, API und SQLite; Zeitzone `Europe/Berlin`, Healthcheck auf `/api/health`.

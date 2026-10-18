@@ -57,7 +57,7 @@ export function UmzugBand() {
             </div>
             <div className="flex w-[64px] shrink-0 flex-col items-center gap-2 text-center sm:w-[118px]">
               <AppIcon size={52} />
-              <span className="text-[12.5px] font-semibold leading-tight">AnwaltApex</span>
+              <span className="text-[12.5px] font-semibold leading-tight">Apex</span>
             </div>
           </div>
         </div>
@@ -90,7 +90,7 @@ export function Vertrauen() {
             <br /> <span className="text-fg-3">Sie entscheiden.</span>
           </>
         }
-        text="AnwaltApex setzt KI dort ein, wo sie Zeit spart – und hält sie dort heraus, wo es auf Exaktheit ankommt. Jede KI-Aktion ist klar gekennzeichnet und bleibt ein Vorschlag, bis Sie ihn übernehmen."
+        text="Apex setzt KI dort ein, wo sie Zeit spart – und hält sie dort heraus, wo es auf Exaktheit ankommt. Jede KI-Aktion ist klar gekennzeichnet und bleibt ein Vorschlag, bis Sie ihn übernehmen."
       />
 
       <Reveal className="sheet mb-4 rounded-[28px] p-5 sm:p-7">

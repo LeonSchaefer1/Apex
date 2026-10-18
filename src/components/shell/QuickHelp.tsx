@@ -34,7 +34,7 @@ export function QuickHelp() {
             icon={<Sparkles className="size-4" />}
             onClick={() => {
               schliessen();
-              oeffneAssistent(`Erkläre mir bitte „${a.titel}“ in AnwaltApex.`);
+              oeffneAssistent(`Erkläre mir bitte „${a.titel}“ in Apex.`);
             }}
           >
             Assistent fragen

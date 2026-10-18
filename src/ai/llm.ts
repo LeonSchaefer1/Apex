@@ -31,7 +31,7 @@ function sampleErrorText(e: unknown): string {
   const code = (e as { code?: string })?.code;
   if (code && PERMANENT.has(code)) {
     fallbackAufDemo();
-    return "Die Live-KI wurde in dieser Ansicht nicht freigegeben – AnwaltApex nutzt jetzt die Demo-KI.";
+    return "Die Live-KI wurde in dieser Ansicht nicht freigegeben – Apex nutzt jetzt die Demo-KI.";
   }
   if (code === "rate_limited") return "Die KI ist gerade ausgelastet. Bitte versuchen Sie es in einer Minute erneut.";
   if (code === "cancelled") return "abgebrochen";
@@ -39,7 +39,7 @@ function sampleErrorText(e: unknown): string {
 }
 
 /**
- * Längste Stille der Artefakt-Laufzeit (claude.use("sample")), bevor AnwaltApex aufgibt. Jedes Lebenszeichen
+ * Längste Stille der Artefakt-Laufzeit (claude.use("sample")), bevor Apex aufgibt. Jedes Lebenszeichen
  * (gestreamter Text, Werkzeug-Aufruf) setzt die Uhr zurück – lange, aber laufende Antworten werden nicht abgeschnitten.
  * Antwortet sample() gar nicht (z. B. offener Freigabedialog des Viewers), greift so der Offline-Rückfall der Aufrufer.
  */

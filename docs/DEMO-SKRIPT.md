@@ -1,6 +1,6 @@
-# AnwaltApex – Demo-Skript für die Kundenpräsentation (ca. 23–25 Minuten)
+# Apex – Demo-Skript für die Kundenpräsentation (ca. 23–25 Minuten)
 
-**Ziel:** Nach der Präsentation ist klar, warum AnwaltApex die richtige Wahl ist: modern und zugleich verlässlich, mit einer KI, die nachvollziehbar arbeitet, mit Fristen, die auf den Tag stimmen, und mit einem fairen Kostenmodell ohne Abo.
+**Ziel:** Nach der Präsentation ist klar, warum Apex die richtige Wahl ist: modern und zugleich verlässlich, mit einer KI, die nachvollziehbar arbeitet, mit Fristen, die auf den Tag stimmen, und mit einem fairen Kostenmodell ohne Abo.
 
 **Stand:** Endstand nach fünf Usability-Iterationen (Demodaten `SEED_VERSION` 13, 229 automatische Tests). Alle Bezeichnungen in diesem Skript sind die der App. Die wichtigsten Schritte wurden am 17.10.2026 im Browser gegen die App geprüft.
 
@@ -57,7 +57,7 @@
 | | | Mia Becker, Fachangestellte (ReFa-Sicht) | `mia.becker@hartmann-partner.de` |
 | Lindner Rechtsanwälte | München | Stefan Lindner, Partner | `stefan.lindner@lindner-recht.de` |
 | Demir & Kollegen | Hamburg | Selin Demir, Partnerin | `selin.demir@demir-kollegen.de` |
-| Apex Console (Anbieter) | – | AnwaltApex Team | `admin@anwaltapex.de` – im Browser-Demo Passwort `Apex-Console-2026` |
+| Apex Console (Anbieter) | – | Apex-Team | `admin@apex-kanzlei.de` – im Browser-Demo Passwort `Apex-Console-2026` (die frühere Adresse `admin@anwaltapex.de` meldet dort weiter an) |
 
 > **Apex Console im Server-Betrieb:** Dort gilt das eigene `CONSOLE_ADMIN_PASSWORD` (mindestens 12 Zeichen). Das öffentliche Demo-Passwort `Apex-Console-2026` und der Platzhalter aus `.env.example` werden abgelehnt; die Console bleibt dann deaktiviert. Eine Ein-Klick-Karte für den Anbieterzugang gibt es nur im Browser-Demo.
 
@@ -169,7 +169,7 @@ Alle Bereiche zählen gleich: Cockpit, Navigation, Fristenkalender, Akten, Apex 
 2. **E-Mail von Ursula Franke** „Anfrage: Eigenbedarfskündigung meiner Wohnung“:
    - Die KI erkennt eine **Mandatsanfrage (Mietrecht)**: Mieterin 79 Jahre, herzkrank, Mietdauer seit 1994, Rechtsschutz vorhanden, Härtefall nach § 574 BGB naheliegend (vgl. BGH VIII ZR 180/18).
    - **„Mandat anlegen“** öffnet die **Mandatsaufnahme** in vier Schritten (Mandant, Sache, Rechtsschutz, Zusammenfassung) – „Übernommen aus dem Posteingang: Ursula Franke …“.
-   - Vollmacht, Mandatsbestätigung und Datenschutzhinweise erstellt AnwaltApex automatisch; die Deckungsanfrage liegt als **Entwurf zur Freigabe** bereit.
+   - Vollmacht, Mandatsbestätigung und Datenschutzhinweise erstellt Apex automatisch; die Deckungsanfrage liegt als **Entwurf zur Freigabe** bereit.
    - Die **Kollisionsprüfung** (§ 43a Abs. 4 BRAO) läuft schon in Schritt 1 und erfasst auch Dubletten. Optional zeigen: Als Mandant „Kröger Logistik GmbH“ eintragen – Treffer, denn Kröger ist Gegner in 142/26.
 3. Tastatur: **J/K** nächste bzw. vorige Nachricht, **Enter** öffnen, **U** Vorschlag übernehmen, **E** eEB-Dialog.
 
@@ -229,7 +229,7 @@ Unten rechts die Kugel antippen (oder Strg+K → „Apex Assistent öffnen“) u
   - Die Tabelle (KostBRÄG 2025 bzw. KostRÄG 2021) folgt dem Tag der Auftragserteilung (§ 60 RVG). Ein Gegenstandswert ≤ 0 wird mit Meldung am Feld abgewiesen.
 - **Sammelabrechnung** (Strg+K → „Sammelabrechnung“):
   - Filter RSV „Deckung erteilt“; RSV-Anteil und Selbstbeteiligung je Akte.
-  - Abgerechnet werden nur entstandene, noch nicht berechnete Gebühren (§ 15 Abs. 2 RVG). Im laufenden Verfahren schlägt AnwaltApex einen **Vorschuss nach § 9 RVG** vor (z. B. 151/26: „Terminsgebühr erst nach dem Termin“).
+  - Abgerechnet werden nur entstandene, noch nicht berechnete Gebühren (§ 15 Abs. 2 RVG). Im laufenden Verfahren schlägt Apex einen **Vorschuss nach § 9 RVG** vor (z. B. 151/26: „Terminsgebühr erst nach dem Termin“).
   - Format „Automatisch“: XRechnung für Unternehmen und Organisationen, PDF für Privatpersonen.
   - Standard: **Entwürfe** zur Prüfung, ohne Rechnungsnummer; „Sofort stellen“ nur auf Wunsch.
 - **Storno:** Eine gestellte Rechnung öffnen → „Stornieren“. Die Stornorechnung bekommt eine eigene Nummer aus dem Nummernkreis und steht als eigene Zeile „zu RE-…“ in der Liste (Filter „Storno“). „Stornieren und korrigieren“ legt einen Korrekturentwurf mit dem Leistungszeitraum der stornierten Rechnung an.
@@ -293,7 +293,7 @@ Unten rechts die Kugel antippen (oder Strg+K → „Apex Assistent öffnen“) u
 
 ## 15 · Abschluss: Testzugang live anlegen (1,5 Min.)
 
-1. Abmelden und als **Apex Console** anmelden (Browser-Demo: Karte „Anbieterzugang (Demo)“; Server: `admin@anwaltapex.de` mit eigenem `CONSOLE_ADMIN_PASSWORD`).
+1. Abmelden und als **Apex Console** anmelden (Browser-Demo: Karte „Anbieterzugang (Demo)“; Server: `admin@apex-kanzlei.de` bzw. die Adresse aus `CONSOLE_ADMIN_EMAIL`, mit eigenem `CONSOLE_ADMIN_PASSWORD`).
 2. Übersicht „Kunden & Testzugänge“: Die Beispielkanzleien stehen mit Lifetime-Lizenz als „Aktiv“ da, „Aktive Tests“ zeigt 0.
 3. **„Neuen Testzugang anlegen“:**
    - Kanzleiname und Stadt eintragen – das Bundesland ergänzt die App (z. B. Paderborn → Nordrhein-Westfalen; es bestimmt die Feiertage).

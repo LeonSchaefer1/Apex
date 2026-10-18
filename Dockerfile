@@ -1,4 +1,4 @@
-# AnwaltApex – ein Container: Web-App + API + SQLite. Läuft On-Premise oder in jeder Private Cloud.
+# Apex – ein Container: Web-App + API + SQLite. Läuft On-Premise oder in jeder Private Cloud.
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -10,6 +10,7 @@ FROM node:22-alpine
 WORKDIR /app
 # Zeitzone der Kanzlei: „heute“, Fristen und Tageswechsel der Beispieldaten richten sich nach deutscher Ortszeit.
 RUN apk add --no-cache tzdata
+# DATABASE_PATH: Dateiname aus der Zeit vor der Umbenennung in Apex – vorhandene Volumes werden weiter gefunden.
 ENV NODE_ENV=production \
     TZ=Europe/Berlin \
     PORT=8787 \

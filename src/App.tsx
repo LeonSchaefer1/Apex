@@ -40,7 +40,7 @@ export default function App() {
         <i />
       </div>
       <RefractionDefs />
-      <div id="app-inhalt" className="relative z-10 h-full">{bereit && router ? <RouterProvider router={router} /> : <LadeBildschirm fehler={fehler ?? undefined} text="AnwaltApex startet …" />}</div>
+      <div id="app-inhalt" className="relative z-10 h-full">{bereit && router ? <RouterProvider router={router} /> : <LadeBildschirm fehler={fehler ?? undefined} text="Apex startet …" />}</div>
       <Toaster />
       <ConfirmHost />
     </MotionConfig>

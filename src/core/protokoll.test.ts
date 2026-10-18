@@ -77,9 +77,11 @@ test("Console: Startpasswort nur mit Anforderer und Anlass – Protokoll nennt A
   assert.deepEqual(Object.keys(pruefeConsolePasswortAnlass({ angefordertVon: "Dr. Julia Hartmann", anlass: "" })), ["anlass"]);
   assert.deepEqual(pruefeConsolePasswortAnlass({ angefordertVon: "Dr. Julia Hartmann", anlass: "Passwort vergessen – telefonisch angefordert" }), {});
   const text = VORGANG.consolePasswort("Mia Becker", { angefordertVon: "Dr. Julia Hartmann", anlass: "Passwort vergessen – telefonisch angefordert", bearbeiter: "Lena Vogt" });
-  assert.equal(text, "Startpasswort für Mia Becker durch AnwaltApex neu vergeben – Lena Vogt auf Anforderung von Dr. Julia Hartmann, Anlass: Passwort vergessen – telefonisch angefordert");
+  assert.equal(text, "Startpasswort für Mia Becker durch Apex neu vergeben – Lena Vogt auf Anforderung von Dr. Julia Hartmann, Anlass: Passwort vergessen – telefonisch angefordert");
   // ohne bearbeitende Person: der angemeldete Console-Zugang
-  assert.match(VORGANG.consolePasswort("Mia Becker", { angefordertVon: "Dr. Julia Hartmann", anlass: "Passwort vergessen" }, "AnwaltApex Team"), /– AnwaltApex Team auf Anforderung von Dr\. Julia Hartmann/);
+  assert.match(VORGANG.consolePasswort("Mia Becker", { angefordertVon: "Dr. Julia Hartmann", anlass: "Passwort vergessen" }, "Apex-Team"), /– Apex-Team auf Anforderung von Dr\. Julia Hartmann/);
+  // ohne Angabe: Standardname des Console-Zugangs
+  assert.match(VORGANG.consolePasswort("Mia Becker", { angefordertVon: "Dr. Julia Hartmann", anlass: "Passwort vergessen" }), /– Apex-Team auf Anforderung von/);
   assert.doesNotMatch(text, /\(System\)/);
   // Hinweis in der Glocke nur für Partner und Administration (Kategorie „anmeldung“ mit Meldung)
   const a = anmeldeVorgang(text, { akteur: "system", userId: "u3", meldung: true });
@@ -94,7 +96,9 @@ test("Kundenanlage um 01:05 Uhr Ortszeit (23:05 UTC): Lizenz „seit“ ist das 
   assert.equal(heuteBerlin(nacht), "2026-10-17");
   const { tenant } = baueKunde({ kanzlei: "Reinholz & Hollmann", stadt: "Paderborn", bundesland: "NW", adminName: "Claudia Reinholz", adminEmail: "c@kanzlei.de", arbeitsplaetze: 7, schwerpunkte: [], testBis: "2026-11-16" }, "probe", nacht);
   assert.equal(tenant.lizenz.seit, "2026-10-17");
-  assert.match(tenant.lizenz.lizenzNr, /^AAX-LT-2026-/);
+  assert.match(tenant.lizenz.lizenzNr, /^APX-LT-2026-/);
+  // Ansprechpartnerin neuer Kundenzugänge mit der Anbieter-Adresse von Apex
+  assert.equal(tenant.ansprechpartner.email, "lena.vogt@apex-kanzlei.de");
   // Winterzeit: 23:30 UTC am 31.12. ist schon Neujahr in Berlin
   assert.equal(heuteBerlin(new Date("2026-12-31T23:30:00Z")), "2027-01-01");
   assert.equal(heuteBerlin(new Date("2026-10-17T21:59:00Z")), "2026-10-17");
@@ -124,27 +128,39 @@ test("Protokoll: Automatik pausieren nennt Person und Folge; Rechnungsangaben ne
 
 test("Protokoll (I4-T16-01): Anbieter-Eingriffe tragen quelle „anbieter“ und die Person beim Anbieter", () => {
   const anlass = { angefordertVon: "Claudia Reinholz", anlass: "Passwort vergessen – telefonisch angefordert", bearbeiter: "Lena Vogt" };
-  const a = anbieterVorgang(VORGANG.consolePasswort("Claudia Reinholz", anlass, "AnwaltApex Team"), { userId: "u1", anbieterPerson: anlass.bearbeiter, kategorie: "anmeldung", meldung: true });
+  const a = anbieterVorgang(VORGANG.consolePasswort("Claudia Reinholz", anlass, "Apex-Team"), { userId: "u1", anbieterPerson: anlass.bearbeiter, kategorie: "anmeldung", meldung: true });
   assert.equal(a.quelle, "anbieter");
   assert.equal(a.anbieterPerson, "Lena Vogt");
   assert.equal(a.akteur, "system");
   assert.equal(a.kategorie, "anmeldung");
   assert.equal(a.meldung, true);
-  assert.equal(a.text, "Startpasswort für Claudia Reinholz durch AnwaltApex neu vergeben – Lena Vogt auf Anforderung von Claudia Reinholz, Anlass: Passwort vergessen – telefonisch angefordert");
-  assert.equal(anbieterUrheber(a), "AnwaltApex – Lena Vogt (Apex Console)");
+  assert.equal(a.text, "Startpasswort für Claudia Reinholz durch Apex neu vergeben – Lena Vogt auf Anforderung von Claudia Reinholz, Anlass: Passwort vergessen – telefonisch angefordert");
+  assert.equal(anbieterUrheber(a), "Apex Console – Lena Vogt");
   assert.equal(istAnbieterEintrag(a), true);
 
   // allgemeiner Console-Zugang ohne Person
-  const z = anbieterVorgang(VORGANG.zugangAngelegt("Claudia Reinholz", "Partnerin"), { userId: "u1", anbieterPerson: "AnwaltApex Team" });
+  const z = anbieterVorgang(VORGANG.zugangAngelegt("Claudia Reinholz", "Partnerin"), { userId: "u1", anbieterPerson: "Apex-Team" });
   assert.equal(z.anbieterPerson, undefined);
   assert.equal(z.kategorie, undefined);
-  assert.equal(anbieterUrheber(z), "AnwaltApex (Apex Console)");
+  assert.equal(z.text, "Zugang für Claudia Reinholz angelegt (Partnerin) – durch Apex");
+  assert.equal(anbieterUrheber(z), "Apex Console");
+  // früherer Teamname (vor der Umbenennung) ist ebenfalls keine Person
+  assert.equal(anbieterVorgang(VORGANG.zugangAngelegt("Claudia Reinholz", "Partnerin"), { anbieterPerson: "AnwaltApex Team" }).anbieterPerson, undefined);
 
   // Alt-Einträge ohne `quelle`: am Text erkannt, Person aus dem Text
   const alt = anmeldeVorgang(VORGANG.consolePasswort("Mia Becker", { ...anlass, bearbeiter: "Lena Vogt" }), { akteur: "system", userId: "u2", meldung: true });
   assert.equal(alt.quelle, undefined);
-  assert.equal(anbieterUrheber(alt), "AnwaltApex – Lena Vogt (Apex Console)");
-  assert.equal(anbieterUrheber(vorgang(VORGANG.standardPasswort("Mia Becker"), { akteur: "system" })), "AnwaltApex (Apex Console)");
+  assert.equal(anbieterUrheber(alt), "Apex Console – Lena Vogt");
+  assert.equal(anbieterUrheber(vorgang(VORGANG.standardPasswort("Mia Becker"), { akteur: "system" })), "Apex Console");
+  assert.equal(anbieterUrheber(vorgang(VORGANG.beispieldatenZurueckgesetzt(), { akteur: "system" })), "Apex Console");
+  // Einträge aus der Zeit vor der Umbenennung in Apex (Texte „durch AnwaltApex …“) werden weiter erkannt
+  const vorher = (text: string) => vorgang(text, { akteur: "system", userId: "u2" });
+  assert.equal(anbieterUrheber(vorher("Startpasswort für Mia Becker durch AnwaltApex neu vergeben – Lena Vogt auf Anforderung von Dr. Julia Hartmann, Anlass: Passwort vergessen")), "Apex Console – Lena Vogt");
+  assert.equal(anbieterUrheber(vorher("Startpasswort für Mia Becker durch AnwaltApex neu vergeben – AnwaltApex Team auf Anforderung von Dr. Julia Hartmann, Anlass: Passwort vergessen")), "Apex Console");
+  assert.equal(anbieterUrheber(vorher("Zugang für Claudia Reinholz angelegt (Partnerin) – durch AnwaltApex (Apex Console)")), "Apex Console");
+  assert.equal(anbieterUrheber(vorher("Demo-Passwort für Mia Becker durch AnwaltApex (Apex Console) wiederhergestellt")), "Apex Console");
+  // Untermarken im Text machen einen Eintrag nicht zum Anbieter-Eingriff
+  assert.equal(istAnbieterEintrag(vorher("Frist vorgeschlagen durch Apex Assistent")), false);
 
   // echte automatische Anmeldeereignisse sind keine Anbieter-Eingriffe
   const fehl = anmeldeVorgang(VORGANG.anmeldungFehlgeschlagen("Mia Becker", "passwort"), { akteur: "system", userId: "u2" });

@@ -12,7 +12,13 @@ export interface DemoTenant {
 }
 
 export const DEMO_PASSWORT = "Apex-Demo-2026";
-export const CONSOLE_DEMO = { email: "admin@anwaltapex.de", passwort: "Apex-Console-2026", name: "AnwaltApex Team" };
+export const CONSOLE_DEMO = { email: "admin@apex-kanzlei.de", passwort: "Apex-Console-2026", name: "Apex-Team" };
+/** Frühere Console-Adresse der Demo (bis 18.10.2026, Produktname „AnwaltApex“) – meldet weiter an, damit Lesezeichen und Notizen nicht ins Leere laufen. */
+export const CONSOLE_DEMO_ALIAS: readonly string[] = ["admin@anwaltapex.de"];
+export const istConsoleDemoAdresse = (email: string): boolean => {
+  const e = email.trim().toLowerCase();
+  return e === CONSOLE_DEMO.email || CONSOLE_DEMO_ALIAS.includes(e);
+};
 
 export const DEMO_TENANTS: DemoTenant[] = [
   {
@@ -24,10 +30,10 @@ export const DEMO_TENANTS: DemoTenant[] = [
       adresse: "Kurfürstendamm 186, 10707 Berlin",
       bundesland: "BE",
       schwerpunkte: ["Arbeitsrecht", "Mietrecht", "Verkehrsrecht", "Erbrecht"],
-      lizenz: { typ: "lifetime", seit: "2026-03-02", arbeitsplaetze: 8, lizenzNr: "AAX-LT-2026-0142" },
+      lizenz: { typ: "lifetime", seit: "2026-03-02", arbeitsplaetze: 8, lizenzNr: "APX-LT-2026-0142" },
       ansprechpartner: {
         name: "Lena Vogt", rolle: "Ihre feste Ansprechpartnerin", bezeichnung: "Ansprechpartnerin", telefon: "+49 30 555 018 42",
-        email: "lena.vogt@anwaltapex.de", initialen: "LV", verfuegbar: "Mo–Fr 7:30–19:00 Uhr",
+        email: "lena.vogt@apex-kanzlei.de", initialen: "LV", verfuegbar: "Mo–Fr 7:30–19:00 Uhr",
       },
       farbe: "#2440D8",
       createdAt: "2026-03-02T09:00:00",
@@ -53,10 +59,10 @@ export const DEMO_TENANTS: DemoTenant[] = [
       adresse: "Maximilianstraße 31, 80539 München",
       bundesland: "BY",
       schwerpunkte: ["Forderungseinzug", "Vertragsrecht", "Baurecht", "Verkehrsrecht"],
-      lizenz: { typ: "lifetime", seit: "2026-05-18", arbeitsplaetze: 12, lizenzNr: "AAX-LT-2026-0217" },
+      lizenz: { typ: "lifetime", seit: "2026-05-18", arbeitsplaetze: 12, lizenzNr: "APX-LT-2026-0217" },
       ansprechpartner: {
         name: "Markus Seidel", rolle: "Ihr fester Ansprechpartner", bezeichnung: "Ansprechpartner", telefon: "+49 89 555 027 13",
-        email: "markus.seidel@anwaltapex.de", initialen: "MS", verfuegbar: "Mo–Fr 7:30–19:00 Uhr",
+        email: "markus.seidel@apex-kanzlei.de", initialen: "MS", verfuegbar: "Mo–Fr 7:30–19:00 Uhr",
       },
       farbe: "#0E7C66",
       createdAt: "2026-05-18T09:00:00",
@@ -82,10 +88,10 @@ export const DEMO_TENANTS: DemoTenant[] = [
       adresse: "Neuer Wall 54, 20354 Hamburg",
       bundesland: "HH",
       schwerpunkte: ["Familienrecht", "Strafrecht", "Erbrecht", "Mietrecht"],
-      lizenz: { typ: "lifetime", seit: "2026-07-01", arbeitsplaetze: 6, lizenzNr: "AAX-LT-2026-0288" },
+      lizenz: { typ: "lifetime", seit: "2026-07-01", arbeitsplaetze: 6, lizenzNr: "APX-LT-2026-0288" },
       ansprechpartner: {
         name: "Lena Vogt", rolle: "Ihre feste Ansprechpartnerin", bezeichnung: "Ansprechpartnerin", telefon: "+49 30 555 018 42",
-        email: "lena.vogt@anwaltapex.de", initialen: "LV", verfuegbar: "Mo–Fr 7:30–19:00 Uhr",
+        email: "lena.vogt@apex-kanzlei.de", initialen: "LV", verfuegbar: "Mo–Fr 7:30–19:00 Uhr",
       },
       farbe: "#BE185D",
       createdAt: "2026-07-01T09:00:00",

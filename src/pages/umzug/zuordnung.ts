@@ -1,4 +1,4 @@
-// Spaltenzuordnung Altsystem → AnwaltApex: Synonym-Erkennung, Werte-Umwandlung und Dublettenprüfung.
+// Spaltenzuordnung Altsystem → Apex: Synonym-Erkennung, Werte-Umwandlung und Dublettenprüfung.
 import type { Akte, Bundesland, FristTyp, ISODate, Sachgebiet } from "@/core/types";
 import { addDays, fmtDate, fmtDateWd, today } from "@/core/dates";
 import { feiertagAm, istWerktag } from "@/core/feiertage";
@@ -115,7 +115,7 @@ const SG_REGELN: [RegExp, Sachgebiet][] = [
   [/vertrag|\bkauf|zivil|handel|gesellsch|allgemein|schuldrecht|\bbgb\b/, "Vertragsrecht"],
 ];
 
-/** Gebiete ohne eigenes Sachgebiet in AnwaltApex – werden als Vertragsrecht übernommen, aber zur Prüfung markiert. */
+/** Gebiete ohne eigenes Sachgebiet in Apex – werden als Vertragsrecht übernommen, aber zur Prüfung markiert. */
 const OHNE_SACHGEBIET = /wettbewerb|\buwg\b|\bmarke|gewerblich\w* rechtsschutz|\burheber|\bpatent|\bdesign|\bkartell|\bmedienrecht/;
 
 export interface SachgebietTreffer {

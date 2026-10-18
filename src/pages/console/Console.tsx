@@ -11,7 +11,7 @@ import { useData } from "@/store/data";
 import { toast, useUI, type ThemeWahl } from "@/store/ui";
 import { getBackend, getInfo, istConsole, type ConsoleKunde } from "@/lib/backend";
 import { fehlerFeld } from "@/lib/backend/types";
-import { pruefeConsolePasswortAnlass, type ConsolePasswortAnlass } from "@/lib/backend/protokoll";
+import { ANBIETER_TEAM, pruefeConsolePasswortAnlass, type ConsolePasswortAnlass } from "@/lib/backend/protokoll";
 import { rollenLabel } from "@/lib/rollen";
 import { today } from "@/core/dates";
 import type { Tenant, User } from "@/core/types";
@@ -22,7 +22,7 @@ import { NeuerZugang, ZugangsDaten } from "./NeuerZugang";
 import { einladungsText, kopieren } from "./helfer";
 import { kanzleiStatusText, kanzleiStatusZahlen } from "@/core/kennzahlen";
 
-/** Offenlegung gegenüber der Kanzlei – steht in Bestätigung und Ergebnis jeder Passwortvergabe durch AnwaltApex. */
+/** Offenlegung gegenüber der Kanzlei – steht in Bestätigung und Ergebnis jeder Passwortvergabe durch Apex. */
 const PROTOKOLL_SATZ = "Die Kanzlei sieht diesen Vorgang in ihrem Protokoll (Einstellungen → Datenschutz). Die Person muss bei der nächsten Anmeldung ein eigenes Passwort festlegen.";
 
 type Filter = "alle" | "test" | "aktiv" | "pausiert";
@@ -159,7 +159,7 @@ export default function ConsolePage() {
   return (
     <MotionConfig reducedMotion="user">
       <div className="relative z-10 h-full overflow-y-auto overflow-x-hidden" id="console-scroll">
-        <ConsoleKopf name={sitzung && istConsole(sitzung) ? sitzung.name : "AnwaltApex Team"} email={sitzung && istConsole(sitzung) ? sitzung.email : ""} onAbmelden={() => void abmelden()} />
+        <ConsoleKopf name={sitzung && istConsole(sitzung) ? sitzung.name : ANBIETER_TEAM} email={sitzung && istConsole(sitzung) ? sitzung.email : ""} onAbmelden={() => void abmelden()} />
 
         <main className="mx-auto w-full max-w-[1200px] px-4 pb-24 pt-6 sm:px-6 md:pt-8">
           <PageHeader
@@ -260,7 +260,7 @@ export default function ConsolePage() {
         <NeuerZugang open={neu} onClose={() => setNeu(false)} onAngelegt={() => void laden()} />
         <AnforderungDialog
           daten={anforderung}
-          consoleName={sitzung && istConsole(sitzung) ? sitzung.name : "AnwaltApex Team"}
+          consoleName={sitzung && istConsole(sitzung) ? sitzung.name : ANBIETER_TEAM}
           onClose={() => setAnforderung(null)}
           onErzeugt={(k, u, passwort) => {
             setAnforderung(null);
@@ -313,7 +313,7 @@ const ANDERE = "__andere__";
 
 /**
  * Neues Startpasswort: Pflichtangaben „Angefordert von“ (Person der Kanzlei – bevorzugt Partner/Administration – oder
- * Freitext) und „Anlass“; dazu, wer bei AnwaltApex es vergibt. Alles steht im Kanzleiprotokoll; Partner und Administration
+ * Freitext) und „Anlass“; dazu, wer bei Apex es vergibt. Alles steht im Kanzleiprotokoll; Partner und Administration
  * erhalten einen Hinweis in der Glocke.
  */
 function AnforderungDialog({ daten, consoleName, onClose, onErzeugt }: { daten: { k: ConsoleKunde; u: User } | null; consoleName: string; onClose: () => void; onErzeugt: (k: ConsoleKunde, u: User, passwort: string) => void }) {
@@ -334,7 +334,7 @@ function AnforderungDialog({ daten, consoleName, onClose, onErzeugt }: { daten: 
     setWer("");
     setWerFrei("");
     setAnlass("");
-    // Vorschlag: die feste Ansprechpartnerin dieser Kanzlei bei AnwaltApex (änderbar)
+    // Vorschlag: die feste Ansprechpartnerin dieser Kanzlei bei Apex (änderbar)
     setBearbeiter(daten.k.tenant.ansprechpartner?.name ?? consoleName);
     setFehler({});
   }, [daten, consoleName]);
@@ -415,7 +415,7 @@ function AnforderungDialog({ daten, consoleName, onClose, onErzeugt }: { daten: 
           <Field label="Anlass" htmlFor="sp-anlass" hint={fehlerText("sp-anlass-fehler", fehler.anlass) ?? "Steht im Kanzleiprotokoll, z. B. „Passwort vergessen – telefonisch angefordert“."}>
             <Input id="sp-anlass" value={anlass} onChange={(e) => setAnlass(e.target.value)} placeholder="z. B. Passwort vergessen – telefonisch angefordert" maxLength={200} aria-invalid={!!fehler.anlass} aria-describedby={fehler.anlass ? "sp-anlass-fehler" : undefined} autoComplete="off" />
           </Field>
-          <Field label="Vergeben durch (AnwaltApex)" htmlFor="sp-bearbeiter" hint="Ihr Name – die Kanzlei sieht, wer bei AnwaltApex das Passwort vergeben hat.">
+          <Field label="Vergeben durch (Apex)" htmlFor="sp-bearbeiter" hint="Ihr Name – die Kanzlei sieht, wer bei Apex das Passwort vergeben hat.">
             <Input id="sp-bearbeiter" value={bearbeiter} onChange={(e) => setBearbeiter(e.target.value)} maxLength={120} autoComplete="name" />
           </Field>
           {fehler.allgemein && (

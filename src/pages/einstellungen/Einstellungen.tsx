@@ -33,7 +33,7 @@ export default function Einstellungen() {
 
   return (
     <div>
-      <PageHeader title="Einstellungen" hilfe="einstellungen" subtitle={verwaltung ? "Kanzlei, Team & Zugänge, Lizenz, KI, Darstellung und Datenschutz – alles, was Ihre Kanzlei in AnwaltApex ausmacht, an einem Ort." : "Ihr Zugang, Kanzleiangaben, KI, Darstellung und Datenschutz – an einem Ort."} />
+      <PageHeader title="Einstellungen" hilfe="einstellungen" subtitle={verwaltung ? "Kanzlei, Team & Zugänge, Lizenz, KI, Darstellung und Datenschutz – alles, was Ihre Kanzlei in Apex ausmacht, an einem Ort." : "Ihr Zugang, Kanzleiangaben, KI, Darstellung und Datenschutz – an einem Ort."} />
       <div className="sticky top-2 z-30 -mx-1 mb-5 px-1 md:static">
         <Segmented<Tab>
           value={tab}

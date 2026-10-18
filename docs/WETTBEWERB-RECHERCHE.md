@@ -1,4 +1,4 @@
-# AnwaltApex – Wettbewerbs- und Grundlagenrecherche (Rohfassung mit Quellen)
+# Apex – Wettbewerbs- und Grundlagenrecherche (Rohfassung mit Quellen)
 
 Stand der Recherche: 16.10.2026
 
@@ -82,9 +82,9 @@ Stand der Recherche: 16.10.2026
 
 ## 2. Feature-Matrix
 
-Legende: ✓ = vorhanden (belegt) · ✗ = nicht vorhanden / ausdrücklich nicht · (teilw.) = eingeschränkt, nur über Drittanbieter oder nur in einer Edition · ? = unklar/nicht verifiziert. In der Spalte **AnwaltApex (Ziel)** steht der Soll-Zustand; „?“ heißt dort, dass die strategische Entscheidung noch offen ist.
+Legende: ✓ = vorhanden (belegt) · ✗ = nicht vorhanden / ausdrücklich nicht · (teilw.) = eingeschränkt, nur über Drittanbieter oder nur in einer Edition · ? = unklar/nicht verifiziert. In der Spalte **Apex (Ziel)** steht der Soll-Zustand; „?“ heißt dort, dass die strategische Entscheidung noch offen ist.
 
-| Funktion | RA-MICRO | ACTAPORT | Advoware | Renostar | AnwaltApex (Ziel) |
+| Funktion | RA-MICRO | ACTAPORT | Advoware | Renostar | Apex (Ziel) |
 |---|---|---|---|---|---|
 | Aktenverwaltung | ✓ | ✓ | ✓ | ✓ | ✓ |
 | beA-Integration | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -111,7 +111,7 @@ Legende: ✓ = vorhanden (belegt) · ✗ = nicht vorhanden / ausdrücklich nicht
 | Einstiegspreis (netto, je Nutzer/Monat) | 25 € + 25 € Hosting (Essentials) | 79 € + M365 | ? (Drittangaben 15–169 €) | 99 € | – |
 
 **Kurzbefund für die Positionierung:**
-- KI ist bei **RA-MICRO** (KI Widget, JURA KI Assistent) und **Advoware** (Legal Twin) schon im Produkt. **ACTAPORT** und **Renostar** haben keine native generative KI und setzen auf Integrationen. AnwaltApex kann sich hier gegen die Cloud-Anbieter differenzieren.
+- KI ist bei **RA-MICRO** (KI Widget, JURA KI Assistent) und **Advoware** (Legal Twin) schon im Produkt. **ACTAPORT** und **Renostar** haben keine native generative KI und setzen auf Integrationen. Apex kann sich hier gegen die Cloud-Anbieter differenzieren.
 - Bei den reinen Cloud-Anbietern ist ein **Pauschalpreis pro Nutzer** üblich (ACTAPORT 79–109 €, Renostar 99 €). RA-MICRO Essentials ist mit 50 € (Lizenz + Hosting) der günstigste Browser-Einstieg.
 - Die Lücken bei den Cloud-Anbietern liegen bei **Diktat/Spracherkennung**, **nativen Apps** (Renostar) und **voller FiBu** (ACTAPORT).
 
@@ -119,7 +119,7 @@ Legende: ✓ = vorhanden (belegt) · ✗ = nicht vorhanden / ausdrücklich nicht
 
 ## 3. REA – „Reverse Engineer Anything“ (https://github.com/morluto/rea)
 
-REA ist ein lokal laufendes Reverse-Engineering-Toolkit unter MIT-Lizenz. Es wird als **MCP-Server** (und als CLI) an KI-Agenten wie Claude Code, Codex oder Cursor angebunden; die Einrichtung läuft über `npx rea-agents setup`. Analysiert werden native Binaries (über Ghidra, IDA oder Hopper), JavaScript- und Electron-Apps (Module, IPC, Routen), .NET-Assemblies, Android-APKs und Flutter-Apps, Websites und gespeicherte Netzwerkmitschnitte, Firmware, WASM, SQLite sowie das Laufzeitverhalten von Prozessen. Ergebnisse kommen jeweils mit Belegen und Grenzen zurück. Laut README soll das Tool helfen, ein Feature fremder Software zu verstehen und nachzubauen, ohne deren Quellcode zu kennen. Das README beschränkt die Nutzung auf rechtmäßige Analysen von eigener oder freigegebener Software. **Für AnwaltApex** ließe sich REA einsetzen, um rechtmäßig lizenzierte Testversionen der Wettbewerber (z. B. Electron-/.NET-Clients oder Web-Frontends) auf Workflows, Datenmodelle und Schnittstellen hin zu untersuchen, etwa die beA-Zuordnung oder die Struktur des RVG-Rechners. **Rechtlicher Rahmen (vorab prüfen):** Lizenzbedingungen/AGB der Hersteller (Reverse-Engineering-Verbote), §§ 69d Abs. 3, 69e UrhG (Beobachten und Testen durch berechtigte Nutzer erlaubt; Dekompilieren nur zur Herstellung von Interoperabilität) und § 3 Abs. 1 Nr. 2 GeschGehG (Reverse Engineering ist zulässig, soweit nicht vertraglich ausgeschlossen). Eine Übernahme fremden Codes scheidet aus. Unbedenklicher ist eine Black-Box-Analyse des sichtbaren Verhaltens und öffentlicher Seiten. Quelle: https://github.com/morluto/rea
+REA ist ein lokal laufendes Reverse-Engineering-Toolkit unter MIT-Lizenz. Es wird als **MCP-Server** (und als CLI) an KI-Agenten wie Claude Code, Codex oder Cursor angebunden; die Einrichtung läuft über `npx rea-agents setup`. Analysiert werden native Binaries (über Ghidra, IDA oder Hopper), JavaScript- und Electron-Apps (Module, IPC, Routen), .NET-Assemblies, Android-APKs und Flutter-Apps, Websites und gespeicherte Netzwerkmitschnitte, Firmware, WASM, SQLite sowie das Laufzeitverhalten von Prozessen. Ergebnisse kommen jeweils mit Belegen und Grenzen zurück. Laut README soll das Tool helfen, ein Feature fremder Software zu verstehen und nachzubauen, ohne deren Quellcode zu kennen. Das README beschränkt die Nutzung auf rechtmäßige Analysen von eigener oder freigegebener Software. **Für Apex** ließe sich REA einsetzen, um rechtmäßig lizenzierte Testversionen der Wettbewerber (z. B. Electron-/.NET-Clients oder Web-Frontends) auf Workflows, Datenmodelle und Schnittstellen hin zu untersuchen, etwa die beA-Zuordnung oder die Struktur des RVG-Rechners. **Rechtlicher Rahmen (vorab prüfen):** Lizenzbedingungen/AGB der Hersteller (Reverse-Engineering-Verbote), §§ 69d Abs. 3, 69e UrhG (Beobachten und Testen durch berechtigte Nutzer erlaubt; Dekompilieren nur zur Herstellung von Interoperabilität) und § 3 Abs. 1 Nr. 2 GeschGehG (Reverse Engineering ist zulässig, soweit nicht vertraglich ausgeschlossen). Eine Übernahme fremden Codes scheidet aus. Unbedenklicher ist eine Black-Box-Analyse des sichtbaren Verhaltens und öffentlicher Seiten. Quelle: https://github.com/morluto/rea
 
 ---
 

@@ -631,7 +631,7 @@ export default function AktenListe() {
           <Empty
             icon={<FolderOpen className="size-6" />}
             title={akten.length ? "Keine Akte passt zu diesen Filtern" : "Noch keine Akten"}
-            text={akten.length ? "Ändern Sie die Suche oder setzen Sie die Filter zurück." : "Legen Sie Ihre erste Akte an – Vollmacht und Mandatsbestätigung erstellt AnwaltApex automatisch."}
+            text={akten.length ? "Ändern Sie die Suche oder setzen Sie die Filter zurück." : "Legen Sie Ihre erste Akte an – Vollmacht und Mandatsbestätigung erstellt Apex automatisch."}
             action={
               akten.length ? (
                 <Button variant="secondary" onClick={() => setze({ q: "", status: "offen", sg: "", ra: "", prio: "", frist: "", seit: "" })}>
@@ -647,7 +647,7 @@ export default function AktenListe() {
         }
       />
       <p className="mt-3 px-1 text-[12.5px] text-fg-3">
-        {liste.length} {liste.length === 1 ? "Akte" : "Akten"} · Spaltenbreite, sichtbare Spalten und Zeilendichte merkt sich AnwaltApex für Sie · {tenant.kurzname}
+        {liste.length} {liste.length === 1 ? "Akte" : "Akten"} · Spaltenbreite, sichtbare Spalten und Zeilendichte merkt sich Apex für Sie · {tenant.kurzname}
       </p>
 
       <Mandatsaufnahme open={dialogOffen} onClose={schliesseNeu} onErstellt={onErstellt} nachrichtId={params.get("nachricht")} />

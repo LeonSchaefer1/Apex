@@ -34,7 +34,7 @@ export function Erfahrungen() {
             <br /> <span className="text-fg-3">Und diese Probleme gelöst.</span>
           </>
         }
-        text="AnwaltApex entstand aus den häufigsten Ärgernissen, die Anwältinnen, Anwälte und Fachangestellte mit ihrer Kanzleisoftware erleben."
+        text="Apex entstand aus den häufigsten Ärgernissen, die Anwältinnen, Anwälte und Fachangestellte mit ihrer Kanzleisoftware erleben."
       />
       <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {PROBLEME.map((x, k) => (
@@ -66,10 +66,10 @@ export function Erfahrungen() {
 const FRAGEN = [
   {
     f: "Was bedeutet „Lifetime-Lizenz“ genau?",
-    a: `Lifetime-Lizenz heißt: Kauflizenz ohne Laufzeit. Sie erwerben AnwaltApex einmalig und dürfen die Software dauerhaft nutzen – ohne monatliche Lizenzgebühren. ${WARTUNG_HINWEIS}. Ohne Wartung bleiben Software und Daten unbefristet nutzbar und vollständig exportierbar. ${UEBERTRAGBARKEIT_HINWEIS}. ${ESCROW_HINWEIS}. (${LIZENZ_KENNZEICHNUNG}.)`,
+    a: `Lifetime-Lizenz heißt: Kauflizenz ohne Laufzeit. Sie erwerben Apex einmalig und dürfen die Software dauerhaft nutzen – ohne monatliche Lizenzgebühren. ${WARTUNG_HINWEIS}. Ohne Wartung bleiben Software und Daten unbefristet nutzbar und vollständig exportierbar. ${UEBERTRAGBARKEIT_HINWEIS}. ${ESCROW_HINWEIS}. (${LIZENZ_KENNZEICHNUNG}.)`,
   },
   {
-    f: "Was kostet AnwaltApex?",
+    f: "Was kostet Apex?",
     a: `${PREIS_HINWEIS}: Die einmalige Investition richtet sich nach der Kanzleigröße, also nach Arbeitsplätzen und gewünschten Modulen. ${WARTUNG_HINWEIS}. Enthalten: ${WARTUNG_INHALT.enthalten.join(", ")}. Ohne Wartung: ${WARTUNG_INHALT.ohne.join("; ")}. Ihr Angebot fordern Sie über „Angebot anfordern“ an – im Echtbetrieb meldet sich Ihre Ansprechpartnerin innerhalb eines Werktags. (${LIZENZ_KENNZEICHNUNG}.)`,
   },
   {
@@ -77,9 +77,9 @@ const FRAGEN = [
     a: `Entweder in einem deutschen Rechenzentrum oder auf einem eigenen Server in Ihrer Kanzlei. Die Daten jeder Kanzlei sind auf Datenbankebene streng getrennt. ${VERARBEITUNGSORT.titel} der KI – ${VERARBEITUNGSORT.live} ${VERARBEITUNGSORT.demo} ${VERARBEITUNGSORT.eu}`,
   },
   { f: "Ersetzt die KI die anwaltliche Prüfung?", a: "Nein. Die KI erkennt, fasst zusammen und schlägt vor – etwa eine Frist aus einem Urteil oder passende Präzedenzfälle. Fristen berechnet ausschließlich der geprüfte Fristenrechner mit nachvollziehbarem Rechenweg. Übernommen wird nur, was Sie freigeben." },
-  { f: "Wie läuft der Umzug aus unserer bisherigen Software?", a: "Sie laden den Export Ihrer bisherigen Kanzleisoftware hoch. AnwaltApex zeigt eine Vorschau, erkennt Dubletten, prüft die Fristen auf Plausibilität (z. B. Fristende an einem Wochenende oder Feiertag) und legt sie zur Vier-Augen-Kontrolle vor. Auf Wunsch arbeiten Sie eine Zeit lang parallel." },
+  { f: "Wie läuft der Umzug aus unserer bisherigen Software?", a: "Sie laden den Export Ihrer bisherigen Kanzleisoftware hoch. Apex zeigt eine Vorschau, erkennt Dubletten, prüft die Fristen auf Plausibilität (z. B. Fristende an einem Wochenende oder Feiertag) und legt sie zur Vier-Augen-Kontrolle vor. Auf Wunsch arbeiten Sie eine Zeit lang parallel." },
   { f: "Ist das beA angebunden?", a: "Im Produktivbetrieb über die Schnittstelle der BRAK für Kanzleisoftware – in dieser Demo sind beA-Eingang und Empfangsbekenntnis simuliert. beA-Nachrichten und E-Mails landen in einem gemeinsamen Posteingang. Die KI ordnet sie der Akte zu, erkennt Fristen und bereitet das elektronische Empfangsbekenntnis vor – abgegeben wird es erst, wenn die Frist notiert ist." },
-  { f: "Können wir AnwaltApex vorher testen?", a: "Gern. Über „Testzugang anfordern“ erhalten Sie einen eigenen Testzugang – auf Wunsch mit Beispieldaten – und eine feste Ansprechpartnerin, die Sie durch die ersten Schritte begleitet. Die öffentliche Demo starten Sie sofort über „Demo starten“." },
+  { f: "Können wir Apex vorher testen?", a: "Gern. Über „Testzugang anfordern“ erhalten Sie einen eigenen Testzugang – auf Wunsch mit Beispieldaten – und eine feste Ansprechpartnerin, die Sie durch die ersten Schritte begleitet. Die öffentliche Demo starten Sie sofort über „Demo starten“." },
 ];
 
 export function Faq() {
@@ -152,7 +152,7 @@ export function Schluss() {
           <div>
             <AppIcon size={48} />
             <h2 className="mt-6 max-w-[16ch] text-[clamp(32px,4.6vw,56px)] font-bold leading-[1.02] tracking-[-0.045em]">Eine Kanzlei-Software, die Ihnen gehört.</h2>
-            <p className="mt-4 max-w-[52ch] text-[16px] leading-relaxed opacity-75">Testen Sie AnwaltApex mit Beispieldaten – Fristen, Posteingang, KI-Fallanalyse und 38h-Motor, so wie sie morgen in Ihrer Kanzlei laufen.</p>
+            <p className="mt-4 max-w-[52ch] text-[16px] leading-relaxed opacity-75">Testen Sie Apex mit Beispieldaten – Fristen, Posteingang, KI-Fallanalyse und 38h-Motor, so wie sie morgen in Ihrer Kanzlei laufen.</p>
           </div>
           <div className="flex flex-wrap gap-3">
             <Button variant="primary" size="lg" iconRight={<ArrowRight className="size-4" />} onClick={() => nav("/login")}>
@@ -245,7 +245,7 @@ export function Fusszeile() {
         </div>
       </div>
       <div className="mx-auto mt-10 flex max-w-[1200px] flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-5 text-[13px] text-fg-3">
-        <span>© {jahr} AnwaltApex. Alle Rechte vorbehalten.</span>
+        <span>© {jahr} Apex. Alle Rechte vorbehalten.</span>
         <span>Vergleiche beziehen sich auf klassische Kanzleisoftware im Allgemeinen.</span>
       </div>
       <Modal
@@ -265,7 +265,7 @@ export function Fusszeile() {
           Im Prototyp nicht hinterlegt
         </Chip>
         <p className="mt-3 text-[14px] leading-relaxed text-fg-2">{info.text}</p>
-        <p className="mt-3 text-[12.5px] leading-relaxed text-fg-3">Diese Produktseite ist eine Vorschau von AnwaltApex für Präsentationen. Firmen- und Kontaktangaben werden hier bewusst nicht vorweggenommen.</p>
+        <p className="mt-3 text-[12.5px] leading-relaxed text-fg-3">Diese Produktseite ist eine Vorschau von Apex für Präsentationen. Firmen- und Kontaktangaben werden hier bewusst nicht vorweggenommen.</p>
       </Modal>
     </footer>
   );

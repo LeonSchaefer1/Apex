@@ -59,9 +59,9 @@ test("TOTP: Prüfung im Fenster ± 30 s, falsche Codes und Wiederverwendung abge
 
 test("TOTP: otpauth-URI und Wiederherstellungscodes", () => {
   const uri = otpauthUri("JBSWY3DPEHPK3PXP", "claudia.reinholz@kanzlei.de");
-  assert.match(uri, /^otpauth:\/\/totp\/AnwaltApex%3Aclaudia\.reinholz%40kanzlei\.de\?/);
+  assert.match(uri, /^otpauth:\/\/totp\/Apex%3Aclaudia\.reinholz%40kanzlei\.de\?/);
   assert.match(uri, /secret=JBSWY3DPEHPK3PXP/);
-  assert.match(uri, /issuer=AnwaltApex/);
+  assert.match(uri, /issuer=Apex(&|$)/);
   assert.match(uri, /digits=6/);
   assert.match(uri, /period=30/);
   const codes = neueWiederherstellungscodes();

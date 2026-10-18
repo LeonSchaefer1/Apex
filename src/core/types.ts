@@ -1,4 +1,4 @@
-// AnwaltApex Domänenmodell – gemeinsam genutzt von Web-App und Server.
+// Apex-Domänenmodell – gemeinsam genutzt von Web-App und Server.
 
 export type ID = string;
 export type ISODate = string; // "2026-10-16"

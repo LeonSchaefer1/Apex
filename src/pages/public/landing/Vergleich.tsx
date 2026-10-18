@@ -51,17 +51,17 @@ export function Vergleich() {
         eyebrow="Der Unterschied im Alltag"
         titel={
           <>
-            AnwaltApex gegenüber
-            <br /> <span className="text-fg-3">klassische Kanzleisoftware</span>
+            Apex gegenüber
+            <br /> <span className="text-fg-3">klassischer Kanzleisoftware</span>
           </>
         }
-        text="Was Kanzleien an ihrer Software am meisten bremst – und wie AnwaltApex es löst."
+        text="Was Kanzleien an ihrer Software am meisten bremst – und wie Apex es löst."
       />
 
       {/* Desktop: Tabelle */}
       <Reveal className="sheet relative hidden overflow-hidden rounded-[28px] md:block">
         <table className="w-full border-separate border-spacing-0 text-left">
-          <caption className="sr-only">Vergleich von AnwaltApex mit klassischer Kanzleisoftware</caption>
+          <caption className="sr-only">Vergleich von Apex mit klassischer Kanzleisoftware</caption>
           <thead>
             <tr>
               <th scope="col" className="w-[22%] px-6 pb-4 pt-6 text-[12.5px] font-semibold uppercase tracking-[0.06em] text-fg-3">
@@ -73,7 +73,7 @@ export function Vergleich() {
               <th scope="col" className="w-[41%] bg-ink-softer px-6 pb-4 pt-6">
                 <span className="flex items-center gap-2.5 text-[15px] font-semibold">
                   <AppIcon size={26} />
-                  AnwaltApex
+                  Apex
                 </span>
               </th>
             </tr>
@@ -119,7 +119,7 @@ export function Vergleich() {
               <Ja i={i} />
               <JaText />
               <span>
-                <span className="block text-[12.5px] font-semibold text-ink">AnwaltApex</span>
+                <span className="block text-[12.5px] font-semibold text-ink">Apex</span>
                 {z.apex}
               </span>
             </div>

@@ -871,7 +871,7 @@ export function BankabgleichTab() {
         icon={<Landmark className="size-[18px]" />}
         titel="Bankabgleich"
         plakette={<Chip tone="amber" title="In dieser Demo stammen die Kontoumsätze aus Beispieldaten – kein echtes Bankkonto angebunden.">Beispielumsätze (simuliert)</Chip>}
-        text="Kontoumsätze werden automatisch Rechnungen zugeordnet – sichere Treffer bucht AnwaltApex selbst, unsichere legt es Ihnen zur Bestätigung vor. Jede Buchung lässt sich unter „Gebucht“ lösen."
+        text="Kontoumsätze werden automatisch Rechnungen zugeordnet – sichere Treffer bucht Apex selbst, unsichere legt es Ihnen zur Bestätigung vor. Jede Buchung lässt sich unter „Gebucht“ lösen."
         aktionen={
           <>
             <input ref={fileRef} type="file" accept=".xml,.sta,.mt940,.csv" className="hidden" onChange={(e) => importieren(e.target.files?.[0])} />
@@ -1061,7 +1061,7 @@ export function BankabgleichTab() {
               </span>
               <span className="min-w-0 flex-1">
                 <span className="title-md block">Wie sicher ist die Zuordnung?</span>
-                <span className="mt-0.5 block text-[12.5px] text-fg-3">Ab {Math.round(AUTO_SCHWELLE * 100)} % bucht AnwaltApex selbst – darunter entscheiden Sie.</span>
+                <span className="mt-0.5 block text-[12.5px] text-fg-3">Ab {Math.round(AUTO_SCHWELLE * 100)} % bucht Apex selbst – darunter entscheiden Sie.</span>
               </span>
               <ChevronDown className={cn("mt-2 size-4 shrink-0 text-fg-3 transition-transform duration-300", erklaerungOffen && "rotate-180")} aria-hidden />
             </button>

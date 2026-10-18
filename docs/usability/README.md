@@ -1,4 +1,6 @@
-# Usability-Studie AnwaltApex – Kundenavatar Claudia Reinholz
+# Usability-Studie Apex – Kundenavatar Claudia Reinholz
+
+> **Hinweis:** Das Produkt heißt seit 18.10.2026 Apex (vormals AnwaltApex). Die Iterationsberichte sind historische Dokumente und nennen den damaligen Namen.
 
 **Ablauf:** In 5 End-to-End-Iterationen bedient der Kundenavatar **Claudia Reinholz** alle 24 Aufgaben T00–T23 in allen 16 Bereichen. Sie ist Fachanwältin für Arbeitsrecht und geschäftsführende Partnerin einer kleinen Sozietät in Paderborn (fiktiv). Persona, Aufgaben, Messmethode und Bewertungsraster stehen in [`docs/KUNDENAVATAR.md`](../KUNDENAVATAR.md), Abschnitt 1.
 

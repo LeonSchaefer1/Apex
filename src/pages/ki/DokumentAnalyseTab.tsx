@@ -545,7 +545,7 @@ function Ergebnis({
             <div className="mt-3 flex items-start gap-2 rounded-[14px] bg-amber-soft px-3.5 py-2.5 text-[12.5px] text-amber">
               <Inbox className="mt-0.5 size-4 shrink-0" />
               <span>
-                <span className="font-semibold">Elektronisches Empfangsbekenntnis (eEB) erforderlich.</span> Zugestellt ist an dem Tag, an dem Sie das Schriftstück empfangsbereit zur Kenntnis genommen haben – dieses Datum tragen Sie im eEB ein. AnwaltApex rechnet vorsorglich ab dem Eingangstag. Das eEB erst abgeben, wenn die Fristen notiert und kontrolliert sind.
+                <span className="font-semibold">Elektronisches Empfangsbekenntnis (eEB) erforderlich.</span> Zugestellt ist an dem Tag, an dem Sie das Schriftstück empfangsbereit zur Kenntnis genommen haben – dieses Datum tragen Sie im eEB ein. Apex rechnet vorsorglich ab dem Eingangstag. Das eEB erst abgeben, wenn die Fristen notiert und kontrolliert sind.
               </span>
             </div>
           )}
@@ -769,7 +769,7 @@ function AusschlussfristKarte({
         <div className="min-w-0 flex-1">
           <h3 className="text-[14.5px] font-semibold leading-snug">{ausschlussfristTitel(klausel)}</h3>
           <p className="mt-1 text-[12.5px] leading-relaxed text-fg-2">
-            Vertragliche Ausschlussfrist – Anspruchsverlust bei Versäumung. Das Fristende hängt von der Fälligkeit des jeweiligen Anspruchs ab: Bitte die Fälligkeit eingeben – AnwaltApex erfindet kein Datum.
+            Vertragliche Ausschlussfrist – Anspruchsverlust bei Versäumung. Das Fristende hängt von der Fälligkeit des jeweiligen Anspruchs ab: Bitte die Fälligkeit eingeben – Apex erfindet kein Datum.
           </p>
           <blockquote className="mt-2 rounded-[12px] bg-[var(--ink-softer)] px-3 py-2 text-[12.5px] italic leading-relaxed text-fg-2">„{klausel.zitat.replace(/[„“]/g, "")}“</blockquote>
           {klausel.zweiteStufe && (

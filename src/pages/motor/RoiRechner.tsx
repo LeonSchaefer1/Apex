@@ -346,7 +346,7 @@ export function RoiRechner({ startSatz, startArbeitsplaetze, automationen, menge
             <div role="status" className="rounded-[16px] bg-[var(--ink-softer)] p-4 text-[13px] leading-relaxed text-fg-2 ring-1 ring-inset ring-[var(--line)]">
               <div className="font-semibold text-fg">Preis und Wartung regelt Ihr Angebot – tragen Sie die Angebotswerte ein.</div>
               <div className="mt-1 text-[12.5px] text-fg-3">
-                Erst dann zeigt der Vergleich die Kosten über {JAHRE} Jahre. AnwaltApex setzt keinen Preis und keinen Wartungssatz an.
+                Erst dann zeigt der Vergleich die Kosten über {JAHRE} Jahre. Apex setzt keinen Preis und keinen Wartungssatz an.
               </div>
             </div>
           ) : (

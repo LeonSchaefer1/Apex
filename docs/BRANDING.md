@@ -1,8 +1,10 @@
-# AnwaltApex – Marke & Gestaltung
+# Apex – Marke & Gestaltung
+
+> **Stand 18.10.2026:** Das Produkt heißt **Apex** (vormals AnwaltApex). Name, Wortmarke und Adressen sind umgestellt. Die visuelle Gestaltung (Farben, Schrift, Logo-Feinschliff) wird nach der Referenzanalyse überarbeitet – siehe [`REBRANDING-PLAN.md`](REBRANDING-PLAN.md). Die Werte unten beschreiben den heutigen Stand.
 
 ## Positionierung
 
-**AnwaltApex ist die Kanzlei-Software, die mitdenkt.** Ein Werkzeug, volle Kontrolle: Akten, beA, Fristen, Abrechnung und eine KI, die Präzedenzfälle in Sekunden findet. Sie wird einmal gekauft und ist dann für immer nutzbar.
+**Apex ist die Kanzlei-Software, die mitdenkt.** Ein Werkzeug, volle Kontrolle: Akten, beA, Fristen, Abrechnung und eine KI, die Präzedenzfälle in Sekunden findet. Sie wird einmal gekauft und ist dann für immer nutzbar.
 
 - **Name:** *Apex* bedeutet Gipfel oder Spitze. Gemeint ist das Beste für Anwältinnen und Anwälte, ohne Superlativ-Geschrei.
 - **Leitsatz:** „Ein Werkzeug. Volle Kontrolle.“
@@ -16,7 +18,7 @@
 Die Bildmarke liest sich auf drei Arten:
 
 1. Als **Spitze einer Füllfeder**. Sie steht für das Unterschreiben, für Schriftsätze und das Handwerk des Rechts. Schlitz und Luftloch machen die Feder erkennbar.
-2. Als **„A“** wie AnwaltApex. Die Beine des A sind die Schultern der Feder.
+2. Als **„A“** wie Apex. Die Beine des A sind die Schultern der Feder.
 3. Als **Gipfel** im Sinne von Apex.
 
 Dateien:
@@ -25,7 +27,23 @@ Dateien:
 - `brand/logo-mark-mono.svg` – einfarbig, nutzt `currentColor`
 - `brand/app-icon.svg` – App-Icon im iOS-Squircle mit Glasrand
 
-Die Wortmarke lautet **Anwalt**Apex, gesetzt in Geist Semibold mit eng laufender Laufweite (−0,03 em). „Apex“ steht in Tinte.
+Die Wortmarke lautet **Apex**, gesetzt in Geist Semibold mit eng laufender Laufweite (−0,03 em), in Textfarbe neben der Bildmarke. Wo der Name allein unklar ist (Seitentitel, Meta-Beschreibung, Artefakt-Titel), steht **„Apex – Kanzleisoftware“**. Auf der Anmeldeseite steht die Wortmarke ohne Zusatz, weil die Überschrift darunter („Die Kanzlei-Software, die mitdenkt.“) das Produkt schon beschreibt.
+
+**Schreibweise:** immer „Apex“ mit großem A, ohne Zusatz. „Apex“ ist neutral und steht ohne Artikel („in Apex“, „Apex rechnet …“), nie „der Apex“. Zusammensetzungen mit Bindestrich: „Apex-Team“, „Apex-Wiki“, „Apex-Cockpit“. Untermarken bleiben unverändert: **Apex Assistent**, **Apex KI**, **Apex Island**, **Apex Console**; ebenso die Funktionsnamen 38h-Motor, Fall-Datenbank, Umzug und Schnellhilfe.
+
+**Adressen:** Anbieter- und Demo-Adressen enden auf `@apex-kanzlei.de` (Platzhalter-Domain, vor dem Livegang durch die echte Domain zu ersetzen), z. B. die Apex Console `admin@apex-kanzlei.de`. Lizenznummern beginnen mit `APX-`.
+
+**Frühere Bezeichner, die bewusst bleiben** (für Nutzer unsichtbar oder nötig, damit vorhandene Daten, Links und Kalendereinträge weiter funktionieren):
+
+| Bezeichner | Wo | Grund |
+|---|---|---|
+| `anwaltapex.db`, Volume `anwaltapex-daten` | Server-Standard, `.env.example`, `Dockerfile`, `docker-compose.yml`, `render.yaml` | Bestehende Installationen finden ihre Daten nur unter diesem Namen. |
+| `aa:`-Schlüssel, Cookie `aa_sid` | Browser-Speicher, Sitzung | Daten und Anmeldungen im Browser bleiben erhalten. |
+| `dist-artifact/anwaltapex.html` | `scripts/build-artifact.mjs`, `package.json` | Das Artefakt wird unter derselben Adresse neu veröffentlicht. |
+| ICS-UID `…@anwaltapex` | `src/pages/fristen/ics.ts` | Erneut importierte Kalendereinträge werden aktualisiert statt verdoppelt. |
+| `admin@anwaltapex.de`, `@anwaltapex.de`, „AnwaltApex Team“, „durch AnwaltApex“, Stoppwort `anwaltapex` | `src/core/seed/tenants.ts`, `src/core/seed/kunde.ts`, `src/lib/backend/protokoll.ts`, `src/ai/assistent.ts` | Erkennung alter Adressen, Protokolleinträge und Fragen aus der Zeit vor der Umbenennung. |
+| Lizenznummern `AAX-` bereits angelegter Kundenkanzleien | Server-Datenbank | Vergebene Vertragskennungen bleiben; neue Lizenzen beginnen mit `APX-`. |
+| `description` in `package.json` | `package.json` | Noch „AnwaltApex – …“; Änderung ist freizugeben (nur `name` wurde umgestellt). |
 
 ## Farben
 

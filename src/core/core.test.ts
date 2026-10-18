@@ -368,7 +368,7 @@ test("Feiertage am Ort der Handlung: Revision beim BGH (Karlsruhe) und regionale
   // Mariä Himmelfahrt (nur in Teilen Bayerns): vorsorglich keine Verlängerung, aber Hinweis auf die Rechtslage
   const by = berechneNachRegel("berufung", "2028-07-15", "BY");
   assert.equal(by.ende, "2028-08-15");
-  assert.match(by.warnungen[0], /nur in Teilen von Bayern Feiertag – AnwaltApex verlängert vorsorglich nicht\. Gilt er am Ort des Gerichts/);
+  assert.match(by.warnungen[0], /nur in Teilen von Bayern Feiertag – Apex verlängert vorsorglich nicht\. Gilt er am Ort des Gerichts/);
 });
 
 test("Gerichtsort aus Gerichtsnamen", async () => {

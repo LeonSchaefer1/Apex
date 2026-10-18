@@ -212,7 +212,7 @@ ${tabelle(["Datum", "Betreff", "Weg", "Akte"], a.nachrichten.map((x) => [d(x.dat
 export function auskunftJson(a: Auskunft): string {
   const { pruefhinweis: _intern, ...rest } = a;
   void _intern;
-  return `${JSON.stringify({ format: "AnwaltApex Datenexport (Art. 20 DSGVO)", version: 1, ...rest }, null, 2)}\n`;
+  return `${JSON.stringify({ format: "Apex-Datenexport (Art. 20 DSGVO)", version: 1, ...rest }, null, 2)}\n`;
 }
 
 /** Dateiname „Auskunft_Art15_Thomas-Weber_2026-10-16.html“ */

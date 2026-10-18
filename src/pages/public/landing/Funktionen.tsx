@@ -87,7 +87,7 @@ export function Funktionen() {
               </div>
             </div>
             <div className="rounded-[16px] bg-ink-soft p-3">
-              <div className="text-ink">AnwaltApex</div>
+              <div className="text-ink">Apex</div>
               <div className="mt-1 font-semibold text-fg">einmal</div>
               <div className="mt-2 flex h-6 items-end gap-[3px]" aria-hidden>
                 {[10, 0, 0, 0, 0, 0, 0, 0, 0, 0].map((h, k) => (

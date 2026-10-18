@@ -42,10 +42,11 @@ export function AppIcon({ size = 36, className }: { size?: number; className?: s
   );
 }
 
+/** Wortmarke „Apex“ (ohne Zusatz; die Beschreibung „Apex – Kanzleisoftware“ steht nur in Seitentitel und Meta-Angaben). */
 export function Wordmark({ className, size = 17 }: { className?: string; size?: number }) {
   return (
     <span className={cn("font-semibold tracking-[-0.03em]", className)} style={{ fontSize: size }}>
-      Anwalt<span className="text-ink">Apex</span>
+      Apex
     </span>
   );
 }

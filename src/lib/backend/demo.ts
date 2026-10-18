@@ -2,8 +2,8 @@
 import { createStore, get as idbGet, set as idbSet, del as idbDel, type UseStore } from "idb-keyval";
 import { fmtDate, today } from "@/core/dates";
 import { generateTenantData, SEED_VERSION } from "@/core/seed/generate";
-import { DEMO_TENANTS, DEMO_PASSWORT, CONSOLE_DEMO, publicUser, type DemoTenant, type DemoUser } from "@/core/seed/tenants";
-import { baueKunde, baueNutzer, profilFuer } from "@/core/seed/kunde";
+import { DEMO_TENANTS, DEMO_PASSWORT, CONSOLE_DEMO, istConsoleDemoAdresse, publicUser, type DemoTenant, type DemoUser } from "@/core/seed/tenants";
+import { aktuelleAnbieterAdresse, baueKunde, baueNutzer, profilFuer } from "@/core/seed/kunde";
 import type { Aktivitaet, CollectionKey, TenantData, Tenant, User } from "@/core/types";
 import { neuerSchluessel, neueWiederherstellungscodes, otpauthUri, pruefeTotp, wiederherstellungNormal } from "@/core/totp";
 import {
@@ -132,12 +132,19 @@ function registry(): DemoTenant[] {
   const aend = lsGet<Record<string, NutzerAenderung>>(LS_NUTZER_AENDERUNG) ?? {};
   return [...DEMO_TENANTS, ...extra].map((t) => ({
     ...t,
-    tenant: mitOverrides(t.tenant, overrides[t.tenant.id]),
+    tenant: mitAnbieterAdresse(mitOverrides(t.tenant, overrides[t.tenant.id])),
     users: [...t.users, ...(extraUsers[t.tenant.id] ?? []).filter((u) => !t.users.some((x) => x.id === u.id))]
       .filter((u) => !(entfernt[t.tenant.id] ?? []).includes(u.id))
       .map((u) => (pw[u.id] ? { ...u, passwort: pw[u.id] } : u))
       .map((u) => (aend[u.id] ? mitAenderung(u, aend[u.id]) : u)),
   }));
+}
+
+/** Ältere Kundentests im Browser-Speicher: Ansprechpartner-Adresse @anwaltapex.de auf die Domain von Apex umstellen. */
+function mitAnbieterAdresse(t: Tenant): Tenant {
+  const email = t.ansprechpartner?.email;
+  const neu = email ? aktuelleAnbieterAdresse(email) : email;
+  return neu === email ? t : { ...t, ansprechpartner: { ...t.ansprechpartner, email: neu ?? "" } };
 }
 
 function mitAenderung(u: DemoUser, a: NutzerAenderung): DemoUser {
@@ -446,14 +453,15 @@ export function createDemoBackend(): Backend {
         });
       return [
         ...list,
-        { email: CONSOLE_DEMO.email, passwort: CONSOLE_DEMO.passwort, name: CONSOLE_DEMO.name, kanzlei: "Anbieterzugang (Demo)", stadt: "Apex Console", titel: "Kundenverwaltung", initialen: "AA", farbe: "#0B1020", console: true },
+        { email: CONSOLE_DEMO.email, passwort: CONSOLE_DEMO.passwort, name: CONSOLE_DEMO.name, kanzlei: "Anbieterzugang (Demo)", stadt: "Apex Console", titel: "Kundenverwaltung", initialen: "AT", farbe: "#0B1020", console: true },
       ];
     },
     async login(email, passwort) {
       const e = email.trim().toLowerCase();
       if (!e || !passwort) throw new Error("Bitte geben Sie E-Mail-Adresse und Passwort ein.");
       if (e.length > 254 || passwort.length > PASSWORT_MAX) throw new Error("E-Mail-Adresse oder Passwort sind zu lang. Bitte prüfen Sie die Eingabe.");
-      if (e === CONSOLE_DEMO.email && passwort === CONSOLE_DEMO.passwort) {
+      // Auch die frühere Adresse (vor der Umbenennung in Apex) meldet an – die Sitzung zeigt immer die aktuelle.
+      if (istConsoleDemoAdresse(e) && passwort === CONSOLE_DEMO.passwort) {
         const s: DemoSession = { kind: "console" };
         lsSet(LS_SESSION, s);
         return sitzungFuer(s)!;
@@ -844,7 +852,7 @@ export function createDemoBackend(): Backend {
         const email = input.adminEmail.trim().toLowerCase();
         if (!input.kanzlei.trim() || !input.adminName.trim() || !input.bundesland) throw new Error("Bitte Kanzlei, Bundesland sowie Name und E-Mail-Adresse der Hauptnutzerin bzw. des Hauptnutzers angeben.");
         if (!istEmail(email)) throw new Error("Bitte geben Sie eine gültige E-Mail-Adresse an, z. B. c.reinholz@kanzlei.de.");
-        if (email === CONSOLE_DEMO.email) throw new Error("Die Adresse der Apex Console kann keiner Kanzlei zugeordnet werden – bitte eine andere Adresse wählen.");
+        if (istConsoleDemoAdresse(email)) throw new Error("Die Adresse der Apex Console kann keiner Kanzlei zugeordnet werden – bitte eine andere Adresse wählen.");
         if (registry().some((t) => t.users.some((u) => u.email.toLowerCase() === email))) throw new Error("Diese E-Mail-Adresse ist bereits einem Zugang zugeordnet. Bitte prüfen Sie die Adresse oder vergeben Sie dem bestehenden Zugang ein neues Passwort.");
         const suffix = zufallsKennung(6);
         const { tenant, admin } = baueKunde(input, suffix);
@@ -860,7 +868,7 @@ export function createDemoBackend(): Backend {
         lsSet(LS_REGISTRY, extra);
         // Startpasswort: Bei der ersten Anmeldung legt die Kanzlei ein eigenes Passwort fest (wie im Server-Betrieb).
         setzePasswortWechsel(admin.id, true);
-        // Anbieter-Eingriffe (I4-T16-01): eigener Urheber „AnwaltApex (Apex Console)“ im Kanzleiprotokoll
+        // Anbieter-Eingriffe (I4-T16-01): eigener Urheber „Apex Console“ im Kanzleiprotokoll
         protokolliere(tenant.id, anbieterVorgang(VORGANG.zugangAngelegt(admin.name, rollenLabel(admin)), { userId: admin.id, anbieterPerson: CONSOLE_DEMO.name }));
         protokolliere(tenant.id, anbieterVorgang(VORGANG.startpasswortVergeben(admin.name), { userId: admin.id, anbieterPerson: CONSOLE_DEMO.name }));
         return { tenant, admin, passwort };

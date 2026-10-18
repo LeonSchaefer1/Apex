@@ -645,7 +645,7 @@ function RsvErgaenzenDialog({ akte, open, onClose }: { akte: Akte; open: boolean
         </Field>
         <div className="flex items-start gap-2 rounded-[14px] bg-ink-softer p-3 text-[12.5px] leading-snug text-fg-2 shadow-[inset_0_0_0_1px_var(--line)] sm:col-span-2">
           <Info className="mt-0.5 size-3.5 shrink-0 text-ink" aria-hidden />
-          <span>Beim Speichern legt AnwaltApex wie in der Mandatsaufnahme die Deckungsanfrage als Entwurf an (wartet auf Ihre Freigabe) und setzt eine Wiedervorlage „Deckungszusage“ in 7 Tagen. Deckung: offen.</span>
+          <span>Beim Speichern legt Apex wie in der Mandatsaufnahme die Deckungsanfrage als Entwurf an (wartet auf Ihre Freigabe) und setzt eine Wiedervorlage „Deckungszusage“ in 7 Tagen. Deckung: offen.</span>
         </div>
       </div>
     </Modal>

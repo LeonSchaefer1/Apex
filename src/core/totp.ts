@@ -62,7 +62,7 @@ export function neuerSchluessel(): string {
 }
 
 /** otpauth-URI für Authenticator-Apps (Key-Uri-Format): Aussteller und Konto erscheinen in der App. */
-export function otpauthUri(schluessel: string, konto: string, aussteller = "AnwaltApex"): string {
+export function otpauthUri(schluessel: string, konto: string, aussteller = "Apex"): string {
   const label = encodeURIComponent(`${aussteller}:${konto}`);
   const p = new URLSearchParams({ secret: schluessel, issuer: aussteller, algorithm: "SHA1", digits: String(TOTP_STELLEN), period: String(TOTP_SCHRITT) });
   return `otpauth://totp/${label}?${p.toString()}`;

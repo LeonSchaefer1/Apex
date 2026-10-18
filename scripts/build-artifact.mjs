@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 const dir = process.argv[2] ?? "dist-demo";
+// Dateiname bleibt nach der Umbenennung in Apex: unter diesem Pfad wird das Artefakt unter derselben Adresse neu veröffentlicht.
 const out = process.argv[3] ?? "dist-artifact/anwaltapex.html";
 let html = fs.readFileSync(path.join(dir, "index.html"), "utf8");
 const css = [...html.matchAll(/<link rel="stylesheet"[^>]*href="([^"]+)"[^>]*>/g)];
@@ -10,9 +11,10 @@ const js = [...html.matchAll(/<script type="module"[^>]*src="([^"]+)"[^>]*><\/sc
 const read = (href) => fs.readFileSync(path.join(dir, href.replace(/^\.?\//, "")), "utf8");
 let styles = css.map((m) => read(m[1])).join("\n");
 let scripts = js.map((m) => read(m[1]).replace(/<\/script/gi, "<\\/script")).join("\n");
-const title = html.match(/<title>(.*?)<\/title>/)?.[1] ?? "AnwaltApex";
+// Artefakt-Titel ist ein Name ohne Erklärzusatz (Galerie/Browser-Tab); die Web-App behält „Apex – Kanzleisoftware“.
+const title = "Apex Kanzleisoftware";
 const body = `<title>${title}</title>
-<meta name="description" content="AnwaltApex – Kanzlei-Software mit KI-Fallanalyse, Fristenkontrolle nach § 222 ZPO und Lifetime-Lizenz.">
+<meta name="description" content="Apex – die Kanzleisoftware mit KI-Fallanalyse, Fristenkontrolle nach § 222 ZPO und Lifetime-Lizenz.">
 <style>${styles}</style>
 <div id="root"></div>
 <script type="module">${scripts}</script>

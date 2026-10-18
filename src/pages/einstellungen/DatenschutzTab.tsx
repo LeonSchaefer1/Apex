@@ -152,7 +152,7 @@ export function DatenschutzTab() {
         </ul>
       </Abschnitt>
 
-      <Abschnitt titel="Berufsrecht & Datenschutz" text="Woran sich Gestaltung und Verträge von AnwaltApex ausrichten." icon={<Scale className="size-[18px]" />}>
+      <Abschnitt titel="Berufsrecht & Datenschutz" text="Woran sich Gestaltung und Verträge von Apex ausrichten." icon={<Scale className="size-[18px]" />}>
         <ul className="grid grid-cols-1 gap-2.5">
           {RECHT.map((r) => (
             <li key={r.norm} className="rounded-[16px] bg-[var(--surface-2)] p-3.5 ring-1 ring-[var(--line)]">
@@ -258,7 +258,7 @@ export function DatenschutzTab() {
         <ul className="divide-y divide-[var(--line)] overflow-hidden rounded-[16px] border border-[var(--line)]">
           {protokoll.length === 0 && (
             <li className="px-3.5 py-6 text-center text-[13px] text-fg-3">
-              {filter === "anmeldungen" ? "Noch keine Anmeldeereignisse." : filter === "anbieter" ? "Noch keine Eingriffe von AnwaltApex." : "Noch keine Einträge."}
+              {filter === "anmeldungen" ? "Noch keine Anmeldeereignisse." : filter === "anbieter" ? "Noch keine Eingriffe von Apex." : "Noch keine Einträge."}
             </li>
           )}
           {protokoll.map((a, i) => (
@@ -266,7 +266,7 @@ export function DatenschutzTab() {
           ))}
         </ul>
         <p className="mt-2 text-[12.5px] text-fg-3">
-          Auszug der letzten Einträge. Eingriffe von AnwaltApex (z. B. ein neues Startpasswort über die Apex Console) stehen hier ebenfalls. KI-Anfragen werden ohne Inhalte protokolliert, Fehlversuche ohne das eingegebene Passwort. Nach 3 Fehlversuchen für dasselbe Konto innerhalb von 15 Minuten erhalten Partner und Administration einen Hinweis.
+          Auszug der letzten Einträge. Eingriffe von Apex (z. B. ein neues Startpasswort über die Apex Console) stehen hier ebenfalls. KI-Anfragen werden ohne Inhalte protokolliert, Fehlversuche ohne das eingegebene Passwort. Nach 3 Fehlversuchen für dasselbe Konto innerhalb von 15 Minuten erhalten Partner und Administration einen Hinweis.
         </p>
       </Abschnitt>
 
@@ -303,19 +303,19 @@ type ProtokollFilter = "alle" | "anmeldungen" | "anbieter";
 
 /**
  * Eintrag im Kanzleiprotokoll (I4-T16-01): Text umbricht statt gekürzt zu werden; über drei Zeilen „Mehr anzeigen“.
- * Urheber: Person der Kanzlei, „AnwaltApex – … (Apex Console)“ bei Anbieter-Eingriffen, „Anmeldeversuch bzw. Sperre (automatisch)“
+ * Urheber: Person der Kanzlei, „Apex Console – …“ bei Anbieter-Eingriffen, „Anmeldeversuch bzw. Sperre (automatisch)“
  * nur bei echten automatischen Anmeldeereignissen (Fehlversuch, Sperre, Warnung).
  */
 function ProtokollZeile({ a, i, namen }: { a: Aktivitaet; i: number; namen: Map<string, User> }) {
-  // Vorgänge durch AnwaltApex bzw. das System (z. B. Zugang angelegt, Startpasswort vergeben): `userId` nennt die
-  // betroffene Person – ausgelöst hat sie AnwaltApex, nicht die Person selbst.
+  // Vorgänge durch Apex bzw. das System (z. B. Zugang angelegt, Startpasswort vergeben): `userId` nennt die
+  // betroffene Person – ausgelöst hat sie Apex, nicht die Person selbst.
   const u = a.akteur !== "system" && a.userId ? namen.get(a.userId) : undefined;
   const anbieter = a.akteur === "system" ? anbieterUrheber(a) : undefined;
   const anmeldung = a.kategorie === "anmeldung";
   const wer =
     a.beispiel && !u
       ? "Beispielperson"
-      : (u?.name ?? anbieter ?? (anmeldung && a.akteur === "system" ? "Anmeldeversuch bzw. Sperre (automatisch)" : a.akteur === "system" ? "AnwaltApex (System)" : "Unbekannte Person"));
+      : (u?.name ?? anbieter ?? (anmeldung && a.akteur === "system" ? "Anmeldeversuch bzw. Sperre (automatisch)" : a.akteur === "system" ? "Apex (System)" : "Unbekannte Person"));
   const textRef = useRef<HTMLSpanElement>(null);
   const [lang, setLang] = useState(false);
   const [offen, setOffen] = useState(false);

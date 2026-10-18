@@ -131,7 +131,7 @@ export function TopBar() {
         <div className="flex min-w-0 flex-1 items-center gap-2 md:hidden">
           <AppIcon size={28} className="max-[359px]:hidden" />
           <span className="truncate text-[15px] font-semibold tracking-[-0.02em] max-[379px]:text-[14px] max-[379px]:tracking-[-0.03em] max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:text-[13.5px] max-[359px]:leading-[1.15] max-[359px]:hyphens-auto">
-            {item?.label ?? "AnwaltApex"}
+            {item?.label ?? "Apex"}
           </span>
         </div>
 

@@ -1,12 +1,13 @@
 # Start: cp .env.example .env  (Werte anpassen)  ->  docker compose up -d  ->  http://localhost:8787
 services:
-  anwaltapex:
+  apex:
     build: .
-    image: anwaltapex:latest
+    image: apex:latest
     restart: unless-stopped
     ports:
       - "8787:8787"
     env_file: .env
+    # Datenbank-Datei und Volume behalten ihre Namen aus der Zeit vor der Umbenennung in Apex – sonst stünde ein leeres Volume bereit.
     environment:
       DATABASE_PATH: /data/anwaltapex.db
     volumes:

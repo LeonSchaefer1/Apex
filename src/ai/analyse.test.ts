@@ -339,6 +339,8 @@ test("Assistent (offline): Zahlenfragen mit Cockpit-Zählweise statt Wiki-Artike
     assert.match(await frag("Wie viele Akten haben wir?"), new RegExp(`^Sie haben ${a.offen} offene Akten`));
     assert.match(await frag("Was ist die Apex Island?"), /schwarze Kapsel/);
     assert.match(await frag("Hallo"), /Ich bin der Apex Assistent/);
+    assert.match(await frag("Wer bist du?"), /^Ich bin der Apex Assistent, der eingebaute KI-Assistent von Apex\./);
+    assert.match(await frag("Hallo, wer sind Sie?"), /^Ich bin der Apex Assistent/);
     // Wiki: Bedienfragen treffen den passenden Artikel, Unsinn bekommt eine ehrliche Rückfrage
     assert.equal(wikiSuche("Wie funktioniert die Apex Island?")[0]?.w.key, "motor");
     assert.equal(wikiSuche("Wie viele neue Nachrichten habe ich?").length, 0);

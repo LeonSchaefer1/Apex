@@ -5,7 +5,7 @@ import type { Bundesland, ISODate } from "./types";
 export interface Feiertag {
   datum: ISODate;
   name: string;
-  /** true = nur in Teilen des Landes (z. B. Mariä Himmelfahrt in Bayern). AnwaltApex verlängert hier vorsorglich NICHT
+  /** true = nur in Teilen des Landes (z. B. Mariä Himmelfahrt in Bayern). Apex verlängert hier vorsorglich NICHT
    *  (rechtlich verlängert der Feiertag die Frist, wenn er am Ort des Gerichts gilt – der frühere Termin ist die sichere Seite). */
   teilweise?: boolean;
 }

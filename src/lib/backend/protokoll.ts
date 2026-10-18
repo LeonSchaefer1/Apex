@@ -14,13 +14,13 @@ export function zeitBerlin(d = new Date()): string {
   return `${teile.year}-${teile.month}-${teile.day}T${teile.hour}:${teile.minute}:${teile.second}`;
 }
 
-/** Angaben zu einem neuen Startpasswort durch AnwaltApex (Apex Console) – Pflicht: wer hat es angefordert, aus welchem Anlass. */
+/** Angaben zu einem neuen Startpasswort über die Apex Console – Pflicht: wer hat es angefordert, aus welchem Anlass. */
 export interface ConsolePasswortAnlass {
   /** Person in der Kanzlei, die das neue Passwort angefordert hat (Name). */
   angefordertVon: string;
   /** Anlass, z. B. „Passwort vergessen – telefonisch angefordert“. */
   anlass: string;
-  /** Bearbeitende Person bei AnwaltApex (z. B. „Lena Vogt“); ohne Angabe der angemeldete Console-Zugang. */
+  /** Bearbeitende Person bei Apex (z. B. „Lena Vogt“); ohne Angabe der angemeldete Console-Zugang. */
   bearbeiter?: string;
 }
 
@@ -37,21 +37,21 @@ export function pruefeConsolePasswortAnlass(a: Partial<ConsolePasswortAnlass> | 
 }
 
 export const VORGANG = {
-  zugangAngelegt: (name: string, rolle: string) => `Zugang für ${name} angelegt (${rolle}) – durch AnwaltApex (Apex Console)`,
+  zugangAngelegt: (name: string, rolle: string) => `Zugang für ${name} angelegt (${rolle}) – durch Apex`,
   startpasswortVergeben: (name: string) => `Startpasswort für ${name} vergeben – eigenes Passwort bei der ersten Anmeldung Pflicht`,
   ersteAnmeldung: (name: string) => `Erste Anmeldung von ${name}`,
   eigenesPasswort: (name: string) => `Eigenes Passwort festgelegt – ${name}`,
-  /** „Startpasswort für Mia Becker durch AnwaltApex neu vergeben – Lena Vogt auf Anforderung von Dr. Julia Hartmann, Anlass: …“ */
-  consolePasswort: (name: string, a?: ConsolePasswortAnlass, consoleName = "AnwaltApex Team") =>
+  /** „Startpasswort für Mia Becker durch Apex neu vergeben – Lena Vogt auf Anforderung von Dr. Julia Hartmann, Anlass: …“ */
+  consolePasswort: (name: string, a?: ConsolePasswortAnlass, consoleName = ANBIETER_TEAM) =>
     a
-      ? `Startpasswort für ${name} durch AnwaltApex neu vergeben – ${(a.bearbeiter ?? "").trim() || consoleName} auf Anforderung von ${a.angefordertVon.trim()}, Anlass: ${a.anlass.trim()}`
-      : `Startpasswort für ${name} durch AnwaltApex (Apex Console) neu vergeben`,
+      ? `Startpasswort für ${name} durch Apex neu vergeben – ${(a.bearbeiter ?? "").trim() || consoleName} auf Anforderung von ${a.angefordertVon.trim()}, Anlass: ${a.anlass.trim()}`
+      : `Startpasswort für ${name} durch Apex neu vergeben`,
   eigenesPasswortGeaendert: (name: string) => `Eigenes Passwort geändert – ${name}`,
   rechnungsangabenGeaendert: (felder: string[], durch: string) => `Rechnungsangaben geändert${felder.length ? ` (${felder.join(", ")})` : ""} – durch ${durch}`,
   automatikPausiert: (automatik: string, durch: string, folge: string) => `Automatik „${automatik}“ pausiert – durch ${durch}. ${folge}`,
   automatikEingeschaltet: (automatik: string, durch: string) => `Automatik „${automatik}“ wieder eingeschaltet – durch ${durch}`,
-  standardPasswort: (name: string) => `Demo-Passwort für ${name} durch AnwaltApex (Apex Console) wiederhergestellt`,
-  beispieldatenZurueckgesetzt: (durch?: string) => (durch ? `Beispieldaten zurückgesetzt – durch ${durch}` : "Beispieldaten durch AnwaltApex (Apex Console) zurückgesetzt"),
+  standardPasswort: (name: string) => `Demo-Passwort für ${name} durch Apex wiederhergestellt`,
+  beispieldatenZurueckgesetzt: (durch?: string) => (durch ? `Beispieldaten zurückgesetzt – durch ${durch}` : "Beispieldaten durch Apex zurückgesetzt"),
   zweiFaktorEingerichtet: (name: string) => `Zwei-Faktor-Anmeldung eingerichtet – ${name}`,
   zweiFaktorDeaktiviert: (name: string) => `Zwei-Faktor-Anmeldung deaktiviert – ${name}`,
   zweiFaktorZurueckgesetzt: (name: string, durch: string) => `Zwei-Faktor-Anmeldung von ${name} zurückgesetzt – durch ${durch}`,
@@ -105,21 +105,23 @@ export function zaehleFehlversuch(speicher: Map<string, number[]>, kontoId: stri
   return liste.length;
 }
 
-/** Name des allgemeinen Console-Zugangs – keine Person; im Protokoll steht dann nur „AnwaltApex (Apex Console)“. */
-export const ANBIETER_TEAM = "AnwaltApex Team";
+/** Name des allgemeinen Console-Zugangs – keine Person; im Protokoll steht dann nur „Apex Console“. */
+export const ANBIETER_TEAM = "Apex-Team";
+/** Auch frühere Namen des allgemeinen Zugangs (bis 18.10.2026 hieß das Produkt „AnwaltApex“) gelten in Alt-Einträgen nicht als Person. */
+const ANBIETER_TEAM_NAMEN = new Set([ANBIETER_TEAM, "Apex Team", "AnwaltApex Team"]);
 
 /** Person beim Anbieter aus „Vergeben durch“ bzw. dem Namen des Console-Zugangs – ohne den allgemeinen Teamnamen. */
 export function anbieterPersonAus(...namen: (string | null | undefined)[]): string | undefined {
   for (const n of namen) {
     const t = (n ?? "").trim().slice(0, 120);
-    if (t && t !== ANBIETER_TEAM) return t;
+    if (t && !ANBIETER_TEAM_NAMEN.has(t)) return t;
   }
   return undefined;
 }
 
 /**
  * Eingriff des Anbieters über die Apex Console (I4-T16-01): Zugang angelegt, Startpasswort, Demo-Passwort, Beispieldaten.
- * Eigener Urheber im Kanzleiprotokoll („AnwaltApex – Lena Vogt (Apex Console)“) und Filter „Anbieter“. Ein neues Startpasswort
+ * Eigener Urheber im Kanzleiprotokoll („Apex Console – Lena Vogt“) und Filter „Anbieter“. Ein neues Startpasswort
  * gehört zusätzlich zu den Anmeldungen (`kategorie`) und meldet sich bei Partner und Administration (`meldung`).
  */
 export function anbieterVorgang(text: string, opts: { userId?: ID; anbieterPerson?: string; kategorie?: "anmeldung"; meldung?: boolean } = {}): Aktivitaet {
@@ -134,23 +136,29 @@ export function anbieterVorgang(text: string, opts: { userId?: ID; anbieterPerso
   };
 }
 
-/** Stammt der Eintrag vom Anbieter? Neue Einträge über `quelle`, ältere (ohne `quelle`) am Text „durch AnwaltApex“ bzw. „(Apex Console)“. */
+/**
+ * Text eines Anbieter-Eingriffs: „durch AnwaltApex“ bzw. „(Apex Console)“ (Einträge vor der Umbenennung am 18.10.2026)
+ * oder „durch Apex“ vor „neu vergeben“, „wiederhergestellt“, „zurückgesetzt“ bzw. am Satzende.
+ */
+const ANBIETER_TEXT = /durch AnwaltApex|\(Apex Console\)|durch Apex(?= neu vergeben| wiederhergestellt| zurückgesetzt|$)/;
+
+/** Stammt der Eintrag vom Anbieter? Neue Einträge über `quelle`, ältere (ohne `quelle`) am Text. */
 export function istAnbieterEintrag(a: Pick<Aktivitaet, "quelle" | "text">): boolean {
-  return a.quelle === "anbieter" || /durch AnwaltApex|\(Apex Console\)/.test(a.text);
+  return a.quelle === "anbieter" || ANBIETER_TEXT.test(a.text);
 }
 
 /**
- * Urheber eines Anbieter-Eintrags im Kanzleiprotokoll: „AnwaltApex – Lena Vogt (Apex Console)“ bzw. „AnwaltApex (Apex Console)“.
+ * Urheber eines Anbieter-Eintrags im Kanzleiprotokoll: „Apex Console – Lena Vogt“ bzw. „Apex Console“.
  * `undefined`, wenn der Eintrag nicht vom Anbieter stammt. Bei Alt-Einträgen wird die Person aus dem Text gelesen.
  */
 export function anbieterUrheber(a: Pick<Aktivitaet, "quelle" | "anbieterPerson" | "text">): string | undefined {
   if (!istAnbieterEintrag(a)) return undefined;
-  const person = a.quelle === "anbieter" ? anbieterPersonAus(a.anbieterPerson) : anbieterPersonAus(/durch AnwaltApex neu vergeben – (.+?) auf Anforderung von /.exec(a.text)?.[1]);
-  return person ? `AnwaltApex – ${person} (Apex Console)` : "AnwaltApex (Apex Console)";
+  const person = a.quelle === "anbieter" ? anbieterPersonAus(a.anbieterPerson) : anbieterPersonAus(/durch (?:Anwalt)?Apex neu vergeben – (.+?) auf Anforderung von /.exec(a.text)?.[1]);
+  return person ? `Apex Console – ${person}` : "Apex Console";
 }
 
 let zaehler = 0;
-/** Neuer Protokolleintrag. `system`: Vorgang durch AnwaltApex bzw. das System; `nutzer`: von der Person selbst ausgelöst. */
+/** Neuer Protokolleintrag. `system`: Vorgang durch Apex bzw. das System; `nutzer`: von der Person selbst ausgelöst. */
 export function vorgang(text: string, opts: { akteur: "system" | "nutzer"; userId?: ID; zeit?: string }): Aktivitaet {
   zaehler = (zaehler + 1) % 1_000_000;
   const zufall = Math.random().toString(36).slice(2, 8);

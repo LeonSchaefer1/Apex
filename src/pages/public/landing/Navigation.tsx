@@ -78,7 +78,7 @@ export function Navigation({ scrollRef }: { scrollRef: RefObject<HTMLDivElement 
           gescrollt ? "glass-strong glass-deckend" : "glass",
         )}
       >
-        <button type="button" onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })} className="flex shrink-0 items-center gap-2.5 rounded-[12px]" aria-label="AnwaltApex – nach oben">
+        <button type="button" onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })} className="flex shrink-0 items-center gap-2.5 rounded-[12px]" aria-label="Apex – nach oben">
           <AppIcon size={32} />
           <Wordmark size={17} />
         </button>

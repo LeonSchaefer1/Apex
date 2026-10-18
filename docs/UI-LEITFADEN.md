@@ -1,4 +1,4 @@
-# AnwaltApex – UI- & Entwicklungsleitfaden
+# Apex – UI- & Entwicklungsleitfaden
 
 Dieser Leitfaden gilt für alle, die an der Web-App bauen. Ziel: **ein** konsistentes Produkt im Stil von Apple Liquid Glass – minimalistisch, ruhig, präzise, mit sinnvollen Animationen.
 

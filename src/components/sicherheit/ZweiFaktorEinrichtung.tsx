@@ -74,7 +74,7 @@ export function ZweiFaktorEinrichtung({ pflichtModus, onFertig, onStatus }: { pf
       setEinrichtung(null);
       setCode("");
       protokolliere(`Zwei-Faktor-Anmeldung eingerichtet – ${user.name}`, user.id);
-      toast("Zwei-Faktor-Anmeldung eingerichtet", { text: "Ab der nächsten Anmeldung fragt AnwaltApex nach dem Code.", ton: "erfolg" });
+      toast("Zwei-Faktor-Anmeldung eingerichtet", { text: "Ab der nächsten Anmeldung fragt Apex nach dem Code.", ton: "erfolg" });
       await laden();
     } catch (e) {
       setFehler(e instanceof Error ? e.message : "Der Code konnte nicht geprüft werden. Bitte versuchen Sie es erneut.");
@@ -164,7 +164,7 @@ export function ZweiFaktorEinrichtung({ pflichtModus, onFertig, onStatus }: { pf
       {!status.aktiv && !einrichtung && !status.gesperrt && (
         <div className="flex flex-wrap items-center gap-3">
           <p className="min-w-0 flex-1 basis-[240px] text-[13px] leading-relaxed text-fg-2">
-            Nach dem Passwort fragt AnwaltApex zusätzlich nach einem 6-stelligen Code aus einer Authenticator-App auf Ihrem Telefon (z. B. FreeOTP, Aegis, Microsoft oder Google Authenticator). Ein gestohlenes Passwort allein genügt dann nicht.
+            Nach dem Passwort fragt Apex zusätzlich nach einem 6-stelligen Code aus einer Authenticator-App auf Ihrem Telefon (z. B. FreeOTP, Aegis, Microsoft oder Google Authenticator). Ein gestohlenes Passwort allein genügt dann nicht.
           </p>
           <Button variant="primary" icon={<Smartphone className="size-4" />} loading={laedt} onClick={() => void starten()}>
             Zwei-Faktor einrichten

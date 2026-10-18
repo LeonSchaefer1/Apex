@@ -69,7 +69,7 @@ export function FeiertageInfo({ land: start }: { land: Bundesland }) {
                       <span className="num w-[92px] shrink-0 text-[12.5px] font-medium text-fg-2">{fmtDateWd(f.datum)}</span>
                       <span className="min-w-0 flex-1 text-[13px] font-medium leading-snug">{f.name.replace(/ \(regional\)$/, "")}</span>
                       {f.teilweise ? (
-                        <Chip tone="amber" title="Nur in Teilen des Landes Feiertag – AnwaltApex verlängert Fristen hier vorsorglich nicht">
+                        <Chip tone="amber" title="Nur in Teilen des Landes Feiertag – Apex verlängert Fristen hier vorsorglich nicht">
                           teilweise
                         </Chip>
                       ) : wd === 0 || wd === 6 ? (
@@ -85,8 +85,8 @@ export function FeiertageInfo({ land: start }: { land: Bundesland }) {
                 <Info className="mt-0.5 size-4 shrink-0 text-amber" />
                 <span>
                   <strong className="font-semibold text-fg">Gerichtsort statt Kanzleisitz.</strong> Ein Feiertag nur am Kanzleisitz (z. B. Allerheiligen in Nordrhein-Westfalen bei einem Gericht in Hessen) verlängert die Frist nicht – der Fristenrechner weist im Rechenweg darauf hin.{" "}
-                  <strong className="font-semibold text-fg">Regionale Feiertage: AnwaltApex verlängert vorsorglich nicht.</strong> Maßgeblich sind die Feiertage am Ort des Gerichts bzw. der Behörde, bei der die Frist zu wahren ist
-                  (§ 222 Abs. 2 ZPO). Gilt ein nur regionaler Feiertag dort (z. B. Mariä Himmelfahrt in München), endet die Frist rechtlich erst am nächsten Werktag – AnwaltApex notiert trotzdem den früheren Tag als
+                  <strong className="font-semibold text-fg">Regionale Feiertage: Apex verlängert vorsorglich nicht.</strong> Maßgeblich sind die Feiertage am Ort des Gerichts bzw. der Behörde, bei der die Frist zu wahren ist
+                  (§ 222 Abs. 2 ZPO). Gilt ein nur regionaler Feiertag dort (z. B. Mariä Himmelfahrt in München), endet die Frist rechtlich erst am nächsten Werktag – Apex notiert trotzdem den früheren Tag als
                   sichere Seite und weist bei der Berechnung darauf hin.
                 </span>
               </div>

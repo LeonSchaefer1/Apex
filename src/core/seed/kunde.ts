@@ -8,10 +8,20 @@ export function initialen(name: string): string {
   return ((teile[0]?.[0] ?? "") + (teile[teile.length - 1]?.[0] ?? "")).toUpperCase();
 }
 
+/** Domain der Anbieter-Adressen (Platzhalter der Marke Apex, vor dem Livegang durch die echte Domain zu ersetzen). */
+export const ANBIETER_DOMAIN = "apex-kanzlei.de";
+/** Domain bis zur Umbenennung in Apex am 18.10.2026 (Produktname „AnwaltApex“). */
+const ALTE_ANBIETER_DOMAIN = "@anwaltapex.de";
+
+/** Gespeicherte Anbieter-Adresse (z. B. Ansprechpartnerin in älteren Kundendatensätzen) auf die aktuelle Domain bringen. */
+export function aktuelleAnbieterAdresse(email: string): string {
+  return email.toLowerCase().endsWith(ALTE_ANBIETER_DOMAIN) ? `${email.slice(0, -ALTE_ANBIETER_DOMAIN.length)}@${ANBIETER_DOMAIN}` : email;
+}
+
 /** Feste Ansprechpartnerin neuer Kundenzugänge (Testzugänge) – Quelle für Einladung, Anmeldeseite und Landing. */
 export const STANDARD_ANSPRECHPARTNER: Ansprechpartner = {
   name: "Lena Vogt", rolle: "Ihre feste Ansprechpartnerin", bezeichnung: "Ansprechpartnerin", telefon: "+49 30 555 018 42",
-  email: "lena.vogt@anwaltapex.de", initialen: "LV", verfuegbar: "Mo–Fr 7:30–19:00 Uhr",
+  email: "lena.vogt@apex-kanzlei.de", initialen: "LV", verfuegbar: "Mo–Fr 7:30–19:00 Uhr",
 };
 
 /** Berufsbezeichnung der Hauptnutzerin bzw. des Hauptnutzers nach Anrede. */
@@ -45,7 +55,7 @@ export function baueKunde(input: {
     adresse: input.stadt,
     bundesland: input.bundesland,
     schwerpunkte: input.schwerpunkte.length ? input.schwerpunkte : ["Vertragsrecht"],
-    lizenz: { typ: "lifetime", seit, arbeitsplaetze: input.arbeitsplaetze, lizenzNr: `AAX-LT-${jahr}-${String(Math.floor(Math.random() * 9000) + 1000)}` },
+    lizenz: { typ: "lifetime", seit, arbeitsplaetze: input.arbeitsplaetze, lizenzNr: `APX-LT-${jahr}-${String(Math.floor(Math.random() * 9000) + 1000)}` },
     ansprechpartner: { ...STANDARD_ANSPRECHPARTNER },
     farbe,
     createdAt: now.toISOString(),

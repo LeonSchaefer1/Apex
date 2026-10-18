@@ -1,7 +1,7 @@
 # Ein-Klick-Deployment auf Render (https://render.com) – Testumgebung für Kunden, Region Frankfurt.
 services:
   - type: web
-    name: anwaltapex
+    name: apex
     runtime: docker
     plan: starter
     region: frankfurt
@@ -11,6 +11,7 @@ services:
       mountPath: /data
       sizeGB: 1
     envVars:
+      # Dateiname bleibt nach der Umbenennung in Apex – vorhandene Daten werden weiter gefunden
       - key: DATABASE_PATH
         value: /data/anwaltapex.db
       - key: COOKIE_SECURE
@@ -23,7 +24,7 @@ services:
       - key: DEMO_QUICK_LOGIN
         value: "true"
       - key: CONSOLE_ADMIN_EMAIL
-        value: admin@anwaltapex.de
+        value: admin@apex-kanzlei.de
       - key: CONSOLE_ADMIN_PASSWORD
         sync: false
       - key: ANTHROPIC_API_KEY

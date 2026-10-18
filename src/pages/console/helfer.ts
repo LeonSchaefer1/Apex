@@ -81,13 +81,13 @@ export function einladungsText(p: { tenant: Tenant; user: User; hauptnutzer?: bo
   const ihre = bez === "Ansprechpartnerin" ? "Ihre feste Ansprechpartnerin" : "Ihren festen Ansprechpartner";
   const rolle = rollenLabel(user) + (p.hauptnutzer ? ` (${hauptnutzerBegriff(user)} der Kanzlei)` : "");
   return [
-    p.neuesPasswort ? "Betreff: Ihr Zugang zu AnwaltApex – neues Startpasswort" : "Betreff: Ihr Testzugang zu AnwaltApex",
+    p.neuesPasswort ? "Betreff: Ihr Zugang zu Apex – neues Startpasswort" : "Betreff: Ihr Testzugang zu Apex",
     "",
     briefAnrede(user),
     "",
     p.neuesPasswort
-      ? `für Ihren Zugang zu AnwaltApex (${tenant.name}) wurde ein neues Startpasswort vergeben. Das bisherige Passwort ist nicht mehr gültig.`
-      : `vielen Dank für Ihr Interesse an AnwaltApex. Ihr persönlicher Testzugang für ${tenant.name} ist eingerichtet${p.beispieldaten ? " – mit Beispielakten, damit Sie Fristen, Posteingang, KI-Fallanalyse und 38h-Motor sofort ausprobieren können" : ""}.`,
+      ? `für Ihren Zugang zu Apex (${tenant.name}) wurde ein neues Startpasswort vergeben. Das bisherige Passwort ist nicht mehr gültig.`
+      : `vielen Dank für Ihr Interesse an Apex. Ihr persönlicher Testzugang für ${tenant.name} ist eingerichtet${p.beispieldaten ? " – mit Beispielakten, damit Sie Fristen, Posteingang, KI-Fallanalyse und 38h-Motor sofort ausprobieren können" : ""}.`,
     "",
     anmeldeZeile(),
     `E-Mail: ${user.email}`,
@@ -101,7 +101,7 @@ export function einladungsText(p: { tenant: Tenant; user: User; hauptnutzer?: bo
     `Bei Fragen erreichen Sie ${ihre} ${ap.name} direkt unter ${ap.telefon} oder ${ap.email} (${ap.verfuegbar}).`,
     "",
     "Mit freundlichen Grüßen",
-    "Ihr AnwaltApex-Team",
+    "Ihr Apex-Team",
   ].join("\n");
 }
 

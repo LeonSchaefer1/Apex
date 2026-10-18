@@ -1,4 +1,4 @@
-# AnwaltApex – Hinweise für Claude Code
+# Apex – Hinweise für Claude Code
 
 Lies zuerst `docs/MASTERPROMPT.md` (Produkt, Anforderungen, Phasen) und `docs/UI-LEITFADEN.md` (Design- & Coderegeln).
 
