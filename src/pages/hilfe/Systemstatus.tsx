@@ -7,6 +7,7 @@ import { addDays, fmtDate, fmtNum, today } from "@/core/dates";
 import { letzteSicherung } from "@/core/rueckruf";
 import { Card, Chip } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 interface Dienst {
   key: string;
@@ -70,17 +71,17 @@ export function Systemstatus() {
       </div>
       <Card padded={false}>
         <div className="flex flex-wrap items-center gap-4 border-b border-[var(--line)] p-5 md:px-6">
-          <motion.div initial={{ scale: 0.6, opacity: 0 }} whileInView={{ scale: 1, opacity: 1 }} viewport={{ once: true }} transition={{ type: "spring", stiffness: 420, damping: 22 }} className="relative grid size-12 place-items-center rounded-full bg-green-soft text-green">
+          <motion.div initial={{ scale: 0.6, opacity: 0 }} whileInView={{ scale: 1, opacity: 1 }} viewport={{ once: true }} transition={BEWEGUNG.standard} className="relative grid size-12 place-items-center rounded-full bg-green-soft text-green">
             <span className="absolute inset-0 animate-ping rounded-full bg-[var(--green)] opacity-15 [animation-duration:2.6s]" />
             <CheckCircle2 className="size-6" />
           </motion.div>
           <div className="min-w-0 flex-1 basis-[200px]">
-            <div className="text-[17px] font-semibold tracking-[-0.02em]">Alle Systeme betriebsbereit</div>
-            <div className="text-[12.5px] text-fg-3">
+            <div className="text-[18px] font-semibold tracking-[-0.02em]">Alle Systeme betriebsbereit</div>
+            <div className="text-[13px] text-fg-3">
               Zuletzt geprüft vor <GeprueftZaehler /> Sek. · nächste Prüfung automatisch
             </div>
           </div>
-          <span className="w-full text-[12.5px] text-fg-3 sm:w-auto">Messwerte im Prototyp simuliert</span>
+          <span className="w-full text-[13px] text-fg-3 sm:w-auto">Messwerte im Prototyp simuliert</span>
         </div>
         <ul className="divide-y divide-[var(--line)]">
           {dienste.map((d, i) => (
@@ -100,10 +101,10 @@ function DienstZeile({ d, index, messung }: { d: Dienst; index: number; messung:
   return (
     <li className="grid grid-cols-1 gap-3 px-5 py-4 md:grid-cols-[minmax(0,280px)_minmax(0,1fr)] md:items-center md:gap-6 md:px-6">
       <div className="flex min-w-0 items-center gap-3">
-        <span className={cn("grid size-9 shrink-0 place-items-center rounded-[11px]", d.ki ? "bg-violet-soft text-violet" : "bg-ink-soft text-ink")}>{d.icon}</span>
+        <span className={cn("grid size-9 shrink-0 place-items-center rounded-md", d.ki ? "bg-[var(--surface-2)] text-fg-3" : "bg-ink-soft text-ink")}>{d.icon}</span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-[13.5px] font-semibold">{d.name}</span>
+            <span className="text-[14px] font-semibold">{d.name}</span>
             <Chip tone="green" dot>
               Betriebsbereit
             </Chip>
@@ -114,7 +115,7 @@ function DienstZeile({ d, index, messung }: { d: Dienst; index: number; messung:
         </div>
       </div>
       <div className="min-w-0">
-        <div className="mb-1.5 flex items-baseline justify-between gap-3 text-[12.5px] text-fg-3">
+        <div className="mb-1.5 flex items-baseline justify-between gap-3 text-[13px] text-fg-3">
           <span>
             {d.latenz || d.latenzText ? (
               <>
@@ -136,7 +137,7 @@ function DienstZeile({ d, index, messung }: { d: Dienst; index: number; messung:
           <span>heute</span>
         </div>
         {d.vorfall && (
-          <div className="mt-2 flex gap-2 rounded-[12px] bg-amber-soft px-3 py-2 text-[12px] leading-snug text-fg-2">
+          <div className="mt-2 flex gap-2 rounded-md bg-amber-soft px-3 py-2 text-[12px] leading-snug text-fg-2">
             <span className="mt-1 size-2 shrink-0 rounded-[2px] bg-[var(--amber)]" />
             <span>
               <span className="font-semibold">{fmtDate(addDays(heute, -d.vorfall.tageZurueck))} (Beispiel):</span> {d.vorfall.text}
@@ -176,7 +177,7 @@ const UptimeStreifen = memo(function UptimeStreifen({ name, vorfallTage, heute }
           initial={{ scaleY: 0.3, opacity: 0 }}
           whileInView={{ scaleY: 1, opacity: t.gelb ? 1 : 0.85 }}
           viewport={{ once: true }}
-          transition={{ delay: Math.min(0.6, k * 0.005), type: "spring", stiffness: 420, damping: 30 }}
+          transition={BEWEGUNG.standard}
           className={cn("min-w-0 flex-1 origin-bottom rounded-[2px] transition-opacity hover:opacity-70", t.gelb ? "bg-[var(--amber)]" : "bg-[var(--green)]", k < TAGE - 45 && "hidden sm:block")}
         />
       ))}

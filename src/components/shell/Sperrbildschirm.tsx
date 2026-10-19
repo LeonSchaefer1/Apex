@@ -4,7 +4,7 @@ import { Eye, EyeOff, Lock, LogOut, Unlock } from "lucide-react";
 import { useKanzlei, useSession, sperreMinutenFuer } from "@/store/session";
 import { useData } from "@/store/data";
 import { Avatar, Button, Input } from "@/components/ui";
-import { AppIcon } from "@/components/Logo";
+import { Wortmarke } from "@/components/Logo";
 
 /**
  * Sperre bei Inaktivität: liegt deckend über der App – Inhalte sind unsichtbar (die App darunter ist zusätzlich inert).
@@ -45,31 +45,24 @@ export function Sperrbildschirm() {
 
   return (
     <div className="fixed inset-0 z-[200] grid place-items-center overflow-y-auto bg-[var(--bg)] px-4 py-8" role="dialog" aria-modal="true" aria-labelledby="sperre-titel">
-      <div className="aura" aria-hidden>
-        <i />
-        <i />
-        <i />
-        <i />
-      </div>
       <motion.form
-        initial={{ opacity: 0, y: 12, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ type: "spring", stiffness: 420, damping: 34 }}
-        className="glass-strong relative z-10 w-full max-w-[420px] rounded-[30px] p-6 sm:p-8"
-        style={{ boxShadow: "var(--glass-shadow-lg)" }}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.22, ease: [0.2, 0, 0, 1] }}
+        className="relative z-10 w-full max-w-[400px] rounded-xl border border-[var(--line)] bg-[var(--surface)] p-6"
         onSubmit={(e) => {
           e.preventDefault();
           void entsperren();
         }}
       >
         <div className="flex items-center gap-3">
-          <AppIcon size={34} />
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-soft px-2.5 py-1 text-[13px] font-medium text-fg-2">
-            <Lock className="size-3.5 text-amber" /> Gesperrt
+          <Wortmarke size={20} />
+          <span className="chip ml-auto">
+            <Lock aria-hidden /> Gesperrt
           </span>
         </div>
         <div className="mt-6 flex items-center gap-3">
-          <Avatar initialen={user.initialen} farbe={user.farbe} size={48} />
+          <Avatar initialen={user.initialen} farbe={user.farbe} size={40} />
           <div className="min-w-0">
             <h1 id="sperre-titel" className="title-lg truncate">
               {user.name}
@@ -77,7 +70,7 @@ export function Sperrbildschirm() {
             <p className="truncate text-[13px] text-fg-3">{tenant.kurzname}</p>
           </div>
         </div>
-        <p className="mt-4 text-[13.5px] leading-relaxed text-fg-2">
+        <p className="mt-4 text-[14px] leading-5 text-fg-2">
           Apex wurde nach {minuten ?? 15} Minuten ohne Aktivität gesperrt – zum Schutz der Mandantendaten. Bitte melden Sie sich mit Ihrem Passwort wieder an.
         </p>
         <input type="email" autoComplete="username" value={user.email} readOnly hidden />
@@ -85,13 +78,13 @@ export function Sperrbildschirm() {
           <label htmlFor="sperre-pw" className="sr-only">
             Passwort
           </label>
-          <Input ref={feld} id="sperre-pw" type={zeige ? "text" : "password"} autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Passwort" className="!h-12 !pr-11" />
-          <button type="button" onClick={() => setZeige((v) => !v)} className="icon-btn absolute right-1.5 top-1/2 !size-9 -translate-y-1/2" aria-label={zeige ? "Passwort verbergen" : "Passwort anzeigen"}>
+          <Input ref={feld} id="sperre-pw" type={zeige ? "text" : "password"} autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Passwort" className="!h-11 !pr-12" />
+          <button type="button" onClick={() => setZeige((v) => !v)} className="icon-btn absolute right-0.5 top-1/2 !size-10 -translate-y-1/2" aria-label={zeige ? "Passwort verbergen" : "Passwort anzeigen"}>
             {zeige ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
           </button>
         </div>
         {fehler && (
-          <div role="alert" className="mt-3 rounded-[12px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal">
+          <div role="alert" className="mt-3 rounded-md bg-seal-soft px-3 py-2 text-[13px] text-seal-text">
             {fehler}
           </div>
         )}

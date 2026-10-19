@@ -71,7 +71,7 @@ export function AntwortDrawer({ n, open, onClose }: { n: Nachricht; open: boolea
         <Field label="Nachricht" htmlFor="antwort-text" hint="Tipp: Die Antwort wird automatisch in der zugeordneten Akte abgelegt.">
           <Textarea id="antwort-text" rows={14} value={text} onChange={(e) => setText(e.target.value)} />
         </Field>
-        <div className="rounded-[16px] bg-[var(--ink-softer)] p-3.5 text-[12.5px] leading-relaxed text-fg-3 ring-1 ring-inset ring-[var(--line)]">
+        <div className="border-l-2 border-[var(--line-strong)] py-1 pl-3.5 text-[13px] leading-relaxed text-fg-3">
           <div className="mb-1 font-semibold text-fg-2">Ursprüngliche Nachricht</div>
           <div className="line-clamp-4 whitespace-pre-line">{n.text}</div>
         </div>

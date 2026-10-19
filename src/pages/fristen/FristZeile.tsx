@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { AlertTriangle, Bot, CalendarClock, CheckCircle2, ChevronDown, Clock, MapPin, MoreHorizontal, PanelRightOpen, PenLine, RotateCcw, ShieldAlert, Sparkles, Trash2, Undo2, UserCheck, Users } from "lucide-react";
+import { AlertTriangle, Bot, TriangleAlert, CalendarClock, CheckCircle2, ChevronDown, Clock, MapPin, MoreHorizontal, PanelRightOpen, PenLine, RotateCcw, Sparkles, Trash2, Undo2, UserCheck, Users } from "lucide-react";
 import { fmtDate, fmtDateShort, fmtDateWd, schuetzeLeerzeichen, today } from "@/core/dates";
 import { fristArtZu } from "@/core/fristen";
 import type { Akte, Frist, FristTyp, User } from "@/core/types";
@@ -13,8 +13,9 @@ import { cn } from "@/lib/cn";
 import { QUELLE_LABEL, QUELLE_TITEL, TYP_META, bestaetigeKontrolle, brauchtKontrolle, darfKontrollieren, durchAssistent, eebAbweichungDerFrist, eebZurFrist, erfordertNachweis, erledigeFrist, nachweisText, oeffneFristWieder, streifenFarbe } from "./logik";
 import { ErledigenDialog } from "./ErledigenDialog";
 import { KorrekturAnfordernDialog, KorrekturDialog } from "./KorrekturDialog";
+import { BEWEGUNG } from "@/lib/bewegung";
 
-const spring = { type: "spring", stiffness: 460, damping: 36 } as const;
+const spring = BEWEGUNG.standard;
 
 export function TypChip({ typ, regelKey }: { typ: FristTyp; regelKey?: string }) {
   const m = TYP_META[typ];
@@ -27,7 +28,7 @@ export function TypChip({ typ, regelKey }: { typ: FristTyp; regelKey?: string })
       </span>
     );
   return (
-    <Chip tone={art?.kritisch ? "seal" : m.tone} icon={art?.kritisch ? <ShieldAlert className="size-3" /> : undefined} title={art?.kurz}>
+    <Chip tone={art?.kritisch ? "seal" : m.tone} title={art?.kurz}>
       {/* nicht verlängerbare Fristen (§ 4 KSchG …) mit Text, nicht nur Farbe – wie im Kalender (I2-T04-01) */}
       {art?.kritisch && art.label !== "Notfrist" ? `${art.label} · nicht verlängerbar` : (art?.label ?? m.label)}
     </Chip>
@@ -38,15 +39,15 @@ export function TypChip({ typ, regelKey }: { typ: FristTyp; regelKey?: string })
 export function QuelleChip({ quelle, notiz }: { quelle: Frist["quelle"]; notiz?: string }) {
   if (durchAssistent({ notiz }))
     return (
-      <Chip tone="violet" icon={<Bot className="size-3" />} title="Vom Apex Assistenten auf Ihren Auftrag angelegt">
+      <Chip tone="outline" icon={<Bot className="size-3" />} title="Vom Apex Assistenten auf Ihren Auftrag angelegt">
         Durch Assistent angelegt
       </Chip>
     );
   if (quelle === "ki")
     return (
-      <span className="chip ai-ring !bg-transparent" title={QUELLE_TITEL.ki}>
-        <Sparkles className="size-3 text-violet" />
-        <span className="ai-text font-semibold">{QUELLE_LABEL.ki}</span>
+      <span className="chip chip-outline" title={QUELLE_TITEL.ki}>
+        <Sparkles aria-hidden />
+        <span>{QUELLE_LABEL.ki}</span>
       </span>
     );
   return (
@@ -85,10 +86,10 @@ export function useEebDatum(f: Frist): string | undefined {
 export function ErledigtKnopf({ erledigt, onClick, className }: { erledigt: boolean; onClick: () => void; className?: string }) {
   return (
     <button type="button" onClick={onClick} data-aktion="erledigt" className={cn("btn btn-sm btn-secondary !pl-2", className)} aria-pressed={erledigt} title={erledigt ? "Wieder öffnen" : "Als erledigt markieren"}>
-      <span className={cn("relative grid size-[18px] place-items-center rounded-full border-[1.5px] transition-colors", erledigt ? "border-green" : "border-[var(--line-strong)]")}>
-        <motion.span className="absolute inset-[-1.5px] rounded-full bg-green" initial={false} animate={{ scale: erledigt ? 1 : 0, opacity: erledigt ? 1 : 0 }} transition={{ type: "spring", stiffness: 600, damping: 26 }} />
-        <svg viewBox="0 0 24 24" className="relative size-3 text-[var(--surface)]" aria-hidden>
-          <motion.path d="M5 12.5l4.5 4.5L19 7.5" stroke="currentColor" strokeWidth={3.2} fill="none" strokeLinecap="round" strokeLinejoin="round" initial={false} animate={{ pathLength: erledigt ? 1 : 0, opacity: erledigt ? 1 : 0 }} transition={{ duration: 0.32, delay: erledigt ? 0.08 : 0 }} />
+      {/* Kontrollkästchen 16 px: leer mit Rand, erledigt grün mit Haken (DESIGN-SYSTEM.md 12.2) – Übergang nur Farbe */}
+      <span className={cn("relative grid size-4 place-items-center rounded-sm border transition-colors duration-100", erledigt ? "border-[var(--green)] bg-[var(--green)]" : "border-[var(--line-strong)] bg-[var(--surface)]")}>
+        <svg viewBox="0 0 24 24" className={cn("relative size-3 text-[var(--on-green)] transition-opacity duration-100", erledigt ? "opacity-100" : "opacity-0")} aria-hidden>
+          <path d="M5 12.5l4.5 4.5L19 7.5" stroke="currentColor" strokeWidth={3} fill="none" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </span>
       Erledigt
@@ -103,10 +104,10 @@ export function RechenwegListe({ schritte, className }: { schritte: string[]; cl
         // Rechenweg sofort vollständig zeigen – kein zeilenweises Einblenden (liest sich ruhiger)
         <li key={`${i}-${s}`} className="relative flex gap-3">
           {i < schritte.length - 1 && <span className="absolute left-[10px] top-6 h-[calc(100%-12px)] w-px bg-[var(--line-strong)]" aria-hidden />}
-          <span className="num relative grid size-[21px] shrink-0 place-items-center rounded-full bg-surface text-[11px] font-semibold text-ink ring-1 ring-[var(--line-strong)]" aria-hidden>
+          <span className="num relative grid size-[21px] shrink-0 place-items-center rounded-full bg-[var(--surface)] text-[12px] font-semibold text-fg-2 ring-1 ring-[var(--line-strong)]" aria-hidden>
             {i + 1}
           </span>
-          <span className="pt-px text-[12.5px] leading-relaxed text-fg-2">{s}</span>
+          <span className="pt-px text-[13px] leading-relaxed text-fg-2">{s}</span>
         </li>
       ))}
     </ol>
@@ -168,7 +169,7 @@ export function NachweisZeile({ f, team }: { f: Frist; team: User[] }) {
   const text = nachweisText(f, team, nachrichten, transaktionen);
   const ok = !!f.erledigtNachweis && f.erledigtNachweis.art !== "gestrichen";
   return (
-    <span className={cn("inline-flex items-start gap-1 text-[12.5px] font-medium", ok ? "text-green" : f.erledigtNachweis ? "text-fg-2" : "text-amber")}>
+    <span className={cn("inline-flex items-start gap-1 text-[13px] font-medium", ok ? "text-[var(--green-text)]" : f.erledigtNachweis ? "text-fg-2" : "text-[var(--amber-text)]")}>
       <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" />
       <span>{text}</span>
     </span>
@@ -184,7 +185,7 @@ export function KontrolleAktion({ f, user, kontrollieren, verantwortlich, anford
   return (
     <>
       <button type="button" onClick={kontrollieren} data-aktion="kontrolle" className="btn btn-sm btn-secondary" title={`Datum und Rechenweg der Frist von ${verantwortlich?.name ?? "Kollegin/Kollege"} prüfen und bestätigen (Vier-Augen-Kontrolle)`}>
-        <UserCheck className="size-4 text-ink" />
+        <UserCheck className="size-4" aria-hidden />
         Kontrolle bestätigen
       </button>
       {anfordern && !f.korrekturAngefordert && (
@@ -202,8 +203,8 @@ export function KorrekturHinweis({ f, team }: { f: Frist; team: User[] }) {
   if (!f.korrekturAngefordert || f.status !== "offen") return null;
   const von = team.find((u) => u.id === f.korrekturAngefordert!.vonId)?.name ?? "Kontrolle";
   return (
-    <p className="mt-1.5 flex items-start gap-1.5 rounded-[10px] bg-amber-soft px-2.5 py-1.5 text-[12.5px] leading-snug text-fg-2">
-      <Undo2 className="mt-0.5 size-3.5 shrink-0 text-amber" aria-hidden />
+    <p className="mt-1.5 flex items-start gap-1.5 rounded-md bg-amber-soft px-2.5 py-1.5 text-[13px] leading-snug text-fg-2">
+      <Undo2 className="mt-0.5 size-3.5 shrink-0 text-[var(--amber)]" aria-hidden />
       <span>
         <strong className="font-semibold text-fg">Korrektur angefordert von {von}:</strong> {f.korrekturAngefordert.grund}
       </span>
@@ -250,7 +251,7 @@ export function EigeneKontrolleHinweis({ f, user, className }: { f: Frist; user:
   if (!brauchtKontrolle(f) || f.verantwortlichId !== user.id) return null;
   return (
     <span className={cn("inline-flex items-start gap-1 text-[12px] leading-snug text-fg-2", className)}>
-      <Users className="mt-0.5 size-3.5 shrink-0 text-amber" aria-hidden />
+      <Users className="mt-0.5 size-3.5 shrink-0 text-[var(--amber)]" aria-hidden />
       <span>{f.quelle === "manuell" ? "Von Ihnen notiert – Kontrolle durch Kollegin/Kollegen" : "Vier-Augen offen – bestätigt eine zweite Person"}</span>
     </span>
   );
@@ -258,7 +259,7 @@ export function EigeneKontrolleHinweis({ f, user, className }: { f: Frist; user:
 
 /** Eine Frist als Zeile: Ampelstreifen, Typ, Akte, Grundlage, Verantwortlich, Quelle, Aktionen, Rechenweg. */
 export function FristZeile({
-  f, akte, team, user, index = 0, zeigeDatum, vertretungFuer, vertretungVorab, onOpen,
+  f, akte, team, user, zeigeDatum, vertretungFuer, vertretungVorab, onOpen,
 }: {
   f: Frist;
   akte?: Akte;
@@ -297,17 +298,18 @@ export function FristZeile({
   return (
     <motion.div
       layout="position"
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, height: 0, transition: { duration: 0.28, ease: [0.16, 1, 0.3, 1] } }}
-      transition={{ ...spring, delay: Math.min(index, 10) * 0.03 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0, height: 0, transition: BEWEGUNG.standard }}
+      transition={spring}
       data-frist-zeile={f.id}
       // Gewählte Zeile (Tastatur: J/K, ↑/↓, Tab) sichtbar markiert – Fläche und Balken, nicht nur der Fokusring (I4-T03-05)
-      className="relative overflow-hidden has-[:focus-visible]:bg-ink-soft has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:-outline-offset-2 has-[:focus-visible]:outline-[var(--ink)]"
+      className="relative overflow-hidden has-[:focus-visible]:bg-[var(--surface-3)] has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:-outline-offset-2 has-[:focus-visible]:outline-[var(--focus)]"
     >
-      <span className={cn("absolute bottom-3 left-0 top-3 w-[3px] rounded-r-full transition-colors", erledigt ? "bg-green" : streifenFarbe(f))} aria-hidden />
+      {/* Farbiger Randstreifen nur für kritische Fristen (2 px Siegelrot, DESIGN-SYSTEM.md 8) – Typ und Lage nennt der Chip */}
+      {!erledigt && streifenFarbe(f) && <span className={cn("absolute inset-y-0 left-0 w-[2px]", streifenFarbe(f))} aria-hidden />}
       <div
-        className={cn("flex flex-wrap items-start gap-x-4 gap-y-3 py-3.5 pl-5 pr-4", onOpen && "cursor-pointer transition-colors hover:bg-ink-softer")}
+        className={cn("flex flex-wrap items-start gap-x-4 gap-y-3 py-3.5 pl-5 pr-4", onOpen && "cursor-pointer transition-colors duration-100 hover:bg-[var(--surface-2)]")}
         onClick={(e) => {
           // Klick auf freie Fläche öffnet das Fristdetail – Knöpfe, Links und Menüs behalten ihre Funktion
           if (!onOpen || (e.target as HTMLElement).closest("button,a,input,select,textarea,[role=menu],[role=menuitem]")) return;
@@ -325,25 +327,25 @@ export function FristZeile({
                 data-aktion="titel"
                 onClick={() => onOpen(f)}
                 aria-label={`${f.titel}${akte ? ` – ${akte.aktenzeichen}` : ""} – ${fmtDateWd(f.datum)} – Details öffnen`}
-                className={cn("rounded-[6px] text-left text-[14px] font-semibold tracking-[-0.01em] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--focus)]", erledigt && "text-fg-3 line-through decoration-[var(--line-strong)]")}
+                className={cn("rounded-sm text-left text-[14px] font-medium text-fg outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--focus)]", erledigt && "text-fg-3 line-through decoration-[var(--line-strong)]")}
               >
                 {f.titel}
               </button>
             ) : (
-              <span className={cn("text-[14px] font-semibold tracking-[-0.01em] transition-colors", erledigt && "text-fg-3 line-through decoration-[var(--line-strong)]")}>{f.titel}</span>
+              <span className={cn("text-[14px] font-medium text-fg transition-colors", erledigt && "text-fg-3 line-through decoration-[var(--line-strong)]")}>{f.titel}</span>
             )}
-            {zeigeDatum && <span className="num text-[12.5px] text-fg-3">· {fmtDateWd(f.datum)}</span>}
+            {zeigeDatum && <span className="num text-[13px] text-fg-3">· {fmtDateWd(f.datum)}</span>}
             {f.uhrzeit && (
-              <span className="num inline-flex items-center gap-1 text-[12.5px] text-fg-2">
+              <span className="num inline-flex items-center gap-1 text-[13px] text-fg-2">
                 <Clock className="size-3" />
                 {f.uhrzeit} Uhr
               </span>
             )}
           </div>
-          <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5 text-[12.5px] text-fg-3">
+          <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5 text-[13px] text-fg-3">
             {akte ? (
-              <Link to={`/akten/${akte.id}?tab=fristen`} className="group inline-flex min-w-0 max-w-full items-baseline gap-1.5 hover:text-ink">
-                <span className="mono shrink-0 font-medium text-fg-2 group-hover:text-ink">{akte.aktenzeichen}</span>
+              <Link to={`/akten/${akte.id}?tab=fristen`} className="group inline-flex min-w-0 max-w-full items-baseline gap-1.5 hover:text-fg">
+                <span className="mono shrink-0 text-fg-2 group-hover:text-fg group-hover:underline">{akte.aktenzeichen}</span>
                 <span className="min-w-0 break-words">{akte.titel}</span>
               </Link>
             ) : (
@@ -364,12 +366,12 @@ export function FristZeile({
                 </Chip>
               ) : null}
               {vertretungFuer && (
-                <Chip tone="amber" icon={<Users className="size-3" />} title="Die verantwortliche Person ist heute abwesend und hat Sie als Vertretung eingetragen (§ 53 BRAO)">
+                <Chip tone="outline" icon={<Users className="size-3" />} title="Die verantwortliche Person ist heute abwesend und hat Sie als Vertretung eingetragen (§ 53 BRAO)">
                   Vertretung für {vertretungFuer}
                 </Chip>
               )}
               {!vertretungFuer && vertretungVorab && (
-                <Chip tone="amber" icon={<CalendarClock className="size-3" />} title="Die verantwortliche Person ist dann abwesend und hat Sie als Vertretung eingetragen (§ 53 BRAO) – vorab eingeblendet">
+                <Chip tone="outline" icon={<CalendarClock className="size-3" />} title="Die verantwortliche Person ist dann abwesend und hat Sie als Vertretung eingetragen (§ 53 BRAO) – vorab eingeblendet">
                   Vertretung für {vertretungVorab}
                 </Chip>
               )}
@@ -378,8 +380,8 @@ export function FristZeile({
               <EebAbweichungChip f={f} />
               <NachweisZeile f={f} team={team} />
               {hatDetails && (
-                <button type="button" onClick={() => setOffen((o) => !o)} aria-expanded={offen} className="inline-flex h-7 items-center gap-1 rounded-full px-2 text-[12.5px] font-medium text-ink hover:bg-ink-softer">
-                  <ChevronDown className={cn("size-3 transition-transform duration-300", offen && "rotate-180")} />
+                <button type="button" onClick={() => setOffen((o) => !o)} aria-expanded={offen} className="link-leise h-7 rounded-sm px-1 max-sm:h-11">
+                  <ChevronDown className={cn("transition-transform duration-150", offen && "rotate-180")} aria-hidden />
                   {f.rechenweg?.length ? "Rechenweg" : "Details"}
                 </button>
               )}
@@ -392,7 +394,7 @@ export function FristZeile({
           {verantwortlich && <Avatar initialen={verantwortlich.initialen} farbe={verantwortlich.farbe} size={28} title={`Verantwortlich: ${verantwortlich.name}`} />}
           {kannKontrolle ? (
             <button type="button" onClick={kontrollieren} data-aktion="kontrolle" className="btn btn-sm btn-secondary min-h-11 shrink-0" title={`Datum und Rechenweg der Frist von ${verantwortlich?.name ?? "Kollegin/Kollege"} prüfen und bestätigen (Vier-Augen-Kontrolle)`}>
-              <UserCheck className="size-4 text-ink" />
+              <UserCheck className="size-4" aria-hidden />
               Kontrolle bestätigen
             </button>
           ) : f.status === "offen" ? (
@@ -454,13 +456,13 @@ export function FristZeile({
       {dialog}
       <AnimatePresence initial={false}>
         {offen && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }} className="overflow-hidden">
-            <div className="mx-4 mb-4 ml-5 rounded-[16px] bg-[var(--ink-softer)] p-4 ring-1 ring-inset ring-[var(--line)]">
-              <div className="mb-3 flex flex-wrap gap-x-6 gap-y-2 text-[12.5px]">
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={BEWEGUNG.standard} className="overflow-hidden">
+            <div className="mx-4 mb-4 ml-5 border-l-2 border-[var(--line)] py-1 pl-4">
+              <div className="mb-3 flex flex-wrap gap-x-6 gap-y-2 text-[13px]">
                 {f.ereignisDatum && (
                   <div>
                     <div className="eyebrow">Ereignis</div>
-                    <div className={cn("num mt-0.5 font-medium", eebDatum && eebDatum !== f.ereignisDatum && "text-seal")}>{fmtDateWd(f.ereignisDatum)}</div>
+                    <div className={cn("num mt-0.5 font-medium", eebDatum && eebDatum !== f.ereignisDatum && "text-[var(--seal-text)]")}>{fmtDateWd(f.ereignisDatum)}</div>
                   </div>
                 )}
                 {eebDatum && (
@@ -471,7 +473,7 @@ export function FristZeile({
                 )}
                 <div>
                   <div className="eyebrow">Fristende</div>
-                  <div className={cn("num mt-0.5 font-semibold", art?.kritisch && "text-seal")}>{fmtDateWd(f.datum)}</div>
+                  <div className={cn("num mt-0.5 font-semibold", art?.kritisch && "text-[var(--seal-text)]")}>{fmtDateWd(f.datum)}</div>
                 </div>
                 {f.vorfrist && (
                   <div>
@@ -488,24 +490,24 @@ export function FristZeile({
               </div>
               {f.rechenweg?.length ? <RechenwegListe schritte={f.rechenweg} /> : null}
               {art?.versaeumnis && f.status === "offen" && (
-                <p className={cn("mt-3 flex gap-2 text-[12.5px] leading-relaxed", art.kritisch ? "text-seal" : "text-fg-2")}>
-                  <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
+                <p className={cn("mt-3 flex gap-2 text-[13px] leading-relaxed", art.kritisch ? "text-[var(--seal-text)]" : "text-fg-2")}>
+                  <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
                   <span>
                     {art.art && <strong className="font-semibold">{schuetzeLeerzeichen(art.art)} </strong>}
                     {schuetzeLeerzeichen(art.versaeumnis)}
                   </span>
                 </p>
               )}
-              {f.notiz && <p className="mt-3 text-[12.5px] leading-relaxed text-fg-3">{f.notiz}</p>}
+              {f.notiz && <p className="mt-3 text-[13px] leading-relaxed text-fg-3">{f.notiz}</p>}
               {f.korrekturen?.length ? (
-                <p className="mt-3 text-[12.5px] leading-relaxed text-fg-3">
+                <p className="mt-3 text-[13px] leading-relaxed text-fg-3">
                   {f.korrekturen.length === 1 ? "1 Korrektur" : `${f.korrekturen.length} Korrekturen`} – zuletzt: {letzteKorrektur?.grund} ({letzteKorrektur ? fmtDate(letzteKorrektur.vorher.datum) : ""} → {fmtDate(f.datum)}
                   {letzteKorrekturVon ? `, ${letzteKorrekturVon}` : ""}){eebDatum ? ` · Zustellungsdatum laut eEB ${fmtDate(eebDatum)}` : ""}
                 </p>
               ) : null}
               {brauchtKontrolle(f) && f.verantwortlichId === user.id && (
-                <p className="mt-3 flex gap-2 text-[12.5px] leading-relaxed text-amber">
-                  <Users className="mt-0.5 size-3.5 shrink-0" />
+                <p className="mt-3 flex gap-2 text-[13px] leading-relaxed text-[var(--amber-text)]">
+                  <Users className="mt-0.5 size-3.5 shrink-0" aria-hidden />
                   Sie sind verantwortlich – die Vier-Augen-Kontrolle muss eine zweite Person bestätigen.
                 </p>
               )}

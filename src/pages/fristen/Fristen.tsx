@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { AlarmClock, Calculator, Check, CalendarDays, CalendarRange, List, MoreHorizontal, ShieldAlert, ShieldCheck, UserCheck, Users, X, CalendarClock, CalendarPlus, Download, Printer } from "lucide-react";
+import { AlarmClock, Calculator, Check, CalendarDays, CalendarRange, List, MoreHorizontal, ShieldCheck, TriangleAlert, UserCheck, Users, X, CalendarClock, CalendarPlus, Download, Printer } from "lucide-react";
 import { addDays, fmtDate, fmtDateShort, today, wochentagName } from "@/core/dates";
 import { FENSTER_TAGE, fristenImZeitraum, fristenLage, istKritisch, nachDringlichkeit, zaehltAlsFrist } from "@/core/fristenLage";
 import type { Akte, Frist, FristTyp } from "@/core/types";
@@ -9,7 +9,7 @@ import { useCol } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { useUI } from "@/store/ui";
 import { kuenftigeVertretungen, vertreteneIds } from "@/core/vertretung";
-import { AnimatedNumber, Button, Menu, PageHeader, Segmented, Select, Stat, Switch } from "@/components/ui";
+import { AnimatedNumber, Button, Menu, PageHeader, Segmented, Select, Stat, StatLeiste, Switch } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { FristListe } from "./FristListe";
 import { WochenAnsicht } from "./WochenAnsicht";
@@ -22,6 +22,7 @@ import { Ausgangskontrolle, Druckansicht } from "./Ausgangskontrolle";
 import { DateiDialog, type AusgabeDatei } from "./dateiAusgabe";
 import { erzeugeIcs } from "./ics";
 import { FristAutomatikHinweis } from "@/components/FristAutomatikHinweis";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 type Ansicht = "liste" | "woche" | "monat" | "ausgang";
 type Fokus = "heute" | "woche" | "kritisch" | "unkontrolliert";
@@ -296,7 +297,7 @@ export default function Fristen() {
   const kennzahlen = [
     { key: "heute", label: "Heute fällig", kurz: "Heute", icon: <AlarmClock className="size-4" />, tone: kpi.heute ? "seal" : "green", wert: kpi.heute, sub: subHeute },
     { key: "woche", label: "Nächste 7 Tage", kurz: "7 Tage", icon: <CalendarRange className="size-4" />, tone: "amber", wert: kpi.woche, sub: subWoche },
-    { key: "kritisch", label: "Kritische Fristen", kurz: "Kritisch", icon: <ShieldAlert className="size-4" />, tone: "seal", wert: kpi.kritisch.length, sub: kpi.kritisch[0] ? `nicht verlängerbar · nächste ${fmtDateShort(kpi.kritisch[0].datum)}` : "keine offen" },
+    { key: "kritisch", label: "Kritische Fristen", kurz: "Kritisch", icon: <TriangleAlert className="size-4" />, tone: "seal", wert: kpi.kritisch.length, sub: kpi.kritisch[0] ? `nicht verlängerbar · nächste ${fmtDateShort(kpi.kritisch[0].datum)}` : "keine offen" },
     { key: "unkontrolliert", label: "Vier-Augen-Kontrolle offen", kurz: "Vier-Augen", icon: <UserCheck className="size-4" />, tone: kpi.kontrolle ? "amber" : "green", wert: kpi.kontrolle, sub: subKontrolle },
   ] as const;
 
@@ -351,8 +352,9 @@ export default function Fristen() {
       {/* Fristautomatik pausiert (Fristerkennung, Vorfristen, eEB): Hinweis mit Datum, Uhrzeit und Person (I3-T10-01) */}
       <FristAutomatikHinweis className="mb-4" />
 
-      {/* Kennzahlen – Telefon: eine Zeile kompakter Kacheln (I3-T03-05), ab 640 px die ausführlichen Kacheln */}
-      <div className="mb-4 grid grid-cols-4 gap-1.5 sm:hidden" role="group" aria-label="Kennzahlen – antippen filtert die Liste">
+      {/* Kennzahlen – eine Leiste, getrennt durch Linien (DESIGN-SYSTEM.md 12.14). Telefon: eine Zeile kompakter Zahlen (I3-T03-05),
+          ab 640 px die ausführliche Kennzahlenleiste. Antippen filtert die Liste; die Auswahl zeigt Fläche 3 und ein Balken unten. */}
+      <div className="mb-4 grid grid-cols-4 divide-x divide-[var(--line)] overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--surface)] sm:hidden" role="group" aria-label="Kennzahlen – antippen filtert die Liste">
         {kennzahlen.map((k) => (
           <button
             key={k.key}
@@ -362,30 +364,32 @@ export default function Fristen() {
             aria-label={`${k.label}: ${k.wert} – ${k.sub}`}
             title={`${k.label}: ${k.sub}`}
             className={cn(
-              "sheet flex min-h-[54px] min-w-0 flex-col items-center justify-center rounded-[16px] px-1 py-1.5 text-center transition-colors",
-              fokus === k.key && "ring-2 ring-[var(--ink)]",
+              "flex min-h-[56px] min-w-0 flex-col items-center justify-center px-1 py-1.5 text-center transition-colors duration-100 focus-visible:outline-offset-[-2px]",
+              fokus === k.key && "bg-[var(--surface-3)] shadow-[inset_0_-2px_0_var(--ink)]",
             )}
           >
-            <span className={cn("num text-[19px] font-semibold leading-none", k.tone === "seal" ? "text-seal" : k.tone === "amber" ? "text-amber" : "text-green")}>{k.wert}</span>
-            <span className="mt-1 max-w-full truncate text-[11.5px] font-medium leading-tight text-fg-2">{k.kurz}</span>
+            <span className="num inline-flex items-center gap-1 text-[18px] font-semibold leading-none text-fg">
+              {k.key === "kritisch" && k.wert > 0 && <TriangleAlert className="size-3 text-[var(--seal)]" aria-hidden />}
+              {k.wert}
+            </span>
+            <span className="mt-1 max-w-full truncate text-[12px] font-medium leading-tight text-fg-3">{k.kurz}</span>
           </button>
         ))}
       </div>
-      <div className="mb-6 hidden grid-cols-2 gap-3 sm:grid lg:grid-cols-4">
-        {kennzahlen.map((k, i) => (
-          <motion.div key={k.key} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", stiffness: 420, damping: 34, delay: i * 0.05 }} className="min-w-0">
-            <Stat
-              label={k.label}
-              icon={k.icon}
-              tone={k.tone}
-              value={<AnimatedNumber value={k.wert} />}
-              sub={k.sub}
-              onClick={() => waehleFokus(k.key)}
-              className={cn("h-full w-full", fokus === k.key && "ring-2 ring-[var(--ink)]")}
-            />
-          </motion.div>
+      <StatLeiste className="mb-6 hidden sm:grid">
+        {kennzahlen.map((k) => (
+          <Stat
+            key={k.key}
+            label={k.label}
+            icon={k.icon}
+            tone={k.tone}
+            value={<AnimatedNumber value={k.wert} />}
+            sub={k.sub}
+            onClick={() => waehleFokus(k.key)}
+            className={cn("h-full w-full", fokus === k.key && "bg-[var(--surface-3)] shadow-[inset_0_-2px_0_var(--ink),-1px_0_0_var(--line)]")}
+          />
         ))}
-      </div>
+      </StatLeiste>
 
       {/* Steuerleiste */}
       <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2.5 sm:mb-5 sm:gap-y-3">
@@ -411,7 +415,7 @@ export default function Fristen() {
           ]}
         />
         <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 sm:w-auto lg:ml-auto">
-          <Select id="fristen-typ" aria-label="Nach Typ filtern" value={typ} onChange={(e) => setTyp(e.target.value as "alle" | FristTyp)} className="!h-9 !rounded-full !text-[13px] max-sm:!h-11 max-sm:min-w-0 max-sm:flex-1 sm:!w-auto sm:min-w-[160px]">
+          <Select id="fristen-typ" aria-label="Nach Typ filtern" value={typ} onChange={(e) => setTyp(e.target.value as "alle" | FristTyp)} className="max-sm:min-w-0 max-sm:flex-1 sm:!w-auto sm:min-w-[160px]">
             <option value="alle">Alle Typen</option>
             {TYP_REIHENFOLGE.map((t) => (
               <option key={t} value={t}>
@@ -434,8 +438,8 @@ export default function Fristen() {
                 aria-label={t.lang}
                 onClick={() => t.setze(!t.an)}
                 className={cn(
-                  "inline-flex h-11 items-center gap-1 rounded-full px-3 text-[13px] font-medium ring-1 ring-inset transition-colors",
-                  t.an ? "bg-ink-soft text-ink ring-[var(--ink)]" : "text-fg-2 ring-[var(--line-strong)]",
+                  "inline-flex h-11 items-center gap-1 rounded-md px-3 text-[13px] font-medium ring-1 ring-inset ring-[var(--line-strong)] transition-colors duration-100",
+                  t.an ? "bg-[var(--surface-3)] text-fg" : "bg-[var(--surface)] text-fg-2",
                 )}
               >
                 {t.an && <Check className="size-3.5" aria-hidden />}
@@ -461,42 +465,42 @@ export default function Fristen() {
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
             <div className="mb-3 flex flex-wrap items-center gap-2 text-[13px] text-fg-2 sm:mb-4">
               {fokus && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-ink-soft py-1 pl-3 pr-1 font-medium text-ink">
+                <span className="inline-flex items-center gap-1.5 rounded-sm py-0.5 pl-2 pr-0.5 font-medium text-fg-2 ring-1 ring-inset ring-[var(--line-strong)]">
                   {FOKUS_LABEL[fokus]}
                   {!akteFilter && !quelleFilter && ` · ${fokus === "heute" || fokus === "woche" ? aufschluesselung(gefiltert) : gefiltert.length}`}
-                  <button type="button" onClick={() => setFokus(null)} className="grid size-6 place-items-center rounded-full hover:bg-[var(--ink-soft)]" aria-label="Filter entfernen">
+                  <button type="button" onClick={() => setFokus(null)} className="grid size-6 place-items-center rounded-sm hover:bg-[var(--surface-2)] max-sm:size-11" aria-label="Filter entfernen">
                     <X className="size-3.5" />
                   </button>
                 </span>
               )}
               {akteFilter && (
-                <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full bg-ink-soft py-1 pl-3 pr-1 font-medium text-ink">
+                <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-sm py-0.5 pl-2 pr-0.5 font-medium text-fg-2 ring-1 ring-inset ring-[var(--line-strong)]">
                   <span className="truncate">
                     Akte <span className="mono">{filterAkte?.aktenzeichen ?? "–"}</span>
                     {filterAkte ? ` ${filterAkte.titel}` : ""} · {gefiltert.length}
                   </span>
-                  <button type="button" onClick={() => setAkteFilter(null)} className="grid size-6 shrink-0 place-items-center rounded-full hover:bg-[var(--ink-soft)]" aria-label="Aktenfilter entfernen">
+                  <button type="button" onClick={() => setAkteFilter(null)} className="grid size-6 shrink-0 place-items-center rounded-sm hover:bg-[var(--surface-2)] max-sm:size-11" aria-label="Aktenfilter entfernen">
                     <X className="size-3.5" />
                   </button>
                 </span>
               )}
               {personFilter && (
-                <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full bg-ink-soft py-1 pl-3 pr-1 font-medium text-ink">
+                <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-sm py-0.5 pl-2 pr-0.5 font-medium text-fg-2 ring-1 ring-inset ring-[var(--line-strong)]">
                   <span className="min-w-0 break-words">
                     Verantwortlich: {filterPerson?.name ?? "unbekannter Zugang"}
                     {filterPerson?.deaktiviert ? " (deaktiviert)" : ""}
                     {!akteFilter && ` · ${aufschluesselung(gefiltert)}`}
                   </span>
-                  <button type="button" onClick={() => setPersonFilter(null)} className="grid size-6 shrink-0 place-items-center rounded-full hover:bg-[var(--ink-soft)]" aria-label="Personenfilter entfernen">
+                  <button type="button" onClick={() => setPersonFilter(null)} className="grid size-6 shrink-0 place-items-center rounded-sm hover:bg-[var(--surface-2)] max-sm:size-11" aria-label="Personenfilter entfernen">
                     <X className="size-3.5" />
                   </button>
                 </span>
               )}
               {quelleFilter && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-ink-soft py-1 pl-3 pr-1 font-medium text-ink">
+                <span className="inline-flex items-center gap-1.5 rounded-sm py-0.5 pl-2 pr-0.5 font-medium text-fg-2 ring-1 ring-inset ring-[var(--line-strong)]">
                   {QUELLE_LABEL[quelleFilter]}
                   {!akteFilter && ` · ${gefiltert.length}`}
-                  <button type="button" onClick={() => entferneParam("quelle")} className="grid size-6 place-items-center rounded-full hover:bg-[var(--ink-soft)]" aria-label="Herkunftsfilter entfernen">
+                  <button type="button" onClick={() => entferneParam("quelle")} className="grid size-6 place-items-center rounded-sm hover:bg-[var(--surface-2)] max-sm:size-11" aria-label="Herkunftsfilter entfernen">
                     <X className="size-3.5" />
                   </button>
                 </span>
@@ -509,7 +513,7 @@ export default function Fristen() {
 
       {/* Vertretung vorab (I4-T18-04): Hinweis unter „Nur meine“ mit Schalter zum Einblenden – Text und Symbol, nicht nur Farbe */}
       {(nurMeine || vorab) && kuenftig.length > 0 && ansicht !== "ausgang" && (
-        <div role="status" className="mb-4 grid gap-2 rounded-[18px] bg-amber-soft px-4 py-3 text-[13px] text-fg-2">
+        <div role="status" className="mb-4 grid gap-2 rounded-md bg-amber-soft px-4 py-3 text-[13px] text-fg-2">
           {kuenftig.map((v) => (
             <div key={v.person.id} className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <Users className="size-4 shrink-0 text-[var(--amber-text)]" aria-hidden />
@@ -529,8 +533,8 @@ export default function Fristen() {
                     if (!nurMeine) setNurMeineRaw(true);
                   }}
                   className={cn(
-                    "inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium ring-1 ring-inset transition-colors max-sm:min-h-11",
-                    vorab ? "bg-[var(--surface)] text-fg ring-[var(--ink)]" : "bg-[var(--surface)] text-fg-2 ring-[var(--line-strong)] hover:text-fg",
+                    "inline-flex min-h-8 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium ring-1 ring-inset transition-colors duration-100 max-sm:min-h-11",
+                    vorab ? "bg-[var(--surface)] text-fg ring-[var(--fg)]" : "bg-[var(--surface)] text-fg-2 ring-[var(--line-strong)] hover:text-fg",
                   )}
                 >
                   {vorab ? <Check className="size-3.5" aria-hidden /> : <span aria-hidden>+</span>}
@@ -543,7 +547,7 @@ export default function Fristen() {
       )}
 
       <AnimatePresence mode="wait" initial={false}>
-        <motion.div key={ansicht} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}>
+        <motion.div key={ansicht} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={BEWEGUNG.schnell}>
           {ansicht === "liste" && (
             <FristListe
               fristen={gefiltert}
@@ -573,7 +577,7 @@ export default function Fristen() {
         <FeiertageInfo land={tenant.bundesland} />
       </div>
 
-      <div className="mt-4 flex items-center justify-center gap-1.5 text-[12.5px] text-fg-3">
+      <div className="mt-4 flex items-center justify-center gap-1.5 text-[13px] text-fg-3">
         <CalendarClock className="size-3.5" />
         Jede Frist speichert Regel, Ereignisdatum und Rechenweg – revisionssicher.
       </div>

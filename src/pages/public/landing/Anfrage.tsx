@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { create } from "zustand";
-import { motion } from "motion/react";
-import { Check, Clock, Mail, Phone, Send } from "lucide-react";
+import { CircleAlert, CircleCheck, Clock, Mail, Phone, Send } from "lucide-react";
 import { STANDARD_ANSPRECHPARTNER } from "@/core/seed/kunde";
 import { istEmail } from "@/lib/backend";
 import { Avatar, Button, Field, Input, Modal, Select } from "@/components/ui";
@@ -36,24 +35,24 @@ interface Formular {
 const LEER: Formular = { kanzlei: "", name: "", email: "", telefon: "", plaetze: "", termin: "" };
 
 /** Kontaktblock mit den Werten der festen Ansprechpartnerin (src/core/seed/kunde.ts) – nichts erfunden. */
-export function KontaktBlock({ className, hell }: { className?: string; hell?: boolean }) {
+export function KontaktBlock({ className }: { className?: string }) {
   const ap = STANDARD_ANSPRECHPARTNER;
   return (
-    <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-2.5", className)}>
+    <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-3", className)}>
       <Avatar initialen={ap.initialen} size={40} />
       <div className="min-w-0 flex-1 basis-[200px]">
-        <div className={cn("text-[14.5px] font-semibold", hell && "text-[var(--sk-fg,var(--bg))]")}>
+        <div className="text-[15px] font-semibold leading-[22px] text-fg">
           {ap.name}, {ap.rolle.replace(/^Ihre feste /, "Ihre ")}
         </div>
-        <div className={cn("mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]", hell ? "text-[color-mix(in_oklab,var(--sk-fg,var(--bg))_82%,transparent)]" : "text-fg-2")}>
-          <a href={`tel:${ap.telefon.replace(/\s/g, "")}`} className="inline-flex items-center gap-1.5 font-medium underline-offset-2 hover:underline">
-            <Phone className="size-3.5" /> {ap.telefon}
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[13px] leading-5 text-fg-3">
+          <a href={`tel:${ap.telefon.replace(/\s/g, "")}`} className="link inline-flex min-h-11 items-center gap-1.5 font-medium sm:min-h-6">
+            <Phone className="size-3.5 text-fg-4" aria-hidden /> {ap.telefon}
           </a>
           <span className="inline-flex items-center gap-1.5">
-            <Mail className="size-3.5" /> {ap.email}
+            <Mail className="size-3.5 text-fg-4" aria-hidden /> {ap.email}
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <Clock className="size-3.5" /> {ap.verfuegbar}
+            <Clock className="size-3.5 text-fg-4" aria-hidden /> {ap.verfuegbar}
           </span>
         </div>
       </div>
@@ -118,20 +117,20 @@ export function AnfrageDialog() {
       }
     >
       {fertig ? (
-        <div className="flex flex-col items-center py-2 text-center">
-          <motion.div initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 420, damping: 20 }} className="mb-3 grid size-14 place-items-center rounded-full bg-green-soft text-green">
-            <Check className="size-7" strokeWidth={2.6} />
-          </motion.div>
-          <p className="max-w-[46ch] text-[14.5px] leading-relaxed text-fg-2">
-            Danke, {f.name.trim()}. {ANFRAGE_BESTAETIGUNG}
+        <div className="grid gap-5">
+          <p className="banner banner-green">
+            <CircleCheck aria-hidden />
+            <span>
+              Danke, {f.name.trim()}. {ANFRAGE_BESTAETIGUNG}
+            </span>
           </p>
-          <div className="mt-5 w-full rounded-[16px] bg-[var(--ink-softer)] p-4 text-left">
+          <div className="rounded-lg border border-[var(--line)] p-4">
             <KontaktBlock />
           </div>
         </div>
       ) : (
         <form
-          className="grid grid-cols-1 gap-3.5 sm:grid-cols-2"
+          className="grid grid-cols-1 gap-4 sm:grid-cols-2"
           onSubmit={(e) => {
             e.preventDefault();
             senden();
@@ -161,12 +160,13 @@ export function AnfrageDialog() {
             <Input id="af-termin" value={f.termin} onChange={(e) => set("termin", e.target.value)} placeholder="z. B. nächste Woche Dienstag ab 14 Uhr" />
           </Field>
           {fehler && (
-            <div role="alert" className="rounded-[12px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal sm:col-span-2">
-              {fehler}
+            <div role="alert" className="banner banner-seal sm:col-span-2">
+              <CircleAlert aria-hidden />
+              <span>{fehler}</span>
             </div>
           )}
-          <p className="text-[12.5px] leading-relaxed text-fg-3 sm:col-span-2">Ohne externe Dienste: Diese Seite übermittelt im Prototyp keine Daten. Lieber direkt sprechen?</p>
-          <div className="rounded-[16px] bg-[var(--ink-softer)] p-3.5 sm:col-span-2">
+          <p className="border-t border-[var(--line)] pt-4 text-[13px] leading-5 text-fg-3 sm:col-span-2">Ohne externe Dienste: Diese Seite übermittelt im Prototyp keine Daten. Lieber direkt sprechen?</p>
+          <div className="sm:col-span-2">
             <KontaktBlock />
           </div>
           <button type="submit" className="hidden" aria-hidden tabIndex={-1} />

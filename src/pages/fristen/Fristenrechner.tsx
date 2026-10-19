@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { motion } from "motion/react";
-import { AlertTriangle, ArrowRightLeft, Calculator, CalendarPlus, Check, Info, Landmark, Lock, ShieldAlert, X } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, Calculator, CalendarPlus, Check, Info, Landmark, Lock, X, TriangleAlert } from "lucide-react";
 import { berechneNachRegel, FRIST_REGELN, fristArt, gerichtsortDerAkte, type Einheit, type FristRegel } from "@/core/fristen";
 import { BUNDESLAENDER, bundeslandAusGericht, bundeslandAusOrt, bundeslandName } from "@/core/feiertage";
 import { fmtDateLong, relDays, today, wochentagName, fmtDateWd } from "@/core/dates";
@@ -17,6 +17,7 @@ import { legeFristAn, rohesEnde } from "./logik";
 import { FristartAuswahl } from "./FristartAuswahl";
 import { sucheFristarten } from "./fristartSuche";
 import { ereignisFehlt, ereignisHerkunftText, rechenwegMitHerkunft, startEreignisZustand, type EreignisHerkunft } from "./rechnerEingabe";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 function einheitLabelVon(einheit: Einheit, n: number) {
   if (einheit === "tage") return n === 1 ? "Tag" : "Tage";
@@ -285,7 +286,7 @@ export function Fristenrechner({
       footer={
         <div className="flex w-full flex-wrap items-center gap-2">
           {erg && (
-            <div className="num flex w-full items-baseline gap-2 text-[12.5px] lg:hidden">
+            <div className="num flex w-full items-baseline gap-2 text-[13px] lg:hidden">
               <span className="text-fg-3">Fristende</span>
               <span className={cn("font-semibold", kritisch ? "text-seal" : "text-fg")}>{fmtDateWd(erg.ende)}</span>
               <span className="text-fg-3">· Vorfrist {fmtDateWd(erg.vorfrist)}</span>
@@ -409,7 +410,7 @@ export function Fristenrechner({
               <Field label="Abweichende Dauer (optional)" htmlFor="rechner-dauer">
                 <div className="relative">
                   <Input id="rechner-dauer" type="number" inputMode="numeric" min={1} max={999} value={dauer} placeholder={String(regel.dauer)} onChange={(e) => { setDauer(e.target.value); setEingetragen(null); }} className="!pr-24" />
-                  <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[12.5px] text-fg-3">{einheitLabel(regel, dauerNum ?? regel.dauer)}</span>
+                  <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[13px] text-fg-3">{einheitLabel(regel, dauerNum ?? regel.dauer)}</span>
                 </div>
               </Field>
             )}
@@ -436,7 +437,7 @@ export function Fristenrechner({
                     onClick={gerichtEntfernen}
                     aria-label={gerichtLand.quelle === "akte" ? "Gericht der Akte für diese Berechnung entfernen" : "Gericht entfernen"}
                     title="Gericht entfernen"
-                    className="absolute right-1.5 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-full text-fg-3 hover:bg-ink-softer hover:text-fg"
+                    className="absolute right-1.5 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-sm text-fg-3 hover:bg-[var(--surface-2)] hover:text-fg"
                   >
                     <X className="size-4" />
                   </button>
@@ -480,7 +481,7 @@ export function Fristenrechner({
             </Field>
           </div>
           {ersetzteWahl && gerichtLand && !abweichend && (
-            <div role="status" className="flex gap-2 rounded-[14px] bg-ink-softer p-3 text-[12.5px] leading-relaxed text-fg-2 ring-1 ring-inset ring-[var(--line)]">
+            <div role="status" className="flex gap-2 rounded-md bg-[var(--surface-2)] p-3 text-[13px] leading-relaxed text-fg-2">
               <Info className="mt-0.5 size-3.5 shrink-0 text-ink" />
               <span>
                 Das Gericht gewinnt: Bundesland {bundeslandName(gerichtLand.land)} aus „{gerichtLand.gericht}“ übernommen – Ihre Auswahl {bundeslandName(ersetzteWahl)} gilt nicht mehr.
@@ -507,7 +508,7 @@ export function Fristenrechner({
                 />
               </div>
               {widerspruch && gerichtLand && ort && (
-                <div role="alert" className="grid gap-2 rounded-[14px] bg-seal-soft p-3 text-[12.5px] leading-relaxed text-seal">
+                <div role="alert" className="grid gap-2 rounded-lg bg-seal-soft p-3 text-[13px] leading-relaxed text-seal">
                   <div className="flex gap-2">
                     <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
                     <span>
@@ -523,7 +524,7 @@ export function Fristenrechner({
             </div>
           )}
           {gewaehlt && regel.hinweis && (
-            <div className="flex gap-2 rounded-[14px] bg-ink-softer p-3 text-[12.5px] leading-relaxed text-fg-2 ring-1 ring-inset ring-[var(--line)]">
+            <div className="flex gap-2 rounded-md bg-[var(--surface-2)] p-3 text-[13px] leading-relaxed text-fg-2">
               <Info className="mt-0.5 size-3.5 shrink-0 text-ink" />
               <span>{regel.hinweis}</span>
             </div>
@@ -538,12 +539,12 @@ export function Fristenrechner({
                 key={`${erg.ende}-${regel.key}`}
                 initial={{ opacity: 0, y: 10, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ type: "spring", stiffness: 420, damping: 32 }}
-                className={cn("relative overflow-hidden rounded-[22px] p-5", kritisch ? "bg-seal-soft" : "bg-ink-soft")}
+                transition={BEWEGUNG.standard}
+                className={cn("relative overflow-hidden rounded-lg p-5", kritisch ? "bg-seal-soft" : "bg-ink-soft")}
               >
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className={cn("eyebrow", kritisch ? "!text-seal" : "!text-ink")}>Fristende</span>
-                  <Chip tone={kritisch ? "seal" : "ink"} icon={kritisch ? <ShieldAlert className="size-3" /> : undefined} title={art.kurz}>
+                  <span className={cn("eyebrow", kritisch ? "!text-[var(--seal-text)]" : "!text-ink")}>Fristende</span>
+                  <Chip tone={kritisch ? "seal" : "ink"} icon={kritisch ? <TriangleAlert className="size-3" /> : undefined} title={art.kurz}>
                     {regel.typ === "notfrist" ? "Notfrist" : kritisch ? "Frist · nicht verlängerbar" : "Frist"}
                   </Chip>
                   {erg.verschoben && (
@@ -553,16 +554,16 @@ export function Fristenrechner({
                   )}
                 </div>
                 <div className={cn("mt-2 text-[15px] font-medium", kritisch ? "text-seal" : "text-ink")}>{wochentagName(erg.ende)}</div>
-                <div className={cn("text-[clamp(26px,3.6vw,36px)] font-bold leading-[1.05] tracking-[-0.035em]", kritisch ? "text-seal" : "text-fg")}>{fmtDateLong(erg.ende)}</div>
+                <div className={cn("text-[clamp(26px,3.6vw,36px)] font-semibold leading-[1.05] tracking-[-0.035em]", kritisch ? "text-seal" : "text-fg")}>{fmtDateLong(erg.ende)}</div>
                 <div className="num mt-1.5 text-[13px] text-fg-2">24:00 Uhr · {relDays(erg.ende)}</div>
-                <div className={cn("mt-2 flex items-start gap-1.5 text-[12.5px] font-medium", widerspruch ? "text-seal" : "text-fg-2")}>
+                <div className={cn("mt-2 flex items-start gap-1.5 text-[13px] font-medium", widerspruch ? "text-seal" : "text-fg-2")}>
                   {widerspruch ? <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden /> : <Landmark className="mt-0.5 size-3.5 shrink-0" aria-hidden />}
                   <span>
                     Feiertage: {bundeslandName(ort.land)} (
                     {ort.quelle === "handlung" ? ort.label : ort.quelle === "kanzlei" ? "Kanzleisitz – kein Gericht angegeben" : ort.quelle === "abweichend" ? ort.label : `Gerichtsort: ${ort.label.replace(/ – (laut Akte|Bundesland gewählt)$/, "")}`})
                   </span>
                 </div>
-                <div className="mt-4 grid grid-cols-2 gap-3 border-t border-[color-mix(in_oklab,var(--fg)_10%,transparent)] pt-3.5 text-[12.5px]">
+                <div className="mt-4 grid grid-cols-2 gap-3 border-t border-[var(--line)] pt-3.5 text-[13px]">
                   <div>
                     <div className="text-fg-3">Vorfrist ({regel.vorfristTage} Tage)</div>
                     <div className="num mt-0.5 font-semibold">{fmtDateWd(erg.vorfrist)}</div>
@@ -575,8 +576,8 @@ export function Fristenrechner({
               </motion.div>
 
               {(art.art || art.versaeumnis) && (
-                <div className={cn("flex gap-2 rounded-[14px] px-3.5 py-2.5 text-[12.5px] leading-relaxed", kritisch ? "bg-seal-soft text-seal" : "bg-ink-softer text-fg-2 ring-1 ring-inset ring-[var(--line)]")}>
-                  {kritisch ? <ShieldAlert className="mt-0.5 size-3.5 shrink-0" /> : <Info className="mt-0.5 size-3.5 shrink-0 text-ink" />}
+                <div className={cn("flex gap-2 rounded-lg px-3.5 py-2.5 text-[13px] leading-relaxed", kritisch ? "bg-seal-soft text-seal" : "bg-ink-softer text-fg-2 ring-1 ring-inset ring-[var(--line)]")}>
+                  {kritisch ? <TriangleAlert className="mt-0.5 size-3.5 shrink-0" /> : <Info className="mt-0.5 size-3.5 shrink-0 text-ink" />}
                   <span>
                     {art.art && <strong className="font-semibold">{art.art} </strong>}
                     {art.versaeumnis}
@@ -584,29 +585,29 @@ export function Fristenrechner({
                 </div>
               )}
               {erg.warnungen.map((w) => (
-                <div key={w} className="flex gap-2 rounded-[14px] bg-amber-soft px-3.5 py-2.5 text-[12.5px] leading-relaxed text-amber">
+                <div key={w} className="flex gap-2 rounded-lg bg-amber-soft px-3.5 py-2.5 text-[13px] leading-relaxed text-amber">
                   <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
                   <span>{w}</span>
                 </div>
               ))}
 
-              <div className="rounded-[18px] p-4 ring-1 ring-inset ring-[var(--line)]">
+              <div className="rounded-lg p-4 ring-1 ring-inset ring-[var(--line)]">
                 <div className="eyebrow mb-3">Kalender</div>
                 <MiniKalender marken={{ ereignis, roh, ende: erg.ende, vorfrist: erg.vorfrist, notfrist: kritisch }} land={ort.land} />
               </div>
 
-              <div className="rounded-[18px] p-4 ring-1 ring-inset ring-[var(--line)]">
+              <div className="rounded-lg p-4 ring-1 ring-inset ring-[var(--line)]">
                 <div className="eyebrow mb-3">Rechenweg</div>
                 {/* sofort vollständig – ohne zeilenweises Einblenden */}
                 <RechenwegListe schritte={rechenweg} />
               </div>
             </>
           ) : (
-            <div role="status" className="grid h-full min-h-[220px] place-items-center rounded-[22px] p-10 text-center ring-1 ring-inset ring-[var(--line)]">
+            <div role="status" className="grid h-full min-h-[220px] place-items-center rounded-lg p-10 text-center ring-1 ring-inset ring-[var(--line)]">
               <div className="max-w-[340px]">
                 <Calculator className="mx-auto size-6 text-fg-3" />
                 <div className="mt-2 text-[14px] font-semibold text-fg">{fehlt ?? "Bitte Eingaben prüfen"}</div>
-                <div className="mt-1 text-[12.5px] text-fg-3">Erst mit vollständigen Angaben rechnet Apex – ein altes Ergebnis bleibt nie stehen.</div>
+                <div className="mt-1 text-[13px] text-fg-3">Erst mit vollständigen Angaben rechnet Apex – ein altes Ergebnis bleibt nie stehen.</div>
               </div>
             </div>
           )}

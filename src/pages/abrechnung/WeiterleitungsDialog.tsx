@@ -115,12 +115,12 @@ export function WeiterleitungsDialog({ akte, mandant, offen, open, onClose }: { 
         }
       >
         <div className="grid gap-3.5">
-          <p className="flex items-start gap-2 rounded-[14px] bg-amber-soft px-3.5 py-2.5 text-[12.5px] text-fg-2">
-            <ShieldAlert className="mt-0.5 size-4 shrink-0 text-amber" />
+          <p className="banner banner-amber">
+            <ShieldAlert aria-hidden />
             <span>Fremdgeld unverzüglich weiterleiten (§ 43a Abs. 7 BRAO, § 4 BORA). Apex leitet nie selbstständig weiter – die Überweisung geben Sie im Online-Banking frei.</span>
           </p>
-          <p className="flex items-start gap-2 rounded-[14px] bg-ink-softer px-3.5 py-2.5 text-[12.5px] text-fg-2 ring-1 ring-inset ring-[var(--line)]">
-            <Landmark className="mt-0.5 size-4 shrink-0 text-ink" aria-hidden />
+          <p className="banner">
+            <Landmark aria-hidden />
             <span>
               <span className="font-semibold text-fg">Auszahlung vom {KONTO_NAME[quellkonto]}</span>
               {eingang === "geschaeft"
@@ -142,7 +142,7 @@ export function WeiterleitungsDialog({ akte, mandant, offen, open, onClose }: { 
             <Field
               label="IBAN *"
               htmlFor="wl-iban"
-              hint={iban.trim() ? (ibanOk ? <span className="text-green">Prüfziffer korrekt</span> : <span className="text-seal">Prüfziffer oder Länge stimmt nicht</span>) : "Pflicht – wird mit Prüfziffer geprüft"}
+              hint={iban.trim() ? (ibanOk ? <span className="text-green-text">Prüfziffer korrekt</span> : <span className="text-seal-text">Prüfziffer oder Länge stimmt nicht</span>) : "Pflicht – wird mit Prüfziffer geprüft"}
             >
               <Input id="wl-iban" value={iban} onChange={(e) => setIban(e.target.value)} onBlur={() => ibanOk && setIban(ibanFormatiert(iban))} placeholder="DE00 0000 0000 0000 0000 00" className="mono" autoComplete="off" inputMode="text" aria-required="true" {...feldAria("iban")} />
             </Field>
@@ -169,12 +169,12 @@ export function WeiterleitungsDialog({ akte, mandant, offen, open, onClose }: { 
                   aria-checked={wirkung === w}
                   onClick={() => setWirkung(w)}
                   className={cn(
-                    "min-h-11 rounded-[14px] px-3.5 py-2.5 text-left ring-1 ring-inset transition-colors",
-                    wirkung === w ? "bg-ink-soft text-fg ring-transparent" : "text-fg-2 ring-[var(--line)] hover:bg-ink-softer",
+                    "min-h-11 rounded-md px-3.5 py-2.5 text-left transition-colors duration-100",
+                    wirkung === w ? "bg-[var(--surface-3)] text-fg shadow-[inset_0_0_0_1px_var(--ink)]" : "text-fg-2 shadow-[inset_0_0_0_1px_var(--line-strong)] hover:bg-[var(--surface-pop-hover)]",
                   )}
                 >
-                  <span className="block text-[13.5px] font-semibold">{titel}</span>
-                  <span className="block text-[12.5px] text-fg-3">{sub}</span>
+                  <span className="block text-[14px] font-semibold">{titel}</span>
+                  <span className="block text-[13px] text-fg-3">{sub}</span>
                 </button>
               ))}
             </div>
@@ -185,11 +185,11 @@ export function WeiterleitungsDialog({ akte, mandant, offen, open, onClose }: { 
             </Field>
           )}
           {zeigeFehler && fehler && (
-            <p id="wl-fehler" role="alert" className="rounded-[12px] bg-seal-soft px-3 py-2 text-[13px] font-medium text-seal">
+            <p id="wl-fehler" role="alert" className="rounded-md bg-[var(--seal-soft)] px-3 py-2 text-[13px] font-medium text-seal-text">
               {fehler}
             </p>
           )}
-          <p className="text-[12.5px] text-fg-3">Die Weiterleitung steht mit Empfänger, IBAN und Wirkung im Aktenkonto und im Protokoll. Rückgängig ist dort jederzeit per Stornobuchung möglich.</p>
+          <p className="text-[13px] text-fg-3">Die Weiterleitung steht mit Empfänger, IBAN und Wirkung im Aktenkonto und im Protokoll. Rückgängig ist dort jederzeit per Stornobuchung möglich.</p>
         </div>
       </Modal>
       <DateiDialog datei={datei} onClose={() => setDatei(null)} />

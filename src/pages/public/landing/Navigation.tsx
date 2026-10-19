@@ -1,11 +1,12 @@
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { Link, useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, Menu as MenuIcon, X } from "lucide-react";
 import { Button } from "@/components/ui";
-import { AppIcon, Wordmark } from "@/components/Logo";
+import { Wortmarke } from "@/components/Logo";
 import { useSession } from "@/store/session";
 import { istConsole } from "@/lib/backend";
+import { BEWEGUNG } from "@/lib/bewegung";
 import { cn } from "@/lib/cn";
 import { scrollZu } from "./basis";
 
@@ -19,19 +20,25 @@ export const ANKER = [
   { id: "kontakt", label: "Kontakt" },
 ];
 
-/** Schwebende Glas-Navigation mit gleitender Markierung des aktuellen Abschnitts. */
+/**
+ * Kopf der Startseite (DESIGN-SYSTEM.md 14.1): 64 px, deckend auf --bg, Linie unten erst nach dem ersten Scrollen. Links die
+ * Wortmarke, Mitte die Anker (aktueller Abschnitt: Text 1 und 2-px-Strich unten), rechts „Anmelden“ und „Demo starten“.
+ * Telefon: Menü-Knopf 44 px, Menü klappt als Fläche unter dem Kopf auf.
+ */
 export function Navigation({ scrollRef }: { scrollRef: RefObject<HTMLDivElement | null> }) {
   const nav = useNavigate();
   const { sitzung } = useSession();
   const [aktiv, setAktiv] = useState<string | null>(null);
   const [gescrollt, setGescrollt] = useState(false);
   const [offen, setOffen] = useState(false);
+  const knopf = useRef<HTMLButtonElement>(null);
+  const menue = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const root = scrollRef.current;
     if (!root) return;
     const onScroll = () => {
-      setGescrollt(root.scrollTop > 12);
+      setGescrollt(root.scrollTop > 8);
       if (root.scrollTop < 240) setAktiv(null);
     };
     onScroll();
@@ -54,16 +61,21 @@ export function Navigation({ scrollRef }: { scrollRef: RefObject<HTMLDivElement 
     };
   }, [scrollRef]);
 
-  // Mobiles Menü mit Escape schließen
+  // Mobiles Menü: Fokus auf den ersten Eintrag, Escape schließt und gibt den Fokus an den Menü-Knopf zurück
   useEffect(() => {
     if (!offen) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOffen(false);
+    menue.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setOffen(false);
+      knopf.current?.focus();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [offen]);
 
   const ziel = sitzung ? (istConsole(sitzung) ? "/console" : "/cockpit") : "/login";
-  // Das mobile Menü schwebt über dem Inhalt (absolut positioniert) und verschiebt den Seitenfluss nicht –
+  // Das mobile Menü liegt über dem Inhalt (absolut positioniert) und verschiebt den Seitenfluss nicht –
   // so stimmt die Zielposition auch dann, wenn es sich beim Scrollen schließt.
   const gehe = (id: string) => {
     setOffen(false);
@@ -71,98 +83,78 @@ export function Navigation({ scrollRef }: { scrollRef: RefObject<HTMLDivElement 
   };
 
   return (
-    <header className="sticky top-0 z-50 px-3 pt-[max(10px,env(safe-area-inset-top))] sm:px-5">
-      <div
-        className={cn(
-          "mx-auto flex h-14 max-w-[1200px] items-center gap-2 rounded-[22px] pl-3 pr-2 transition-[background-color,box-shadow] duration-500 sm:pl-4",
-          gescrollt ? "glass-strong glass-deckend" : "glass",
-        )}
-      >
-        <button type="button" onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })} className="flex shrink-0 items-center gap-2.5 rounded-[12px]" aria-label="Apex – nach oben">
-          <AppIcon size={32} />
-          <Wordmark size={17} />
+    <header className={cn("sticky top-0 z-50 border-b bg-[var(--bg)] pt-[env(safe-area-inset-top)] transition-colors duration-100", gescrollt || offen ? "border-[var(--line)]" : "border-transparent")}>
+      <div className="mx-auto flex h-16 max-w-[1200px] items-center gap-4 px-4 sm:px-6 lg:box-content lg:px-8">
+        <button type="button" onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })} className="flex min-h-11 shrink-0 items-center rounded-md px-1 -ml-1 sm:min-h-8" aria-label="Apex – nach oben">
+          <Wortmarke size={20} />
         </button>
 
-        <nav aria-label="Abschnitte" className="mx-auto hidden items-center gap-0.5 lg:flex">
+        <nav aria-label="Abschnitte" className="mx-auto hidden h-full items-stretch lg:flex">
           {ANKER.map((a) => (
             <button
               key={a.id}
               type="button"
               onClick={() => gehe(a.id)}
-              className={cn("relative z-0 h-9 rounded-full px-3.5 text-[13px] font-medium transition-colors", aktiv === a.id ? "text-fg" : "text-fg-3 hover:text-fg")}
+              aria-current={aktiv === a.id ? "location" : undefined}
+              className={cn("relative flex items-center px-3 text-[14px] font-medium transition-colors duration-100 focus-visible:outline-offset-[-2px]", aktiv === a.id ? "text-fg" : "text-fg-3 hover:text-fg")}
             >
-              {aktiv === a.id && (
-                <motion.span
-                  layoutId="landing-nav"
-                  className="absolute inset-0 -z-10 rounded-full bg-[var(--surface)] shadow-[0_1px_0_0_var(--glass-rim-3)_inset,0_2px_10px_-2px_rgba(20,30,80,0.16),0_0_0_1px_var(--line)]"
-                  transition={{ type: "spring", stiffness: 520, damping: 38 }}
-                />
-              )}
-              <span className="relative">{a.label}</span>
+              {a.label}
+              {aktiv === a.id && <motion.span layoutId="landing-anker" aria-hidden className="absolute inset-x-3 -bottom-px h-[2px] bg-[var(--ink)]" transition={BEWEGUNG.standard} />}
             </button>
           ))}
         </nav>
 
-        <div className="ml-auto flex items-center gap-1.5 lg:ml-0">
+        <div className="ml-auto flex items-center gap-2 lg:ml-0">
           {sitzung ? (
-            <Button variant="primary" size="sm" iconRight={<ArrowRight className="size-4" />} onClick={() => nav(ziel)}>
+            <Button variant="primary" iconRight={<ArrowRight className="size-4" />} onClick={() => nav(ziel)}>
               {istConsole(sitzung) ? "Zur Console" : "Zur Kanzlei-App"}
             </Button>
           ) : (
             <>
-              <Link to="/login" className="btn btn-ghost btn-sm hidden sm:inline-flex">
+              <Link to="/login" className="btn btn-ghost hidden sm:inline-flex">
                 Anmelden
               </Link>
-              <Button variant="primary" size="sm" onClick={() => nav("/login")}>
+              <Button variant="primary" onClick={() => nav("/login")}>
                 Demo starten
               </Button>
             </>
           )}
-          <button type="button" className="icon-btn lg:hidden" aria-label={offen ? "Menü schließen" : "Menü öffnen"} aria-expanded={offen} onClick={() => setOffen((o) => !o)}>
-            {offen ? <X className="size-[18px]" /> : <MenuIcon className="size-[18px]" />}
+          <button ref={knopf} type="button" className="icon-btn -mr-2 lg:hidden" aria-label={offen ? "Menü schließen" : "Menü öffnen"} aria-expanded={offen} aria-controls="landing-menue" onClick={() => setOffen((o) => !o)}>
+            {offen ? <X className="!size-5" /> : <MenuIcon className="!size-5" />}
           </button>
         </div>
       </div>
 
       <AnimatePresence>
         {offen && (
-          <motion.div
-            key="menue-hintergrund"
-            aria-hidden
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setOffen(false)}
-            className="fixed inset-0 -z-10 lg:hidden"
-          />
+          <motion.div key="abdunkler" aria-hidden initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={BEWEGUNG.standard} onClick={() => setOffen(false)} className="fixed inset-0 top-16 -z-10 bg-[var(--scrim)] lg:hidden" />
         )}
         {offen && (
           <motion.nav
+            ref={menue}
             key="menue"
+            id="landing-menue"
             aria-label="Abschnitte"
-            initial={{ opacity: 0, y: -8, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -6, scale: 0.98 }}
-            transition={{ type: "spring", stiffness: 480, damping: 34 }}
-            style={{ transformOrigin: "top right" }}
-            className="glass-strong tabbar-deckend absolute inset-x-3 top-full mx-auto mt-2 max-w-[1200px] rounded-[22px] p-2 sm:inset-x-5 lg:hidden"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={BEWEGUNG.standard}
+            className="absolute inset-x-0 top-full border-b border-[var(--line)] bg-[var(--bg)] px-4 pb-4 sm:px-6 lg:hidden"
           >
-            <ul className="grid gap-0.5 sm:grid-cols-2">
-              {ANKER.map((a, i) => (
-                <motion.li key={a.id} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.03 }}>
-                  <button type="button" onClick={() => gehe(a.id)} className={cn("flex h-11 w-full items-center justify-between rounded-[14px] px-3.5 text-left text-[15px] font-medium hover:bg-ink-softer", aktiv === a.id && "bg-ink-softer text-ink")}>
+            <ul className="mx-auto grid max-w-[1200px] divide-y divide-[var(--line)] sm:grid-cols-2 sm:gap-x-6 sm:divide-y-0">
+              {ANKER.map((a) => (
+                <li key={a.id} className="sm:border-b sm:border-[var(--line)]">
+                  <button type="button" onClick={() => gehe(a.id)} aria-current={aktiv === a.id ? "location" : undefined} className={cn("flex h-12 w-full items-center justify-between text-left text-[16px] font-medium focus-visible:outline-offset-[-2px]", aktiv === a.id ? "text-fg" : "text-fg-2")}>
                     {a.label}
-                    <ArrowRight className="size-4 text-fg-4" />
+                    <ArrowRight className="size-4 text-fg-4" aria-hidden />
                   </button>
-                </motion.li>
+                </li>
               ))}
             </ul>
             {!sitzung && (
-              <div className="mt-2 border-t border-[var(--line)] p-1.5 pt-3 sm:hidden">
-                <Link to="/login" className="btn btn-secondary w-full">
-                  Anmelden
-                </Link>
-              </div>
+              <Link to="/login" className="btn btn-secondary mt-4 w-full sm:hidden">
+                Anmelden
+              </Link>
             )}
           </motion.nav>
         )}

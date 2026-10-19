@@ -13,7 +13,7 @@ export function Zeile({ titel, text, children, htmlFor, className }: { titel: Re
         ) : (
           <div className="text-[14px] font-semibold">{titel}</div>
         )}
-        {text && <div className="mt-0.5 text-[12.5px] leading-relaxed text-fg-3">{text}</div>}
+        {text && <div className="mt-0.5 text-[13px] leading-relaxed text-fg-3">{text}</div>}
       </div>
       <div className="flex shrink-0 items-center">{children}</div>
     </div>
@@ -22,12 +22,12 @@ export function Zeile({ titel, text, children, htmlFor, className }: { titel: Re
 
 export function Abschnitt({ titel, text, icon, children, aktion, className, id }: { titel: ReactNode; text?: ReactNode; icon?: ReactNode; children: ReactNode; aktion?: ReactNode; className?: string; id?: string }) {
   return (
-    <section id={id} tabIndex={id ? -1 : undefined} className={cn("sheet relative scroll-mt-28 rounded-[22px] p-5 outline-none md:p-6", className)}>
+    <section id={id} tabIndex={id ? -1 : undefined} className={cn("sheet relative scroll-mt-28 rounded-lg p-5 outline-none md:p-6", className)}>
       <div className="mb-4 flex flex-wrap items-start gap-3">
-        {icon && <div className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">{icon}</div>}
+        {icon && <div className="grid size-9 shrink-0 place-items-center rounded-md bg-ink-soft text-ink">{icon}</div>}
         <div className="min-w-0 flex-1 basis-[200px]">
           <h2 className="title-md">{titel}</h2>
-          {text && <p className="mt-0.5 text-[12.5px] leading-relaxed text-fg-3">{text}</p>}
+          {text && <p className="mt-0.5 text-[13px] leading-relaxed text-fg-3">{text}</p>}
         </div>
         {aktion && <div className="shrink-0">{aktion}</div>}
       </div>

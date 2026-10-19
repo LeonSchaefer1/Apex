@@ -70,17 +70,17 @@ export function VorschussDialog({ akte, open, onClose }: { akte: Akte; open: boo
       }
     >
       {!ok ? (
-        <p className="rounded-[14px] bg-amber-soft px-3.5 py-3 text-[13px] text-fg-2">{vorschlag.grund}</p>
+        <p className="rounded-lg bg-amber-soft px-3.5 py-3 text-[13px] text-fg-2">{vorschlag.grund}</p>
       ) : (
         <div className="grid gap-3.5 text-[13px]">
           <p className="text-fg-2">
             Vorschussrechnung an <span className="font-semibold text-fg">{mandant?.name ?? "den Mandanten"}</span> (Leistungsempfänger, § 14 UStG) auf die entstandenen und voraussichtlich entstehenden Gebühren – Gegenstandswert{" "}
             {fmtEUR(akte.gegenstandswert)}, RVG {FASSUNG_LABEL[vorschlag.fassung]}.
           </p>
-          <ul className="divide-y divide-[var(--line)] overflow-hidden rounded-[14px] ring-1 ring-[var(--line)]">
+          <ul className="divide-y divide-[var(--line)] overflow-hidden rounded-lg ring-1 ring-[var(--line)]">
             {vorschlag.positionen.map((p, i) => (
               <li key={i} className="flex items-baseline gap-3 px-3.5 py-2">
-                <span className="mono w-11 shrink-0 text-[12.5px] text-fg-3">{p.vv}</span>
+                <span className="mono w-11 shrink-0 text-[13px] text-fg-3">{p.vv}</span>
                 <span className="min-w-0 flex-1 break-words">{p.bezeichnung}</span>
                 <span className="num shrink-0 font-medium">{fmtEUR(p.betrag)}</span>
               </li>
@@ -91,20 +91,20 @@ export function VorschussDialog({ akte, open, onClose }: { akte: Akte; open: boo
             </li>
           </ul>
           {rsv ? (
-            <div className="flex items-start gap-2 rounded-[14px] bg-ink-softer px-3.5 py-2.5 text-fg-2">
+            <div className="flex items-start gap-2 rounded-md bg-[var(--surface-2)] px-3.5 py-2.5 text-fg-2">
               <ShieldCheck className="mt-0.5 size-4 shrink-0 text-ink" />
               <span>
                 {rsvBlockText(rsv, fmtEUR)}.
-                <span className="mt-1 flex items-start gap-1.5 text-[12.5px] text-fg-3">
+                <span className="mt-1 flex items-start gap-1.5 text-[13px] text-fg-3">
                   <FileText className="mt-0.5 size-3.5 shrink-0" />
                   Beim Stellen entsteht in der E-Akte der Entwurf „Zahlungsaufforderung an {rsv.versicherung}“ mit Versicherungs- und Schadennummer.
                 </span>
               </span>
             </div>
           ) : (
-            <p className="text-[12.5px] text-fg-3">Keine Rechtsschutzversicherung mit Deckung hinterlegt – der Mandant zahlt den Vorschuss selbst.</p>
+            <p className="text-[13px] text-fg-3">Keine Rechtsschutzversicherung mit Deckung hinterlegt – der Mandant zahlt den Vorschuss selbst.</p>
           )}
-          <p className="text-[12.5px] text-fg-3">Elektronischer Austausch mit Rechtsschutzversicherern (drebis): im Prototyp nicht angebunden – Versand per E-Mail oder Brief.</p>
+          <p className="text-[13px] text-fg-3">Elektronischer Austausch mit Rechtsschutzversicherern (drebis): im Prototyp nicht angebunden – Versand per E-Mail oder Brief.</p>
         </div>
       )}
     </Modal>

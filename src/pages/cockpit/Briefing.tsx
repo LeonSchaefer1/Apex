@@ -10,12 +10,13 @@ import { schuetzeLeerzeichen } from "@/core/dates";
 import { anzeigeText, sprechText, type Satz } from "./daten";
 import { StatusZeile } from "./KartenArbeit";
 
+/** Hervorhebungen 600 in Text 1; Siegelrot nur, wenn der Satz eine kritische oder überfällige Frist nennt (DESIGN-SYSTEM.md 12.19). */
 const TON: Record<string, string> = {
   fg: "font-semibold text-fg",
-  seal: "font-semibold text-seal",
-  amber: "font-semibold text-amber",
-  ink: "mono font-semibold text-ink",
-  violet: "font-semibold text-violet",
+  seal: "font-semibold text-[var(--seal-text)]",
+  amber: "font-semibold text-fg",
+  ink: "mono font-medium text-fg",
+  violet: "font-semibold text-fg",
 };
 
 function sprachausgabeVerfuegbar() {
@@ -115,28 +116,17 @@ export function Briefing({ saetze: tagesSaetze, erstellt, warnungen = [] }: { sa
   const sichtbar = kompakt ? saetze.slice(0, warnungen.length + 1) : saetze;
 
   return (
-    <motion.section
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ type: "spring", stiffness: 420, damping: 36, delay: 0.04 }}
-      className="sheet relative overflow-hidden rounded-[26px] p-5 sm:p-6"
-      aria-label="KI-Tagesbriefing"
-    >
-      {/* zarter irisierender Lichtschein oben rechts */}
-      <div aria-hidden className="ai-fill pointer-events-none absolute -right-24 -top-28 size-72 rounded-full opacity-[0.13] blur-3xl" />
-      <div className="relative flex flex-wrap items-center gap-x-3 gap-y-2">
+    <section className="max-w-[76ch]" aria-label="KI-Tagesbriefing">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <AiChip>KI-Briefing</AiChip>
-        <span className="text-[12.5px] text-fg-3"><span className="hidden sm:inline">Aus Ihren Kanzleidaten erstellt · </span>{erstellt} Uhr</span>
+        <span className="text-[13px] text-fg-4"><span className="hidden sm:inline">Aus Ihren Kanzleidaten erstellt · </span>{erstellt} Uhr</span>
         <div className="ml-auto">
           <button
             type="button"
             onClick={spricht ? stopp : start}
             disabled={!verfuegbar}
             title={verfuegbar ? (spricht ? "Vorlesen beenden" : "Briefing vorlesen lassen") : "Vorlesen wird von diesem Browser nicht unterstützt"}
-            className={cn(
-              "btn btn-sm",
-              spricht ? "btn-secondary !text-ink" : "btn-ghost",
-            )}
+            className={cn("btn btn-sm", spricht ? "btn-secondary" : "btn-ghost")}
             aria-pressed={spricht}
           >
             {spricht ? <Square className="size-3.5" fill="currentColor" /> : <Volume2 className="size-4" />}
@@ -145,17 +135,17 @@ export function Briefing({ saetze: tagesSaetze, erstellt, warnungen = [] }: { sa
           </button>
         </div>
       </div>
-      {mobil && <StatusZeile uhrzeit className="relative mt-3" />}
-      <div className="relative mt-3.5 space-y-1.5 text-[15px] leading-[1.6] text-fg-2 sm:text-[16px]">
+      {mobil && <StatusZeile uhrzeit className="mt-2" />}
+      <div className="mt-3 space-y-2 text-[15px] leading-6 text-fg-2">
         {sichtbar.map((satz, i) => (
           <p
             key={i}
-            className={cn("transition-[opacity,filter] duration-500", i < warnungen.length && "rounded-[12px] bg-amber-soft px-2.5 py-1", spricht && aktiv !== i && "opacity-40")}
+            className={cn("transition-opacity duration-200", i < warnungen.length && "rounded-md bg-amber-soft px-3 py-1.5", spricht && aktiv !== i && "opacity-40")}
             title={anzeigeText(satz)}
           >
             {satz.map((teil, k) =>
               teil.href ? (
-                <Link key={k} to={teil.href} className={cn(TON[teil.ton ?? "ink"], "rounded-[6px] px-0.5 underline decoration-[var(--ink-soft)] decoration-2 underline-offset-[3px] hover:decoration-ink")}>
+                <Link key={k} to={teil.href} className={cn(TON[teil.ton ?? "ink"], "rounded-sm underline decoration-[var(--line-strong)] decoration-1 underline-offset-[3px] hover:decoration-[var(--fg)]")}>
                   {schuetzeLeerzeichen(teil.t)}
                 </Link>
               ) : (
@@ -168,12 +158,12 @@ export function Briefing({ saetze: tagesSaetze, erstellt, warnungen = [] }: { sa
         ))}
       </div>
       {kompakt && saetze.length > sichtbar.length && (
-        <button type="button" onClick={() => setOffen(true)} className="relative mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-ink">
+        <button type="button" onClick={() => setOffen(true)} className="link-leise mt-2 min-h-11 rounded-sm">
           Posteingang und Termine im Briefing
           <ChevronDown className="size-4" />
         </button>
       )}
-    </motion.section>
+    </section>
   );
 }
 
@@ -184,9 +174,9 @@ function Pegel() {
       {[0, 1, 2, 3].map((i) => (
         <motion.span
           key={i}
-          className="w-[2.5px] rounded-full bg-current"
+          className="w-[2px] rounded-full bg-current"
           animate={{ height: ["30%", "100%", "45%", "85%", "30%"] }}
-          transition={{ duration: 0.9 + i * 0.12, repeat: Infinity, ease: "easeInOut", delay: i * 0.1 }}
+          transition={{ duration: 0.9 + i * 0.12, repeat: Infinity, ease: "linear", delay: i * 0.1 }}
         />
       ))}
     </span>

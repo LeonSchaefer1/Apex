@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
-import { AnimatePresence, MotionConfig, motion } from "motion/react";
-import { Building2, CircleHelp, FileClock, FlaskConical, FolderOpen, KeyRound, LogOut, Moon, Plus, RefreshCw, ShieldCheck, Sun, MonitorSmartphone, Users } from "lucide-react";
-import { Button, Chip, Drawer, Empty, Field, Input, Modal, PageHeader, SearchField, Segmented, Select, Stat, confirmDialog } from "@/components/ui";
-import { AppIcon } from "@/components/Logo";
+import { AnimatePresence, MotionConfig } from "motion/react";
+import { Building2, CircleAlert, CircleHelp, FileClock, FlaskConical, FolderOpen, KeyRound, LogOut, Moon, Plus, RefreshCw, ShieldCheck, Sun, MonitorSmartphone, Users } from "lucide-react";
+import { Button, Card, Chip, Drawer, Empty, Field, Input, Modal, PageHeader, SearchField, Segmented, Select, Stat, StatLeiste, confirmDialog } from "@/components/ui";
+import { LogoMark } from "@/components/Logo";
 import { WikiPlayer } from "@/components/wiki/WikiPlayer";
 import { artikel } from "@/content/wiki";
 import { useSession } from "@/store/session";
@@ -158,10 +158,10 @@ export default function ConsolePage() {
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="relative z-10 h-full overflow-y-auto overflow-x-hidden" id="console-scroll">
+      <div className="relative z-10 h-full scroll-pt-16 overflow-y-auto overflow-x-hidden bg-[var(--bg)]" id="console-scroll">
         <ConsoleKopf name={sitzung && istConsole(sitzung) ? sitzung.name : ANBIETER_TEAM} email={sitzung && istConsole(sitzung) ? sitzung.email : ""} onAbmelden={() => void abmelden()} />
 
-        <main className="mx-auto w-full max-w-[1200px] px-4 pb-24 pt-6 sm:px-6 md:pt-8">
+        <main className="mx-auto w-full max-w-[1280px] px-4 pb-24 pt-6 sm:px-6 md:pt-8 lg:px-8">
           <PageHeader
             eyebrow="Anbieter-Bereich"
             title="Kunden & Testzugänge"
@@ -179,18 +179,18 @@ export default function ConsolePage() {
             }
           />
 
-          {/* Kennzahlen – aus derselben Liste wie die Karten; vor dem Laden „–“ statt vorläufiger Werte */}
-          <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-busy={!kunden}>
-            {[
-              { label: "Kanzleien", wert: kpi.kunden, icon: <Building2 className="size-4" />, ton: "ink" as const, sub: kunden ? kanzleiStatusText(kpi.status) : "wird geladen …" },
-              { label: "Aktive Tests", wert: kpi.tests, icon: <FlaskConical className="size-4" />, ton: "violet" as const, sub: "Testzugang läuft" },
-              { label: "Nutzer gesamt", wert: kpi.nutzer, icon: <Users className="size-4" />, ton: "green" as const, sub: "über alle Kanzleien" },
-              { label: "Akten gesamt", wert: kpi.akten, icon: <FolderOpen className="size-4" />, ton: "amber" as const, sub: "streng getrennt" },
-            ].map((x, i) => (
-              <motion.div key={x.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", stiffness: 420, damping: 34, delay: 0.05 + i * 0.04 }}>
-                <Stat label={x.label} icon={x.icon} tone={x.ton} value={kunden ? <span className="num">{fmtNum(x.wert)}</span> : <span className="text-fg-4" aria-label="wird geladen">–</span>} sub={x.sub} />
-              </motion.div>
-            ))}
+          {/* Kennzahlen – aus derselben Liste wie die Karten; vor dem Laden „–“ statt vorläufiger Werte. Eine Leiste, Symbole grau. */}
+          <div className="mb-8" aria-busy={!kunden}>
+            <StatLeiste>
+              {[
+                { label: "Kanzleien", wert: kpi.kunden, icon: <Building2 className="size-4" />, sub: kunden ? kanzleiStatusText(kpi.status) : "wird geladen …" },
+                { label: "Aktive Tests", wert: kpi.tests, icon: <FlaskConical className="size-4" />, sub: "Testzugang läuft" },
+                { label: "Nutzer gesamt", wert: kpi.nutzer, icon: <Users className="size-4" />, sub: "über alle Kanzleien" },
+                { label: "Akten gesamt", wert: kpi.akten, icon: <FolderOpen className="size-4" />, sub: "streng getrennt" },
+              ].map((x) => (
+                <Stat key={x.label} label={x.label} icon={x.icon} value={kunden ? <span className="num">{fmtNum(x.wert)}</span> : <span className="text-fg-4" aria-label="wird geladen">–</span>} sub={x.sub} />
+              ))}
+            </StatLeiste>
           </div>
 
           {/* Werkzeugleiste */}
@@ -198,6 +198,7 @@ export default function ConsolePage() {
             <SearchField id="console-suche" value={suche} onChange={setSuche} placeholder="Kanzlei, Stadt, Lizenz oder E-Mail suchen …" className="min-w-0 flex-1 basis-[260px] sm:max-w-[380px]" />
             <Segmented<Filter>
               size="sm"
+              mobilGross
               value={filter}
               onChange={setFilter}
               options={[
@@ -209,26 +210,32 @@ export default function ConsolePage() {
             />
             {info && (
               <Chip tone="outline" className="ml-auto hidden md:inline-flex" title={info.modus === "demo" ? "Demo-Betrieb: Zugänge werden in diesem Browser gespeichert." : "Server-Betrieb"}>
-                <ShieldCheck className="size-3 text-green" />
+                <ShieldCheck className="size-3 text-fg-3" aria-hidden />
                 {info.modus === "demo" ? "Demo-Betrieb · Daten im Browser" : "Server-Betrieb"}
               </Chip>
             )}
           </div>
 
           {fehler && (
-            <div className="mb-4 rounded-[16px] bg-seal-soft px-4 py-3 text-[13.5px] text-seal" role="alert">
-              {fehler} <button type="button" className="ml-2 font-semibold underline" onClick={() => void laden()}>Erneut versuchen</button>
+            <div className="banner banner-seal mb-4" role="alert">
+              <CircleAlert aria-hidden />
+              <span className="min-w-0 flex-1">
+                {fehler}{" "}
+                <button type="button" className="link ml-1 font-medium" onClick={() => void laden()}>
+                  Erneut versuchen
+                </button>
+              </span>
             </div>
           )}
 
           {!kunden ? (
             <div className="grid gap-3">
               {[0, 1, 2].map((k) => (
-                <div key={k} className="shimmer h-[190px] rounded-[24px]" />
+                <div key={k} className="shimmer h-[190px] !rounded-lg" />
               ))}
             </div>
           ) : sichtbar.length === 0 ? (
-            <div className="sheet rounded-[24px]">
+            <Card padded={false}>
               <Empty
                 icon={<Building2 className="size-6" />}
                 title={kunden.length ? "Keine Kanzlei passt zur Suche" : "Noch keine Kunden"}
@@ -245,12 +252,12 @@ export default function ConsolePage() {
                   )
                 }
               />
-            </div>
+            </Card>
           ) : (
             <div className="grid gap-3">
               <AnimatePresence initial={false}>
-                {sichtbar.map((k, i) => (
-                  <KundenKarte key={k.tenant.id} k={k} i={i} aktionen={aktionen} beschaeftigt={beschaeftigt === k.tenant.id} />
+                {sichtbar.map((k) => (
+                  <KundenKarte key={k.tenant.id} k={k} aktionen={aktionen} beschaeftigt={beschaeftigt === k.tenant.id} />
                 ))}
               </AnimatePresence>
             </div>
@@ -276,23 +283,24 @@ export default function ConsolePage() {
 }
 
 const THEME_ICON: Record<ThemeWahl, React.ReactNode> = {
-  system: <MonitorSmartphone className="size-[18px]" />,
-  light: <Sun className="size-[18px]" />,
-  dark: <Moon className="size-[18px]" />,
+  system: <MonitorSmartphone className="size-4" />,
+  light: <Sun className="size-4" />,
+  dark: <Moon className="size-4" />,
 };
 
 function ConsoleKopf({ name, email, onAbmelden }: { name: string; email: string; onAbmelden: () => void }) {
   const { theme, setTheme } = useUI();
   const naechstes: ThemeWahl = theme === "system" ? "light" : theme === "light" ? "dark" : "system";
   return (
-    <header className="sticky top-0 z-40 px-3 pt-[max(10px,env(safe-area-inset-top))] sm:px-5">
-      <div className="glass mx-auto flex h-14 max-w-[1200px] items-center gap-2 rounded-[22px] pl-3 pr-2 sm:gap-3 sm:pl-4">
-        <AppIcon size={32} />
+    // Kopfleiste wie in der App (DESIGN-SYSTEM.md 12.11): 56 px, deckend auf --bg, Linie unten – keine schwebende Kapsel
+    <header className="sticky top-0 z-40 border-b border-[var(--line)] bg-[var(--bg)] pt-[env(safe-area-inset-top)]">
+      <div className="mx-auto flex h-14 max-w-[1280px] items-center gap-3 px-4 sm:px-6 lg:px-8">
+        <LogoMark size={20} className="text-fg" />
         <div className="min-w-0 leading-tight">
-          <div className="truncate text-[15px] font-semibold tracking-[-0.02em]">Apex Console</div>
-          <div className="hidden truncate text-[12.5px] text-fg-3 sm:block">{name}</div>
+          <div className="truncate text-[15px] font-semibold tracking-[-0.02em] text-fg">Apex Console</div>
+          <div className="hidden truncate text-[12px] text-fg-4 sm:block">{name}</div>
         </div>
-        <Chip tone="violet" className="hidden sm:inline-flex">
+        <Chip tone="outline" className="ml-1 hidden sm:inline-flex">
           Anbieter-Bereich
         </Chip>
         <div className="ml-auto flex items-center gap-1">
@@ -419,8 +427,9 @@ function AnforderungDialog({ daten, consoleName, onClose, onErzeugt }: { daten: 
             <Input id="sp-bearbeiter" value={bearbeiter} onChange={(e) => setBearbeiter(e.target.value)} maxLength={120} autoComplete="name" />
           </Field>
           {fehler.allgemein && (
-            <div role="alert" className="rounded-[12px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal">
-              {fehler.allgemein}
+            <div role="alert" className="banner banner-seal">
+              <CircleAlert aria-hidden />
+              <span>{fehler.allgemein}</span>
             </div>
           )}
           <button type="submit" className="hidden" aria-hidden tabIndex={-1} />
@@ -447,8 +456,8 @@ function PasswortDialog({ daten, onClose }: { daten: { user: User; tenant: Tenan
     >
       {daten && (
         <div className="grid gap-4">
-          <p className="flex items-start gap-2 rounded-[14px] bg-[var(--ink-softer)] px-3.5 py-2.5 text-[13px] leading-relaxed text-fg-2 ring-1 ring-[var(--line)]">
-            <FileClock className="mt-0.5 size-4 shrink-0 text-ink" />
+          <p className="banner">
+            <FileClock aria-hidden />
             <span>
               Das bisherige Passwort ist ab sofort ungültig. {PROTOKOLL_SATZ} Dieses Startpasswort wird nicht noch einmal angezeigt.
             </span>

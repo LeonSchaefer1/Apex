@@ -6,7 +6,6 @@ import { useSession } from "@/store/session";
 import { useAiStatus } from "@/ai/status";
 import { createAppRouter } from "@/app/router";
 import { ConfirmHost, Toaster } from "@/components/ui";
-import { RefractionDefs } from "@/components/shell/RefractionDefs";
 import { LadeBildschirm } from "@/components/shell/LadeBildschirm";
 
 let router: ReturnType<typeof createAppRouter> | null = null;
@@ -33,13 +32,7 @@ export default function App() {
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="aura" aria-hidden>
-        <i />
-        <i />
-        <i />
-        <i />
-      </div>
-      <RefractionDefs />
+      {/* Einfarbiger Grund (--bg) über body – kein Aura-Hintergrund, keine Lichtbrechung mehr (DESIGN-SYSTEM.md 13) */}
       <div id="app-inhalt" className="relative z-10 h-full">{bereit && router ? <RouterProvider router={router} /> : <LadeBildschirm fehler={fehler ?? undefined} text="Apex startet …" />}</div>
       <Toaster />
       <ConfirmHost />

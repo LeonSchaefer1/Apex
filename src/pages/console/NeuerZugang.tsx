@@ -1,11 +1,12 @@
 import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Building2, Check, CheckCircle2, Copy, Link2, Mail, Plus, Send } from "lucide-react";
+import { Building2, Check, CheckCircle2, CircleAlert, Copy, Link2, Mail, Plus, Send } from "lucide-react";
 import { Button, Chip, Field, Input, Modal, Select, Switch, confirmDialog } from "@/components/ui";
 import { BUNDESLAENDER } from "@/core/feiertage";
 import { addDays, fmtDate, today } from "@/core/dates";
 import { getBackend, type NeuerKunde, type NeuerKundeErgebnis } from "@/lib/backend";
 import type { Bundesland, Sachgebiet } from "@/core/types";
+import { BEWEGUNG } from "@/lib/bewegung";
 import { cn } from "@/lib/cn";
 import { StartpasswortKarte } from "@/components/StartpasswortKarte";
 import { KopierKnopf } from "@/components/KopierKnopf";
@@ -113,7 +114,7 @@ export function NeuerZugang({ open, onClose, onAngelegt }: { open: boolean; onCl
   ) : stadtErkannt ? (
     "Aus der Stadt übernommen – bestimmt die Feiertage für die Fristberechnung."
   ) : (
-    <span className="text-amber">„{form.stadt.trim()}“ ist in unserer Ortsliste nicht enthalten – bitte wählen Sie das Bundesland.</span>
+    <span className="text-amber-text">„{form.stadt.trim()}“ ist in unserer Ortsliste nicht enthalten – bitte wählen Sie das Bundesland.</span>
   );
   const nutzerGen = hauptnutzerGenitiv(form.adminAnrede);
 
@@ -149,11 +150,11 @@ export function NeuerZugang({ open, onClose, onAngelegt }: { open: boolean; onCl
     >
       <AnimatePresence mode="wait" initial={false}>
         {ergebnis ? (
-          <motion.div key="ok" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ type: "spring", stiffness: 420, damping: 34 }}>
+          <motion.div key="ok" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={BEWEGUNG.standard}>
             <Erfolg e={ergebnis} beispieldaten={form.beispieldaten} />
           </motion.div>
         ) : (
-          <motion.form key="form" onSubmit={anlegen} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="grid gap-4" noValidate>
+          <motion.form key="form" onSubmit={anlegen} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={BEWEGUNG.standard} className="grid gap-4" noValidate>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Kanzleiname" htmlFor="nk-kanzlei" className="sm:col-span-2" hint={zeige("kanzlei") && <span className="text-seal">{zeige("kanzlei")}</span>}>
                 <Input id="nk-kanzlei" value={form.kanzlei} onChange={(e) => set("kanzlei", e.target.value)} placeholder="z. B. Becker & Schulz Rechtsanwälte PartG mbB" autoComplete="organization" aria-invalid={!!zeige("kanzlei")} />
@@ -218,38 +219,38 @@ export function NeuerZugang({ open, onClose, onAngelegt }: { open: boolean; onCl
                 {SACHGEBIETE.map((sg) => {
                   const an = form.schwerpunkte.includes(sg);
                   return (
-                    <motion.button
+                    <button
                       key={sg}
                       type="button"
                       aria-pressed={an}
-                      whileTap={{ scale: 0.94 }}
                       onClick={() => set("schwerpunkte", an ? form.schwerpunkte.filter((x) => x !== sg) : ([...form.schwerpunkte, sg] as Sachgebiet[]))}
                       className={cn(
-                        "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-medium transition-colors",
-                        an ? "bg-ink text-[var(--on-ink)] shadow-[0_6px_14px_-8px_var(--ink)]" : "bg-[var(--ink-softer)] text-fg-2 shadow-[inset_0_0_0_1px_var(--line)] hover:bg-ink-soft",
+                        "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium transition-colors duration-100 max-sm:h-11",
+                        an ? "bg-[var(--surface-3)] text-fg shadow-[inset_0_0_0_1px_var(--ink)]" : "bg-[var(--surface)] text-fg-2 shadow-[inset_0_0_0_1px_var(--line-strong)] hover:bg-[var(--surface-2)]",
                       )}
                     >
-                      {an && <Check className="size-3.5" />}
+                      {an && <Check className="size-3.5" aria-hidden />}
                       {sg}
-                    </motion.button>
+                    </button>
                   );
                 })}
               </div>
               <p className="mt-1.5 text-[13px] text-fg-3">{form.schwerpunkte.length ? `${form.schwerpunkte.length} ausgewählt – die Beispielakten richten sich danach.` : "Ohne Auswahl werden allgemeine Beispielakten erzeugt."}</p>
             </fieldset>
 
-            <label htmlFor="nk-beispiel" className="flex cursor-pointer items-center gap-4 rounded-[16px] bg-[var(--ink-softer)] p-3.5 shadow-[inset_0_0_0_1px_var(--line)]">
+            <label htmlFor="nk-beispiel" className="flex cursor-pointer items-center gap-4 border-y border-[var(--line)] py-4">
               <span className="min-w-0 flex-1">
-                <span className="block text-[14px] font-semibold">Mit Beispieldaten</span>
-                <span className="block text-[12.5px] text-fg-3">Über 30 Beispielakten mit Fristen, Posteingang, Rechnungen und 38h-Motor – ideal für die Präsentation. Ohne: leere Kanzlei für echte Daten.</span>
+                <span className="block text-[14px] font-medium text-fg">Mit Beispieldaten</span>
+                <span className="block text-[13px] leading-[18px] text-fg-3">Über 30 Beispielakten mit Fristen, Posteingang, Rechnungen und 38h-Motor – ideal für die Präsentation. Ohne: leere Kanzlei für echte Daten.</span>
               </span>
               <Switch id="nk-beispiel" checked={form.beispieldaten} onChange={(v) => set("beispieldaten", v)} label="Mit Beispieldaten" />
             </label>
 
             {fehler && (
-              <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="rounded-[12px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal" role="alert">
-                {fehler}
-              </motion.div>
+              <div className="banner banner-seal" role="alert">
+                <CircleAlert aria-hidden />
+                <span>{fehler}</span>
+              </div>
             )}
             <button type="submit" className="hidden" aria-hidden tabIndex={-1} />
           </motion.form>
@@ -281,19 +282,19 @@ export function ZugangsDaten({ user, text, passwort, kopf }: { user: { email: st
   return (
     <div className="grid gap-4">
       {kopf && (
-        <div className="flex items-center gap-3 rounded-[16px] bg-green-soft p-3.5 text-[13.5px]">
-          <motion.span initial={{ scale: 0.4, rotate: -30 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: "spring", stiffness: 500, damping: 18 }} className="grid size-9 shrink-0 place-items-center rounded-full bg-green text-white">
-            <Check className="size-5" strokeWidth={3} />
-          </motion.span>
+        <div className="banner banner-green">
+          <CheckCircle2 aria-hidden />
           <span className="text-fg-2">{kopf}</span>
         </div>
       )}
-      <ul className="sheet divide-y divide-[var(--line)] overflow-hidden rounded-[18px]">
+      <ul className="divide-y divide-[var(--line)] overflow-hidden rounded-lg border border-[var(--line)]">
         {zeilen.map((z) => (
           <li key={z.label} className="flex items-center gap-3 px-3.5 py-2.5">
-            <span className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-ink-soft text-ink">{z.icon}</span>
+            <span className="shrink-0 text-fg-4" aria-hidden>
+              {z.icon}
+            </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-[12.5px] font-medium text-fg-3">{z.label}</span>
+              <span className="block text-[12px] font-medium leading-4 text-fg-3">{z.label}</span>
               {/* vollständig und umbrechend – die Adresse wird am Telefon vorgelesen (I4-T21-02) */}
               <span className={z.hinweis ? "block text-[13px] text-fg-2" : "mono block text-[13.5px] font-medium leading-snug [overflow-wrap:anywhere]"}>{z.wert}</span>
             </span>
@@ -316,7 +317,7 @@ export function ZugangsDaten({ user, text, passwort, kopf }: { user: { email: st
         {/* Vorschaufläche wie ein Eingabefeld (Tokens, hell und dunkel) – eine E-Mail braucht kein Papier (I4-T21-01) */}
         <pre
           id={einladungId}
-          className="max-h-[260px] overflow-auto whitespace-pre-wrap rounded-[12px] border border-[var(--line-strong)] bg-[color-mix(in_oklab,var(--surface)_75%,transparent)] p-4 font-[inherit] text-[13px] leading-relaxed text-fg [overflow-wrap:anywhere]"
+          className="max-h-[260px] overflow-auto whitespace-pre-wrap rounded-md border border-[var(--line-strong)] bg-[var(--surface)] p-4 font-[inherit] text-[13px] leading-5 text-fg [overflow-wrap:anywhere]"
           tabIndex={0}
           role="region"
           aria-label="Einladungstext"

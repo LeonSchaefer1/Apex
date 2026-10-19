@@ -15,6 +15,7 @@ import { BEISPIEL_SUCHEN, ENTSCHEIDUNG_FELDER, entscheidung, jahr, type Ebene } 
 import { EntscheidungKarte, EntscheidungKompakt, GerichtSiegel } from "./EntscheidungKarte";
 import { EntscheidungDrawer } from "./EntscheidungDrawer";
 import { KiRecherche } from "./KiRecherche";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 type Modus = "stichwort" | "ki";
 
@@ -96,14 +97,9 @@ export default function FallDatenbank() {
       />
 
       {/* ───────── Suche ───────── */}
-      <motion.section
-        initial={{ opacity: 0, y: 14, scale: 0.99 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ type: "spring", stiffness: 260, damping: 30, delay: 0.05 }}
-        className="glass-strong glow relative rounded-[30px] p-4 sm:p-6"
-        style={{ boxShadow: "var(--glass-shadow-lg)" }}
-      >
-        <div className="relative z-[2] flex flex-wrap items-center justify-between gap-3">
+      {/* Suche frei auf dem Grund – keine schwebende Karte (DESIGN-SYSTEM.md 12.3) */}
+      <section aria-label="Suche" className="relative">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <Segmented<Modus>
             value={modus}
             onChange={(m) => {
@@ -112,12 +108,12 @@ export default function FallDatenbank() {
             }}
             options={[
               { value: "stichwort", label: "Stichwortsuche", icon: <Search className="size-3.5" /> },
-              { value: "ki", label: modus === "ki" ? <span className="ai-text">KI-Recherche</span> : "KI-Recherche", icon: <Sparkles className={cn("size-3.5", modus === "ki" && "text-violet")} /> },
+              { value: "ki", label: "KI-Recherche", icon: <Sparkles className="size-3.5" /> },
             ]}
           />
           {/* Abdeckung oben in normaler Textfarbe (I3-T06-06) – nicht erst am Seitenende */}
-          <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12.5px] text-fg-2">
-            <Database className="size-3.5 shrink-0 text-fg-3" aria-hidden />
+          <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[13px] text-fg-3">
+            <Database className="size-3.5 shrink-0 text-fg-4" aria-hidden />
             <span className="num font-medium text-fg">{ENTSCHEIDUNGEN.length} Leitentscheidungen</span>
             <span aria-hidden>·</span>
             <span>Demo-Auszug</span>
@@ -132,11 +128,11 @@ export default function FallDatenbank() {
           </p>
         </div>
 
-        <div className="relative z-[2]">
+        <div>
           {modus === "stichwort" ? (
             <>
               <div className="relative mt-4 sm:mt-5">
-                <Search className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-fg-3 sm:left-5" />
+                <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-fg-4" aria-hidden />
                 <input
                   ref={inputRef}
                   id="falldb-suche"
@@ -148,7 +144,7 @@ export default function FallDatenbank() {
                   onKeyDown={(e) => e.key === "Escape" && q && (e.preventDefault(), setQ(""))}
                   placeholder={isMobile ? "Sachverhalt, Norm oder Az. …" : "Sachverhalt, Norm oder Aktenzeichen eingeben – z. B. Kündigung wegen Bagatelle nach langer Betriebszugehörigkeit"}
                   aria-label="Fall-Datenbank durchsuchen"
-                  className="field !h-14 !rounded-[20px] !pl-12 !pr-12 text-[16px] tracking-[-0.01em] sm:!h-16 sm:!pl-14 sm:text-[17px] [&::-webkit-search-cancel-button]:hidden"
+                  className="field !h-12 !pl-10 !pr-12 !text-[16px] [&::-webkit-search-cancel-button]:hidden"
                 />
                 {q && (
                   <button
@@ -158,7 +154,7 @@ export default function FallDatenbank() {
                       setQ("");
                       inputRef.current?.focus();
                     }}
-                    className="icon-btn absolute right-2.5 top-1/2 -translate-y-1/2"
+                    className="icon-btn absolute right-1.5 top-1/2 -translate-y-1/2"
                   >
                     <X className="size-4" />
                   </button>
@@ -168,31 +164,24 @@ export default function FallDatenbank() {
               <div className="mt-3 flex min-h-7 flex-wrap items-center gap-x-3 gap-y-2">
                 <AnimatePresence mode="wait" initial={false}>
                   {suche ? (
-                    <motion.div key="stat" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} className="flex items-center gap-2 text-[13px]" aria-live="polite">
-                      <span className="grid size-6 place-items-center rounded-full bg-green-soft text-green">
-                        <Zap className="size-3.5" />
-                      </span>
-                      <span className="font-semibold">
+                    <motion.div key="stat" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={BEWEGUNG.schnell} className="flex items-center gap-2 text-[13px]" aria-live="polite">
+                      <Zap className="size-3.5 text-fg-4" aria-hidden />
+                      <span className="font-medium text-fg">
                         <span className="num">{ergebnis.hits.length}</span> Treffer in <span className="num">{msText}</span>
                       </span>
                       <span className="hidden text-fg-3 sm:inline">· {ergebnis.pool} Entscheidungen lokal durchsucht</span>
                     </motion.div>
                   ) : (
-                    <motion.div key="beispiele" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="-mx-1 flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto px-1 pr-6 no-scrollbar [mask-image:linear-gradient(90deg,#000_calc(100%-28px),transparent)]">
-                      <span className="shrink-0 text-[12px] text-fg-3">Beispiele:</span>
-                      {BEISPIEL_SUCHEN.map((b, i) => (
-                        <motion.button
-                          key={b}
-                          type="button"
-                          initial={{ opacity: 0, y: 4 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: 0.15 + i * 0.03 }}
-                          onClick={() => setQ(b)}
-                          className={cn("chip !h-7 shrink-0 !px-3 transition-colors hover:bg-ink-soft hover:text-ink", /\d/.test(b) && "mono")}
-                        >
+                    <motion.div key="beispiele" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={BEWEGUNG.schnell} className="flex min-w-0 flex-1 items-center">
+                      <span className="shrink-0 text-[13px] text-fg-3">Beispiele:</span>
+                      {/* Wischleiste: Innenabstand = Breite der Kantenmaske, damit der erste Vorschlag voll sichtbar ist */}
+                      <div className="fade-x -mr-4 flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-0.5 pl-3 pr-6 no-scrollbar sm:-mr-0">
+                      {BEISPIEL_SUCHEN.map((b) => (
+                        <button key={b} type="button" onClick={() => setQ(b)} className={cn("chip chip-outline !h-7 shrink-0 !px-2.5 transition-colors duration-100 hover:bg-[var(--surface-2)] hover:text-fg", /\d/.test(b) && "mono")}>
                           {b}
-                        </motion.button>
+                        </button>
                       ))}
+                      </div>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -200,7 +189,7 @@ export default function FallDatenbank() {
 
               {/* Filter */}
               <div className="mt-4 flex flex-col gap-2.5 border-t border-[var(--line)] pt-4 lg:flex-row lg:items-center">
-                <div className="-mx-1 flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto px-1 py-0.5 pr-6 no-scrollbar [mask-image:linear-gradient(90deg,#000_calc(100%-24px),transparent)] lg:[mask-image:none]" role="group" aria-label="Gerichtsebene">
+                <div className="fade-x -mx-4 flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto px-4 py-0.5 no-scrollbar sm:-mx-0 sm:px-3 lg:px-0 lg:[-webkit-mask-image:none] lg:[mask-image:none]" role="group" aria-label="Gerichtsebene">
                   <FilterChip aktiv={!ebenen.length} onClick={() => setEbenen([])}>
                     Alle Gerichte
                   </FilterChip>
@@ -214,7 +203,7 @@ export default function FallDatenbank() {
                   })}
                   {EBENEN_SPAETER.length > 0 && (
                     <span
-                      className="w-[180px] shrink-0 pl-1.5 text-[12.5px] leading-tight text-fg-3"
+                      className="w-[180px] shrink-0 pl-1.5 text-[13px] leading-tight text-fg-3"
                       title={`${EBENEN_SPAETER_TEXT}: im Demo-Auszug nicht enthalten – die Produktivversion bindet die Instanzrechtsprechung über Open Legal Data an.`}
                     >
                       + {EBENEN_SPAETER_TEXT} in der Produktivversion
@@ -222,7 +211,7 @@ export default function FallDatenbank() {
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  <Select id="falldb-rechtsgebiet" aria-label="Rechtsgebiet" value={gebiet} onChange={(e) => setGebiet(e.target.value)} className="!h-9 min-w-0 flex-1 !rounded-full text-[13px] lg:!w-[200px] lg:flex-none">
+                  <Select id="falldb-rechtsgebiet" aria-label="Rechtsgebiet" value={gebiet} onChange={(e) => setGebiet(e.target.value)} className="!h-8 min-w-0 flex-1 text-[13px] lg:!w-[200px] lg:flex-none">
                     <option value="">Alle Rechtsgebiete</option>
                     {RECHTSGEBIETE.map((g) => (
                       <option key={g} value={g}>
@@ -230,7 +219,7 @@ export default function FallDatenbank() {
                       </option>
                     ))}
                   </Select>
-                  <Select id="falldb-jahr" aria-label="Zeitraum" value={jahrAb} onChange={(e) => setJahrAb(Number(e.target.value))} className="!h-9 min-w-0 flex-1 !rounded-full text-[13px] lg:!w-[150px] lg:flex-none">
+                  <Select id="falldb-jahr" aria-label="Zeitraum" value={jahrAb} onChange={(e) => setJahrAb(Number(e.target.value))} className="!h-8 min-w-0 flex-1 text-[13px] lg:!w-[150px] lg:flex-none">
                     <option value={0}>Alle Jahre</option>
                     {JAHRE.map((j) => (
                       <option key={j} value={j}>
@@ -240,8 +229,8 @@ export default function FallDatenbank() {
                   </Select>
                   <AnimatePresence>
                     {filterAktiv && (
-                      <motion.span initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}>
-                        <button type="button" onClick={filterZuruecksetzen} className="icon-btn !size-9" aria-label="Filter zurücksetzen" title="Filter zurücksetzen">
+                      <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={BEWEGUNG.schnell}>
+                        <button type="button" onClick={filterZuruecksetzen} className="icon-btn" aria-label="Filter zurücksetzen" title="Filter zurücksetzen">
                           <X className="size-4" />
                         </button>
                       </motion.span>
@@ -254,21 +243,20 @@ export default function FallDatenbank() {
             <KiRecherche startText={kiStart} onOpen={oeffne} />
           )}
         </div>
-      </motion.section>
+      </section>
 
       {/* ───────── Ergebnisse oder Übersicht ───────── */}
-      <div className="mt-6">
+      <div className="mt-8">
         {zeigeListe ? (
           <section aria-label="Suchergebnisse">
             {!suche && (
-              <div className="mb-3 text-[13px] text-fg-3">
+              <div className="mb-3 text-[14px] text-fg-3">
                 <span className="num font-semibold text-fg">{ergebnis.hits.length}</span> {ergebnis.hits.length === 1 ? "Entscheidung" : "Entscheidungen, neueste zuerst"}
               </div>
             )}
             {ergebnis.hits.length ? (
-              <div className="grid gap-3 xl:grid-cols-2">
-                <AnimatePresence initial={false}>
-                  {ergebnis.hits.map((h, i) => (
+              <ul className="sheet divide-y divide-[var(--line)] overflow-hidden rounded-lg">
+                {ergebnis.hits.map((h, i) => (
                     <EntscheidungKarte
                       key={h.item.id}
                       e={h.item}
@@ -278,13 +266,12 @@ export default function FallDatenbank() {
                       geheftet={geheftet.get(h.item.id)}
                       onOpen={() => oeffne(h.item.id)}
                     />
-                  ))}
-                </AnimatePresence>
-              </div>
+                ))}
+              </ul>
             ) : (
               <Card>
                 <Empty
-                  icon={<SearchX className="size-6" />}
+                  icon={<SearchX />}
                   title="Keine Entscheidung gefunden"
                   text={
                     filterAktiv
@@ -331,6 +318,7 @@ export default function FallDatenbank() {
   );
 }
 
+/** Filter (Mehrfachauswahl): Umriss in Linie stark, gewählt = Akzentfläche; Radius 6, ohne Kapsel und Schatten. */
 function FilterChip({ aktiv, onClick, children, disabled, title, anzahl }: { aktiv: boolean; onClick: () => void; children: React.ReactNode; disabled?: boolean; title?: string; anzahl?: number }) {
   return (
     <button
@@ -340,13 +328,13 @@ function FilterChip({ aktiv, onClick, children, disabled, title, anzahl }: { akt
       title={title}
       aria-pressed={aktiv}
       className={cn(
-        "relative inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-medium transition-[background-color,color,box-shadow,transform] duration-200 active:scale-[0.96]",
-        aktiv ? "bg-[var(--ink)] text-[var(--on-ink)] shadow-[0_6px_16px_-8px_var(--ink)]" : "bg-[var(--ink-softer)] text-fg-2 hover:bg-ink-soft hover:text-ink",
-        disabled && "pointer-events-auto !cursor-not-allowed opacity-40 hover:bg-[var(--ink-softer)] hover:text-fg-2",
+        "relative inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium transition-colors duration-100",
+        aktiv ? "bg-[var(--ink)] text-[var(--on-ink)] hover:bg-[var(--ink-hover)]" : "text-fg-2 shadow-[inset_0_0_0_1px_var(--line-strong)] hover:bg-[var(--surface-2)] hover:text-fg",
+        disabled && "pointer-events-auto !cursor-not-allowed opacity-40",
       )}
     >
       {children}
-      {anzahl !== undefined && anzahl > 0 && <span className={cn("num text-[12.5px]", aktiv ? "text-[var(--on-ink)]/80" : "text-fg-3")}>{anzahl}</span>}
+      {anzahl !== undefined && anzahl > 0 && <span className={cn("num text-[12px]", aktiv ? "text-[var(--on-ink)]" : "text-fg-4")}>{anzahl}</span>}
     </button>
   );
 }
@@ -381,69 +369,70 @@ function Uebersicht({ onOpen, onGebiet }: { onOpen: (id: string) => void; onGebi
   }, []);
 
   return (
-    <div className="grid gap-8">
+    <div className="grid gap-12">
       {fuerAkten.length > 0 && (
         <section>
           <AbschnittKopf titel="Für Ihre Akten" text="Passende Entscheidungen zu Ihren zuletzt bearbeiteten Akten – automatisch mit Sachverhalt, Schlagworten und Dokumenten abgeglichen." />
-          <div className="grid gap-3 md:grid-cols-3">
-            {fuerAkten.map(({ akte, treffer }, i) => (
-              <motion.div key={akte.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", stiffness: 420, damping: 34, delay: 0.1 + i * 0.05 }} className="min-w-0">
-                <Card className="flex h-full flex-col !p-4">
+          <div className="grid gap-4 md:grid-cols-3">
+            {fuerAkten.map(({ akte, treffer }) => (
+              <Card key={akte.id} className="flex h-full min-w-0 flex-col !p-0">
+                <div className="px-4 pb-3 pt-4">
                   <div className="flex items-center gap-2">
-                    <span className="mono text-[12px] text-fg-3">{akte.aktenzeichen}</span>
+                    <span className="mono text-[13px] text-fg-3">{akte.aktenzeichen}</span>
                     <Chip className="ml-auto">{akte.sachgebiet}</Chip>
                   </div>
-                  <Link to={`/akten/${akte.id}`} className="mt-1 block truncate text-[14.5px] font-semibold tracking-[-0.01em] hover:underline">
+                  <Link to={`/akten/${akte.id}`} className="mt-1 block truncate text-[14px] font-semibold hover:underline">
                     {akte.titel}
                   </Link>
-                  <ul className="mt-3 grid gap-1.5">
-                    {treffer.length ? (
-                      treffer.map((t) => (
-                        <li key={t.entscheidung.id} className="min-w-0">
-                          <button type="button" onClick={() => onOpen(t.entscheidung.id)} className="group flex w-full items-center gap-2.5 rounded-[14px] p-2 text-left ring-1 ring-[var(--line)] transition-colors hover:bg-[var(--ink-softer)]">
-                            <GerichtSiegel e={t.entscheidung} groesse="sm" />
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-[13px] font-medium">{t.entscheidung.titel}</span>
-                              <span className="mono block truncate text-[12.5px] text-fg-3">{t.entscheidung.az}</span>
-                            </span>
-                            <span className="num shrink-0 text-[12px] font-semibold text-ink">{t.prozent} %</span>
-                          </button>
-                        </li>
-                      ))
-                    ) : (
-                      <li className="rounded-[14px] bg-[var(--ink-softer)] px-3 py-2.5 text-[12.5px] text-fg-3">Im Demo-Auszug noch keine passende Entscheidung.</li>
-                    )}
-                  </ul>
-                  <Link to={`/ki?tab=fallanalyse&akte=${akte.id}`} className="mt-auto inline-flex items-center gap-1.5 pt-3 text-[12.5px] font-medium text-violet hover:underline">
-                    <Sparkles className="size-3.5" /> KI-Fallanalyse öffnen <ArrowRight className="size-3.5" />
-                  </Link>
-                </Card>
-              </motion.div>
+                </div>
+                {/* Treffer als Zeilen mit Linien – keine Kästen in der Karte */}
+                <ul className="divide-y divide-[var(--line)] border-t border-[var(--line)]">
+                  {treffer.length ? (
+                    treffer.map((t) => (
+                      <li key={t.entscheidung.id} className="min-w-0">
+                        <button type="button" onClick={() => onOpen(t.entscheidung.id)} className="group flex w-full items-center gap-2.5 px-4 py-2.5 text-left transition-colors duration-100 hover:bg-[var(--surface-2)] focus-visible:outline-offset-[-2px]">
+                          <GerichtSiegel e={t.entscheidung} groesse="sm" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[14px] font-medium leading-5">{t.entscheidung.titel}</span>
+                            <span className="mono block truncate text-[13px] text-fg-3">{t.entscheidung.az}</span>
+                          </span>
+                          <span className="num shrink-0 text-[13px] font-medium text-fg-2">{t.prozent} %</span>
+                        </button>
+                      </li>
+                    ))
+                  ) : (
+                    <li className="px-4 py-3 text-[13px] text-fg-3">Im Demo-Auszug noch keine passende Entscheidung.</li>
+                  )}
+                </ul>
+                <Link to={`/ki?tab=fallanalyse&akte=${akte.id}`} className="link-leise mt-auto border-t border-[var(--line)] px-4 py-3">
+                  <Sparkles aria-hidden /> KI-Fallanalyse öffnen <ArrowRight aria-hidden />
+                </Link>
+              </Card>
             ))}
           </div>
         </section>
       )}
 
-      <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_360px] xl:gap-6">
+      <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_360px]">
         <section className="min-w-0">
           <AbschnittKopf titel="Leitentscheidungen nach Rechtsgebiet" text="Die Entscheidungen, die in der Praxis am häufigsten zitiert werden – sortiert nach Rechtsgebiet." />
-          <div className="grid gap-7">
+          <div className="grid gap-8">
             {gruppen.map((g) => (
               <div key={g.gebiet} className="min-w-0">
-                <div className="mb-2.5 flex items-center gap-2">
-                  <h3 className="text-[14px] font-semibold tracking-[-0.01em]">{g.gebiet}</h3>
-                  <span className="num text-[12px] text-fg-3">{g.list.length}</span>
+                <div className="mb-2 flex items-center gap-2">
+                  <h3 className="title-md">{g.gebiet}</h3>
+                  <span className="num text-[13px] text-fg-4">{g.list.length}</span>
                   {!g.sammel && (
-                    <button type="button" onClick={() => onGebiet(g.gebiet)} className="ml-auto inline-flex items-center gap-1 text-[12px] font-medium text-ink hover:underline">
-                      Nur {g.gebiet} <ArrowRight className="size-3.5" />
+                    <button type="button" onClick={() => onGebiet(g.gebiet)} className="link-leise ml-auto">
+                      Nur {g.gebiet} <ArrowRight aria-hidden />
                     </button>
                   )}
                 </div>
-                <div className="grid gap-2.5 sm:grid-cols-2 2xl:grid-cols-3">
+                <ul className="sheet divide-y divide-[var(--line)] overflow-hidden rounded-lg">
                   {g.list.map((e, i) => (
                     <EntscheidungKompakt key={e.id} e={e} index={i} zeigeGebiet={g.sammel} onOpen={() => onOpen(e.id)} />
                   ))}
-                </div>
+                </ul>
               </div>
             ))}
           </div>
@@ -461,9 +450,9 @@ function Uebersicht({ onOpen, onGebiet }: { onOpen: (id: string) => void; onGebi
 
 function AbschnittKopf({ titel, text }: { titel: string; text?: string }) {
   return (
-    <div className="mb-3.5">
+    <div className="mb-4">
       <h2 className="title-lg">{titel}</h2>
-      {text && <p className="mt-1 max-w-[70ch] text-[13px] text-fg-3">{text}</p>}
+      {text && <p className="mt-1 max-w-[72ch] text-[14px] leading-5 text-fg-3">{text}</p>}
     </div>
   );
 }
@@ -479,42 +468,42 @@ const QUELLEN = [
 function QuellenKarte() {
   return (
     <Card className="!p-5">
-      <CardHeader icon={<Database className="size-4" />} title="Zentrale Fall-Datenbank" subtitle="Woher die Entscheidungen stammen" className="!mb-4" />
+      <CardHeader icon={<Database />} title="Zentrale Fall-Datenbank" subtitle="Woher die Entscheidungen stammen" className="!mb-4" />
 
-      <div className="rounded-[16px] bg-green-soft p-3.5">
+      <div className="border-b border-[var(--line)] pb-4">
         <div className="flex items-center gap-2">
-          <Chip tone="green" dot>
-            Heute aktiv
-          </Chip>
-          <span className="text-[12.5px] font-semibold text-fg">Demo-Auszug</span>
+          <Chip tone="green">Heute aktiv</Chip>
+          <span className="text-[14px] font-medium text-fg">Demo-Auszug</span>
         </div>
-        <p className="num mt-2 text-[12.5px] font-medium text-fg">
+        <p className="num mt-2 text-[13px] font-medium text-fg">
           Auszug, jüngste Entscheidung: {fmtDate(JUENGSTE_ENTSCHEIDUNG)} · {ENTSCHEIDUNGEN.length} Leitentscheidungen
         </p>
-        <p className="mt-2 text-[12.5px] leading-snug text-fg-2">
-          <span className="num font-semibold">{ENTSCHEIDUNGEN.length}</span> echte Leitentscheidungen von {GERICHTE_IM_AUSZUG} Gerichten (BVerfG, EuGH und Bundesgerichte). {RECHTSPRECHUNG_HINWEIS.replace(/^Demo-Auszug aus der Fall-Datenbank: echte Entscheidungen, /, "")}
+        <p className="mt-1.5 text-[13px] leading-[18px] text-fg-3">
+          <span className="num font-medium text-fg-2">{ENTSCHEIDUNGEN.length}</span> echte Leitentscheidungen von {GERICHTE_IM_AUSZUG} Gerichten (BVerfG, EuGH und Bundesgerichte). {RECHTSPRECHUNG_HINWEIS.replace(/^Demo-Auszug aus der Fall-Datenbank: echte Entscheidungen, /, "")}
         </p>
       </div>
 
-      <div className="eyebrow mb-2 mt-5">In der Produktivversion</div>
-      <ul className="grid gap-2">
-        {QUELLEN.map((q, i) => (
-          <motion.li key={q.name} initial={{ opacity: 0, x: 8 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.06, type: "spring", stiffness: 420, damping: 34 }} className="flex items-start gap-3 rounded-[14px] p-2.5 ring-1 ring-[var(--line)]">
-            <span className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-ink-soft text-ink">{q.icon}</span>
+      <div className="eyebrow mb-1 mt-4">In der Produktivversion</div>
+      <ul className="divide-y divide-[var(--line)]">
+        {QUELLEN.map((q) => (
+          <li key={q.name} className="flex items-start gap-3 py-3">
+            <span className="mt-0.5 shrink-0 text-fg-4 [&>svg]:size-4" aria-hidden>
+              {q.icon}
+            </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-[13px] font-semibold leading-snug">{q.name}</span>
-              <span className="block text-[12.5px] leading-snug text-fg-2">{q.umfang}</span>
-              <span className="block text-[12.5px] leading-snug text-fg-3">{q.wie}</span>
+              <span className="block text-[14px] font-medium leading-5">{q.name}</span>
+              <span className="block text-[13px] leading-[18px] text-fg-2">{q.umfang}</span>
+              <span className="block text-[13px] leading-[18px] text-fg-4">{q.wie}</span>
             </span>
             <Chip tone="outline" className="shrink-0">
               geplant
             </Chip>
-          </motion.li>
+          </li>
         ))}
       </ul>
 
-      <div className="mt-4 flex items-start gap-2 border-t border-[var(--line)] pt-3.5 text-[12.5px] leading-snug text-fg-3">
-        <ShieldCheck className="mt-px size-4 shrink-0 text-green" />
+      <div className="mt-1 flex items-start gap-2 border-t border-[var(--line)] pt-3.5 text-[13px] leading-[18px] text-fg-3">
+        <ShieldCheck className="mt-px size-4 shrink-0 text-fg-4" aria-hidden />
         <span>Die Suche läuft lokal. Auch künftig wird der Index in Ihre Infrastruktur importiert – Suchanfragen und Akteninhalte verlassen die Kanzlei nicht.</span>
       </div>
     </Card>

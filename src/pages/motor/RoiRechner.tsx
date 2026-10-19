@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "motion/react";
-import { Calculator, Infinity as InfinityIcon, Info, Printer, RotateCcw, Save, TrendingUp } from "lucide-react";
+import { Info, Printer, RotateCcw, Save, TrendingUp } from "lucide-react";
 import { fmtDate, fmtEUR, fmtNum, nowLocal, round2, today } from "@/core/dates";
 import { automationDef, ZIEL_EURO_JAHR } from "@/core/automationen";
 import type { Automation } from "@/core/types";
@@ -12,6 +12,7 @@ import { useKanzlei } from "@/store/session";
 import { festeAnsprechBezeichnung } from "@/lib/rollen";
 import { cn } from "@/lib/cn";
 import { ARBEITSWOCHEN, JAHRESARBEITSSTUNDEN, KATEGORIEN, PERSONALKOSTEN_JAHR, WERT_PRO_STUNDE, ZIEL_STUNDEN, kostensatz, ungefaehr } from "./shared";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 const JAHRE = 5;
 /** Abo-Vorbelegung: mittlerer Marktpreis je Arbeitsplatz und Monat (Marktspanne ca. 50–110 € laut öffentlichen Preislisten gängiger Kanzleisoftware). */
@@ -64,7 +65,7 @@ function ZahlFeld({ id, label, value, onChange, suffix, hint, step = 1, classNam
     <Field label={label} htmlFor={id} hint={hint} className={className}>
       <div className="relative">
         <Input id={id} type="number" inputMode="decimal" min={0} step={step} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} className={cn("num", suffix && "!pr-16")} />
-        {suffix && <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[12.5px] text-fg-3">{suffix}</span>}
+        {suffix && <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[13px] text-fg-3">{suffix}</span>}
       </div>
     </Field>
   );
@@ -177,14 +178,11 @@ export function RoiRechner({ startSatz, startArbeitsplaetze, automationen, menge
         {/* Ersparnis */}
         <div className="flex flex-col gap-5 p-5 md:p-6">
           <div className="flex flex-wrap items-start gap-3">
-            <div className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">
-              <Calculator className="size-[18px]" />
+            <div className="min-w-0 flex-1 basis-[16rem]">
+              <h3 className="title-md">Ersparnis-Rechner – mit Ihren Mengen</h3>
+              <div className="mt-0.5 text-[13px] leading-[18px] text-fg-3">Vorgänge pro Woche × Minuten je Vorgang = gesparte Stunden – bewertet zu Ihren Personalkosten.</div>
             </div>
-            <div className="min-w-0 flex-1">
-              <div className="title-md">Ersparnis-Rechner – mit Ihren Mengen</div>
-              <div className="mt-0.5 text-[12.5px] text-fg-3">Vorgänge pro Woche × Minuten je Vorgang = gesparte Stunden – bewertet zu Ihren Personalkosten.</div>
-            </div>
-            <Chip tone="amber" icon={<Info className="size-3" />}>
+            <Chip tone="outline" icon={<Info aria-hidden />}>
               Rechenbeispiel
             </Chip>
           </div>
@@ -198,22 +196,22 @@ export function RoiRechner({ startSatz, startArbeitsplaetze, automationen, menge
             <Button size="sm" variant="ghost" icon={<Printer className="size-4" />} onClick={() => setDruck(true)}>
               Drucken
             </Button>
-            <span className="text-[12.5px] text-fg-3" aria-live="polite">
+            <span className="text-[13px] text-fg-3" aria-live="polite">
               {gespeichert?.gespeichertAm ? `Gespeichert am ${fmtDate(gespeichert.gespeichertAm.slice(0, 10))} – nur in diesem Browser` : "Eingaben bleiben in dieser Sitzung erhalten"}
             </span>
           </div>
 
           <div>
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <div className="text-[13px] font-semibold">Ihre Vorgänge pro Woche</div>
+              <div className="text-[14px] font-medium text-fg">Ihre Vorgänge pro Woche</div>
               <div className="flex gap-1.5">
                 <Button size="sm" variant="ghost" onClick={() => setAnzahl(Object.fromEntries(liste.map((a) => [a.key, "0"])))}>
                   Alle auf 0
                 </Button>
               </div>
             </div>
-            <div className="overflow-hidden rounded-[16px] ring-1 ring-[var(--line)]">
-              <div className="hidden grid-cols-[minmax(0,1fr)_88px_96px_72px] gap-2 bg-[var(--surface-2)] px-3 py-2 text-[12px] font-semibold text-fg-3 sm:grid">
+            <div className="overflow-hidden rounded-lg border border-[var(--line)]">
+              <div className="hidden grid-cols-[minmax(0,1fr)_88px_96px_72px] gap-2 border-b border-[var(--line)] px-3 py-2 text-[12px] font-medium text-fg-3 sm:grid">
                 <span>Automatik · was zählt als Vorgang</span>
                 <span className="text-right">Min./Vorgang</span>
                 <span className="text-right">Vorgänge/Woche</span>
@@ -227,8 +225,8 @@ export function RoiRechner({ startSatz, startArbeitsplaetze, automationen, menge
                   return (
                     <li key={a.key} className="grid grid-cols-[minmax(0,1fr)_96px] items-center gap-x-2 gap-y-1 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_88px_96px_72px]">
                       <div className="min-w-0">
-                        <div className="break-words text-[13px] font-medium">{a.name}</div>
-                        <div className="text-[12px] text-fg-3">
+                        <div className="break-words text-[14px] font-medium leading-5">{a.name}</div>
+                        <div className="text-[13px] leading-[18px] text-fg-4">
                           {def?.vorgang ?? "je Vorgang"}
                           <span className="sm:hidden"> · {min} Min.</span>
                         </div>
@@ -248,42 +246,43 @@ export function RoiRechner({ startSatz, startArbeitsplaetze, automationen, menge
                   );
                 })}
               </ul>
-              <div className="flex items-center justify-between gap-3 bg-[var(--surface-2)] px-3 py-2.5 text-[13px]">
-                <span className="font-semibold">Summe gesparte Zeit</span>
+              <div className="flex items-center justify-between gap-3 border-t border-[var(--line)] bg-[var(--surface-2)] px-3 py-2.5 text-[14px]">
+                <span className="font-medium">Summe gesparte Zeit</span>
                 <span className="num font-semibold">{fmtNum(h, 2)} Std./Woche</span>
               </div>
             </div>
-            <p className="mt-1.5 text-[12.5px] text-fg-3">{demo ? "Vorbelegt mit den Demo-Mengen der letzten 7 Tage – tragen Sie Ihre eigenen Mengen ein." : "Vorbelegt mit den gemessenen Mengen der letzten 7 Tage."} Minuten je Vorgang aus der Definition der Automatik.</p>
+            <p className="mt-2 text-[13px] leading-[18px] text-fg-4">{demo ? "Vorbelegt mit den Demo-Mengen der letzten 7 Tage – tragen Sie Ihre eigenen Mengen ein." : "Vorbelegt mit den gemessenen Mengen der letzten 7 Tage."} Minuten je Vorgang aus der Definition der Automatik.</p>
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <ZahlFeld id="roi-personal" label="Personalkosten pro Jahr" value={personal} onChange={setPersonal} suffix="€" step={1000} hint="Arbeitgeber-Bruttokosten einer Fachangestellten" />
             <ZahlFeld id="roi-jahresstunden" label="Jahresarbeitsstunden" value={jahresstunden} onChange={setJahresstunden} suffix="Std." step={10} hint="z. B. 40 Std. × 48 Wochen" />
           </div>
-          <div className="rounded-[14px] bg-ink-softer px-3.5 py-2.5 text-[12.5px] text-fg-2">
+          <div className="text-[14px] text-fg-2">
             Interner Kostensatz: <span className="num font-semibold text-fg">{fmtEUR(pk, { cents: false })}</span> ÷ <span className="num font-semibold text-fg">{fmtNum(js)} Std.</span> ={" "}
             <span className="num font-semibold text-fg">{fmtEUR(k)}/Std.</span>
           </div>
 
-          <div className="rounded-[18px] bg-[radial-gradient(120%_140%_at_0%_0%,var(--ink-soft),transparent_65%)] p-4 ring-1 ring-[var(--line)]">
-            <div className="text-[12.5px] font-medium text-fg-3">Wert der gesparten Zeit pro Jahr · zu internen Kosten</div>
-            <div className="mt-1 text-[clamp(34px,5vw,46px)] font-semibold leading-none tracking-[-0.04em]">
+          {/* Ergebnis: eine Leitzahl, darunter der Rechenweg als Text – ohne Verlauf, ohne Kapseln */}
+          <div className="border-t border-[var(--line)] pt-5">
+            <div className="text-[13px] leading-[18px] text-fg-3">Wert der gesparten Zeit pro Jahr · zu internen Kosten</div>
+            <div className="mt-1 text-[40px] font-semibold leading-[44px] tracking-[-0.03em]">
               ≈ <AnimatedNumber value={ungefaehr(jahresWert)} format={(x) => fmtEUR(x, { cents: false })} />
             </div>
-            <div className="num mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] text-fg-2">
-              <span className="rounded-full bg-[var(--surface)] px-2.5 py-1 shadow-[inset_0_0_0_1px_var(--line)]">{fmtNum(h, 2)} Std./Woche</span>
-              <span className="text-fg-3">×</span>
-              <span className="rounded-full bg-[var(--surface)] px-2.5 py-1 shadow-[inset_0_0_0_1px_var(--line)]">{ARBEITSWOCHEN} Arbeitswochen</span>
-              <span className="text-fg-3">×</span>
-              <span className="rounded-full bg-[var(--surface)] px-2.5 py-1 shadow-[inset_0_0_0_1px_var(--line)]">{fmtEUR(k)}/Std.</span>
+            <div className="num mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[14px] text-fg-2">
+              <span className="text-fg">{fmtNum(h, 2)} Std./Woche</span>
+              <span className="text-fg-4">×</span>
+              <span className="text-fg">{ARBEITSWOCHEN} Arbeitswochen</span>
+              <span className="text-fg-4">×</span>
+              <span className="text-fg">{fmtEUR(k)}/Std.</span>
               <span className="text-fg-3">= {fmtEUR(jahresWert)}</span>
             </div>
-            <div className="mt-3 text-[12.5px]">
-              <span className="num text-[15px] font-semibold text-fg">{fmtNum(stundenJahr, 2)} Std.</span> <span className="text-fg-3">pro Jahr frei für Mandatsarbeit ({fmtNum(h, 2)} × {ARBEITSWOCHEN})</span>
+            <div className="mt-2 text-[14px]">
+              <span className="num font-semibold text-fg">{fmtNum(stundenJahr, 2)} Std.</span> <span className="text-fg-3">pro Jahr frei für Mandatsarbeit ({fmtNum(h, 2)} × {ARBEITSWOCHEN})</span>
             </div>
             {h >= 36 && (
-              <div className="mt-2 flex items-center gap-1.5 text-[12.5px] text-fg-2">
-                <TrendingUp className="size-3.5 text-green" /> {fmtNum(h, 0)} Std. pro Woche entsprechen etwa einer Vollzeitstelle.
+              <div className="mt-2 flex items-center gap-1.5 text-[14px] text-fg-2">
+                <TrendingUp className="size-3.5 text-fg-4" aria-hidden /> {fmtNum(h, 0)} Std. pro Woche entsprechen etwa einer Vollzeitstelle.
               </div>
             )}
           </div>
@@ -293,12 +292,12 @@ export function RoiRechner({ startSatz, startArbeitsplaetze, automationen, menge
             <ZahlFeld id="roi-satz" label="Anwaltsstundensatz" value={satz} onChange={setSatz} suffix="€/Std." step={10} placeholder={String(startSatz)} />
           </div>
           {anw > 0 && (
-            <div className="rounded-[14px] bg-green-soft px-3.5 py-2.5 text-[13px] text-fg-2">
+            <div className="rounded-md bg-[var(--surface-2)] px-3.5 py-2.5 text-[14px] text-fg-2">
               Umsatzpotenzial: <span className="num font-semibold text-fg">{fmtNum(anw, 2)} Std.</span> × {ARBEITSWOCHEN} Wochen × {fmtEUR(s)}/Std. = <span className="num font-semibold text-fg">{fmtEUR(potenzial)}</span> pro Jahr (≈{" "}
               {fmtEUR(ungefaehr(potenzial), { cents: false })}) – nur, soweit die Zeit tatsächlich abrechenbar ist.
             </div>
           )}
-          <p className="text-[12.5px] leading-snug text-fg-3">
+          <p className="text-[13px] leading-[18px] text-fg-4">
             Rechenbeispiel, kaufmännisch gerundet. {zielwertText(k)} Ihr Wert ergibt sich aus Ihren Mengen.
           </p>
         </div>
@@ -306,14 +305,11 @@ export function RoiRechner({ startSatz, startArbeitsplaetze, automationen, menge
         {/* Lifetime-Lizenz oder Abo */}
         <div className="flex flex-col gap-5 border-t border-[var(--line)] p-5 md:p-6 lg:border-l lg:border-t-0">
           <div className="flex flex-wrap items-start gap-3">
-            <div className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">
-              <InfinityIcon className="size-[18px]" />
+            <div className="min-w-0 flex-1 basis-[16rem]">
+              <h3 className="title-md">Lifetime-Lizenz oder Abo – Kosten über 5 Jahre</h3>
+              <div className="mt-0.5 text-[13px] leading-[18px] text-fg-3">Einmal investiert, dazu die optionale Wartung – gegenüber monatlichen Abo-Gebühren.</div>
             </div>
-            <div className="min-w-0 flex-1">
-              <div className="title-md">Lifetime-Lizenz oder Abo – Kosten über 5 Jahre</div>
-              <div className="mt-0.5 text-[12.5px] text-fg-3">Einmal investiert, dazu die optionale Wartung – gegenüber monatlichen Abo-Gebühren.</div>
-            </div>
-            <Chip tone="amber" icon={<Info className="size-3" />}>
+            <Chip tone="outline" icon={<Info aria-hidden />}>
               Beispielrechnung
             </Chip>
           </div>
@@ -324,29 +320,32 @@ export function RoiRechner({ startSatz, startArbeitsplaetze, automationen, menge
             <ZahlFeld id="roi-lizenz" label="Lizenzpreis je Platz laut Angebot" value={lizenz} onChange={setLizenz} suffix="€" placeholder="aus Ihrem Angebot" hint="einmalig" step={100} />
             <ZahlFeld id="roi-wartung" label="Wartung pro Jahr laut Angebot" value={wartungJahr} onChange={setWartungJahr} suffix="€" placeholder="aus Ihrem Angebot" hint={erstesJahr ? "je Platz und Jahr, ab Jahr 2 – leer = ohne Wartung" : "je Platz und Jahr – leer = ohne Wartung"} step={10} />
           </div>
-          <label className="flex items-center justify-between gap-3 text-[13px]" htmlFor="roi-erstes-jahr">
+          <label className="flex items-center justify-between gap-3 text-[14px]" htmlFor="roi-erstes-jahr">
             <span className="min-w-0">
               <span className="font-medium">Wartung im ersten Jahr im Lizenzpreis enthalten (laut Angebot)</span>
-              <span className="block text-[12.5px] text-fg-3">Nur einschalten, wenn Ihr Angebot das so regelt – sonst rechnet der Vergleich die Wartung ab Jahr 1.</span>
+              <span className="block text-[13px] text-fg-3">Nur einschalten, wenn Ihr Angebot das so regelt – sonst rechnet der Vergleich die Wartung ab Jahr 1.</span>
             </span>
             <Switch id="roi-erstes-jahr" checked={erstesJahr} onChange={setErstesJahr} label="Wartung im ersten Jahr im Lizenzpreis enthalten (laut Angebot)" />
           </label>
-          <p className="text-[12.5px] text-fg-3">
+          <p className="text-[13px] leading-[18px] text-fg-4">
             {PREIS_HINWEIS}. {WARTUNG_HINWEIS}.
           </p>
-          <label className="flex items-center justify-between gap-3 text-[13px]" htmlFor="roi-steigerung">
+          <label className="flex items-center justify-between gap-3 text-[14px]" htmlFor="roi-steigerung">
             <span className="min-w-0">
               <span className="font-medium">Preiserhöhung beim Abo einrechnen</span>
-              <span className="block text-[12.5px] text-fg-3">Annahme: + 5 % pro Jahr</span>
+              <span className="block text-[13px] text-fg-3">Annahme: + 5 % pro Jahr</span>
             </span>
             <Switch id="roi-steigerung" checked={steigerung} onChange={setSteigerung} label="Preiserhöhung einrechnen" />
           </label>
 
           {!mitAngebot ? (
-            <div role="status" className="rounded-[16px] bg-[var(--ink-softer)] p-4 text-[13px] leading-relaxed text-fg-2 ring-1 ring-inset ring-[var(--line)]">
-              <div className="font-semibold text-fg">Preis und Wartung regelt Ihr Angebot – tragen Sie die Angebotswerte ein.</div>
-              <div className="mt-1 text-[12.5px] text-fg-3">
-                Erst dann zeigt der Vergleich die Kosten über {JAHRE} Jahre. Apex setzt keinen Preis und keinen Wartungssatz an.
+            <div role="status" className="banner">
+              <Info aria-hidden />
+              <div className="min-w-0">
+                <div className="font-medium text-fg">Preis und Wartung regelt Ihr Angebot – tragen Sie die Angebotswerte ein.</div>
+                <div className="mt-0.5 text-fg-3">
+                  Erst dann zeigt der Vergleich die Kosten über {JAHRE} Jahre. Apex setzt keinen Preis und keinen Wartungssatz an.
+                </div>
               </div>
             </div>
           ) : (
@@ -358,15 +357,15 @@ export function RoiRechner({ startSatz, startArbeitsplaetze, automationen, menge
                   <motion.div
                     key={j}
                     title={`Jahr ${j + 1}: ${fmtEUR(x, { cents: false })}`}
-                    className={cn("h-full bg-[var(--fg-4)] transition-opacity hover:opacity-80", j === JAHRE - 1 && "rounded-r-[4px]")}
+                    className={cn("h-full bg-[var(--chart-2)]", j === JAHRE - 1 && "rounded-r-[2px]")}
                     initial={false}
                     animate={{ flexGrow: x }}
                     style={{ flexBasis: 0 }}
-                    transition={{ type: "spring", stiffness: 300, damping: 32 }}
+                    transition={BEWEGUNG.standard}
                   />
                 ))}
               </div>
-              <div className="mt-1 flex text-[12.5px] text-fg-3" style={{ width: `${(vergleich.aboSumme / vergleich.max) * 100}%` }}>
+              <div className="mt-1 flex text-[12px] text-fg-4" style={{ width: `${(vergleich.aboSumme / vergleich.max) * 100}%` }}>
                 {vergleich.jahre.map((x, j) => (
                   <span key={j} className="num truncate text-center" style={{ flex: `${x} 1 0` }}>
                     J{j + 1}
@@ -376,26 +375,26 @@ export function RoiRechner({ startSatz, startArbeitsplaetze, automationen, menge
             </BalkenZeile>
             <BalkenZeile label={wtPreis > 0 ? `Lifetime-Lizenz · einmalig + Wartung ${wartungJahre} (laut Angebot)` : "Lifetime-Lizenz · einmalig (laut Angebot)"} summe={vergleich.ltSumme}>
               <div className="flex h-7 gap-[2px]" style={{ width: `${(vergleich.ltSumme / vergleich.max) * 100}%` }}>
-                <motion.div className={cn("h-full bg-ink", !(vergleich.wartungSumme > 0) && "rounded-r-[4px]")} initial={false} animate={{ flexGrow: vergleich.lizenz }} style={{ flexBasis: 0 }} title={`Lizenz: ${fmtEUR(vergleich.lizenz, { cents: false })}`} />
+                <motion.div className={cn("h-full bg-[var(--chart-1)]", !(vergleich.wartungSumme > 0) && "rounded-r-[2px]")} initial={false} animate={{ flexGrow: vergleich.lizenz }} style={{ flexBasis: 0 }} title={`Lizenz: ${fmtEUR(vergleich.lizenz, { cents: false })}`} />
                 {vergleich.wartungSumme > 0 && (
-                  <motion.div className="h-full rounded-r-[4px] bg-[color-mix(in_oklab,var(--ink)_45%,transparent)]" initial={false} animate={{ flexGrow: vergleich.wartungSumme }} style={{ flexBasis: 0 }} title={`Wartung ${wartungJahre}: ${fmtEUR(vergleich.wartungSumme, { cents: false })}`} />
+                  <motion.div className="h-full rounded-r-[2px] bg-[var(--fg-3)]" initial={false} animate={{ flexGrow: vergleich.wartungSumme }} style={{ flexBasis: 0 }} title={`Wartung ${wartungJahre}: ${fmtEUR(vergleich.wartungSumme, { cents: false })}`} />
                 )}
               </div>
               {vergleich.wartungSumme > 0 && (
-                <div className="mt-1 text-[12px] text-fg-3">
+                <div className="mt-1 text-[12px] text-fg-4">
                   Lizenz {fmtEUR(vergleich.lizenz, { cents: false })} + Wartung {wartungJahre} {fmtEUR(vergleich.wartungSumme, { cents: false })} (Ihre Angebotswerte)
                 </div>
               )}
             </BalkenZeile>
           </div>
 
-          <div className={cn("rounded-[16px] p-3.5 text-[13px]", vergleich.diff > 0 ? "bg-green-soft" : "bg-[var(--ink-softer)]")}>
+          <div className="rounded-md bg-[var(--surface-2)] p-3.5 text-[14px]">
             {vergleich.diff > 0 ? (
               <>
-                <div className="font-semibold text-fg">
-                  <span className="num text-green">{fmtEUR(vergleich.diff, { cents: false })}</span> weniger Kosten in 5 Jahren{vergleich.wartungSumme > 0 ? " – einschließlich Wartung" : ""}
+                <div className="font-medium text-fg">
+                  <span className="num font-semibold">{fmtEUR(vergleich.diff, { cents: false })}</span> weniger Kosten in 5 Jahren{vergleich.wartungSumme > 0 ? " – einschließlich Wartung" : ""}
                 </div>
-                <div className="mt-0.5 text-[12.5px] text-fg-2">
+                <div className="mt-0.5 text-[13px] text-fg-2">
                   {vergleich.breakEven ? `Die Lifetime-Lizenz hat sich in diesem Beispiel nach ${vergleich.breakEven === 1 ? "dem ersten Jahr" : `${vergleich.breakEven} Jahren`} bezahlt gemacht.` : "In diesem Beispiel ist die Lifetime-Lizenz über 5 Jahre günstiger."}
                 </div>
               </>
@@ -405,7 +404,7 @@ export function RoiRechner({ startSatz, startArbeitsplaetze, automationen, menge
           </div>
           </>
           )}
-          <p className="text-[12.5px] leading-snug text-fg-3">
+          <p className="text-[13px] leading-[18px] text-fg-4">
             Beispielrechnung mit Ihren Eingaben (Abo-Preis als mittlerer Marktpreis, Lizenz und Wartung aus Ihrem Angebot) – kein Angebot. {LIZENZ_KENNZEICHNUNG}; Ihren verbindlichen Preis nennt Ihnen {festeAnsprechBezeichnung(tenant.ansprechpartner)}.
           </p>
         </div>
@@ -551,7 +550,7 @@ function RoiDruck({
         }
       >
         <style>{css}</style>
-        <div className="overflow-x-auto rounded-[12px] ring-1 ring-[var(--line)]">{blatt}</div>
+        <div className="buehne overflow-x-auto p-4"><div className="paper overflow-hidden">{blatt}</div></div>
       </Modal>
       {open && createPortal(<div id="roi-druck">{blatt}</div>, document.body)}
     </>
@@ -561,7 +560,7 @@ function RoiDruck({
 function BalkenZeile({ label, summe, children }: { label: string; summe: number; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-1.5 flex items-baseline justify-between gap-3 text-[12.5px]">
+      <div className="mb-1.5 flex items-baseline justify-between gap-3 text-[14px]">
         <span className="min-w-0 text-fg-2">{label}</span>
         <span className="num shrink-0 font-semibold text-fg">{fmtEUR(summe, { cents: false })}</span>
       </div>

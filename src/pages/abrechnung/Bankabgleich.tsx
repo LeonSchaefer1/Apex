@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { AlertTriangle, ArrowRight, Building2, Check, CheckCircle2, ChevronDown, Clock, FilePenLine, HandCoins, Landmark, Link2, Send, ShieldCheck, Sparkles, Unlink, Upload, Vault, Wallet, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, Building2, Check, CheckCircle2, ChevronDown, Clock, FilePenLine, HandCoins, Loader2, Send, ShieldCheck, Sparkles, Unlink, Upload, Vault, Wallet, X } from "lucide-react";
 import { AnimatedNumber, Button, Card, Chip, ProgressRing, Segmented, Select, confirmDialog } from "@/components/ui";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
@@ -38,6 +38,7 @@ import { istOffen, offenerBetrag } from "./lib";
 import { StellenDialog } from "./StellenDialog";
 import { useAbrechnungUI } from "./store";
 import { AkteLabel, TabKopf, useLookups } from "./ui";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 type Zustand = "gebucht" | "vorschlag" | "kosten" | "keine" | "bestaetigt" | "abgelehnt" | "manuell";
 type Ergebnis = Treffer & { zustand: Zustand };
@@ -95,13 +96,11 @@ function ladeErklaerung(): "auf" | "zu" | null {
 function GespartSchaetzung({ minuten }: { minuten: number }) {
   return (
     <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
-      <Chip tone="green" icon={<Clock className="size-3.5" />} title={`Schätzung: ${MIN_JE_UMSATZ} Min. manuelle Zuordnung je automatisch zugeordnetem Umsatz`}>
+      <Chip icon={<Clock aria-hidden />} title={`Schätzung: ${MIN_JE_UMSATZ} Min. manuelle Zuordnung je automatisch zugeordnetem Umsatz`}>
         ≈ {minuten} Min. gespart
       </Chip>
-      <Chip tone="amber" className="!h-5 !px-1.5 !text-[11px]">
-        Schätzung
-      </Chip>
-      <span className="text-[12.5px] text-fg-3">Annahme: {MIN_JE_UMSATZ} Min. je zugeordnetem Umsatz</span>
+      <Chip tone="outline">Schätzung</Chip>
+      <span className="text-[13px] text-fg-3">Annahme: {MIN_JE_UMSATZ} Min. je zugeordnetem Umsatz</span>
     </span>
   );
 }
@@ -114,91 +113,22 @@ function tonVon(z: Zustand | undefined): "green" | "amber" | "neutral" | "seal" 
   return "neutral";
 }
 
+/** Verbindung Umsatz → Ziel: ruhiger Pfeil (breit waagerecht, sonst entfällt er); beim Prüfen ein Ladesymbol statt Lauflicht. */
 function Verbinder({ ton, sichtbar, scannt }: { ton: ReturnType<typeof tonVon>; sichtbar: boolean; scannt: boolean }) {
-  const farbe = ton === "green" ? "var(--green)" : ton === "amber" ? "var(--amber)" : ton === "seal" ? "var(--fg-4)" : "var(--fg-3)";
   return (
-    <div className="relative flex h-full items-center justify-center" aria-hidden>
-      {/* Desktop: waagerecht */}
-      <svg width="64" height="24" viewBox="0 0 64 24" className="hidden 2xl:block">
-        <line x1="4" y1="12" x2="60" y2="12" stroke="var(--line-strong)" strokeDasharray="2 4" />
-        {sichtbar && (
-          <>
-            <motion.path
-              d="M4 12 H56"
-              stroke={farbe}
-              strokeWidth={2}
-              strokeLinecap="round"
-              fill="none"
-              initial={{ pathLength: 0 }}
-              animate={{ pathLength: 1 }}
-              transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-            />
-            <motion.path
-              d="M51 7 L57 12 L51 17"
-              stroke={farbe}
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              fill="none"
-              initial={{ opacity: 0, x: -6 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.32 }}
-            />
-          </>
-        )}
-      </svg>
-      {/* Mobil: senkrecht */}
-      <svg width="24" height="26" viewBox="0 0 24 26" className="2xl:hidden">
-        <line x1="12" y1="2" x2="12" y2="24" stroke="var(--line-strong)" strokeDasharray="2 4" />
-        {sichtbar && (
-          <>
-            <motion.path d="M12 2 V20" stroke={farbe} strokeWidth={2} strokeLinecap="round" fill="none" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.4 }} />
-            <motion.path
-              d="M7 16 L12 21 L17 16"
-              stroke={farbe}
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              fill="none"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.3 }}
-            />
-          </>
-        )}
-      </svg>
-      {scannt && (
-        <div className="absolute inset-0 flex items-center justify-center gap-1">
-          {[0, 1, 2].map((i) => (
-            <motion.span
-              key={i}
-              className="size-1.5 rounded-full bg-ink"
-              animate={{ opacity: [0.2, 1, 0.2], scale: [0.8, 1.15, 0.8] }}
-              transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.15 }}
-            />
-          ))}
-        </div>
+    <div className="hidden h-full items-start justify-center pt-1 2xl:flex" aria-hidden>
+      {scannt ? (
+        <Loader2 className="size-4 animate-spin text-fg-3 motion-reduce:animate-none" />
+      ) : (
+        <ArrowRight className={cn("size-4", sichtbar ? (ton === "neutral" || ton === "seal" ? "text-fg-4" : "text-fg-2") : "text-[var(--line-strong)]")} />
       )}
     </div>
   );
 }
 
-function Ziel({ children, ton, gestrichelt }: { children: ReactNode; ton?: ReturnType<typeof tonVon>; gestrichelt?: boolean }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.96, x: -8 }}
-      animate={{ opacity: 1, scale: 1, x: 0 }}
-      transition={{ type: "spring", stiffness: 460, damping: 32 }}
-      className={cn(
-        "flex min-h-[76px] min-w-0 items-center gap-3 rounded-[18px] px-3.5 py-3",
-        gestrichelt ? "border border-dashed border-[var(--line-strong)]" : "border border-[var(--line)] bg-[var(--surface)]",
-        ton === "green" && "shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--green)_35%,transparent)]",
-        ton === "amber" && "shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--amber)_40%,transparent)]",
-      )}
-    >
-      {children}
-    </motion.div>
-  );
+/** Ziel eines Umsatzes (Rechnung, Akte, Kanzleikosten …) – ohne eigenen Kasten; die Zeile der Liste trennt per Linie. */
+function Ziel({ children }: { children: ReactNode; ton?: ReturnType<typeof tonVon>; gestrichelt?: boolean }) {
+  return <div className="flex min-w-0 items-start gap-3">{children}</div>;
 }
 
 export function BankabgleichTab() {
@@ -504,13 +434,13 @@ export function BankabgleichTab() {
     const scannt = phase === "laeuft" && idx === aktuell;
     const wartet = phase === "laeuft" && idx > aktuell && !e;
     if (wartet)
-      return <div className="flex min-h-[76px] items-center rounded-[18px] border border-dashed border-[var(--line)] px-3.5 text-[12.5px] text-fg-3">wartet …</div>;
+      return <div className="text-[13px] text-fg-4">wartet …</div>;
     if (scannt)
       return (
         <Ziel gestrichelt>
           <div className="min-w-0 flex-1">
-            <div className="shimmer h-3 w-2/3 rounded-full" />
-            <div className="mt-2 text-[12px] text-fg-3">Prüfe Rechnungsnummer, Aktenzeichen, Zahler und Betrag …</div>
+            <div className="shimmer h-3 w-2/3" />
+            <div className="mt-2 text-[13px] text-fg-3">Prüfe Rechnungsnummer, Aktenzeichen, Zahler und Betrag …</div>
           </div>
         </Ziel>
       );
@@ -521,12 +451,10 @@ export function BankabgleichTab() {
     if (e.art === "kosten")
       return (
         <Ziel>
-          <div className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-[var(--line)] text-fg-2">
-            <Building2 className="size-4" />
-          </div>
+          <Building2 className="mt-0.5 size-4 shrink-0 text-fg-4" aria-hidden />
           <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-medium">Kanzleikosten (keine Rechnung)</div>
-            <div className="mt-0.5 text-[12.5px] text-fg-3">automatisch erfasst</div>
+            <div className="text-[14px] font-medium">Kanzleikosten (keine Rechnung)</div>
+            <div className="mt-0.5 text-[13px] text-fg-3">automatisch erfasst</div>
             <div className="mt-1">
               <Chip>{e.kategorie}</Chip>
             </div>
@@ -537,17 +465,15 @@ export function BankabgleichTab() {
       const va = e.akteId ? akten.get(e.akteId) : undefined;
       return (
         <Ziel ton="green">
-          <span className="grid size-11 shrink-0 place-items-center rounded-full bg-green-soft text-green">
-            <Wallet className="size-5" />
-          </span>
+          <Wallet className="mt-0.5 size-4 shrink-0 text-fg-4" aria-hidden />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <Chip tone="green" icon={<Check className="size-3" />}>
+              <Chip tone="green">
                 {AKTEN_BUCHUNGSART_KURZ.vorschuss} – {user.name}
               </Chip>
             </div>
-            <AkteLabel akte={va} className="mt-0.5 text-[12.5px]" />
-            <div className="mt-0.5 break-words text-[12.5px] text-fg-3">Guthaben der Mandantschaft im Aktenkonto – kein Fremdgeld, keine Weiterleitung.</div>
+            <AkteLabel akte={va} className="mt-0.5 text-[13px]" />
+            <div className="mt-0.5 break-words text-[13px] text-fg-3">Guthaben der Mandantschaft im Aktenkonto – kein Fremdgeld, keine Weiterleitung.</div>
           </div>
         </Ziel>
       );
@@ -557,20 +483,18 @@ export function BankabgleichTab() {
       const gebucht = e.zustand === "bestaetigt";
       return (
         <Ziel ton="amber">
-          <div className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-amber-soft text-amber">
-            <HandCoins className="size-4" />
-          </div>
+          <HandCoins className="mt-0.5 size-4 shrink-0 text-[var(--amber)]" aria-hidden />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <Chip tone="amber">Fremdgeld</Chip>
-              {gebucht ? <Chip tone="ink" icon={<Check className="size-3" />}>Eingang gebucht – weiterleiten</Chip> : <Chip tone="outline">Vorschlag</Chip>}
+              <Chip tone="amber" symbol={false}>Fremdgeld</Chip>
+              {gebucht ? <Chip tone="ink" icon={<Check aria-hidden />}>Eingang gebucht – weiterleiten</Chip> : <Chip tone="outline">Vorschlag</Chip>}
             </div>
-            <AkteLabel akte={fa} className="mt-0.5 text-[12.5px]" />
-            <div className="mt-0.5 break-words text-[12.5px] text-fg-3">{e.grund}</div>
+            <AkteLabel akte={fa} className="mt-0.5 text-[13px]" />
+            <div className="mt-0.5 break-words text-[13px] text-fg-3">{e.grund}</div>
             <div className="mt-2 flex flex-wrap gap-2">
               {!gebucht && (
                 <>
-                  <Button size="sm" variant="primary" icon={<Check className="size-4" />} onClick={() => bestaetigen(t, e)}>
+                  <Button size="sm" variant="secondary" icon={<Check className="size-4" />} onClick={() => bestaetigen(t, e)}>
                     Als Fremdgeld buchen
                   </Button>
                   <Button size="sm" variant="ghost" icon={<X className="size-4" />} onClick={() => ablehnen(t, e)}>
@@ -590,43 +514,38 @@ export function BankabgleichTab() {
     const akte = r ? akten.get(r.akteId) : undefined;
     if (e.art === "rechnung" && r && e.zustand !== "abgelehnt") {
       const ton = tonVon(e.zustand);
-      const farbe = ton === "green" ? "var(--green)" : "var(--amber)";
       // Menschliche Entscheidung: kein Prozentring, sondern ein Haken
       const mensch = e.zustand === "bestaetigt" || e.zustand === "manuell";
       return (
         <Ziel ton={ton}>
           {mensch ? (
-            <span className="grid size-11 shrink-0 place-items-center rounded-full bg-green-soft text-green">
-              <Check className="size-5" strokeWidth={2.5} />
+            <span className="grid size-11 shrink-0 place-items-center" aria-hidden>
+              <Check className="size-5 text-[var(--green)]" strokeWidth={2} />
             </span>
           ) : (
-            <ProgressRing value={e.sicherheit} size={44} stroke={4} color={farbe}>
-              <span className="num text-[11px] font-semibold">{Math.round(e.sicherheit * 100)}%</span>
+            <ProgressRing value={e.sicherheit} size={44} stroke={4}>
+              <span className="num text-[12px] font-semibold">{Math.round(e.sicherheit * 100)}%</span>
             </ProgressRing>
           )}
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="mono text-[12.5px] font-semibold">{r.nummer}</span>
-              {e.zustand === "gebucht" && (
-                <Chip tone="green" icon={<Check className="size-3" />}>
-                  Automatisch gebucht
-                </Chip>
-              )}
+              <span className="mono text-[13px] font-medium">{r.nummer}</span>
+              {e.zustand === "gebucht" && <Chip tone="green">Automatisch gebucht</Chip>}
               {mensch && (
-                <Chip tone="green" icon={<Check className="size-3" />}>
+                <Chip tone="green">
                   {e.zustand === "manuell" ? `manuell – ${user.name}` : `bestätigt – ${user.name}`}
                 </Chip>
               )}
-              {e.zustand === "bestaetigt" && e.sicherheit < 1 && <span className="text-[12.5px] text-fg-3">Vorschlag war {Math.round(e.sicherheit * 100)} %</span>}
+              {e.zustand === "bestaetigt" && e.sicherheit < 1 && <span className="text-[13px] text-fg-3">Vorschlag war {Math.round(e.sicherheit * 100)} %</span>}
               {e.zustand === "vorschlag" && <Chip tone="amber">Vorschlag</Chip>}
               {e.teilzahlung && <Chip tone="outline">Teilzahlung</Chip>}
               {e.ueberzahlung && <Chip tone="amber">Überzahlung {fmtEUR(e.ueberzahlung)}</Chip>}
             </div>
-            <AkteLabel akte={akte} className="mt-0.5 text-[12.5px]" />
-            <div className="mt-0.5 break-words text-[12.5px] text-fg-3">{e.grund}</div>
+            <AkteLabel akte={akte} className="mt-0.5 text-[13px]" />
+            <div className="mt-0.5 break-words text-[13px] text-fg-3">{e.grund}</div>
             {e.zustand === "vorschlag" && (
               <div className="mt-2 flex flex-wrap gap-2">
-                <Button size="sm" variant="primary" icon={<Check className="size-4" />} onClick={() => bestaetigen(t, e)}>
+                <Button size="sm" variant="secondary" icon={<Check className="size-4" />} onClick={() => bestaetigen(t, e)}>
                   Bestätigen
                 </Button>
                 <Button size="sm" variant="ghost" icon={<X className="size-4" />} onClick={() => ablehnen(t, e)}>
@@ -658,9 +577,9 @@ export function BankabgleichTab() {
       <Ziel gestrichelt>
         <div className="min-w-0 flex-1">
           {storno && (
-            <div role="note" className="mb-2 rounded-[12px] bg-amber-soft px-3 py-2 text-[12.5px] leading-snug text-fg-2">
+            <div role="note" className="mb-3 rounded-md bg-[var(--amber-soft)] px-3 py-2 text-[13px] leading-[18px] text-fg-2">
               <div className="flex items-start gap-1.5">
-                <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber" aria-hidden />
+                <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-[var(--amber)]" aria-hidden />
                 <span>
                   <span className="mono font-semibold text-fg">{storno.storniert.nummer}</span> ist storniert
                   {storno.storniert.stornoNummer ? (
@@ -678,7 +597,7 @@ export function BankabgleichTab() {
               </div>
               {storno.korrektur?.status === "entwurf" && (
                 <div className="mt-2 flex flex-wrap gap-2">
-                  <Button size="sm" variant="primary" icon={<Send className="size-4" />} onClick={() => setKorrekturStellen({ t, entwurfId: storno.korrektur!.id })}>
+                  <Button size="sm" variant="secondary" icon={<Send className="size-4" />} onClick={() => setKorrekturStellen({ t, entwurfId: storno.korrektur!.id })}>
                     Korrekturrechnung stellen und Zahlung zuordnen
                   </Button>
                   <Button size="sm" variant="ghost" icon={<FilePenLine className="size-4" />} onClick={() => useAbrechnungUI.getState().oeffneRechnung(storno.korrektur!.id)}>
@@ -688,11 +607,11 @@ export function BankabgleichTab() {
               )}
             </div>
           )}
-          <label htmlFor={selId} className="text-[13px] font-medium">
+          <label htmlFor={selId} className="text-[13px] font-medium text-fg-2">
             {titel}
           </label>
           {gewaehlt && mehr > 0.004 && (
-            <p className="mt-1 text-[12.5px] leading-snug text-amber">
+            <p className="mt-1 text-[13px] leading-[18px] text-amber-text">
               Der Umsatz übersteigt den offenen Rest von {gewaehlt.nummer} um {fmtEUR(mehr)} – der Mehrbetrag wird als Guthaben der Mandantschaft gebucht.
             </p>
           )}
@@ -711,7 +630,7 @@ export function BankabgleichTab() {
                 });
                 setFremdOk((x) => ({ ...x, [t.id]: false }));
               }}
-              className="!h-9 min-w-0 flex-1 !rounded-[10px] !text-[12.5px]"
+              className="!h-9 min-w-0 flex-1 !rounded-md !text-[13px]"
             >
               <option value="">Zuordnen zu …</option>
               {t.betrag > 0 && (
@@ -743,9 +662,9 @@ export function BankabgleichTab() {
           </div>
           {zielAkte && vorschlag && art && (
             <fieldset className="mt-2.5 grid gap-1">
-              <legend className="mb-1 text-[12.5px] font-semibold text-fg-2">Buchungsart (Pflicht)</legend>
+              <legend className="mb-1 text-[13px] font-medium text-fg-2">Buchungsart (Pflicht)</legend>
               {(["vorschuss", "fremdgeld"] as const).map((k) => (
-                <label key={k} className="flex min-h-9 cursor-pointer items-start gap-2 text-[12.5px] leading-snug">
+                <label key={k} className="flex min-h-9 cursor-pointer items-start gap-2 text-[13px] leading-snug">
                   <input
                     type="radio"
                     name={`buchungsart-${t.id}`}
@@ -762,11 +681,11 @@ export function BankabgleichTab() {
                   </span>
                 </label>
               ))}
-              <p className="text-[12px] text-fg-3">{vorschlag.grund}.</p>
+              <p className="text-[13px] text-fg-4">{vorschlag.grund}.</p>
               {fremdTrotzMandant && (
-                <div role="alert" className="mt-1 rounded-[12px] bg-amber-soft px-3 py-2 text-[12.5px] leading-snug text-fg-2">
-                  <div className="flex items-start gap-1.5 font-semibold text-fg">
-                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber" aria-hidden />
+                <div role="alert" className="mt-1 rounded-md bg-[var(--amber-soft)] px-3 py-2 text-[13px] leading-[18px] text-fg-2">
+                  <div className="flex items-start gap-1.5 font-medium text-fg">
+                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-[var(--amber)]" aria-hidden />
                     Zahlung des Mandanten selbst – in der Regel kein Fremdgeld
                   </div>
                   <label className="mt-1.5 flex min-h-9 items-start gap-2">
@@ -797,19 +716,19 @@ export function BankabgleichTab() {
     const fremd = !r && t.status === "zugeordnet" && art === "fremdgeld";
     const vorschussArt = !r && art === "vorschuss";
     return (
-      <div className="flex min-h-[64px] min-w-0 items-start gap-3 rounded-[18px] border border-[var(--line)] bg-[var(--surface)] px-3.5 py-2.5">
+      <div className="flex min-w-0 items-start gap-3">
         {t.status === "ignoriert" ? (
-          <Building2 className="mt-0.5 size-4 shrink-0 text-fg-3" />
+          <Building2 className="mt-0.5 size-4 shrink-0 text-fg-4" aria-hidden />
         ) : fremd ? (
-          <HandCoins className="mt-0.5 size-4 shrink-0 text-amber" />
+          <HandCoins className="mt-0.5 size-4 shrink-0 text-[var(--amber)]" aria-hidden />
         ) : vorschussArt ? (
-          <Wallet className="mt-0.5 size-4 shrink-0 text-green" />
+          <Wallet className="mt-0.5 size-4 shrink-0 text-fg-4" aria-hidden />
         ) : (
-          <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-green" />
+          <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-[var(--green)]" aria-hidden />
         )}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[13px] font-medium">
+            <span className="text-[14px] font-medium">
               {t.status === "ignoriert" ? "Kanzleikosten" : fremd ? AKTEN_BUCHUNGSART_KURZ.fremdgeld : vorschussArt ? `${AKTEN_BUCHUNGSART_KURZ.vorschuss} (Aktenkonto)` : <span className="mono">{r?.nummer ?? "Rechnung"}</span>}
             </span>
             {r && <Chip tone="outline">Rechnungszahlung</Chip>}
@@ -817,16 +736,16 @@ export function BankabgleichTab() {
               (z.durch === "auto" ? (
                 <Chip tone="ink">{Math.round(z.sicherheit * 100)} % · automatisch</Chip>
               ) : (
-                <Chip tone="green" icon={<Check className="size-3" />}>
+                <Chip tone="green">
                   manuell{wer && wer !== "System" ? ` – ${wer}` : ""}
                   {zeit ? `, ${fmtTime(zeit)} Uhr` : ""}
                 </Chip>
               ))}
-            {z && z.durch === "manuell" && z.sicherheit < 1 && <span className="text-[12.5px] text-fg-3">Vorschlag war {Math.round(z.sicherheit * 100)} %</span>}
+            {z && z.durch === "manuell" && z.sicherheit < 1 && <span className="text-[13px] text-fg-3">Vorschlag war {Math.round(z.sicherheit * 100)} %</span>}
           </div>
-          {a && <AkteLabel akte={a} className="mt-0.5 text-[12.5px]" />}
-          <div className="mt-0.5 break-words text-[12.5px] text-fg-3">{z?.grund ?? "Ohne Rechnungsbezug"}</div>
-          <div className="mt-0.5 text-[12.5px] text-fg-3">
+          {a && <AkteLabel akte={a} className="mt-0.5 text-[13px]" />}
+          <div className="mt-0.5 break-words text-[13px] text-fg-3">{z?.grund ?? "Ohne Rechnungsbezug"}</div>
+          <div className="mt-0.5 text-[13px] text-fg-4">
             {zeit ? `${wer} · ${fmtDate(zeit.slice(0, 10))}, ${fmtTime(zeit)} Uhr` : "Beispieldaten – Zuordnung vor Beginn des Protokolls"}
           </div>
           <Button size="sm" variant="ghost" icon={<Unlink className="size-4" />} className="mt-1 !px-2" onClick={() => void zuordnungLoesen(t)}>
@@ -837,26 +756,16 @@ export function BankabgleichTab() {
     );
   };
 
-  const umsatzKarte = (t: Transaktion, scannt: boolean) => (
-    <div className={cn("relative flex min-h-[76px] min-w-0 items-center gap-3 overflow-hidden rounded-[18px] border border-[var(--line)] bg-[var(--surface)] px-3.5 py-3", scannt && "ai-ring")}>
-      {scannt && (
-        <motion.div
-          aria-hidden
-          className="pointer-events-none absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-[var(--ink-soft)] to-transparent"
-          initial={{ left: "-35%" }}
-          animate={{ left: "105%" }}
-          transition={{ duration: 0.9, repeat: Infinity, ease: "easeInOut" }}
-        />
-      )}
-      <div className="w-[52px] shrink-0 text-center">
-        <div className="num text-[12px] font-semibold text-fg-2">{fmtDateShort(t.datum)}</div>
-      </div>
+  /** Umsatz als Kopf der Listenzeile: Datum, Zahler, Verwendungszweck, Betrag und Konto – ohne eigenen Kasten. */
+  const umsatzKarte = (t: Transaktion, _scannt: boolean) => (
+    <div className="flex min-w-0 items-start gap-3">
+      <div className="num w-[52px] shrink-0 pt-0.5 text-[13px] text-fg-3">{fmtDateShort(t.datum)}</div>
       <div className="min-w-0 flex-1">
-        <div className="break-words text-[13.5px] font-medium">{t.gegenpartei}</div>
+        <div className="break-words text-[14px] font-medium">{t.gegenpartei}</div>
         <div className="mono break-words text-[12px] text-fg-3">{t.verwendungszweck}</div>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">
-        <div className={cn("num text-right text-[14px] font-semibold", t.betrag > 0 ? "text-green" : "text-fg-2")}>
+        <div className="num text-right text-[14px] font-semibold text-fg">
           {t.betrag > 0 ? "+" : "−"}
           {fmtEUR(Math.abs(t.betrag))}
         </div>
@@ -868,9 +777,8 @@ export function BankabgleichTab() {
   return (
     <>
       <TabKopf
-        icon={<Landmark className="size-[18px]" />}
         titel="Bankabgleich"
-        plakette={<Chip tone="amber" title="In dieser Demo stammen die Kontoumsätze aus Beispieldaten – kein echtes Bankkonto angebunden.">Beispielumsätze (simuliert)</Chip>}
+        plakette={<Chip tone="outline" title="In dieser Demo stammen die Kontoumsätze aus Beispieldaten – kein echtes Bankkonto angebunden.">Beispielumsätze (simuliert)</Chip>}
         text="Kontoumsätze werden automatisch Rechnungen zugeordnet – sichere Treffer bucht Apex selbst, unsichere legt es Ihnen zur Bestätigung vor. Jede Buchung lässt sich unter „Gebucht“ lösen."
         aktionen={
           <>
@@ -878,48 +786,45 @@ export function BankabgleichTab() {
             <Button variant="secondary" icon={<Upload className="size-4" />} onClick={() => fileRef.current?.click()}>
               Kontoauszug importieren
             </Button>
-            <Button variant="ai" icon={<Sparkles className="size-4" />} loading={phase === "laeuft"} onClick={starten} disabled={phase === "laeuft"}>
+            <Button variant="primary" icon={<Sparkles className="size-4" />} loading={phase === "laeuft"} onClick={starten} disabled={phase === "laeuft"}>
               {phase === "laeuft" ? "Gleiche ab …" : "Abgleich starten"}
             </Button>
           </>
         }
       />
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="grid grid-cols-1 min-w-0 gap-3">
+      <div className="grid items-start gap-8 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="grid grid-cols-1 min-w-0 gap-4">
           {/* Kennzahlen kompakt in einer Zeile – die offenen Umsätze stehen im ersten Bildschirm (I3-T08-03) */}
-          <div className="sheet grid grid-cols-3 gap-x-3 gap-y-2 rounded-[18px] px-4 py-2.5 min-[480px]:gap-x-4" role="group" aria-label="Kennzahlen Bankabgleich">
+          <div className="sheet grid grid-cols-3 divide-x divide-[var(--line)] rounded-lg" role="group" aria-label="Kennzahlen Bankabgleich">
             {[
-              { icon: <Clock className="size-4" />, cls: "bg-amber-soft text-amber", wert: <AnimatedNumber value={offen.length} />, label: "offene Umsätze", sub: "warten auf Zuordnung" },
-              { icon: <Landmark className="size-4" />, cls: "bg-ink-soft text-ink", wert: <AnimatedNumber value={eingaengeOffen} format={(n) => fmtEUR(n, { cents: false })} />, label: "offene Eingänge", sub: "Zahlungseingänge" },
-              { icon: <Link2 className="size-4" />, cls: "bg-green-soft text-green", wert: <AnimatedNumber value={autoGesamt} />, label: "automatisch zugeordnet", sub: "Umsätze insgesamt" },
+              { wert: <AnimatedNumber value={offen.length} />, label: "offene Umsätze", sub: "warten auf Zuordnung" },
+              { wert: <AnimatedNumber value={eingaengeOffen} format={(n) => fmtEUR(n, { cents: false })} />, label: "offene Eingänge", sub: "Zahlungseingänge" },
+              { wert: <AnimatedNumber value={autoGesamt} />, label: "automatisch zugeordnet", sub: "Umsätze insgesamt" },
             ].map((k) => (
-              <div key={k.label} className="flex min-w-0 items-center gap-2.5" title={k.sub}>
-                {/* Handy: drei schmale Spalten ohne Symbol – die Kennzahlen kosten nur eine Zeile */}
-                <span className={cn("hidden size-8 shrink-0 place-items-center rounded-[10px] min-[480px]:grid", k.cls)}>{k.icon}</span>
-                <span className="min-w-0">
-                  <span className="num block text-[18px] font-semibold leading-tight tracking-[-0.02em]">{k.wert}</span>
-                  <span className="block text-[12px] leading-tight text-fg-3 min-[480px]:text-[12.5px]">{k.label}</span>
-                </span>
+              // Eine Zeile, drei Werte, getrennt durch Linien – die Kennzahlen kosten am Telefon nur eine Zeile
+              <div key={k.label} className="min-w-0 px-3 py-3 sm:px-4" title={k.sub}>
+                <span className="num block text-[18px] font-semibold leading-6 tracking-[-0.01em]">{k.wert}</span>
+                <span className="block text-[12px] leading-4 text-fg-3 min-[480px]:text-[13px]">{k.label}</span>
               </div>
             ))}
           </div>
 
           {phase === "bereit" && letzterLauf && (
-            <div role="status" className="flex flex-wrap items-start gap-2.5 rounded-[16px] bg-ink-softer px-4 py-2.5 text-[12.5px] leading-relaxed text-fg-2 ring-1 ring-inset ring-[var(--line)]">
-              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-green" aria-hidden />
+            <div role="status" className="banner flex-wrap">
+              <CheckCircle2 aria-hidden />
               <span className="min-w-0 flex-1">
                 {/* „Verlassen“ nur, wenn die Buchung selbst noch lief – nicht, wenn nur die Anzeige noch lief (I5-T08-01, I4-T08-02) */}
                 {letzterLauf.abgeschlossen === false ? (
                   <>
-                    <strong className="font-semibold text-fg">
+                    <strong className="font-medium text-fg">
                       Abgleich vom {fmtDate(letzterLauf.am.slice(0, 10))}, {fmtTime(letzterLauf.am)} Uhr nicht abgeschlossen.
                     </strong>{" "}
                     Sie haben die Seite während des Abgleichs verlassen – die bis dahin gebuchten Umsätze und Vorschläge sind gespeichert; offene Umsätze gleicht ein neuer Lauf ab.
                   </>
                 ) : (
                   <>
-                    <strong className="font-semibold text-fg">
+                    <strong className="font-medium text-fg">
                       Abgleich abgeschlossen am {fmtDate(letzterLauf.am.slice(0, 10))}, {fmtTime(letzterLauf.am)} Uhr
                     </strong>{" "}
                     – {letzterLauf.gebucht} gebucht · {plural(letzterLauf.vorschlaege, "Vorschlag", "Vorschläge")} · {letzterLauf.kosten} Kanzleikosten
@@ -938,26 +843,19 @@ export function BankabgleichTab() {
 
           <AnimatePresence>
             {phase === "fertig" && (
-              <motion.div initial={{ opacity: 0, y: -8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0 }} transition={{ type: "spring", stiffness: 420, damping: 32 }}>
-                <div role="status" className="sheet flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[18px] px-4 py-3">
-                  <motion.div
-                    initial={{ scale: 0.4 }}
-                    animate={{ scale: 1 }}
-                    transition={{ type: "spring", stiffness: 520, damping: 18 }}
-                    className="grid size-9 shrink-0 place-items-center rounded-full bg-green-soft text-green"
-                  >
-                    <CheckCircle2 className="size-5" />
-                  </motion.div>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={BEWEGUNG.standard}>
+                <div role="status" className="banner banner-green flex-wrap items-center">
+                  <CheckCircle2 aria-hidden />
                   <div className="min-w-0 flex-1 basis-[260px]">
-                    <div className="text-[14px] font-semibold">Abgleich abgeschlossen</div>
-                    <div className="text-[12.5px] text-fg-2">
-                      <span className="font-semibold text-green">{anz.gebucht + anz.bestaetigt} gebucht</span>
-                      {anz.bestaetigt ? ` (davon ${anz.bestaetigt} bestätigt)` : " automatisch"} · <span className="font-semibold text-amber">{plural(anz.vorschlag, "Vorschlag", "Vorschläge")}</span> warten auf Sie ·{" "}
+                    <div className="font-medium text-fg">Abgleich abgeschlossen</div>
+                    <div className="text-[13px] text-fg-2">
+                      <span className="font-medium text-fg">{anz.gebucht + anz.bestaetigt} gebucht</span>
+                      {anz.bestaetigt ? ` (davon ${anz.bestaetigt} bestätigt)` : " automatisch"} · <span className="font-medium text-fg">{plural(anz.vorschlag, "Vorschlag", "Vorschläge")}</span> warten auf Sie ·{" "}
                       {anz.kosten} Kanzleikosten
                       {anz.keine > 0 ? (
                         <>
                           {" "}
-                          · <span className="font-semibold text-seal">{anz.keine} ohne Zuordnung</span>
+                          · <span className="font-medium text-fg">{anz.keine} ohne Zuordnung</span>
                         </>
                       ) : null}
                     </div>
@@ -981,17 +879,17 @@ export function BankabgleichTab() {
                   ]}
                 />
                 <KontoFilter value={kontoFilter} onChange={setKontoFilter} umsaetze={gebuchtListe} />
-                <div className="text-[12.5px] text-fg-3">Gebuchte Umsätze mit Grund, Art, wer und wann – jede Zuordnung lässt sich lösen</div>
+                <div className="text-[13px] text-fg-3">Gebuchte Umsätze mit Grund, Art, wer und wann – jede Zuordnung lässt sich lösen</div>
               </div>
               {gebuchtListe.length === 0 ? (
-                <p className="px-4 py-10 text-center text-[13px] text-fg-3">Noch keine zugeordneten Umsätze.</p>
+                <p className="px-4 py-10 text-center text-[14px] text-fg-3">Noch keine zugeordneten Umsätze.</p>
               ) : (
-                <ul className="grid grid-cols-1 gap-2 p-3">
+                <ul className="grid grid-cols-1 divide-y divide-[var(--line)]">
                   {gebuchtListe.filter(kontoPasst).map((t) => (
-                    <li key={t.id} className="grid items-stretch gap-1 2xl:grid-cols-[minmax(0,1.1fr)_64px_minmax(0,1fr)] 2xl:gap-0">
+                    <li key={t.id} className="grid items-start gap-x-2 gap-y-3 px-4 py-4 2xl:grid-cols-[minmax(0,1.1fr)_32px_minmax(0,1fr)]">
                       {umsatzKarte(t, false)}
                       <Verbinder ton={t.status === "ignoriert" ? "neutral" : "green"} sichtbar scannt={false} />
-                      {historieZiel(t)}
+                      <div className="pl-[64px] 2xl:pl-0">{historieZiel(t)}</div>
                     </li>
                   ))}
                 </ul>
@@ -1010,18 +908,16 @@ export function BankabgleichTab() {
                   ]}
                 />
               <KontoFilter value={kontoFilter} onChange={setKontoFilter} umsaetze={liste.map((id) => tById.get(id)).filter((t): t is Transaktion => !!t)} />
-              <div className="text-[12.5px] text-fg-3">{phase === "bereit" ? "Offene Kontoumsätze" : "Ergebnis des Abgleichs"}<span className="hidden md:inline"> · Umsatz → zugeordnete Rechnung</span></div>
+              <div className="text-[13px] text-fg-3">{phase === "bereit" ? "Offene Kontoumsätze" : "Ergebnis des Abgleichs"}<span className="hidden md:inline"> · Umsatz → zugeordnete Rechnung</span></div>
             </div>
             {liste.length === 0 ? (
               <div className="flex flex-col items-center px-6 py-12 text-center">
-                <div className="grid size-12 place-items-center rounded-[16px] bg-green-soft text-green">
-                  <CheckCircle2 className="size-6" />
-                </div>
+                <CheckCircle2 className="size-5 text-fg-4" aria-hidden />
                 <div className="title-md mt-3">Alle Umsätze zugeordnet</div>
-                <p className="mt-1 max-w-sm text-[12.5px] text-fg-3">Neue Kontoumsätze erscheinen hier automatisch und werden stündlich abgeglichen.</p>
+                <p className="mt-1 max-w-sm text-[14px] text-fg-3">Neue Kontoumsätze erscheinen hier automatisch und werden stündlich abgeglichen.</p>
               </div>
             ) : (
-              <ul className="grid grid-cols-1 gap-2 p-3">
+              <ul className="grid grid-cols-1 divide-y divide-[var(--line)]">
                 {liste.map((id, idx) => {
                   const t = tById.get(id);
                   if (!t || !kontoPasst(t)) return null;
@@ -1033,16 +929,14 @@ export function BankabgleichTab() {
                       ref={(el) => {
                         zeilenRef.current[id] = el;
                       }}
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: phase === "laeuft" && idx > aktuell && !e ? 0.6 : 1, y: 0 }}
-                      transition={{ delay: phase === "bereit" ? Math.min(idx, 10) * 0.03 : 0 }}
-                      className="grid items-stretch gap-1 2xl:grid-cols-[minmax(0,1.1fr)_64px_minmax(0,1fr)] 2xl:gap-0"
+                      initial={false}
+                      animate={{ opacity: 1 }}
+                      transition={BEWEGUNG.standard}
+                      className={cn("grid items-start gap-x-2 gap-y-3 px-4 py-4 transition-colors duration-100 2xl:grid-cols-[minmax(0,1.1fr)_32px_minmax(0,1fr)]", scannt && "bg-[var(--surface-2)]")}
                     >
                       {umsatzKarte(t, scannt)}
-                      <div className={cn(!e && !scannt && phase !== "laeuft" && t.status === "offen" && "hidden 2xl:block")}>
-                        <Verbinder ton={tonVon(e?.zustand)} sichtbar={!!e} scannt={scannt} />
-                      </div>
-                      {zielInhalt(t, e, idx)}
+                      <Verbinder ton={tonVon(e?.zustand)} sichtbar={!!e} scannt={scannt} />
+                      <div className="min-w-0 pl-[64px] 2xl:pl-0">{zielInhalt(t, e, idx)}</div>
                     </motion.li>
                   );
                 })}
@@ -1055,32 +949,28 @@ export function BankabgleichTab() {
 
         <div className="grid grid-cols-1 gap-4 xl:sticky xl:top-7">
           <Card>
-            <button type="button" onClick={erklaerungUmschalten} aria-expanded={erklaerungOffen} aria-controls="bank-erklaerung" className="-m-1 flex w-[calc(100%+8px)] items-start gap-3 rounded-[16px] p-1 text-left">
-              <span className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">
-                <ShieldCheck className="size-4" />
-              </span>
+            <button type="button" onClick={erklaerungUmschalten} aria-expanded={erklaerungOffen} aria-controls="bank-erklaerung" className="-m-1 flex w-[calc(100%+8px)] items-start gap-3 rounded-md p-1 text-left">
+              <ShieldCheck className="mt-0.5 size-4 shrink-0 text-fg-4" aria-hidden />
               <span className="min-w-0 flex-1">
                 <span className="title-md block">Wie sicher ist die Zuordnung?</span>
-                <span className="mt-0.5 block text-[12.5px] text-fg-3">Ab {Math.round(AUTO_SCHWELLE * 100)} % bucht Apex selbst – darunter entscheiden Sie.</span>
+                <span className="mt-0.5 block text-[13px] text-fg-3">Ab {Math.round(AUTO_SCHWELLE * 100)} % bucht Apex selbst – darunter entscheiden Sie.</span>
               </span>
-              <ChevronDown className={cn("mt-2 size-4 shrink-0 text-fg-3 transition-transform duration-300", erklaerungOffen && "rotate-180")} aria-hidden />
+              <ChevronDown className={cn("mt-0.5 size-4 shrink-0 text-fg-4 transition-transform duration-150", erklaerungOffen && "rotate-180")} aria-hidden />
             </button>
             {erklaerungOffen && (
             <div id="bank-erklaerung" className="mt-4">
             <ul className="grid grid-cols-1 gap-3">
               {REGELN.map((r) => (
                 <li key={r.regel} className="flex items-start gap-3">
-                  <span
-                    className={cn(
-                      "num mt-0.5 grid h-6 w-11 shrink-0 place-items-center rounded-full text-[12px] font-semibold",
-                      r.folge === "auto" ? "bg-green-soft text-green" : r.folge === "vorschlag" ? "bg-amber-soft text-amber" : "bg-[var(--line)] text-fg-2",
-                    )}
-                  >
-                    {r.sicherheit ? `${Math.round(r.sicherheit * 100)} %` : "–"}
+                  {/* Folge der Regel in Form und Farbe: automatisch gebucht (Haken) bzw. Vorschlag (Uhr) – wie in der Legende darunter */}
+                  <span className="mt-0.5 w-[60px] shrink-0">
+                    <Chip tone={r.folge === "auto" ? "green" : r.folge === "vorschlag" ? "amber" : "neutral"} className="num">
+                      {r.sicherheit ? `${Math.round(r.sicherheit * 100)} %` : "–"}
+                    </Chip>
                   </span>
                   <div className="min-w-0">
-                    <div className="text-[13px] font-medium">{r.titel}</div>
-                    <div className="text-[12.5px] leading-snug text-fg-3">{r.text}</div>
+                    <div className="text-[14px] font-medium leading-5">{r.titel}</div>
+                    <div className="text-[13px] leading-[18px] text-fg-3">{r.text}</div>
                   </div>
                 </li>
               ))}
@@ -1089,7 +979,7 @@ export function BankabgleichTab() {
               <Chip tone="green">automatisch gebucht</Chip>
               <Chip tone="amber">Vorschlag zur Bestätigung</Chip>
               <Chip>Kanzleikosten</Chip>
-              <Chip tone="amber">Fremdgeld</Chip>
+              <Chip tone="amber" symbol={false}>Fremdgeld</Chip>
             </div>
             </div>
             )}
@@ -1107,15 +997,13 @@ export function BankabgleichTab() {
           />
           <Card>
             <div className="mb-3 flex items-start gap-3">
-              <span className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">
-                <Upload className="size-4" />
-              </span>
+              <Upload className="mt-0.5 size-4 shrink-0 text-fg-4" aria-hidden />
               <span className="min-w-0">
                 <span className="title-md block">Kontoauszüge</span>
-                <span className="mt-0.5 block text-[12.5px] text-fg-3">Import im Format CAMT.053 (XML), MT940 (.sta) oder CSV.</span>
+                <span className="mt-0.5 block text-[13px] text-fg-3">Import im Format CAMT.053 (XML), MT940 (.sta) oder CSV.</span>
               </span>
             </div>
-            <p className="text-[12.5px] leading-relaxed text-fg-3">
+            <p className="text-[13px] leading-[18px] text-fg-3">
               Jeder Umsatz wird gegen offene Rechnungen und Aktenkonten geprüft. Jede Zuordnung bleibt nachvollziehbar – mit Regel, Sicherheit und wer gebucht hat – und lässt sich unter „Gebucht“ lösen. In
               dieser Demo werden Beispielumsätze (simuliert) verwendet; es ist kein Bankkonto angebunden.
             </p>
@@ -1144,7 +1032,7 @@ function KontoFilter({ value, onChange, umsaetze }: { value: "alle" | KontoArt; 
   const ander = umsaetze.filter((t) => kontoVon(t) === "ander").length;
   return (
     <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Konto-Filter">
-      <span className="text-[12.5px] font-medium text-fg-3" aria-hidden>
+      <span className="text-[13px] font-medium text-fg-3" aria-hidden>
         Konto:
       </span>
       <Segmented

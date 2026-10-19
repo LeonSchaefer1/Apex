@@ -17,12 +17,14 @@ export interface TypMeta {
   dot: string;
 }
 
+// Ruhige Typ-Kennzeichnung (DESIGN-SYSTEM.md 12.6): Rot nur für Notfristen/kritische Fristen; die übrigen Typen unterscheiden sich
+// über Wort und Form (Punkt gefüllt, gestrichelt, hohl), nicht über bunte Flächen.
 export const TYP_META: Record<FristTyp, TypMeta> = {
-  notfrist: { label: "Notfrist", kurz: "Notfrist", tone: "seal", pill: "bg-seal-soft text-seal", dot: "bg-seal" },
-  frist: { label: "Frist", kurz: "Frist", tone: "ink", pill: "bg-ink-soft text-ink", dot: "bg-ink" },
-  vorfrist: { label: "Vorfrist", kurz: "Vorfrist", tone: "outline", pill: "border border-dashed border-[var(--line-strong)] text-fg-2", dot: "border border-dashed border-fg-3" },
-  wiedervorlage: { label: "Wiedervorlage", kurz: "WV", tone: "neutral", pill: "bg-[var(--ink-softer)] text-fg-2 ring-1 ring-inset ring-[var(--line)]", dot: "bg-fg-4" },
-  termin: { label: "Termin", kurz: "Termin", tone: "violet", pill: "bg-violet-soft text-violet", dot: "bg-violet" },
+  notfrist: { label: "Notfrist", kurz: "Notfrist", tone: "seal", pill: "bg-seal-soft text-[var(--seal-text)] shadow-[inset_2px_0_0_var(--seal)]", dot: "bg-[var(--seal)]" },
+  frist: { label: "Frist", kurz: "Frist", tone: "ink", pill: "bg-[var(--surface-3)] text-fg", dot: "bg-[var(--fg)]" },
+  vorfrist: { label: "Vorfrist", kurz: "Vorfrist", tone: "outline", pill: "border border-dashed border-[var(--line-strong)] text-fg-2", dot: "border border-dashed border-[var(--fg-3)]" },
+  wiedervorlage: { label: "Wiedervorlage", kurz: "WV", tone: "neutral", pill: "bg-[var(--surface-2)] text-fg-2", dot: "bg-[var(--fg-4)]" },
+  termin: { label: "Termin", kurz: "Termin", tone: "outline", pill: "bg-[var(--surface)] text-fg-2 ring-1 ring-inset ring-[var(--line-strong)]", dot: "border border-[var(--fg-3)]" },
 };
 
 export const TYP_REIHENFOLGE: FristTyp[] = ["notfrist", "frist", "vorfrist", "wiedervorlage", "termin"];
@@ -81,13 +83,11 @@ export function darfKontrollieren(f: Frist, userId: ID): boolean {
 }
 
 /** Ampelfarbe für den Dringlichkeitsstreifen. */
-export function streifenFarbe(f: Frist, heute: ISODate = today()): string {
-  if (f.status === "erledigt") return "bg-green";
-  const diff = (fromISO(f.datum).getTime() - fromISO(heute).getTime()) / 86400000;
-  if (diff < 0) return "bg-seal";
-  if (diff <= 2) return f.typ === "wiedervorlage" || f.typ === "vorfrist" ? "bg-amber" : "bg-seal";
-  if (diff <= 7) return "bg-amber";
-  return "bg-[var(--line-strong)]";
+export function streifenFarbe(f: Frist, _heute: ISODate = today()): string {
+  // Farbiger Randstreifen nur für offene kritische Fristen (Notfrist oder nicht verlängerbar) – DESIGN-SYSTEM.md 8.
+  // Zeitliche Lage (überfällig, ≤ 2 Tage, ≤ 7 Tage) nennen Chip und Text, nicht der Streifen.
+  if (f.status === "erledigt") return "";
+  return istKritisch(f) ? "bg-[var(--seal)]" : "";
 }
 
 /** Montag der Woche, in der `iso` liegt. */

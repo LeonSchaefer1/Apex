@@ -8,6 +8,7 @@ import { useCol } from "@/store/data";
 import { Avatar, Card, Chip, Empty, Segmented } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { useTeam } from "./helfer";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 type Filter = "alle" | "menschen" | "auto";
 
@@ -25,13 +26,13 @@ interface Eintrag {
 }
 
 const ICON: Record<Eintrag["art"], { icon: ReactNode; cls: string; label: string }> = {
-  nutzer: { icon: <UserRound className="size-3.5" />, cls: "bg-ink-soft text-ink", label: "Team" },
-  ki: { icon: <Sparkles className="size-3.5" />, cls: "bg-violet-soft text-violet", label: "KI" },
-  automation: { icon: <Zap className="size-3.5" />, cls: "bg-green-soft text-green", label: "Automatisch" },
-  system: { icon: <Bot className="size-3.5" />, cls: "bg-ink-softer text-fg-2", label: "System" },
-  notiz: { icon: <StickyNote className="size-3.5" />, cls: "bg-amber-soft text-amber", label: "Notiz" },
-  "nachricht-ein": { icon: <Inbox className="size-3.5" />, cls: "bg-ink-soft text-ink", label: "Eingang" },
-  "nachricht-aus": { icon: <Send className="size-3.5" />, cls: "bg-ink-soft text-ink", label: "Ausgang" },
+  nutzer: { icon: <UserRound className="size-3.5" />, cls: "text-fg-4", label: "Team" },
+  ki: { icon: <Sparkles className="size-3.5" />, cls: "text-fg-4", label: "KI" },
+  automation: { icon: <Zap className="size-3.5" />, cls: "text-fg-4", label: "Automatisch" },
+  system: { icon: <Bot className="size-3.5" />, cls: "text-fg-4", label: "System" },
+  notiz: { icon: <StickyNote className="size-3.5" />, cls: "text-fg-4", label: "Notiz" },
+  "nachricht-ein": { icon: <Inbox className="size-3.5" />, cls: "text-fg-4", label: "Eingang" },
+  "nachricht-aus": { icon: <Send className="size-3.5" />, cls: "text-fg-4", label: "Ausgang" },
 };
 
 export function TabVerlauf({ akte }: { akte: Akte }) {
@@ -72,7 +73,6 @@ export function TabVerlauf({ akte }: { akte: Akte }) {
     return [...m.entries()];
   }, [gefiltert]);
 
-  let laufend = 0;
   return (
     <div className="grid grid-cols-1 gap-4">
       <div className="flex flex-wrap items-center gap-3">
@@ -87,15 +87,15 @@ export function TabVerlauf({ akte }: { akte: Akte }) {
         />
         {gespart > 0 && (
           <span className="inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-1">
-            <Chip tone="green" icon={<Zap className="size-3 shrink-0" />} className="max-w-full" title={`≈ ${gespart} Min. Routinearbeit in dieser Akte automatisch erledigt – ${ANNAHME}`}>
+            <Chip icon={<Zap className="size-3 shrink-0" aria-hidden />} className="max-w-full" title={`≈ ${gespart} Min. Routinearbeit in dieser Akte automatisch erledigt – ${ANNAHME}`}>
               <span className="truncate">
                 ≈ {gespart} Min.<span className="hidden sm:inline"> Routinearbeit in dieser Akte</span> automatisch erledigt
               </span>
             </Chip>
-            <Chip tone="amber" icon={<Info className="size-3 shrink-0" aria-hidden />} className="!h-5 !px-1.5 !text-[11px]" title={ANNAHME}>
+            <Chip tone="outline" icon={<Info className="size-3 shrink-0" aria-hidden />} title={ANNAHME}>
               Schätzung{mitBeispiel ? " (Beispielwerte)" : ""}
             </Chip>
-            <span className="hidden text-[12.5px] text-fg-3 md:inline">Annahme je Vorgang aus dem 38h-Motor</span>
+            <span className="hidden text-[13px] text-fg-3 md:inline">Annahme je Vorgang aus dem 38h-Motor</span>
           </span>
         )}
       </div>
@@ -108,7 +108,7 @@ export function TabVerlauf({ akte }: { akte: Akte }) {
               <section key={tag}>
                 <div className="mb-3 flex items-baseline gap-2">
                   <h3 className="text-[13px] font-semibold">{tagLabel(tag)}</h3>
-                  <span className="text-[12.5px] text-fg-3">{fmtDateLong(tag)}</span>
+                  <span className="text-[13px] text-fg-3">{fmtDateLong(tag)}</span>
                 </div>
                 {/* Nur li als direkte Kinder der Liste – die Zeitleisten-Linie liegt im umgebenden Element */}
                 <div className="relative">
@@ -116,7 +116,6 @@ export function TabVerlauf({ akte }: { akte: Akte }) {
                 <ol className="relative">
                   <AnimatePresence initial={false}>
                     {liste.map((e) => {
-                      const i = laufend++;
                       const u = e.userId ? byId.get(e.userId) : undefined;
                       const ic = ICON[e.art];
                       return (
@@ -124,16 +123,16 @@ export function TabVerlauf({ akte }: { akte: Akte }) {
                           key={e.id}
                           layout="position"
                           initial={{ opacity: 0, x: -8 }}
-                          animate={{ opacity: 1, x: 0, transition: { delay: Math.min(i, 10) * 0.035, type: "spring", stiffness: 420, damping: 34 } }}
+                          animate={{ opacity: 1, x: 0, transition: BEWEGUNG.standard }}
                           className="relative flex gap-3 pb-4 last:pb-0"
                         >
-                          <span className={cn("relative z-10 grid size-[27px] shrink-0 place-items-center rounded-full ring-4 ring-[var(--surface)]", ic.cls)}>{ic.icon}</span>
+                          <span className={cn("relative z-10 grid size-[27px] shrink-0 place-items-center rounded-full bg-[var(--surface)] ring-1 ring-[var(--line)]", ic.cls)}>{ic.icon}</span>
                           <div className="min-w-0 flex-1 pt-0.5">
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                              <span className="text-[13.5px] leading-snug text-fg">{e.titel}</span>
+                              <span className="text-[14px] leading-snug text-fg">{e.titel}</span>
                             </div>
-                            {e.text && <p className={cn("mt-1 text-[13px] leading-relaxed", e.art === "notiz" ? "rounded-[12px] bg-amber-soft/50 px-3 py-2 text-fg-2" : "text-fg-3")}>{e.text}</p>}
-                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[12.5px] text-fg-3">
+                            {e.text && <p className={cn("mt-1 text-[13px] leading-relaxed", e.art === "notiz" ? "border-l-2 border-[var(--line-strong)] pl-3 py-2 text-fg-2" : "text-fg-3")}>{e.text}</p>}
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[13px] text-fg-3">
                               <span className="num">{fmtTime(e.zeit)} Uhr</span>
                               <span>·</span>
                               {u ? (
@@ -144,7 +143,7 @@ export function TabVerlauf({ akte }: { akte: Akte }) {
                                 <span>{e.kanal === "bea" ? "beA" : ic.label}</span>
                               )}
                               {e.minuten ? (
-                                <Chip tone="green" className="!h-5 !px-1.5" title={ANNAHME}>
+                                <Chip title={ANNAHME}>
                                   ≈ {e.minuten} Min. gespart (Schätzung)
                                 </Chip>
                               ) : null}

@@ -8,18 +8,13 @@ import { istKritisch } from "@/core/fristenLage";
 import { AiChip, Chip, Empty } from "@/components/ui";
 import { Highlight } from "@/components/Highlight";
 import { cn } from "@/lib/cn";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 export function KanalSymbol({ kanal, className }: { kanal: Nachricht["kanal"]; className?: string }) {
   return (
-    <span
-      className={cn(
-        "grid size-9 shrink-0 place-items-center rounded-[12px]",
-        kanal === "bea" ? "bg-ink-soft text-ink" : "bg-[var(--ink-softer)] text-fg-2 ring-1 ring-inset ring-[var(--line)]",
-        className,
-      )}
-      aria-hidden
-    >
-      {kanal === "bea" ? <Landmark className="size-[17px]" /> : <Mail className="size-[17px]" />}
+    // Symbol ohne Kachel (DESIGN-SYSTEM.md 11): 16 px in Text 4
+    <span className={cn("mt-0.5 grid size-4 shrink-0 place-items-center text-fg-4", className)} aria-hidden>
+      {kanal === "bea" ? <Landmark className="size-4" /> : <Mail className="size-4" />}
     </span>
   );
 }
@@ -38,9 +33,9 @@ export function KanalChip({ kanal }: { kanal: Nachricht["kanal"] }) {
 export function KiStatusChip({ n, laufend }: { n: Nachricht; laufend: boolean }) {
   if (laufend)
     return (
-      <span className="chip ai-ring !bg-transparent">
-        <Loader2 className="size-3 animate-spin text-violet" />
-        <span className="ai-text font-semibold">KI analysiert …</span>
+      <span className="chip chip-outline">
+        <Loader2 className="size-3 animate-spin motion-reduce:animate-none" aria-hidden />
+        <span>KI analysiert …</span>
       </span>
     );
   if (!n.ki || n.kiStatus === "ausstehend") return <Chip tone="outline" dot className="!text-fg-3">Wartet auf KI-Analyse</Chip>;
@@ -129,7 +124,7 @@ function Liste({ items, selectedId, onSelect, akten, laufend, q }: { items: Nach
   };
   return (
     <ul role="listbox" aria-label="Nachrichten" aria-describedby="posteingang-tipp" className="space-y-0.5 p-1.5" onKeyDown={taste}>
-      {items.map((n, i) => {
+      {items.map((n) => {
         const akte = n.akteId ? akten.get(n.akteId) : undefined;
         const neu = n.status === "neu";
         const sel = n.id === selectedId;
@@ -149,21 +144,21 @@ function Liste({ items, selectedId, onSelect, akten, laufend, q }: { items: Nach
             layout="position"
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ type: "spring", stiffness: 480, damping: 36, delay: Math.min(i, 10) * 0.03 }}
-            className="cursor-pointer rounded-[16px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--ink)]"
+            transition={BEWEGUNG.standard}
+            className="cursor-pointer rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
           >
             <div
               className={cn(
-                "group relative isolate flex w-full gap-3 rounded-[16px] px-3 py-3 pl-4 text-left transition-colors",
-                !sel && "hover:bg-[var(--ink-softer)]",
+                "group relative isolate flex w-full gap-3 rounded-md px-3 py-3 pl-4 text-left transition-colors duration-100",
+                !sel && "hover:bg-[var(--surface-2)]",
                 n.status === "erledigt" && !sel && "opacity-65",
               )}
             >
               {sel && (
                 <motion.span
                   layoutId="post-auswahl"
-                  className="absolute inset-0 -z-10 rounded-[16px] bg-ink-soft shadow-[inset_0_0_0_1px_var(--line)]"
-                  transition={{ type: "spring", stiffness: 520, damping: 38 }}
+                  className="absolute inset-0 -z-10 rounded-md bg-[var(--surface-3)] shadow-[inset_2px_0_0_var(--ink)]"
+                  transition={BEWEGUNG.standard}
                 />
               )}
               {neu && (
@@ -175,10 +170,10 @@ function Liste({ items, selectedId, onSelect, akten, laufend, q }: { items: Nach
               <KanalSymbol kanal={n.kanal} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2">
-                  <span className={cn("min-w-0 break-words text-[13.5px]", neu ? "font-semibold text-fg" : "font-medium text-fg-2")}>
+                  <span className={cn("min-w-0 break-words text-[14px]", neu ? "font-semibold text-fg" : "font-medium text-fg-2")}>
                     <Highlight text={n.von} q={q} />
                   </span>
-                  <span className={cn("num ml-auto shrink-0 text-[12.5px]", neu ? "font-medium text-ink" : "text-fg-3")}>{eingangsZeit(n.eingang)}</span>
+                  <span className={cn("num ml-auto shrink-0 text-[13px]", neu ? "font-medium text-fg" : "text-fg-3")}>{eingangsZeit(n.eingang)}</span>
                 </div>
                 <div className={cn("mt-0.5 flex min-w-0 items-start gap-1.5 text-[13px]", neu ? "font-semibold text-fg" : "text-fg-2")}>
                   <span className="line-clamp-2 min-w-0 break-words">
@@ -191,7 +186,7 @@ function Liste({ items, selectedId, onSelect, akten, laufend, q }: { items: Nach
                     </>
                   )}
                 </div>
-                <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-snug text-fg-3">{vorschau(n.text)}</p>
+                <p className="mt-0.5 line-clamp-2 text-[13px] leading-snug text-fg-3">{vorschau(n.text)}</p>
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   <KanalChip kanal={n.kanal} />
                   <KiStatusChip n={n} laufend={laufend[n.id] !== undefined} />

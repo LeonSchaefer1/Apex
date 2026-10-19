@@ -10,6 +10,7 @@ import { Button, Card, Empty } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { FristZeile } from "./FristZeile";
 import { bestaetigeKontrolle, brauchtKontrolle, darfKontrollieren } from "./logik";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 const sichtbarEl = (el: Element) => el.getClientRects().length > 0;
 
@@ -212,7 +213,7 @@ export function FristListe({
           className="outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
         >
           {leerTitel && (
-            <h2 id="fristen-liste-leer" tabIndex={-1} className="title-md rounded-[10px] px-1 pt-1 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]">
+            <h2 id="fristen-liste-leer" tabIndex={-1} className="title-md rounded-md px-1 pt-1 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]">
               {leerTitel}
             </h2>
           )}
@@ -238,18 +239,18 @@ export function FristListe({
               ref={g.key === markiert ? markRef : undefined}
               data-gruppe={g.key}
               layout="position"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
               exit={{ opacity: 0, transition: { duration: 0.2 } }}
-              transition={{ type: "spring", stiffness: 420, damping: 36 }}
-              className={cn(g.key === markiert && "-m-2 rounded-[24px] bg-ink-softer p-2 ring-2 ring-[var(--ink)]")}
+              transition={BEWEGUNG.standard}
+              className={cn(g.key === markiert && "-m-2 rounded-lg p-2 ring-2 ring-[var(--focus)]")}
             >
               <div className="mb-2 flex items-baseline gap-2.5 px-1">
-                <h3 className={cn("title-md", g.ton === "seal" && "text-seal", g.ton === "ink" && "text-ink", g.ton === "green" && "text-green")}>{g.titel}</h3>
-                {g.sub && <span className="num min-w-0 text-[12.5px] text-fg-3">{g.sub}</span>}
-                <span className="num ml-auto rounded-full bg-[var(--ink-softer)] px-2 py-0.5 text-[12.5px] font-medium text-fg-3">{g.items.length}</span>
+                <h3 className={cn("text-[14px] font-semibold text-fg", g.ton === "seal" && "text-[var(--seal-text)]")}>{g.titel}</h3>
+                {g.sub && <span className="num min-w-0 text-[13px] text-fg-4">{g.sub}</span>}
+                <span className="num ml-auto text-[13px] text-fg-4">{g.items.length}</span>
               </div>
-              <Card padded={false} className={cn("overflow-hidden", g.ton === "seal" && "ring-1 ring-[color-mix(in_oklab,var(--seal)_25%,transparent)]")}>
+              <Card padded={false} className="overflow-hidden">
                 <div className="divide-y divide-[var(--line)]">
                   <AnimatePresence initial={false}>
                     {g.items.map((f, i) => (

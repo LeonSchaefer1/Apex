@@ -10,6 +10,7 @@ import { Chip, Field, Input, SearchField, Select, Segmented } from "@/components
 import { Highlight } from "@/components/Highlight";
 import { cn } from "@/lib/cn";
 import { KontaktAvatar, ROLLE_LABEL } from "./kontaktHelfer";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 export interface KontaktEntwurf {
   typ: "person" | "organisation";
@@ -72,7 +73,7 @@ export function KontaktFelder({ value, onChange, idPrefix, typWaehlbar = true, z
   const nameFehler = value.typ === "person" ? "Bitte den Nachnamen eintragen." : "Bitte den Firmennamen eintragen.";
   const nameAttr = nameFehlt ? { "aria-invalid": true as const, "aria-describedby": id("name-fehler") } : {};
   const nameMeldung = nameFehlt ? (
-    <p id={id("name-fehler")} className="mt-1.5 text-[12.5px] font-medium text-seal">
+    <p id={id("name-fehler")} className="mt-1.5 text-[13px] font-medium text-seal">
       {nameFehler}
     </p>
   ) : null;
@@ -227,12 +228,12 @@ export function KontaktAuswahl({
         ↑/↓ wählt, Enter übernimmt{q.trim() ? " – ohne Auswahl den ersten Treffer" : ""}, Escape leert die Suche.
       </p>
       {liste.length === 0 ? (
-        <div className="rounded-[16px] bg-ink-softer px-4 py-8 text-center text-[13px] text-fg-3 shadow-[inset_0_0_0_1px_var(--line)]" role="status">
+        <div className="rounded-md bg-[var(--surface-2)] px-4 py-8 text-center text-[13px] text-fg-3" role="status">
           Kein Kontakt gefunden. Legen Sie einen neuen an.
         </div>
       ) : (
         // Der scrollbare Bereich ist selbst die Listbox (wie die Fristart-Auswahl): ein Tab-Stopp im Suchfeld, die Liste ist per Pfeiltasten bedienbar
-        <div id={listId} role="listbox" aria-label="Kontakte" tabIndex={-1} className="overflow-y-auto rounded-[16px] bg-ink-softer p-1 shadow-[inset_0_0_0_1px_var(--line)] outline-none" style={{ maxHeight: hoehe }}>
+        <div id={listId} role="listbox" aria-label="Kontakte" tabIndex={-1} className="overflow-y-auto rounded-lg bg-[var(--surface)] p-1 shadow-[inset_0_0_0_1px_var(--line)] outline-none" style={{ maxHeight: hoehe }}>
           <ul role="presentation">
             {liste.map((k, i) => {
               const gewaehlt = k.id === value;
@@ -250,18 +251,18 @@ export function KontaktAuswahl({
                     document.getElementById(id)?.focus();
                   }}
                   className={cn(
-                    "relative flex w-full cursor-pointer items-center gap-3 rounded-[12px] px-2.5 py-2 text-left transition-colors",
+                    "relative flex w-full cursor-pointer items-center gap-3 rounded-md px-2.5 py-2 text-left transition-colors",
                     !gewaehlt && "hover:bg-[var(--surface)]",
                     markiertHier && !gewaehlt && "bg-[var(--surface)] shadow-[inset_0_0_0_1.5px_var(--line-strong)]",
-                    markiertHier && gewaehlt && "outline outline-2 outline-offset-1 outline-[var(--ink)]",
+                    markiertHier && gewaehlt && "outline outline-2 outline-offset-1 outline-[var(--focus)]",
                   )}
                 >
                   {gewaehlt && (
-                    <motion.span layoutId={`${id}-wahl`} transition={{ type: "spring", stiffness: 520, damping: 38 }} className="absolute inset-0 -z-0 rounded-[12px] bg-[var(--surface)] shadow-[0_0_0_1.5px_var(--ink),0_6px_16px_-10px_var(--ink)]" />
+                    <motion.span layoutId={`${id}-wahl`} transition={BEWEGUNG.standard} className="absolute inset-0 -z-0 rounded-md bg-[var(--surface-3)] shadow-[inset_0_0_0_1px_var(--fg)]" />
                   )}
                   <KontaktAvatar k={k} size={32} className="relative" />
                   <span className="relative min-w-0 flex-1">
-                    <span className="block truncate text-[13.5px] font-medium">
+                    <span className="block truncate text-[14px] font-medium">
                       <Highlight text={k.name} q={q} />
                     </span>
                     <span className="block truncate text-[12px] text-fg-3">{[k.email, k.ort].filter(Boolean).join(" · ") || "Keine Kontaktdaten"}</span>

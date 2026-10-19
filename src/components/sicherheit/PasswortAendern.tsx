@@ -118,7 +118,7 @@ export function PasswortAendernDialog() {
           Passwörter anzeigen
         </label>
         {fehler.allgemein && (
-          <div role="alert" className="rounded-[12px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal">
+          <div role="alert" className="rounded-md bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal-text">
             {fehler.allgemein}
           </div>
         )}

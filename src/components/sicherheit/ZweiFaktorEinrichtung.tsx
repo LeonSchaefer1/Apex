@@ -101,19 +101,19 @@ export function ZweiFaktorEinrichtung({ pflichtModus, onFertig, onStatus }: { pf
     }
   };
 
-  if (!status) return <div className="shimmer h-24 rounded-[16px]" aria-label="wird geladen" />;
+  if (!status) return <div className="shimmer h-24 rounded-lg" aria-label="wird geladen" />;
 
   // Wiederherstellungscodes – nur jetzt sichtbar
   if (codes) {
     return (
       <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="grid gap-3">
-        <div className="flex items-start gap-2.5 rounded-[14px] bg-green-soft px-3.5 py-3 text-[13px] text-fg-2">
+        <div className="flex items-start gap-2.5 rounded-lg bg-green-soft px-3.5 py-3 text-[13px] text-fg-2">
           <ShieldCheck className="mt-0.5 size-4 shrink-0 text-green" />
           <span>
             <span className="font-semibold text-fg">Eingerichtet.</span> Bewahren Sie diese Wiederherstellungscodes sicher auf (z. B. ausgedruckt im Tresor). Jeder Code gilt einmal – für den Fall, dass Ihr Telefon nicht zur Hand ist. <span className="font-semibold">Sie werden nur jetzt angezeigt.</span>
           </span>
         </div>
-        <ul className="grid grid-cols-2 gap-2 rounded-[14px] bg-[var(--surface-2)] p-3 ring-1 ring-[var(--line)] sm:grid-cols-4" aria-label="Wiederherstellungscodes">
+        <ul className="grid grid-cols-2 gap-2 rounded-lg bg-[var(--surface-2)] p-3 ring-1 ring-[var(--line)] sm:grid-cols-4" aria-label="Wiederherstellungscodes">
           {codes.map((c) => (
             <li key={c} className="mono select-all text-center text-[14px] font-semibold tracking-[0.04em]">
               {c}
@@ -159,7 +159,7 @@ export function ZweiFaktorEinrichtung({ pflichtModus, onFertig, onStatus }: { pf
         )}
       </div>
 
-      {status.gesperrt && <p className="rounded-[12px] bg-amber-soft px-3.5 py-2.5 text-[13px] text-fg-2">{status.gesperrt}</p>}
+      {status.gesperrt && <p className="rounded-md bg-amber-soft px-3.5 py-2.5 text-[13px] text-fg-2">{status.gesperrt}</p>}
 
       {!status.aktiv && !einrichtung && !status.gesperrt && (
         <div className="flex flex-wrap items-center gap-3">
@@ -193,7 +193,7 @@ export function ZweiFaktorEinrichtung({ pflichtModus, onFertig, onStatus }: { pf
                 <span className="font-semibold text-fg">2.</span> Tippen Sie den Schlüssel ab – oder kopieren Sie den Einrichtungslink, wenn die App auf diesem Gerät läuft.
               </li>
             </ol>
-            <div className="grid gap-2 rounded-[14px] bg-[var(--surface-2)] p-3 ring-1 ring-[var(--line)]">
+            <div className="grid gap-2 rounded-lg bg-[var(--surface-2)] p-3 ring-1 ring-[var(--line)]">
               <div className="flex items-center gap-2 text-[12.5px] font-medium text-fg-3">
                 <KeyRound className="size-3.5" /> Geheimer Schlüssel (Base32, zeitbasiert, 6 Ziffern, 30 s)
               </div>
@@ -278,7 +278,7 @@ export function ZweiFaktorEinrichtung({ pflichtModus, onFertig, onStatus }: { pf
       )}
 
       {fehler && (
-        <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} role="alert" className={cn("rounded-[12px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal")}>
+        <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} role="alert" className={cn("rounded-md bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal-text")}>
           {fehler}
         </motion.div>
       )}

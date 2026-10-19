@@ -1,69 +1,17 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { AlertOctagon, ArrowRight, Clock, FileText, Hourglass, Link2Off, Lock, Mail, Plus, Receipt, Search, ShieldAlert, TrendingUp } from "lucide-react";
+import { ArrowRight, FileText, Lock, Minus, Plus } from "lucide-react";
 import { Button, Chip, Modal } from "@/components/ui";
-import { AppIcon, Wordmark } from "@/components/Logo";
-import { cn } from "@/lib/cn";
-import { Abschnitt, Kopf, Reveal, scrollZu } from "./basis";
+import { LogoMark, Wortmarke } from "@/components/Logo";
+import { BEWEGUNG } from "@/lib/bewegung";
+import { Abschnitt, Kopf, scrollZu, useFaq } from "./basis";
 import { ANKER } from "./Navigation";
 import { VERARBEITUNGSORT } from "@/content/datenschutz";
 import { ESCROW_HINWEIS, LIZENZ_KENNZEICHNUNG, PREIS_HINWEIS, UEBERTRAGBARKEIT_HINWEIS, WARTUNG_HINWEIS, WARTUNG_INHALT } from "@/content/lizenz";
 import { KontaktBlock, useAnfrage } from "./Anfrage";
 
-const PROBLEME = [
-  { i: <AlertOctagon className="size-5" />, p: "Nach der Aktualisierung funktioniert der gewohnte Ablauf nicht mehr.", l: "Geprüfte Aktualisierungen – Zeitpunkt wählen Sie." },
-  // Erfahrungswert, kein eigener Messwert – gekennzeichnet wie im Vergleich und in der Hilfe (I3-T00-02)
-  { i: <Hourglass className="size-5" />, p: "45 bis 60 Minuten in der Telefon-Warteschleife.", l: "Feste Ansprechpartnerin mit Durchwahl.", fussnote: true },
-  { i: <Link2Off className="size-5" />, p: "beA oder E-Mail streikt – mit einer Fehlermeldung, die niemand versteht.", l: "Betriebsstatus und Fehler in Klartext." },
-  { i: <Search className="size-5" />, p: "Die Suche in großen Akten dauert länger als das Blättern.", l: "Volltextsuche über alles mit Strg+K (Mac: ⌘K)." },
-  { i: <Receipt className="size-5" />, p: "Das Forderungskonto rechnet Zinsen nicht vollständig.", l: "Taggenaue Zinsen, Verrechnung nach § 367 BGB." },
-  { i: <Mail className="size-5" />, p: "Nach dem E-Mail-Versand ist der Fallkontext weg.", l: "Versand aus der Akte bleibt in der Akte." },
-  { i: <ShieldAlert className="size-5" />, p: "Für die Software braucht es lokale Admin-Rechte.", l: "Läuft ohne Admin-Rechte." },
-  { i: <TrendingUp className="size-5" />, p: "Jedes Jahr höhere Monatsgebühren.", l: "Einmal investieren, für immer nutzen." },
-];
-
-export function Erfahrungen() {
-  return (
-    <Abschnitt>
-      <Kopf
-        eyebrow="Gebaut nach den Erfahrungen von Kanzleien"
-        titel={
-          <>
-            Wir haben zugehört.
-            <br /> <span className="text-fg-3">Und diese Probleme gelöst.</span>
-          </>
-        }
-        text="Apex entstand aus den häufigsten Ärgernissen, die Anwältinnen, Anwälte und Fachangestellte mit ihrer Kanzleisoftware erleben."
-      />
-      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {PROBLEME.map((x, k) => (
-          <Reveal as="li" key={x.p} delay={(k % 4) * 0.05} className="sheet glow group relative flex flex-col rounded-[24px] p-5">
-            <span className="relative z-[1] grid size-10 place-items-center rounded-[13px] bg-seal-soft text-seal transition-colors duration-300 group-hover:bg-green-soft group-hover:text-green">{x.i}</span>
-            <p className="relative z-[1] mb-4 mt-4 text-[14.5px] font-medium leading-snug text-fg-2" aria-describedby={"fussnote" in x ? "erfahrungen-fussnote" : undefined}>
-              {x.p}
-              {"fussnote" in x && (
-                <sup aria-hidden className="ml-0.5 text-[11px] font-semibold text-fg-3">
-                  1
-                </sup>
-              )}
-            </p>
-            <p className="relative z-[1] mt-auto flex items-start gap-2 border-t border-[var(--line)] pt-3 text-[13px] font-semibold text-green">
-              <ArrowRight className="mt-0.5 size-4 shrink-0" />
-              {x.l}
-            </p>
-          </Reveal>
-        ))}
-      </ul>
-      <p id="erfahrungen-fussnote" className="mt-4 text-[13px] text-fg-2">
-        <sup aria-hidden className="mr-0.5 text-[11px] font-semibold">1</sup>
-        Wartezeit laut Bewertungen von Kanzleien – Zusammenfassung typischer Erfahrungsberichte; einzelne Produkte können abweichen.
-      </p>
-    </Abschnitt>
-  );
-}
-
-const FRAGEN = [
+export const FRAGEN = [
   {
     f: "Was bedeutet „Lifetime-Lizenz“ genau?",
     a: `Lifetime-Lizenz heißt: Kauflizenz ohne Laufzeit. Sie erwerben Apex einmalig und dürfen die Software dauerhaft nutzen – ohne monatliche Lizenzgebühren. ${WARTUNG_HINWEIS}. Ohne Wartung bleiben Software und Daten unbefristet nutzbar und vollständig exportierbar. ${UEBERTRAGBARKEIT_HINWEIS}. ${ESCROW_HINWEIS}. (${LIZENZ_KENNZEICHNUNG}.)`,
@@ -82,93 +30,89 @@ const FRAGEN = [
   { f: "Können wir Apex vorher testen?", a: "Gern. Über „Testzugang anfordern“ erhalten Sie einen eigenen Testzugang – auf Wunsch mit Beispieldaten – und eine feste Ansprechpartnerin, die Sie durch die ersten Schritte begleitet. Die öffentliche Demo starten Sie sofort über „Demo starten“." },
 ];
 
+/** Fragen (DESIGN-SYSTEM.md 14.11): Liste mit Linien, Frage 16/500, Plus/Minus rechts, Antwort 15/24 – Aufklappen 160 ms. */
 export function Faq() {
-  const [offen, setOffen] = useState<number | null>(0);
+  const { offen, setOffen } = useFaq();
   return (
-    <Abschnitt id="faq">
-      <div className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)] lg:gap-14">
+    <Abschnitt id="faq" labelledBy="faq-titel">
+      <div className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,4fr)_minmax(0,8fr)] lg:gap-16">
         <Kopf
+          id="faq-titel"
           className="!mb-0 lg:sticky lg:top-24 lg:self-start"
           eyebrow="Häufige Fragen"
           titel="Gut zu wissen."
           text="Ihre Frage ist nicht dabei? Rufen Sie Ihre Ansprechpartnerin an – die Nummer steht unten unter „Kontakt“."
         />
-        <Reveal>
-          <ul className="sheet divide-y divide-[var(--line)] overflow-hidden rounded-[28px]">
-            {FRAGEN.map((q, i) => {
-              const auf = offen === i;
-              return (
-                <li key={q.f}>
-                  <h3>
-                    <button
-                      type="button"
-                      id={`faq-k-${i}`}
-                      aria-expanded={auf}
-                      aria-controls={`faq-a-${i}`}
-                      onClick={() => setOffen(auf ? null : i)}
-                      className="flex w-full items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-[var(--ink-softer)] sm:px-6 sm:py-5"
+        <ul className="divide-y divide-[var(--line)] border-y border-[var(--line)]">
+          {FRAGEN.map((q, i) => {
+            const auf = offen === i;
+            return (
+              <li key={q.f}>
+                <h3>
+                  <button
+                    type="button"
+                    id={`faq-k-${i}`}
+                    aria-expanded={auf}
+                    aria-controls={`faq-a-${i}`}
+                    onClick={() => setOffen(auf ? null : i)}
+                    className="flex min-h-14 w-full items-center gap-4 py-4 text-left focus-visible:outline-offset-[-2px] sm:py-5"
+                  >
+                    <span className="flex-1 text-[16px] font-medium leading-6 text-fg">{q.f}</span>
+                    <span className="shrink-0 text-fg-3" aria-hidden>
+                      {auf ? <Minus className="size-4" /> : <Plus className="size-4" />}
+                    </span>
+                  </button>
+                </h3>
+                <AnimatePresence initial={false}>
+                  {auf && (
+                    <motion.div
+                      id={`faq-a-${i}`}
+                      role="region"
+                      aria-labelledby={`faq-k-${i}`}
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={BEWEGUNG.standard}
+                      className="overflow-hidden"
                     >
-                      <span className="flex-1 text-[15.5px] font-semibold tracking-[-0.01em]">{q.f}</span>
-                      <motion.span animate={{ rotate: auf ? 45 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} className={cn("grid size-8 shrink-0 place-items-center rounded-full transition-colors", auf ? "bg-ink text-[var(--on-ink)]" : "bg-[var(--ink-softer)] text-fg-2")}>
-                        <Plus className="size-4" />
-                      </motion.span>
-                    </button>
-                  </h3>
-                  <AnimatePresence initial={false}>
-                    {auf && (
-                      <motion.div
-                        id={`faq-a-${i}`}
-                        role="region"
-                        aria-labelledby={`faq-k-${i}`}
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ type: "spring", stiffness: 420, damping: 38 }}
-                        className="overflow-hidden"
-                      >
-                        <p className="max-w-[68ch] px-5 pb-5 text-[14.5px] leading-relaxed text-fg-2 sm:px-6">{q.a}</p>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </li>
-              );
-            })}
-          </ul>
-        </Reveal>
+                      <p className="max-w-[68ch] pb-5 pr-8 text-[15px] leading-6 text-fg-2">{q.a}</p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </li>
+            );
+          })}
+        </ul>
       </div>
     </Abschnitt>
   );
 }
 
+/** Schluss (DESIGN-SYSTEM.md 14.12): mittig ein Satz und eine Primäraktion auf --bg; darunter der Kontakt als ruhiger Block. */
 export function Schluss() {
   const nav = useNavigate();
   return (
-    <section id="kontakt" className="scroll-mt-20 px-4 pb-16 pt-4 sm:px-6 md:pb-24">
-      {/* Hell: invertierte Fläche; dunkel: erhöhte dunkle Fläche mit Akzentrand und Glühen in --ink statt einer großen hellen Fläche (I4-T00-02) */}
-      <Reveal className="schluss-karte relative mx-auto max-w-[1200px] overflow-hidden rounded-[34px] px-6 py-12 sm:px-12 sm:py-16">
-        <div aria-hidden className="pointer-events-none absolute -right-24 -top-32 size-[420px] rounded-full opacity-50 blur-3xl" style={{ background: "radial-gradient(circle, var(--ink-bright), transparent 65%)" }} />
-        <div aria-hidden className="pointer-events-none absolute -bottom-40 left-10 size-[360px] rounded-full opacity-25 blur-3xl" style={{ background: "radial-gradient(circle, var(--aura-3), transparent 65%)" }} />
-        <div className="relative grid items-end gap-8 md:grid-cols-[minmax(0,1fr)_auto]">
-          <div>
-            <AppIcon size={48} />
-            <h2 className="mt-6 max-w-[16ch] text-[clamp(32px,4.6vw,56px)] font-bold leading-[1.02] tracking-[-0.045em]">Eine Kanzlei-Software, die Ihnen gehört.</h2>
-            <p className="mt-4 max-w-[52ch] text-[16px] leading-relaxed opacity-75">Testen Sie Apex mit Beispieldaten – Fristen, Posteingang, KI-Fallanalyse und 38h-Motor, so wie sie morgen in Ihrer Kanzlei laufen.</p>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Button variant="primary" size="lg" iconRight={<ArrowRight className="size-4" />} onClick={() => nav("/login")}>
-              Demo starten
-            </Button>
-            <button type="button" onClick={() => useAnfrage.getState().oeffne("testzugang")} className="btn btn-lg bg-[color-mix(in_oklab,var(--sk-fg)_14%,transparent)] text-[var(--sk-fg)] hover:bg-[color-mix(in_oklab,var(--sk-fg)_22%,transparent)]">
-              Testzugang anfordern
-            </button>
-          </div>
+    <Abschnitt id="kontakt" labelledBy="schluss-titel" className="pb-16 md:pb-24 lg:pb-32">
+      <div className="mx-auto flex max-w-[720px] flex-col items-center text-center">
+        <LogoMark size={32} className="text-fg" />
+        <h2 id="schluss-titel" className="mt-6 text-[28px] font-semibold leading-9 tracking-[-0.025em] text-fg md:text-[40px] md:leading-[48px]">
+          Eine Kanzlei-Software, die Ihnen gehört.
+        </h2>
+        <p className="mt-4 max-w-[52ch] text-[16px] leading-[26px] text-fg-3 md:text-[18px] md:leading-7">Testen Sie Apex mit Beispieldaten – Fristen, Posteingang, KI-Fallanalyse und 38h-Motor, so wie sie morgen in Ihrer Kanzlei laufen.</p>
+        <div className="mt-8 flex flex-wrap justify-center gap-3">
+          <Button variant="primary" size="lg" iconRight={<ArrowRight className="size-4" />} onClick={() => nav("/login")}>
+            Demo starten
+          </Button>
+          <Button variant="secondary" size="lg" onClick={() => useAnfrage.getState().oeffne("testzugang")}>
+            Testzugang anfordern
+          </Button>
         </div>
-        <div className="relative mt-10 rounded-[22px] bg-[color-mix(in_oklab,var(--sk-fg)_10%,transparent)] p-4 sm:p-5">
-          <h3 className="mb-3 text-[13px] font-semibold uppercase tracking-[0.06em] text-[color-mix(in_oklab,var(--sk-fg)_80%,transparent)]">Kontakt</h3>
-          <KontaktBlock hell />
-        </div>
-      </Reveal>
-    </section>
+      </div>
+      <div className="schluss-karte mx-auto mt-16 max-w-[880px] p-6 sm:p-8">
+        <h3 className="mb-4 text-[15px] font-semibold text-fg">Kontakt</h3>
+        <KontaktBlock />
+      </div>
+    </Abschnitt>
   );
 }
 
@@ -193,6 +137,10 @@ const RECHTLICHES: Record<Rechtliches, { label: string; titel: string; text: str
   },
 };
 
+/** Link in der Fußzeile: 13 px Text 3, am Telefon 44 px Trefferhöhe. */
+const fussLink = "inline-flex min-h-11 min-w-11 items-center text-left text-[13px] text-fg-3 transition-colors duration-100 hover:text-fg sm:min-h-6";
+
+/** Fuß (DESIGN-SYSTEM.md 14.13): Linie oben, Links 13 Text 3, kleine Wortmarke, Pflichtangaben unverändert. */
 export function Fusszeile() {
   const jahr = new Date().getFullYear();
   const [rechtliches, setRechtliches] = useState<Rechtliches | null>(null);
@@ -204,24 +152,23 @@ export function Fusszeile() {
   };
   const info = RECHTLICHES[rechtliches ?? zuletzt];
   return (
-    <footer className="border-t border-[var(--line)] px-4 pb-[max(28px,env(safe-area-inset-bottom))] pt-10 sm:px-6">
-      <div className="mx-auto grid max-w-[1200px] gap-8 md:grid-cols-[minmax(0,1.4fr)_repeat(2,minmax(0,1fr))]">
+    <footer className="border-t border-[var(--line)] px-4 pb-[max(32px,env(safe-area-inset-bottom))] pt-12 sm:px-6 lg:px-8">
+      <div className="mx-auto grid max-w-[1200px] gap-10 md:grid-cols-[minmax(0,1.6fr)_repeat(2,minmax(0,1fr))]">
         <div>
-          <div className="flex items-center gap-2.5">
-            <AppIcon size={30} />
-            <Wordmark size={17} />
-          </div>
-          <p className="mt-3 max-w-[38ch] text-[13px] leading-relaxed text-fg-3">Ein Werkzeug. Volle Kontrolle. Die Kanzlei-Software, die mitdenkt – mit Lifetime-Lizenz statt Abo.</p>
-          <p className="mt-4 flex items-center gap-2 text-[13px] text-fg-3">
-            <Lock className="size-3.5" /> Keine externen Schriften, ohne Nutzungsverfolgung.
+          <Wortmarke size={18} />
+          <p className="mt-4 max-w-[40ch] text-[13px] leading-5 text-fg-3">Ein Werkzeug. Volle Kontrolle. Die Kanzlei-Software, die mitdenkt – mit Lifetime-Lizenz statt Abo.</p>
+          <p className="mt-3 flex items-center gap-2 text-[13px] leading-5 text-fg-3">
+            <Lock className="size-3.5 shrink-0 text-fg-4" aria-hidden /> Keine externen Schriften, ohne Nutzungsverfolgung.
           </p>
         </div>
-        <nav aria-label="Produkt">
-          <div className="eyebrow mb-3">Produkt</div>
-          <ul className="grid gap-2 text-[13.5px]">
+        <nav aria-labelledby="fuss-produkt">
+          <h2 id="fuss-produkt" className="mb-2 text-[13px] font-medium text-fg">
+            Produkt
+          </h2>
+          <ul className="grid sm:gap-1.5">
             {ANKER.map((a) => (
               <li key={a.id}>
-                <button type="button" onClick={() => scrollZu(a.id)} className="text-fg-2 transition-colors hover:text-ink">
+                <button type="button" onClick={() => scrollZu(a.id)} className={fussLink}>
                   {a.label}
                 </button>
               </li>
@@ -229,22 +176,22 @@ export function Fusszeile() {
           </ul>
         </nav>
         <div>
-          <div className="eyebrow mb-3">Rechtliches</div>
-          <ul className="grid gap-2 text-[13.5px]">
+          <h2 className="mb-2 text-[13px] font-medium text-fg">Rechtliches</h2>
+          <ul className="grid sm:gap-1.5">
             {(Object.keys(RECHTLICHES) as Rechtliches[]).map((k) => (
               <li key={k}>
-                <button type="button" onClick={() => oeffne(k)} className="text-fg-2 transition-colors hover:text-ink" aria-haspopup="dialog">
+                <button type="button" onClick={() => oeffne(k)} className={fussLink} aria-haspopup="dialog">
                   {RECHTLICHES[k].label}
                 </button>
               </li>
             ))}
           </ul>
-          <button type="button" onClick={() => useAnfrage.getState().oeffne("angebot")} className="mt-4 flex items-center gap-1.5 text-[13px] font-medium text-ink hover:underline" aria-haspopup="dialog">
-            <Clock className="size-3.5" /> Angebot anfordern – Antwort innerhalb eines Werktags
+          <button type="button" onClick={() => useAnfrage.getState().oeffne("angebot")} className={fussLink + " mt-3 font-medium !text-fg-2 hover:!text-fg"} aria-haspopup="dialog">
+            Angebot anfordern – Antwort innerhalb eines Werktags
           </button>
         </div>
       </div>
-      <div className="mx-auto mt-10 flex max-w-[1200px] flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-5 text-[13px] text-fg-3">
+      <div className="mx-auto mt-12 flex max-w-[1200px] flex-wrap items-center justify-between gap-x-6 gap-y-2 border-t border-[var(--line)] pt-6 text-[12px] leading-4 text-fg-4">
         <span>© {jahr} Apex. Alle Rechte vorbehalten.</span>
         <span>Vergleiche beziehen sich auf klassische Kanzleisoftware im Allgemeinen.</span>
       </div>
@@ -261,11 +208,9 @@ export function Fusszeile() {
           </Button>
         }
       >
-        <Chip tone="amber" dot>
-          Im Prototyp nicht hinterlegt
-        </Chip>
-        <p className="mt-3 text-[14px] leading-relaxed text-fg-2">{info.text}</p>
-        <p className="mt-3 text-[12.5px] leading-relaxed text-fg-3">Diese Produktseite ist eine Vorschau von Apex für Präsentationen. Firmen- und Kontaktangaben werden hier bewusst nicht vorweggenommen.</p>
+        <Chip tone="amber">Im Prototyp nicht hinterlegt</Chip>
+        <p className="mt-3 text-[14px] leading-[22px] text-fg-2">{info.text}</p>
+        <p className="mt-3 text-[13px] leading-5 text-fg-3">Diese Produktseite ist eine Vorschau von Apex für Präsentationen. Firmen- und Kontaktangaben werden hier bewusst nicht vorweggenommen.</p>
       </Modal>
     </footer>
   );

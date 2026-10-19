@@ -1,35 +1,131 @@
-# Apex – Marke & Gestaltung
+# Apex – Marke
 
-> **Stand 18.10.2026:** Das Produkt heißt **Apex** (vormals AnwaltApex). Name, Wortmarke und Adressen sind umgestellt. Die visuelle Gestaltung (Farben, Schrift, Logo-Feinschliff) wird nach der Referenzanalyse überarbeitet – siehe [`REBRANDING-PLAN.md`](REBRANDING-PLAN.md). Die Werte unten beschreiben den heutigen Stand.
+> **Stand 18.10.2026.** Neue Marke **„Robe & Papier“** mit der Bildmarke **„Eckpunkt“**. Sie ersetzt Feder-A, Königsblau, KI-Verlauf und Liquid Glass.
+>
+> - **Verbindlich für die Umsetzung** (Tokens, Komponenten, Seitenaufbau): [`design/DESIGN-SYSTEM.md`](design/DESIGN-SYSTEM.md)
+> - **Markenbild auf einen Blick:** [`design/brand-board.png`](design/brand-board.png)
+> - **Herleitung:** [`design/RECHERCHE.md`](design/RECHERCHE.md) und [`design/logo-konzepte/KONZEPTE.md`](design/logo-konzepte/KONZEPTE.md)
+
+![Markenbild Apex](design/brand-board.png)
 
 ## Positionierung
 
 **Apex ist die Kanzlei-Software, die mitdenkt.** Ein Werkzeug, volle Kontrolle: Akten, beA, Fristen, Abrechnung und eine KI, die Präzedenzfälle in Sekunden findet. Sie wird einmal gekauft und ist dann für immer nutzbar.
 
-- **Name:** *Apex* bedeutet Gipfel oder Spitze. Gemeint ist das Beste für Anwältinnen und Anwälte, ohne Superlativ-Geschrei.
+- **Name:** *Apex* bedeutet Spitze oder Scheitelpunkt. Gemeint ist das Beste für Anwältinnen und Anwälte, ohne Superlativ-Geschrei.
 - **Leitsatz:** „Ein Werkzeug. Volle Kontrolle.“
 - **Zweitsatz:** „Die Kanzlei-Software, die mitdenkt.“
-- **Haltung:** präzise, ruhig, verlässlich, modern. Die Marke wirkt wie ein gutes Schreibgerät: hochwertig, unaufdringlich, für Jahrzehnte gebaut.
+- **Haltung:** präzise, ruhig, verlässlich. Apex gestaltet so, wie gute Juristinnen schreiben: mit möglichst wenig möglichst viel sagen.
 
-## Bildmarke
+## Idee der Marke: Robe, Papier, Siegel
 
-![Bildmarke](../brand/logo-mark.svg)
+Die Marke kommt aus dem Beruf, nicht aus dem Technik-Baukasten:
 
-Die Bildmarke liest sich auf drei Arten:
+| Bild | Farbe | Bedeutung in Apex |
+|---|---|---|
+| die **schwarze Robe** | Robenschwarz `#1A1917` | Schrift, Bildmarke, Hauptaktion, Auswahl |
+| das **weiße Papier** des Schriftsatzes | Papierweiß `#FAFAF9`, Weiß `#FFFFFF` | Grund und Flächen |
+| das **rote Siegel** | Siegelrot `#C8302B` | nur Notfrist, Kritisches, Löschen |
 
-1. Als **Spitze einer Füllfeder**. Sie steht für das Unterschreiben, für Schriftsätze und das Handwerk des Rechts. Schlitz und Luftloch machen die Feder erkennbar.
-2. Als **„A“** wie Apex. Die Beine des A sind die Schultern der Feder.
-3. Als **Gipfel** im Sinne von Apex.
+Alles andere ist warmes Grau. Farbe erscheint nur, wenn sie etwas bedeutet. Deshalb ist die Notfrist das Lauteste auf dem Bildschirm.
 
-Dateien:
+## Bildmarke „Eckpunkt“
 
-- `brand/logo-mark.svg` – Farbe, Verlauf in Königsblau
-- `brand/logo-mark-mono.svg` – einfarbig, nutzt `currentColor`
-- `brand/app-icon.svg` – App-Icon im iOS-Squircle mit Glasrand
+<img src="../brand/logo-mark.svg" width="96" alt="Apex-Bildmarke: rechter Winkel mit Punkt">
 
-Die Wortmarke lautet **Apex**, gesetzt in Geist Semibold mit eng laufender Laufweite (−0,03 em), in Textfarbe neben der Bildmarke. Wo der Name allein unklar ist (Seitentitel, Meta-Beschreibung, Artefakt-Titel), steht **„Apex – Kanzleisoftware“**. Auf der Anmeldeseite steht die Wortmarke ohne Zusatz, weil die Überschrift darunter („Die Kanzlei-Software, die mitdenkt.“) das Produkt schon beschreibt.
+Zwei gleich lange Schenkel treffen sich im rechten Winkel, in der Öffnung sitzt ein Punkt auf der Winkelhalbierenden. So kennzeichnet man im Geometrieunterricht den rechten Winkel. Das Zeichen hat vier Lesarten:
 
-**Schreibweise:** immer „Apex“ mit großem A, ohne Zusatz. „Apex“ ist neutral und steht ohne Artikel („in Apex“, „Apex rechnet …“), nie „der Apex“. Zusammensetzungen mit Bindestrich: „Apex-Team“, „Apex-Wiki“, „Apex-Cockpit“. Untermarken bleiben unverändert: **Apex Assistent**, **Apex KI**, **Apex Island**, **Apex Console**; ebenso die Funktionsnamen 38h-Motor, Fall-Datenbank, Umzug und Schnellhilfe.
+1. **Scheitel:** Der Scheitelpunkt eines Winkels heißt lateinisch *apex*. Das Zeichen trägt den Namen.
+2. **Rechter Winkel:** exakt, korrekt, im Lot, und „recht“.
+3. **Aktenecke:** die linke obere Ecke eines Schriftsatzes; der Punkt ist die Heftung.
+4. **Eckpunkt:** der Punkt, auf den es ankommt, und der **Zeitpunkt**, an dem eine Frist endet.
+
+**Konstruktion (32er-Raster):**
+
+- Schenkel 20 × 5, Innenecke bei (11 | 11);
+- Punkt r 3,5 bei (18,5 | 18,5), mit genau 4 Einheiten Luft zu beiden Schenkeln;
+- Favicon eigens im 16er-Raster: Schenkel 3 px, Punkt 4 px, Luft 2 px.
+
+Einfarbig, keine Verläufe, keine Rundungen außer dem Punkt.
+
+**Wortmarke:**
+
+- „Apex“ in Geist SemiBold (600) mit −0,02 em Laufweite, in Pfade umgewandelt;
+- Bildmarke links, mittig zur Versalhöhe, Abstand etwa ein Drittel der Versalhöhe.
+- Wo der Name allein unklar ist (Seitentitel, Meta-Beschreibung, Artefakt-Titel), steht **„Apex – Kanzleisoftware“**. Auf der Anmeldeseite steht die Wortmarke ohne Zusatz.
+
+**Dateien:**
+
+| Datei | Inhalt | Einsatz |
+|---|---|---|
+| `brand/logo-mark.svg` | Bildmarke in Robenschwarz | helle Flächen, Druck, Rechnungskopf, Dokumente |
+| `brand/logo-mark-mono.svg` | Bildmarke in `currentColor` | auf dunklen Flächen (Textfarbe Papierweiß `#F4F3F1`), überall, wo die Farbe aus dem Umfeld kommt |
+| `brand/wordmark.svg` | Bildmarke + „Apex“ in Robenschwarz | Briefkopf, Präsentationen; für Dunkel `fill` auf `#F4F3F1` setzen |
+| `brand/app-icon.svg` | 1024 × 1024, Robenschwarz mit Marke in Papierweiß, Radius 228 | Startbildschirm, App-Stores, Apple-Touch-Icon (daraus PNG 180 px ableiten) |
+| `public/favicon.svg` | 16er-Raster, schaltet per `prefers-color-scheme` auf Papierweiß | Browser-Tab |
+| `src/assets/logo-mark.svg` | Kopie von `brand/logo-mark.svg` | Einbindung im Build |
+| `src/components/Logo.tsx` | `LogoMark`, `AppIcon`, `Wordmark` | **in der App immer diese Komponenten** (sie nutzen die Tokens und passen sich Hell/Dunkel an) |
+
+**Regeln für die Bildmarke:**
+
+- **Schutzraum:** rundum ein Viertel der Markenhöhe.
+- **Mindestgröße:** Bildmarke 16 px (darunter nur das Favicon), Wortmarke 72 px breit.
+- **Farben:** nur Robenschwarz auf hellem Grund oder Papierweiß auf dunklem Grund. Das App-Icon ist immer Robenschwarz.
+- **Lage:** in der Seitenleiste 20 px Marke mit „Apex“ 15 px, im Ladebildschirm 32 px Marke allein.
+- **Markenrecht:** Vor einer Anmeldung DPMA/EUIPO in den Klassen 9, 42 und 45 recherchieren. Die bisherige Prüfung ist nur eine Plausibilitätsprüfung.
+
+## Farben
+
+| Name | Token | Hell | Dunkel | Verwendung |
+|---|---|---|---|---|
+| Robenschwarz / Papierweiß | `--fg`, `--ink` | `#1A1917` | `#F4F3F1` | Text, Bildmarke, Hauptaktion, Auswahl, Fokus |
+| Papier (Grund) | `--bg` | `#FAFAF9` | `#111110` | App-Grund |
+| Fläche | `--surface` | `#FFFFFF` | `#181816` | Tabellen, Panels, Felder |
+| Grautöne Text 2–4 | `--fg-2` … `--fg-4` | `#3F3D39` · `#55524D` · `#68645E` | `#D3D1CC` · `#B0ADA7` · `#9A968F` | Fließtext, Nebentext, Metatext |
+| Linie / Linie stark | `--line`, `--line-strong` | `#E6E5E2` · `#8C8882` | `#2D2C29` · `#6F6B65` | Trenner / Ränder von Bedienelementen |
+| Siegelrot | `--seal` (Text `--seal-text`) | `#C8302B` (`#AE2621`) | `#F06A60` (`#FF8E85`) | Notfrist, kritisch, Fehler, Löschen |
+| Bernstein | `--amber` (Text `--amber-text`) | `#B06A00` (`#875000`) | `#E0A43A` (`#F2BC5E`) | bald fällig, Warnung |
+| Grün | `--green` (Text `--green-text`) | `#1F8048` (`#196B3C`) | `#4DBE7C` (`#6FD497`) | erledigt, bezahlt, verbunden |
+
+Alle Paare sind nachgerechnet: 54 Pflichtpaare je Modus, 0 Verstöße gegen WCAG AA. Die vollständige Token-Liste samt Kontrasten steht in `DESIGN-SYSTEM.md`, Abschnitt 4. **Die KI hat keine eigene Farbe.** Sie wird mit dem Wort „KI“ und dem Symbol ✦ (`Sparkles`) gekennzeichnet.
+
+## Schrift
+
+- **Geist** für die gesamte Oberfläche, **Geist Mono** nur für Kennungen (Aktenzeichen, Rechnungs- und Lizenznummern, IBAN). Beträge stehen in Geist mit Tabellenziffern.
+- Nur drei Gewichte: 400 (Text), 500 (Labels, Knöpfe), 600 (Titel, Werte). Keine Versalien-Zeilen, kein Verlaufstext.
+- Seitentitel 24 px, Abschnitt 18 px, Text 14 px, Startseite bis 56 px. Große Titel mit leicht negativer Laufweite.
+- Beide Schriften liegen im Projekt (`src/assets/fonts`, SIL Open Font License). Es gibt keine externen Font-Requests, das ist DSGVO-konform.
+
+## Gestalt
+
+Die Einzelheiten stehen in `DESIGN-SYSTEM.md`. Kurz gefasst:
+
+- **Ruhige Flächen:** deckende Flächen, 1-px-Linien statt Schatten, viel Weißraum. Kein Glas, keine Verläufe, kein Leuchten.
+- **Formen:** zurückhaltende Ecken (4/6/8/12 px). Rund sind nur Avatare, Schalter, Punkte und der Assistent-Knopf.
+- **Icons:** lucide, 16 px, Strich 1,5, in Grau.
+- **Bewegung:** kurz (100–240 ms) und ohne Federn. Im Ruhezustand bewegt sich nichts.
+- **Status:** immer als Wort und Symbol, Farbe nie allein.
+
+## Der Apex Assistent
+
+Der Assistent-Knopf ist die Bildmarke selbst: ein runder Knopf in Robenschwarz (im Dunkeln Papierweiß) mit dem „Eckpunkt“. Lebendig ist nur der Punkt:
+
+| Zustand | Punkt |
+|---|---|
+| Ruhe | steht still |
+| Zuhören | wächst mit der Lautstärke der Stimme |
+| Nachdenken | blendet ruhig auf und ab |
+| Sprechen | wächst mit der Lautstärke der Antwort |
+
+Bei „Bewegung reduzieren“ steht der Punkt, und das Panel nennt den Zustand als Text. Der Assistent heißt in der Oberfläche „Apex Assistent“, spricht und versteht Deutsch, siezt und antwortet knapp.
+
+## Schreibweise, Namen, Adressen
+
+**Schreibweise:**
+
+- Immer „Apex“ mit großem A, ohne Zusatz. „Apex“ ist neutral und steht ohne Artikel („in Apex“, „Apex rechnet …“), nie „der Apex“.
+- Zusammensetzungen mit Bindestrich: „Apex-Team“, „Apex-Wiki“, „Apex-Cockpit“.
+- Untermarken bleiben unverändert: **Apex Assistent**, **Apex KI**, **Apex Island**, **Apex Console**. Ebenso die Funktionsnamen 38h-Motor, Fall-Datenbank, Umzug und Schnellhilfe.
 
 **Adressen:** Anbieter- und Demo-Adressen enden auf `@apex-kanzlei.de` (Platzhalter-Domain, vor dem Livegang durch die echte Domain zu ersetzen), z. B. die Apex Console `admin@apex-kanzlei.de`. Lizenznummern beginnen mit `APX-`.
 
@@ -45,63 +141,26 @@ Die Wortmarke lautet **Apex**, gesetzt in Geist Semibold mit eng laufender Laufw
 | Lizenznummern `AAX-` bereits angelegter Kundenkanzleien | Server-Datenbank | Vergebene Vertragskennungen bleiben; neue Lizenzen beginnen mit `APX-`. |
 | `description` in `package.json` | `package.json` | Noch „AnwaltApex – …“; Änderung ist freizugeben (nur `name` wurde umgestellt). |
 
-## Farben
+## Tonalität
 
-| Token | Hell | Dunkel | Verwendung |
-|---|---|---|---|
-| Tinte (Königsblau) | `#2440D8` | `#5C7BFF` | Marke, Primäraktionen, Auswahl |
-| Robe | `#0B1020` | `#F1F3FA` | Text |
-| Grund | `#EDF0F7` | `#05070D` | Arbeitsfläche |
-| Fläche | `#FFFFFF` | `#0E1220` | Inhaltskarten |
-| Siegellack | `#D4283A` | `#FF5A68` | Notfristen, Kritisches, Löschen |
-| Bernstein | `#B86B00` | `#FFB547` | bald fällig, Hinweise |
-| Grün | `#0F7F55` | `#3ED79A` | erledigt, verbunden, bezahlt |
-| KI-Schimmer | `#3D5CFF → #8B5CF6 → #EC5FA8 → #FF9D3D` | gleich | **nur** für KI-Funktionen |
+- **Deutsch, klar, aktiv.** Knöpfe sagen, was passiert: „Frist übernehmen“, „eEB abgeben“, „Rechnung erstellen“. Meldungen bestätigen: „Frist eingetragen“.
+- **Sachlich wie ein guter Schriftsatz.** Fachbegriffe stimmen (beA, eEB, Notfrist, Vorfrist, Gegenstandswert, Fremdgeld). Es gibt keine Marketing-Floskeln, Superlative oder Emoji.
+- **Belege statt Behauptungen.** Rechenweg statt „nie wieder Fristen verpassen“; gemessene Minuten statt geschätzter Stunden; ehrlicher Status („im Prototyp simuliert“).
+- **Fehler** nennen die Ursache und den nächsten Schritt.
+- **Jede Funktion** bekommt einen Satz, der sie erklärt.
 
-Die Herleitung kommt aus der Kanzleiwelt. Pelikan-Königsblau ist die Tinte der Unterschrift. Die Robe steht für Ernst. Der Siegellack ist das Rot, das „Achtung, Frist!“ bedeutet.
+## Do & Don't
 
-## Typografie
-
-- **Geist** (variabel) für die gesamte Oberfläche. Große Titel sind fett mit −0,035 em Laufweite, analog zum iOS „Large Title“.
-- **Geist Mono** für Aktenzeichen, Beträge und Rechnungsnummern.
-- Beide Schriften liegen im Projekt (`src/assets/fonts`). Es gibt keine externen Font-Requests, das ist DSGVO-konform.
-
-## Liquid-Glass-Prinzipien
-
-1. **Glas für Steuerung, ruhige Flächen für Inhalt.** Navigation, Tab-Leiste, Dialoge und Popover schweben als Glas über einem farbig belichteten Grund. Texte und Tabellen stehen auf fast opaken Karten.
-2. **Licht und Tiefe.** Jede Glasfläche hat eine Lichtkante (heller Rand oben, dunklerer unten) und Weichzeichnung mit Sättigung. Ein Lichtreflex folgt dem Mauszeiger. In Chromium bricht die mobile Tab-Leiste das Licht zusätzlich (SVG-Displacement).
-3. **Konzentrische Radien.** Außen 28 px (Panels), Karten 22 px, innere Elemente 14–16 px, Kapseln voll gerundet.
-4. **Bewegung mit Bedeutung.**
-   - Federnde Übergänge (Spring).
-   - Gleitende Auswahl-Indikatoren.
-   - Die „Apex Island“ zeigt als Kapsel, was der 38h-Motor gerade erledigt.
-   - Toasts wachsen aus einer Kapsel heraus.
-   - `prefers-reduced-motion` wird respektiert.
-5. **Zustand in Form.** Fristen haben farbige Streifen und Chips. KI-Ergebnisse tragen den irisierenden KI-Rand. Ein grüner Puls bedeutet „verbunden“.
-
-## Der Apex Assistent (KI-Avatar)
-
-Der Avatar ist eine lebendige, irisierende Glaskugel. Ihr Verhalten zeigt den Zustand:
-
-| Zustand | Verhalten der Kugel |
+| Do | Don't |
 |---|---|
-| Ruhe | ruhiges Atmen |
-| Zuhören | wellig, verformt sich |
-| Nachdenken | kreist schnell |
-| Sprechen | pulsiert im Sprechrhythmus |
-
-Der Assistent heißt in der Oberfläche schlicht „Apex Assistent“. Er spricht und versteht Deutsch, siezt und antwortet knapp.
-
-## Sprache (Tone of Voice)
-
-- Deutsch, klar, aktiv. Buttons sagen, was passiert: „Frist übernehmen“, „eEB abgeben“, „Rechnung erstellen“.
-- Fachbegriffe korrekt (beA, eEB, Notfrist, Vorfrist, Gegenstandswert, Fremdgeld), ohne Marketing-Floskeln.
-- Fehler erklären die Ursache und den nächsten Schritt.
-- Jede Funktion bekommt einen Satz, der sie erklärt.
-
-## Nicht tun
-
-- Den KI-Schimmer für Nicht-KI-Elemente verwenden.
-- Wettbewerber in öffentlicher Werbung namentlich herabsetzen. Vergleiche laufen gegen „klassische Kanzleisoftware“.
-- Kundenstimmen erfinden.
-- Externe Schriften, Tracking oder CDN-Ressourcen in der App einsetzen.
+| Bildmarke einfarbig in Robenschwarz oder Papierweiß | Bildmarke farbig, mit Verlauf, Schatten, Kontur oder Glanz |
+| Marke mit Schutzraum, gerade, in Originalproportion | Marke drehen, spiegeln, stauchen, den Punkt verschieben oder einfärben |
+| Rot nur für Notfrist, Kritisches, Fehler und Löschen | Rot als Schmuck, für „Neu“-Plaketten oder zur Hervorhebung |
+| Status als Wort plus Symbol | farbige Punkte als einziger Statusträger |
+| eine Primäraktion je Bereich, alles andere sekundär | mehrere schwarze Knöpfe nebeneinander |
+| deckende Flächen, 1-px-Linien, viel Weißraum | Glas, Unschärfe, Verläufe, Leuchten, Aura, große Schatten |
+| KI mit „KI“ und ✦ kennzeichnen, Mensch bestätigt | irisierende KI-Farben, „magische“ Effekte |
+| echte Produktbilder aus dem Demo-Modus | Stockfotos, Justitia, Waage, Paragraf, Richterhammer, Geräte-Mockups |
+| Vergleiche gegen „klassische Kanzleisoftware“ | Wettbewerber namentlich herabsetzen |
+| belegte Aussagen, freigegebene Stimmen | erfundene Kundenstimmen oder Zahlen |
+| Schriften und Bilder aus dem Projekt | externe Schriften, Tracking oder CDN-Ressourcen |

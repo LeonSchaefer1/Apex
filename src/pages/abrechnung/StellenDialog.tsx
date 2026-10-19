@@ -72,7 +72,7 @@ export function StellenDialog({
       </p>
       {zusatz && <div className="mt-2 text-[13px] text-fg-2">{zusatz}</div>}
       {fehlend.length > 0 && (
-        <div role="alert" className="mt-4 grid gap-2 rounded-[14px] bg-seal-soft p-3.5 text-[12.5px] leading-relaxed text-seal">
+        <div role="alert" className="mt-4 grid gap-2 rounded-md bg-[var(--seal-soft)] p-3.5 text-[13px] leading-[18px] text-seal-text">
           <div className="flex gap-2">
             <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
             <span>

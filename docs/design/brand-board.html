@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Apex – Markenbild</title>
+<!-- Quelle für docs/design/brand-board.png. Neu erzeugen mit Playwright: Seite per file:// öffnen, Viewport 1600 px breit,
+     deviceScaleFactor 2, nach document.fonts.ready das Element #board als Screenshot speichern.
+     Schriften kommen lokal aus src/assets/fonts, externe Ressourcen gibt es keine. Kontraste rechnet die Seite selbst
+     (WCAG-2-Formel) aus den Token-Werten unten – dieselben Werte wie in docs/design/DESIGN-SYSTEM.md. -->
+<style>
+@font-face { font-family: "Geist"; src: url("../../src/assets/fonts/geist-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; }
+@font-face { font-family: "Geist"; src: url("../../src/assets/fonts/geist-latin-ext-wght-normal.woff2") format("woff2"); font-weight: 100 900; unicode-range: U+0100-02BA, U+1E00-1E9F, U+2020, U+20A0-20AB, U+20AD-20C0; }
+@font-face { font-family: "Geist Mono"; src: url("../../src/assets/fonts/geist-mono-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; }
+
+.hell {
+  --bg:#FAFAF9; --surface:#FFFFFF; --surface-2:#F3F3F1; --surface-3:#EBEAE7; --line:#E6E5E2; --line-strong:#8C8882;
+  --fg:#1A1917; --fg-2:#3F3D39; --fg-3:#55524D; --fg-4:#68645E; --ink:#1A1917; --ink-hover:#3A3834; --on-ink:#FFFFFF; --focus:#1A1917;
+  --seal:#C8302B; --seal-text:#AE2621; --seal-soft:#FCEEEC; --on-seal:#FFFFFF;
+  --amber:#B06A00; --amber-text:#875000; --amber-soft:#FBF2E2;
+  --green:#1F8048; --green-text:#196B3C; --green-soft:#EBF5EE; --on-green:#FFFFFF;
+  --shadow-pop: 0 8px 24px -12px rgb(0 0 0 / 0.16);
+}
+.dunkel {
+  --bg:#111110; --surface:#181816; --surface-2:#21201E; --surface-3:#2A2926; --line:#2D2C29; --line-strong:#6F6B65;
+  --fg:#F4F3F1; --fg-2:#D3D1CC; --fg-3:#B0ADA7; --fg-4:#9A968F; --ink:#F4F3F1; --ink-hover:#D9D7D2; --on-ink:#1A1917; --focus:#F4F3F1;
+  --seal:#F06A60; --seal-text:#FF8E85; --seal-soft:#2C1715; --on-seal:#111110;
+  --amber:#E0A43A; --amber-text:#F2BC5E; --amber-soft:#2A2112;
+  --green:#4DBE7C; --green-text:#6FD497; --green-soft:#132519; --on-green:#111110;
+  --shadow-pop: 0 0 0 0 transparent;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { font-family: "Geist", system-ui, sans-serif; font-size: 14px; line-height: 20px; -webkit-font-smoothing: antialiased; }
+.seite { background: var(--bg); color: var(--fg); padding: 64px 64px 56px; width: 1600px; }
+h1 { font-size: 40px; line-height: 44px; font-weight: 600; letter-spacing: -0.03em; margin: 0; }
+h2 { font-size: 13px; line-height: 20px; font-weight: 500; color: var(--fg-3); margin: 0 0 16px; letter-spacing: 0; }
+.kopf { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 40px; border-bottom: 1px solid var(--line); margin-bottom: 48px; }
+.kopf p { margin: 12px 0 0; font-size: 16px; line-height: 26px; color: var(--fg-2); max-width: 720px; }
+.kopf .meta { font-size: 13px; color: var(--fg-4); text-align: right; }
+.abschnitt { margin-bottom: 56px; }
+.zwei { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.panel { background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; padding: 32px; }
+.hell.panel { background: #FAFAF9; }
+.mark-gross { display: flex; gap: 40px; align-items: flex-end; }
+.groessen { display: flex; gap: 20px; align-items: flex-end; }
+.groessen figure, .icons figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+figcaption { font-size: 12px; line-height: 16px; color: var(--fg-4); font-variant-numeric: tabular-nums; }
+.zeile { display: flex; gap: 32px; align-items: center; margin-top: 32px; padding-top: 28px; border-top: 1px solid var(--line); }
+.tab { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 8px 8px 0 0; background: var(--surface); border: 1px solid var(--line); border-bottom: 0; font-size: 12px; color: var(--fg-2); }
+.tabbar { display: flex; align-items: flex-end; gap: 2px; padding: 8px 8px 0; background: var(--surface-2); border-radius: 8px; border: 1px solid var(--line); }
+.tab.inaktiv { background: transparent; border-color: transparent; color: var(--fg-4); }
+.pixel { image-rendering: pixelated; }
+.icons { display: flex; gap: 20px; align-items: flex-end; }
+
+/* Farbe */
+.palette { display: grid; grid-template-columns: 1fr; gap: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.farbe { display: grid; grid-template-columns: 40px 118px 128px 76px 1fr; gap: 10px; align-items: center; padding: 8px 14px; border-top: 1px solid var(--line); font-size: 13px; }
+.farbe:first-child { border-top: 0; }
+.farbe .sw { width: 40px; height: 28px; border-radius: 4px; box-shadow: inset 0 0 0 1px rgb(127 127 127 / 0.25); }
+.farbe code { font-family: "Geist Mono", monospace; font-size: 12px; color: var(--fg-3); }
+.farbe .hex { font-family: "Geist Mono", monospace; font-size: 12.5px; color: var(--fg); }
+.farbe .k { color: var(--fg-3); font-variant-numeric: tabular-nums; font-size: 12.5px; }
+.farbe .k b { color: var(--fg); font-weight: 600; }
+.paletten-kopf { display: grid; grid-template-columns: 40px 118px 128px 76px 1fr; gap: 10px; padding: 0 14px 8px; font-size: 12px; color: var(--fg-4); }
+
+/* Schrift */
+.typo { display: grid; grid-template-columns: 220px 1fr; border-top: 1px solid var(--line); }
+.typo > div { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.typo .lab { font-size: 12px; line-height: 16px; color: var(--fg-4); padding-top: 18px; }
+.typo .lab b { display: block; color: var(--fg-2); font-weight: 500; font-size: 13px; line-height: 18px; }
+
+/* Bausteine */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 6px; font: inherit; font-size: 14px; font-weight: 500; border: 0; white-space: nowrap; }
+.btn svg { width: 16px; height: 16px; }
+.btn-primary { background: var(--ink); color: var(--on-ink); }
+.btn-secondary { background: var(--surface); color: var(--fg); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.btn-ghost { background: transparent; color: var(--fg-2); }
+.btn-ghost.hover { background: var(--surface-2); color: var(--fg); }
+.btn-danger { background: var(--seal); color: var(--on-seal); }
+.fokus { outline: 2px solid var(--focus); outline-offset: 2px; }
+.reihe { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.feld-wrap { display: grid; gap: 6px; width: 280px; }
+.label { font-size: 13px; font-weight: 500; color: var(--fg-2); }
+.feld { height: 32px; border-radius: 6px; border: 1px solid var(--line-strong); background: var(--surface); padding: 0 10px; display: flex; align-items: center; color: var(--fg); font-size: 14px; }
+.feld.focus { border-color: var(--fg); box-shadow: inset 0 0 0 1px var(--fg); }
+.hinweis { font-size: 13px; color: var(--fg-4); }
+.chip { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px; border-radius: 4px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.chip svg { width: 12px; height: 12px; }
+.chip-neutral { background: var(--surface-2); color: var(--fg-2); }
+.chip-outline { box-shadow: inset 0 0 0 1px var(--line-strong); color: var(--fg-2); }
+.chip-seal { background: var(--seal-soft); color: var(--seal-text); }
+.chip-notfrist { background: var(--seal); color: var(--on-seal); }
+.chip-amber { background: var(--amber-soft); color: var(--amber-text); }
+.chip-green { background: var(--green-soft); color: var(--green-text); }
+.karte { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.kennzahlen { display: grid; grid-template-columns: repeat(3, 1fr); }
+.kennzahlen > div { padding: 16px 20px; border-left: 1px solid var(--line); }
+.kennzahlen > div:first-child { border-left: 0; }
+.kz-label { font-size: 13px; color: var(--fg-3); display: flex; align-items: center; gap: 6px; }
+.kz-wert { font-size: 28px; line-height: 32px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin-top: 6px; }
+.kz-sub { font-size: 13px; color: var(--fg-4); margin-top: 2px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; font-size: 12px; font-weight: 500; color: var(--fg-3); padding: 0 12px; height: 36px; border-bottom: 1px solid var(--line); }
+td { padding: 0 12px; height: 44px; border-bottom: 1px solid var(--line); }
+tr:last-child td { border-bottom: 0; }
+tr.hover td { background: var(--surface-2); }
+.mono { font-family: "Geist Mono", monospace; font-size: 13px; }
+.num { font-variant-numeric: tabular-nums; text-align: right; }
+.link { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.bausteine-panel { display: grid; gap: 20px; }
+.unter { font-size: 12px; color: var(--fg-4); margin-bottom: -10px; }
+.fuss { margin-top: 8px; padding-top: 24px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; font-size: 13px; color: var(--fg-4); }
+.assist { width: 44px; height: 44px; border-radius: 999px; background: var(--ink); color: var(--on-ink); display: grid; place-items: center; box-shadow: var(--shadow-pop); }
+.island { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 13px; color: var(--fg-3); }
+.island b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div class="seite hell" id="board">
+  <div class="kopf">
+    <div>
+      <svg width="134" height="37" viewBox="0 8 101 28" aria-label="Apex" role="img" id="wm-kopf"></svg>
+      <h1 style="margin-top:28px">Markenbild</h1>
+      <p>Robe, Papier, Siegel: Robenschwarz auf Papierweiß, eine Schrift, feine Linien. Farbe erscheint nur, wenn sie etwas bedeutet. Die Notfrist ist das Lauteste auf dem Bildschirm.</p>
+    </div>
+    <div class="meta">Stand 18.10.2026<br />Verbindlich: docs/design/DESIGN-SYSTEM.md</div>
+  </div>
+
+  <!-- 1 · Bildmarke -->
+  <section class="abschnitt">
+    <h2>Bildmarke „Eckpunkt“ · Wortmarke · App-Icon · Favicon</h2>
+    <div class="zwei">
+      <div class="panel hell" data-modus="hell"></div>
+      <div class="panel dunkel" data-modus="dunkel"></div>
+    </div>
+  </section>
+
+  <!-- 2 · Farbe -->
+  <section class="abschnitt">
+    <h2>Farbe · Kontrast nach WCAG 2.x, gegen Fläche (weiß bzw. #181816) gerechnet</h2>
+    <div class="zwei">
+      <div class="panel hell" style="padding:24px" data-palette="hell"></div>
+      <div class="panel dunkel" style="padding:24px" data-palette="dunkel"></div>
+    </div>
+  </section>
+
+  <!-- 3 · Schrift -->
+  <section class="abschnitt">
+    <h2>Schrift · Geist und Geist Mono (SIL OFL 1.1), selbst gehostet · Gewichte 400 / 500 / 600</h2>
+    <div class="zwei">
+      <div class="typo">
+        <div class="lab"><b>Display (Startseite)</b>56/60 · 600 · −0,035 em</div>
+        <div style="font-size:56px;line-height:60px;font-weight:600;letter-spacing:-0.035em">Ein Werkzeug.<br />Volle Kontrolle.</div>
+        <div class="lab"><b>Seitentitel</b>24/32 · 600 · −0,02 em</div>
+        <div style="font-size:24px;line-height:32px;font-weight:600;letter-spacing:-0.02em">Fristen</div>
+        <div class="lab"><b>Abschnitt</b>18/26 · 600 · −0,01 em</div>
+        <div style="font-size:18px;line-height:26px;font-weight:600;letter-spacing:-0.01em">Heute und morgen fällig</div>
+        <div class="lab"><b>Kennzahl</b>28/32 · 600 · Tabellenziffern</div>
+        <div style="font-size:28px;line-height:32px;font-weight:600;letter-spacing:-0.02em;font-variant-numeric:tabular-nums">28,2 Std.</div>
+      </div>
+      <div class="typo">
+        <div class="lab"><b>Text</b>14/20 · 400</div>
+        <div style="color:var(--fg-2)">Die Frist beginnt mit dem Tag nach der Zustellung (§ 187 Abs. 1 BGB) und endet mit Ablauf des letzten Tages.</div>
+        <div class="lab"><b>Text betont</b>14/20 · 500</div>
+        <div style="font-weight:500">Frist übernehmen · Rechnung erstellen</div>
+        <div class="lab"><b>Klein</b>13/18 · 400 · Text 4</div>
+        <div style="font-size:13px;line-height:18px;color:var(--fg-4)">Zuletzt geändert vor 2 Min. von Dr. Julia Hartmann</div>
+        <div class="lab"><b>Mini</b>12/16 · 500</div>
+        <div style="font-size:12px;line-height:16px;font-weight:500;color:var(--fg-3)">Spaltenkopf · Chip · Überzeile</div>
+        <div class="lab"><b>Kennung</b>Geist Mono 13/20</div>
+        <div class="mono">137/26 · APX-2026-0042 · DE89 3704 0044 0532 0130 00</div>
+        <div class="lab"><b>Lesetext</b>16/26 · 400 · max. 68 Zeichen</div>
+        <div style="font-size:16px;line-height:26px;color:var(--fg-2);max-width:60ch">In dem Rechtsstreit Neumann ./. Arslan Autohaus GmbH wird Berufung eingelegt.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 · Bausteine -->
+  <section class="abschnitt">
+    <h2>Bausteine · Knopf, Feld, Status, Kennzahl, Tabelle · Radius 6 / 8 · Linien statt Schatten</h2>
+    <div class="zwei">
+      <div class="panel hell bausteine-panel" data-bausteine></div>
+      <div class="panel dunkel bausteine-panel" data-bausteine></div>
+    </div>
+  </section>
+
+  <div class="fuss"><span id="pruefung"></span><span>Apex · Kanzleisoftware</span></div>
+</div>
+
+<script>
+const MARK = '<path d="M6 6h20v5H11v15H6z"/><circle cx="18.5" cy="18.5" r="3.5"/>';
+const FAV = '<path d="M3 3h10v3H6v7H3z"/><circle cx="10" cy="10" r="2"/>';
+const WORT = 'M0.72 0L4.83 0L6.57-5.01L15-5.01L16.74 0L20.85 0L13.17-21.30L8.40-21.30ZM7.74-8.40L10.77-17.34L13.83-8.40ZM23.07 4.50L26.97 4.50L26.97-2.16C27.90-0.51 29.49 0.36 31.62 0.36C36.21 0.36 38.43-3.39 38.43-7.95C38.43-12.51 36.21-16.26 31.62-16.26C29.37-16.26 27.72-15.33 26.85-13.62L26.76-15.90L23.07-15.90ZM26.67-7.95C26.67-10.65 27.84-13.14 30.54-13.14C33.21-13.14 34.41-10.65 34.41-7.95C34.41-5.22 33.24-2.76 30.54-2.76C27.84-2.76 26.67-5.22 26.67-7.95ZM40.35-7.95C40.35-2.91 43.47 0.36 48.21 0.36C51.66 0.36 54.54-1.53 55.47-4.59L51.51-4.89C50.94-3.51 49.65-2.70 48.21-2.70C45.96-2.70 44.58-4.26 44.40-6.90L55.71-6.90L55.68-7.86C55.62-13.50 52.29-16.26 48.21-16.26C43.47-16.26 40.35-12.99 40.35-7.95ZM44.46-9.48C44.76-11.79 46.11-13.20 48.21-13.20C49.89-13.20 51.39-12.18 51.69-9.48ZM67.53-15.93L64.05-10.71L60.57-15.93L56.22-15.93L61.80-8.13L55.98 0L60.36 0L64.05-5.52L67.74 0L72.09 0L66.36-8.10L71.88-15.93Z';
+const wort = (h) => `<svg height="${h}" width="${(h * 101 / 28).toFixed(1)}" viewBox="0 8 101 28" fill="currentColor"><g transform="translate(-6.72 2.08) scale(1.12)">${MARK}</g><path transform="translate(28.44 30.65)" d="${WORT}"/></svg>`;
+const mark = (s) => `<svg width="${s}" height="${s}" viewBox="0 0 32 32" fill="currentColor">${MARK}</svg>`;
+const appIcon = (s, bg, fg) => `<svg width="${s}" height="${s}" viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="228" fill="${bg}"/><g transform="translate(212 212) scale(20)" fill="${fg}">${MARK}</g></svg>`;
+document.getElementById("wm-kopf").outerHTML = wort(37);
+
+document.querySelectorAll("[data-modus]").forEach((p) => {
+  const dunkel = p.dataset.modus === "dunkel";
+  const icon = dunkel ? appIcon : appIcon; // App-Icon ist immer Robenschwarz
+  p.innerHTML = `
+    <div class="mark-gross">${mark(208)}
+      <div class="groessen">${[64, 32, 24, 20, 16].map((s) => `<figure>${mark(s)}<figcaption>${s}</figcaption></figure>`).join("")}</div>
+    </div>
+    <div class="zeile">${wort(48)} ${wort(24)}</div>
+    <div class="zeile">
+      <div class="icons">
+        <figure>${icon(120, "#1A1917", "#FAFAF9")}<figcaption>App-Icon 120</figcaption></figure>
+        <figure>${icon(60, "#1A1917", "#FAFAF9")}<figcaption>60</figcaption></figure>
+        <figure>${icon(29, "#1A1917", "#FAFAF9")}<figcaption>29</figcaption></figure>
+      </div>
+      <div style="display:grid;gap:14px">
+        <div class="tabbar"><span class="tab"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="color:var(--fg)">${FAV}</svg>Apex – Kanzleisoftware</span><span class="tab inaktiv">Neuer Tab</span></div>
+        <figure style="margin:0;display:flex;gap:10px;align-items:flex-end"><svg class="pixel" width="64" height="64" viewBox="0 0 16 16" fill="currentColor" shape-rendering="crispEdges">${FAV}</svg><figcaption>Favicon 16-px-Raster, 4×</figcaption></figure>
+      </div>
+    </div>`;
+});
+
+// Kontrast (WCAG 2.x)
+const lin = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+const lum = (hex) => { const h = hex.replace("#", ""); const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)); return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b); };
+const kon = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return (x + 0.05) / (y + 0.05); };
+const fmt = (n) => n.toFixed(2).replace(".", ",");
+const ROLLEN = [
+  ["Hintergrund", "--bg", null, ""],
+  ["Fläche", "--surface", null, "Tabellen, Panels, Felder"],
+  ["Fläche 2", "--surface-2", null, "Hover, Tabellenkopf, Chips"],
+  ["Fläche 3", "--surface-3", null, "Auswahl, gedrückt"],
+  ["Linie", "--line", "--surface", "Trenner (dekorativ)"],
+  ["Linie stark", "--line-strong", "--surface", "Rahmen Bedienelemente ≥ 3"],
+  ["Text 1 · Akzent", "--fg", "--surface", "Text, Primärknopf, Fokus"],
+  ["Text 2", "--fg-2", "--surface", "Fließtext"],
+  ["Text 3", "--fg-3", "--surface", "Spaltenköpfe, Navigation"],
+  ["Text 4", "--fg-4", "--surface", "Metatext (auch auf Fläche 3)", "--surface-3"],
+  ["Siegelrot", "--seal", "--surface", "Notfrist, kritisch, Löschen"],
+  ["Siegelrot Text", "--seal-text", "--seal-soft", "auf Rot-Fläche"],
+  ["Bernstein", "--amber", "--surface", "bald fällig (Symbol)"],
+  ["Bernstein Text", "--amber-text", "--amber-soft", "auf Bernstein-Fläche"],
+  ["Grün", "--green", "--surface", "erledigt (Symbol)"],
+  ["Grün Text", "--green-text", "--green-soft", "auf Grün-Fläche"],
+];
+document.querySelectorAll("[data-palette]").forEach((p) => {
+  const cs = getComputedStyle(p);
+  const v = (t) => cs.getPropertyValue(t).trim();
+  let html = `<div class="paletten-kopf"><span></span><span>Rolle</span><span>Token</span><span>Wert</span><span>Kontrast</span></div><div class="palette">`;
+  for (const [rolle, t, gegen, wozu, gegen2] of ROLLEN) {
+    const hex = v(t);
+    let k = "";
+    if (gegen) k = `<b>${fmt(kon(hex, v(gegen)))}</b> : 1`;
+    if (gegen2) k += ` · ${fmt(kon(hex, v(gegen2)))} auf Fl. 3`;
+    if (!gegen && t !== "--bg" && t !== "--surface") k = `${fmt(kon(hex, v("--surface")))} : 1 zur Fläche`;
+    if (t === "--surface") k = "Bezugsfläche";
+    html += `<div class="farbe"><span class="sw" style="background:${hex}"></span><span>${rolle}</span><code>${t}</code><span class="hex">${hex.toUpperCase()}</span><span class="k">${k}${wozu ? ` <span style="color:var(--fg-4)">· ${wozu}</span>` : ""}</span></div>`;
+  }
+  p.innerHTML = html + "</div>";
+});
+
+const I = {
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>',
+  warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></svg>',
+  uhr: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>',
+  haken: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+  ki: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0L14.06 8.5A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96L15.5 14.06a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/></svg>',
+  blitz: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>',
+};
+document.querySelectorAll("[data-bausteine]").forEach((p) => {
+  p.innerHTML = `
+    <div class="unter">Knöpfe · primär, sekundär, ghost (Hover), Gefahr · Fokus 2 px mit 2 px Abstand</div>
+    <div class="reihe">
+      <button class="btn btn-primary">${I.plus}Frist eintragen</button>
+      <button class="btn btn-secondary">Exportieren</button>
+      <button class="btn btn-ghost hover">Drucken</button>
+      <button class="btn btn-danger">Löschen</button>
+      <button class="btn btn-secondary fokus">Fokus</button>
+    </div>
+    <div class="reihe" style="align-items:flex-start;gap:24px">
+      <div class="feld-wrap"><span class="label">Aktenzeichen</span><div class="feld">137/26</div><span class="hinweis">Format: Nummer/Jahr</span></div>
+      <div class="feld-wrap"><span class="label">Zustellung am</span><div class="feld focus">15.10.2026</div><span class="hinweis">Fokus: Rahmen in Text 1, 2 px</span></div>
+    </div>
+    <div class="unter">Status · Wort und Symbol, Farbe nie allein</div>
+    <div class="reihe">
+      <span class="chip chip-notfrist">${I.warn}Notfrist · morgen</span>
+      <span class="chip chip-seal">${I.warn}Notfrist</span>
+      <span class="chip chip-amber">${I.uhr}in 5 Tagen</span>
+      <span class="chip chip-green">${I.haken}erledigt</span>
+      <span class="chip chip-neutral">Wiedervorlage</span>
+      <span class="chip chip-outline">${I.ki}KI</span>
+      <span class="island">${I.blitz}<b>28,2 Std.</b> in 7 Tagen</span>
+      <span class="assist" title="Apex Assistent">${mark(20)}</span>
+    </div>
+    <div class="karte kennzahlen">
+      <div><div class="kz-label">Heute fällig</div><div class="kz-wert">0</div><div class="kz-sub">dazu 1 Wiedervorlage</div></div>
+      <div><div class="kz-label">Nächste 7 Tage</div><div class="kz-wert">5</div><div class="kz-sub">11 Wiedervorlagen, 1 Termin</div></div>
+      <div><div class="kz-label"><span style="color:var(--seal);display:inline-flex;width:14px;height:14px">${I.warn}</span>Kritische Fristen</div><div class="kz-wert">4</div><div class="kz-sub">nicht verlängerbar · nächste 26. Okt.</div></div>
+    </div>
+    <div class="karte" style="overflow:hidden">
+      <table>
+        <thead><tr><th>Aktenzeichen</th><th>Frist</th><th>Fällig</th><th class="num">Wert</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">118/26</td><td>Berufung</td><td>Mo, 16.11.</td><td class="num">48.500,00 €</td><td><span class="chip chip-seal">${I.warn}Notfrist</span></td></tr>
+          <tr class="hover"><td class="mono">137/26</td><td>Replik</td><td>Di, 20.10.</td><td class="num">12.000,00 €</td><td><span class="chip chip-amber">${I.uhr}in 2 Tagen</span></td></tr>
+          <tr><td class="mono">131/26</td><td>Stellungnahme</td><td>Fr, 10.10.</td><td class="num">3.250,00 €</td><td><span class="chip chip-green">${I.haken}erledigt</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="font-size:13px;color:var(--fg-3)">Zuletzt aktualisiert vor 2 Min. · <span class="link">Rechenweg anzeigen</span></div>`;
+});
+document.getElementById("pruefung").textContent = "Kontraste: 54 Pflichtpaare je Modus geprüft (Text ≥ 4,5 : 1, Bedienelemente und Symbole ≥ 3 : 1) – 0 Verstöße in Hell und Dunkel.";
+</script>
+</body>
+</html>

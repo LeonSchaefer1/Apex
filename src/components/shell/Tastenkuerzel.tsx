@@ -290,7 +290,7 @@ export function WiedervorlageDialog() {
                 }}
                 aria-pressed={datum === s.ziel}
                 title={fmtDateWd(s.ziel)}
-                className={cn("h-7 rounded-full px-2.5 text-[12.5px] font-medium ring-1 transition-colors", datum === s.ziel ? "bg-ink-soft text-ink ring-[var(--ink)]" : "text-fg-2 ring-[var(--line-strong)] hover:bg-ink-softer")}
+                className={cn("h-7 rounded-md px-2.5 text-[13px] font-medium transition-colors duration-100 max-sm:h-9", datum === s.ziel ? "bg-[var(--surface-3)] text-fg shadow-[inset_0_0_0_1px_var(--ink)]" : "text-fg-2 shadow-[inset_0_0_0_1px_var(--line-strong)] hover:bg-[var(--surface-2)]")}
               >
                 {s.label}
               </button>
@@ -298,7 +298,7 @@ export function WiedervorlageDialog() {
           </div>
         </Field>
         {fehler && (
-          <div role="alert" className="rounded-[12px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal">
+          <div role="alert" className="rounded-md bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal-text">
             {fehler}
           </div>
         )}
@@ -442,7 +442,7 @@ export function ZeiterfassungDialog() {
           <Switch id="ze-abrechenbar" checked={abrechenbar} onChange={setAbrechenbar} label="Abrechenbar" />
         </div>
         {fehler && (
-          <div id="ze-fehler" role="alert" className="rounded-[12px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal">
+          <div id="ze-fehler" role="alert" className="rounded-md bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal-text">
             {fehler}
           </div>
         )}
@@ -489,7 +489,7 @@ function SatzZeile({ akte, user, team, onVereinbarung }: {
                   e.preventDefault();
                   onVereinbarung(akte.id);
                 }}
-                className="font-semibold text-ink underline decoration-[var(--ink-soft)] underline-offset-2 hover:decoration-ink"
+                className="font-semibold link"
               >
                 Vereinbarung erfassen
               </Link>
@@ -519,7 +519,7 @@ export function KuerzelListe() {
   const { pathname } = useLocation();
   const aufFristen = pathname === "/fristen" || pathname.startsWith("/fristen/");
   const zeile = (k: Kuerzel) => (
-    <li key={k.was} className="flex items-start gap-3 rounded-[14px] px-2 py-2 hover:bg-ink-softer">
+    <li key={k.was} className="flex items-start gap-3 rounded-md px-2 py-2 hover:bg-[var(--surface-pop-hover)]">
       <span className="flex min-w-[96px] shrink-0 flex-col items-start gap-1">
         <Tasten tasten={k.tasten} />
         {k.alt && (
@@ -557,15 +557,15 @@ export function KuerzelListe() {
         </h3>
         <ul className="grid gap-1.5">{POSTEINGANG_KUERZEL.map(zeile)}</ul>
       </section>
-      <div className="flex items-start justify-between gap-3 rounded-[14px] bg-[var(--surface-2)] px-3 py-2.5 ring-1 ring-[var(--line)]">
+      <div className="flex items-start justify-between gap-3 rounded-lg border border-[var(--line)] px-3 py-2.5">
         <label htmlFor="kuerzel-einzeltasten" className="min-w-0 text-[13px] leading-snug text-fg-2">
           <span className="block font-semibold text-fg">Kürzel mit einzelnen Buchstaben</span>
           {einzeltastenKuerzel ? "An – abschalten, wenn Sie oft neben ein Feld tippen. Alt+W, Alt+F und Alt+Z (in der Fristenliste auch Alt+J/K/B) wirken immer." : "Aus – W, F, Z, ? und die Buchstaben-Kürzel in Posteingang und Fristenliste ruhen. Alt+W, Alt+F, Alt+Z, in der Fristenliste Alt+J/K/B und die Pfeiltasten wirken weiter."} Auch unter Einstellungen → Darstellung.
         </label>
         <Switch id="kuerzel-einzeltasten" checked={einzeltastenKuerzel} onChange={setEinzeltastenKuerzel} label="Kürzel mit einzelnen Buchstaben" />
       </div>
-      <p className="flex items-start gap-2 rounded-[14px] bg-[var(--ink-softer)] px-3 py-2.5 text-[13px] text-fg-2">
-        <Undo2 className="mt-0.5 size-3.5 shrink-0 text-ink" /> Nach W bzw. Z und Enter bietet die Meldung unten rechts „Rückgängig“ an.
+      <p className="flex items-start gap-2 px-1 text-[13px] text-fg-3">
+        <Undo2 className="mt-0.5 size-3.5 shrink-0 text-fg-4" /> Nach W bzw. Z und Enter bietet die Meldung unten rechts „Rückgängig“ an.
       </p>
     </div>
   );

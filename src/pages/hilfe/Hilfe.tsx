@@ -125,9 +125,9 @@ function AssistentKarte() {
             key={b}
             type="button"
             onClick={() => oeffne(b)}
-            className="flex items-center gap-2 rounded-[12px] bg-[var(--ink-softer)] px-3 py-2 text-left text-[13px] text-fg-2 transition-colors hover:bg-[var(--ink-soft)] hover:text-fg"
+            className="flex items-center gap-2 rounded-md bg-[var(--ink-softer)] px-3 py-2 text-left text-[13px] text-fg-2 transition-colors hover:bg-[var(--ink-soft)] hover:text-fg"
           >
-            <MessageCircleQuestion className="size-3.5 shrink-0 text-violet" />
+            <MessageCircleQuestion className="size-3.5 shrink-0 text-fg-3" />
             <span className="min-w-0 truncate">{b}</span>
           </button>
         ))}

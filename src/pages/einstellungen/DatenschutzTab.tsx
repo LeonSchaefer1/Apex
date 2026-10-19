@@ -15,6 +15,7 @@ import { cn } from "@/lib/cn";
 import { anbieterUrheber, istAnbieterEintrag } from "@/lib/backend/protokoll";
 import type { Aktivitaet, User } from "@/core/types";
 import { Abschnitt, Zeile } from "./teile";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 const SICHERHEIT = [
   { icon: <Lock className="size-4" />, t: "Verschlüsselte Übertragung", s: "TLS 1.3 zwischen Arbeitsplatz, Server und Schnittstellen" },
@@ -133,7 +134,7 @@ export function DatenschutzTab() {
           <Hosting icon={<Building className="size-5" />} titel="Eigener Server in der Kanzlei" text="Server in Ihren Räumen oder bei Ihrem IT-Dienstleister. Aktualisierungen spielen Sie ein, wann Sie wollen." punkte={["Daten verlassen die Kanzlei nicht", "Installation per Docker", "Betrieb auch ohne Internet (außer beA, E-Mail, Bank)"]} aktiv={!demo} />
           <Hosting icon={<Cloud className="size-5" />} titel="Deutsches Rechenzentrum" text="Betrieb in einem Rechenzentrum in Deutschland – ohne eigene Server-Wartung." punkte={["Eigene, getrennte Umgebung je Kanzlei", "Verschlüsselte Backups an zwei Standorten", "Zertifizierung nach ISO 27001 / BSI C5 angestrebt"]} />
         </div>
-        {demo && <p className="mt-3 text-[12.5px] text-fg-3">Diese Demo läuft vollständig in Ihrem Browser – es werden keine Daten an einen Server übertragen.</p>}
+        {demo && <p className="mt-3 text-[13px] text-fg-3">Diese Demo läuft vollständig in Ihrem Browser – es werden keine Daten an einen Server übertragen.</p>}
       </Abschnitt>
 
       <AnmeldungSicherheit praesentation={praesentation} />
@@ -142,10 +143,10 @@ export function DatenschutzTab() {
         <ul className="grid grid-cols-1 gap-3">
           {SICHERHEIT.map((x) => (
             <li key={x.t} className="flex gap-3">
-              <span className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-green-soft text-green">{x.icon}</span>
+              <span className="grid size-8 shrink-0 place-items-center rounded-md bg-green-soft text-green">{x.icon}</span>
               <span className="min-w-0">
-                <span className="block text-[13.5px] font-semibold">{x.t}</span>
-                <span className="block text-[12.5px] text-fg-3">{x.s}</span>
+                <span className="block text-[14px] font-semibold">{x.t}</span>
+                <span className="block text-[13px] text-fg-3">{x.s}</span>
               </span>
             </li>
           ))}
@@ -155,45 +156,45 @@ export function DatenschutzTab() {
       <Abschnitt titel="Berufsrecht & Datenschutz" text="Woran sich Gestaltung und Verträge von Apex ausrichten." icon={<Scale className="size-[18px]" />}>
         <ul className="grid grid-cols-1 gap-2.5">
           {RECHT.map((r) => (
-            <li key={r.norm} className="rounded-[16px] bg-[var(--surface-2)] p-3.5 ring-1 ring-[var(--line)]">
+            <li key={r.norm} className="rounded-lg bg-[var(--surface-2)] p-3.5 ring-1 ring-[var(--line)]">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="mono rounded-[7px] bg-ink-soft px-1.5 py-0.5 text-[12.5px] font-semibold text-ink">{r.norm}</span>
-                <span className="text-[13.5px] font-semibold">{r.t}</span>
+                <span className="mono rounded-sm bg-ink-soft px-1.5 py-0.5 text-[13px] font-semibold text-ink">{r.norm}</span>
+                <span className="text-[14px] font-semibold">{r.t}</span>
               </div>
-              <p className="mt-1.5 text-[12.5px] leading-relaxed text-fg-3">{r.s}</p>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-fg-3">{r.s}</p>
             </li>
           ))}
         </ul>
         <div className="mt-4">
-          <h3 className="text-[13.5px] font-semibold">Verträge zum Herunterladen</h3>
-          <p className="mt-0.5 text-[12.5px] text-fg-3">{MUSTER_KENNZEICHNUNG}. Die Muster werden lokal erzeugt – mit Ihrer Kanzlei als Vertragspartei.</p>
+          <h3 className="text-[14px] font-semibold">Verträge zum Herunterladen</h3>
+          <p className="mt-0.5 text-[13px] text-fg-3">{MUSTER_KENNZEICHNUNG}. Die Muster werden lokal erzeugt – mit Ihrer Kanzlei als Vertragspartei.</p>
           <div className="mt-2.5 grid gap-2 sm:grid-cols-2">
             {MUSTER.map((m) => (
-              <button key={m.key} type="button" onClick={() => oeffneMuster(m.key)} className="press flex min-w-0 items-start gap-3 rounded-[16px] bg-[var(--surface-2)] p-3.5 text-left ring-1 ring-[var(--line)] hover:ring-[var(--line-strong)]">
-                <span className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-ink-soft text-ink">
+              <button key={m.key} type="button" onClick={() => oeffneMuster(m.key)} className="press flex min-w-0 items-start gap-3 rounded-lg bg-[var(--surface-2)] p-3.5 text-left ring-1 ring-[var(--line)] hover:ring-[var(--line-strong)]">
+                <span className="grid size-8 shrink-0 place-items-center rounded-md bg-ink-soft text-ink">
                   <FileText className="size-4" />
                 </span>
                 <span className="min-w-0 hyphens-auto [overflow-wrap:anywhere]" lang="de">
-                  <span className="block text-[13.5px] font-semibold">{m.titel}</span>
-                  <span className="mt-0.5 block text-[12.5px] text-fg-3">Vorschau, Datei speichern oder kopieren · {m.datei}</span>
+                  <span className="block text-[14px] font-semibold">{m.titel}</span>
+                  <span className="mt-0.5 block text-[13px] text-fg-3">Vorschau, Datei speichern oder kopieren · {m.datei}</span>
                 </span>
               </button>
             ))}
           </div>
         </div>
-        <p className="mt-3 text-[12.5px] leading-snug text-fg-3">Gestaltungsziele, keine Rechtsberatung: Maßgeblich sind die geschlossenen Verträge und Ihre eigene berufsrechtliche Prüfung.</p>
+        <p className="mt-3 text-[13px] leading-snug text-fg-3">Gestaltungsziele, keine Rechtsberatung: Maßgeblich sind die geschlossenen Verträge und Ihre eigene berufsrechtliche Prüfung.</p>
       </Abschnitt>
 
       <Abschnitt id="ds-loeschkonzept" titel="Unterauftragnehmer & Löschkonzept" text="Wer außer uns Ihre Daten verarbeiten kann – und wie lange was aufbewahrt wird." icon={<Trash2 className="size-[18px]" />} className="xl:col-span-2">
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="min-w-0">
-            <h3 className="text-[13.5px] font-semibold">Unterauftragnehmer</h3>
+            <h3 className="text-[14px] font-semibold">Unterauftragnehmer</h3>
             <ul className="mt-2 grid gap-2">
               {UNTERAUFTRAGNEHMER.map((u) => (
-                <li key={u.wer} className="rounded-[16px] bg-[var(--surface-2)] p-3.5 ring-1 ring-[var(--line)]">
-                  <div className="text-[13.5px] font-semibold">{u.wer}</div>
-                  <div className="mt-0.5 text-[12.5px] leading-relaxed text-fg-2">{u.zweck}</div>
-                  <div className="mt-1 text-[12.5px] leading-relaxed text-fg-3">
+                <li key={u.wer} className="rounded-lg bg-[var(--surface-2)] p-3.5 ring-1 ring-[var(--line)]">
+                  <div className="text-[14px] font-semibold">{u.wer}</div>
+                  <div className="mt-0.5 text-[13px] leading-relaxed text-fg-2">{u.zweck}</div>
+                  <div className="mt-1 text-[13px] leading-relaxed text-fg-3">
                     Ort: {u.ort} · {u.wann}
                   </div>
                 </li>
@@ -201,12 +202,12 @@ export function DatenschutzTab() {
             </ul>
           </div>
           <div className="min-w-0">
-            <h3 id="loeschkonzept" className="text-[13.5px] font-semibold">
+            <h3 id="loeschkonzept" className="text-[14px] font-semibold">
               Löschkonzept
             </h3>
             {/* schmale Breiten: seitlich scrollbar und per Tastatur erreichbar (WCAG 2.1.1, axe scrollable-region-focusable) */}
-            <div className="mt-2 overflow-x-auto rounded-[16px] ring-1 ring-[var(--line)]" tabIndex={0} role="region" aria-labelledby="loeschkonzept">
-              <table className="w-full min-w-[420px] text-left text-[12.5px]" aria-labelledby="loeschkonzept">
+            <div className="mt-2 overflow-x-auto rounded-lg ring-1 ring-[var(--line)]" tabIndex={0} role="region" aria-labelledby="loeschkonzept">
+              <table className="w-full min-w-[420px] text-left text-[13px]" aria-labelledby="loeschkonzept">
                 <thead className="bg-[var(--surface-2)] text-fg-3">
                   <tr>
                     <th scope="col" className="px-3 py-2 font-semibold">
@@ -231,7 +232,7 @@ export function DatenschutzTab() {
                 </tbody>
               </table>
             </div>
-            <p className="mt-2 text-[12.5px] text-fg-3">Nach Ablauf werden Daten erst nach Ihrer Freigabe gelöscht – je Akte vorgemerkt.</p>
+            <p className="mt-2 text-[13px] text-fg-3">Nach Ablauf werden Daten erst nach Ihrer Freigabe gelöscht – je Akte vorgemerkt.</p>
           </div>
         </div>
       </Abschnitt>
@@ -255,7 +256,7 @@ export function DatenschutzTab() {
           />
         }
       >
-        <ul className="divide-y divide-[var(--line)] overflow-hidden rounded-[16px] border border-[var(--line)]">
+        <ul className="divide-y divide-[var(--line)] overflow-hidden rounded-lg border border-[var(--line)]">
           {protokoll.length === 0 && (
             <li className="px-3.5 py-6 text-center text-[13px] text-fg-3">
               {filter === "anmeldungen" ? "Noch keine Anmeldeereignisse." : filter === "anbieter" ? "Noch keine Eingriffe von Apex." : "Noch keine Einträge."}
@@ -265,26 +266,26 @@ export function DatenschutzTab() {
             <ProtokollZeile key={a.id} a={a} i={i} namen={namen} />
           ))}
         </ul>
-        <p className="mt-2 text-[12.5px] text-fg-3">
+        <p className="mt-2 text-[13px] text-fg-3">
           Auszug der letzten Einträge. Eingriffe von Apex (z. B. ein neues Startpasswort über die Apex Console) stehen hier ebenfalls. KI-Anfragen werden ohne Inhalte protokolliert, Fehlversuche ohne das eingegebene Passwort. Nach 3 Fehlversuchen für dasselbe Konto innerhalb von 15 Minuten erhalten Partner und Administration einen Hinweis.
         </p>
       </Abschnitt>
 
       {beispiel && (
-        <section className="relative rounded-[22px] border border-[color-mix(in_oklab,var(--seal)_35%,transparent)] bg-[color-mix(in_oklab,var(--seal-soft)_60%,transparent)] p-5 md:p-6">
+        <section className="relative rounded-lg border border-[color-mix(in_oklab,var(--seal)_35%,transparent)] bg-[color-mix(in_oklab,var(--seal-soft)_60%,transparent)] p-5 md:p-6">
           <div className="flex items-start gap-3">
-            <div className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-seal-soft text-seal">
+            <div className="grid size-9 shrink-0 place-items-center rounded-md bg-seal-soft text-seal">
               <ShieldAlert className="size-[18px]" />
             </div>
             <div className="min-w-0 flex-1">
               <h2 className="title-md">Gefahrenbereich</h2>
-              <p className="mt-0.5 text-[12.5px] leading-relaxed text-fg-3">Aktionen, die sich nicht rückgängig machen lassen.</p>
+              <p className="mt-0.5 text-[13px] leading-relaxed text-fg-3">Aktionen, die sich nicht rückgängig machen lassen.</p>
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-[16px] bg-[var(--surface)] p-4 ring-1 ring-[var(--line)]">
+          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg bg-[var(--surface)] p-4 ring-1 ring-[var(--line)]">
             <div className="min-w-0 flex-1 basis-[220px]">
               <div className="text-[14px] font-semibold">Demo-Daten zurücksetzen</div>
-              <div className="text-[12.5px] text-fg-3">
+              <div className="text-[13px] text-fg-3">
                 {darf ? `Setzt alle Daten von ${tenant.kurzname} auf die Beispieldaten zurück – z. B. vor einer Präsentation.` : "Den Datenbestand zurücksetzen dürfen Partner und Administration Ihrer Kanzlei."}
               </div>
             </div>
@@ -306,7 +307,7 @@ type ProtokollFilter = "alle" | "anmeldungen" | "anbieter";
  * Urheber: Person der Kanzlei, „Apex Console – …“ bei Anbieter-Eingriffen, „Anmeldeversuch bzw. Sperre (automatisch)“
  * nur bei echten automatischen Anmeldeereignissen (Fehlversuch, Sperre, Warnung).
  */
-function ProtokollZeile({ a, i, namen }: { a: Aktivitaet; i: number; namen: Map<string, User> }) {
+function ProtokollZeile({ a, namen }: { a: Aktivitaet; i: number; namen: Map<string, User> }) {
   // Vorgänge durch Apex bzw. das System (z. B. Zugang angelegt, Startpasswort vergeben): `userId` nennt die
   // betroffene Person – ausgelöst hat sie Apex, nicht die Person selbst.
   const u = a.akteur !== "system" && a.userId ? namen.get(a.userId) : undefined;
@@ -334,11 +335,11 @@ function ProtokollZeile({ a, i, namen }: { a: Aktivitaet; i: number; namen: Map<
     return () => ro?.disconnect();
   }, [a.text, offen]);
   return (
-    <motion.li initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }} className={cn("flex items-start gap-3 px-3.5 py-2.5", a.beispiel && "bg-[var(--ink-softer)]")}>
+    <motion.li initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={BEWEGUNG.standard} className={cn("flex items-start gap-3 px-3.5 py-2.5", a.beispiel && "bg-[var(--ink-softer)]")}>
       {u ? (
         <Avatar initialen={u.initialen} farbe={u.farbe} size={26} />
       ) : (
-        <span className={cn("grid size-[26px] shrink-0 place-items-center rounded-full", anbieter ? "bg-violet-soft text-violet" : "bg-ink-soft text-ink")} aria-hidden>
+        <span className={cn("grid size-[26px] shrink-0 place-items-center rounded-full", anbieter ? "bg-[var(--surface-2)] text-fg-3" : "bg-ink-soft text-ink")} aria-hidden>
           {anbieter ? <Building2 className="size-3.5" /> : <ShieldCheck className="size-3.5" />}
         </span>
       )}
@@ -356,7 +357,7 @@ function ProtokollZeile({ a, i, namen }: { a: Aktivitaet; i: number; namen: Map<
         {(lang || offen) && (
           <button
             type="button"
-            className="mt-0.5 inline-flex min-h-6 items-center text-[12.5px] font-semibold text-ink underline decoration-[var(--ink-soft)] underline-offset-2 hover:decoration-ink"
+            className="mt-0.5 inline-flex min-h-6 items-center text-[13px] font-semibold text-ink underline decoration-[var(--ink-soft)] underline-offset-2 hover:decoration-ink"
             aria-expanded={offen}
             aria-controls={textId}
             onClick={() => setOffen((x) => !x)}
@@ -364,7 +365,7 @@ function ProtokollZeile({ a, i, namen }: { a: Aktivitaet; i: number; namen: Map<
             {offen ? "Weniger anzeigen" : "Mehr anzeigen"}
           </button>
         )}
-        <span className="block text-[12.5px] text-fg-3">
+        <span className="block text-[13px] text-fg-3">
           {anbieter ? <span className="font-medium text-fg-2">{wer}</span> : wer} · <time dateTime={a.zeit}>{fmtDate(a.zeit.slice(0, 10))}, {fmtTime(a.zeit)} Uhr</time> ({relTime(a.zeit)})
           {a.beispiel && " · Beispieldaten – nicht von Ihnen ausgelöst"}
         </span>
@@ -418,13 +419,13 @@ function AnmeldungSicherheit({ praesentation }: { praesentation: boolean }) {
     >
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <div className="min-w-0">
-          <h3 className="mb-2 text-[13.5px] font-semibold">Ihre Zwei-Faktor-Anmeldung</h3>
+          <h3 className="mb-2 text-[14px] font-semibold">Ihre Zwei-Faktor-Anmeldung</h3>
           <ZweiFaktorEinrichtung onStatus={setEigen} />
-          <div className="mt-4 rounded-[16px] bg-[var(--surface-2)] p-3.5 ring-1 ring-[var(--line)]">
-            <h3 className="flex items-center gap-2 text-[13.5px] font-semibold">
+          <div className="mt-4 rounded-lg bg-[var(--surface-2)] p-3.5 ring-1 ring-[var(--line)]">
+            <h3 className="flex items-center gap-2 text-[14px] font-semibold">
               <KeyRound className="size-4 text-ink" /> Passwort ändern
             </h3>
-            <p className="mt-1 text-[12.5px] leading-relaxed text-fg-2">
+            <p className="mt-1 text-[13px] leading-relaxed text-fg-2">
               Ihr eigenes Passwort ändern Sie hier selbst – mit dem aktuellen Passwort; der Vorgang steht im Protokoll. Ein Startpasswort über Team & Zugänge ist für den Notfall gedacht (Passwort vergessen).
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -439,9 +440,9 @@ function AnmeldungSicherheit({ praesentation }: { praesentation: boolean }) {
             </div>
           </div>
         </div>
-        <div className="min-w-0 rounded-[18px] bg-[var(--surface-2)] p-4 ring-1 ring-[var(--line)]">
-          <h3 className="text-[13.5px] font-semibold">Für die ganze Kanzlei</h3>
-          {!darf && <p className="mt-1 text-[12.5px] text-fg-3">Diese Einstellungen ändern Partner und Administration Ihrer Kanzlei.</p>}
+        <div className="min-w-0 rounded-lg bg-[var(--surface-2)] p-4 ring-1 ring-[var(--line)]">
+          <h3 className="text-[14px] font-semibold">Für die ganze Kanzlei</h3>
+          {!darf && <p className="mt-1 text-[13px] text-fg-3">Diese Einstellungen ändern Partner und Administration Ihrer Kanzlei.</p>}
           <div className="mt-3 divide-y divide-[var(--line)]">
             <Zeile titel="Zwei-Faktor für alle Pflicht" htmlFor="zf-pflicht" text={pflichtGrund ?? (einstellung.zweiFaktorPflicht ? "Alle Personen müssen bei der Anmeldung einen Code eingeben; wer noch keinen eingerichtet hat, richtet ihn bei der nächsten Anmeldung ein." : "Jede Person entscheidet selbst.")}>
               <Switch
@@ -477,14 +478,14 @@ function AnmeldungSicherheit({ praesentation }: { praesentation: boolean }) {
 
 function Hosting({ icon, titel, text, punkte, aktiv }: { icon: React.ReactNode; titel: string; text: string; punkte: string[]; aktiv?: boolean }) {
   return (
-    <div className={cn("rounded-[18px] p-4 ring-1", aktiv ? "bg-[var(--ink-softer)] ring-2 ring-[var(--ink)]" : "bg-[var(--surface-2)] ring-[var(--line)]")}>
+    <div className={cn("rounded-lg p-4 ring-1", aktiv ? "bg-[var(--ink-softer)] ring-2 ring-[var(--ink)]" : "bg-[var(--surface-2)] ring-[var(--line)]")}>
       <div className="flex items-center gap-3">
-        <span className="grid size-10 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">{icon}</span>
+        <span className="grid size-10 shrink-0 place-items-center rounded-md bg-ink-soft text-ink">{icon}</span>
         <span className="min-w-0 flex-1 text-[14px] font-semibold">{titel}</span>
         {aktiv && <Chip tone="ink">Ihr Betrieb</Chip>}
       </div>
-      <p className="mt-2.5 text-[12.5px] leading-relaxed text-fg-3">{text}</p>
-      <ul className="mt-2.5 grid grid-cols-1 gap-1 text-[12.5px] text-fg-2">
+      <p className="mt-2.5 text-[13px] leading-relaxed text-fg-3">{text}</p>
+      <ul className="mt-2.5 grid grid-cols-1 gap-1 text-[13px] text-fg-2">
         {punkte.map((p) => (
           <li key={p} className="flex gap-2">
             <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-green" />

@@ -19,6 +19,7 @@ import { parseEuro } from "./Mandatsaufnahme";
 import { LEERE_RSV_EINGABE, rsvNachtragen, sbFehlerhaft, versichererWarnung, type RsvEingabe } from "./rsv";
 import { VersichererAuswahl } from "./VersichererAuswahl";
 import { VorschussDialog } from "./Vorschuss";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 type Slot = "mandantId" | "gegnerId" | "gegneranwaltId" | "gerichtId";
 
@@ -53,10 +54,10 @@ export function TabBeteiligte({ akte }: { akte: Akte }) {
   return (
     <>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {SLOTS.map((s, i) => {
+        {SLOTS.map((s) => {
           const k = akte[s.slot] ? kontakte.find((x) => x.id === akte[s.slot]) : undefined;
           return (
-            <motion.div key={s.slot} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04, type: "spring", stiffness: 420, damping: 34 }} className="min-w-0">
+            <motion.div key={s.slot} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={BEWEGUNG.standard} className="min-w-0">
               {k ? (
                 <KontaktKarte
                   rolle={s.rolle}
@@ -83,12 +84,12 @@ export function TabBeteiligte({ akte }: { akte: Akte }) {
             </motion.div>
           );
         })}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.16, type: "spring", stiffness: 420, damping: 34 }} className="min-w-0">
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={BEWEGUNG.standard} className="min-w-0">
           {akte.rsv ? (
             <Card className="h-full">
               <KartenKopf rolle="Rechtsschutzversicherung" />
               <div className="flex items-center gap-3">
-                {versicherung ? <KontaktAvatar k={versicherung} size={42} /> : <span className="grid grid-cols-1 size-[42px] shrink-0 place-items-center rounded-[13px] bg-ink-soft text-ink"><ShieldCheck className="size-5" /></span>}
+                {versicherung ? <KontaktAvatar k={versicherung} size={42} /> : <span className="grid size-[42px] shrink-0 place-items-center rounded-full bg-[var(--surface-3)] text-fg-3"><ShieldCheck className="size-5" aria-hidden /></span>}
                 <div className="min-w-0 flex-1">
                   <div className="title-md truncate">{akte.rsv.versicherung}</div>
                   <Chip tone={DECKUNG_INFO[akte.rsv.deckung].tone} className="mt-1">
@@ -105,7 +106,7 @@ export function TabBeteiligte({ akte }: { akte: Akte }) {
                 {akte.rsv.schadennummer ? (
                   <DatenZeile icon={<Hash className="size-3.5" />} label="Schadennummer" wert={akte.rsv.schadennummer} mono />
                 ) : (
-                  <p className="flex items-center gap-2.5 px-2 py-1.5 text-[12.5px] text-fg-3">
+                  <p className="flex items-center gap-2.5 px-2 py-1.5 text-[13px] text-fg-3">
                     <Hash className="size-3.5 shrink-0" /> Schadennummer noch nicht vergeben
                   </p>
                 )}
@@ -145,7 +146,7 @@ export function TabBeteiligte({ akte }: { akte: Akte }) {
                   ))}
               </div>
               <DeckungsanfrageZeile akte={akte} email={versicherung?.email} anschrift={versicherung ? [versicherung.strasse, [versicherung.plz, versicherung.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ") : undefined} />
-              <p className="mt-3 flex items-start gap-1.5 text-[12.5px] text-fg-3">
+              <p className="mt-3 flex items-start gap-1.5 text-[13px] text-fg-3">
                 <Info className="mt-0.5 size-3.5 shrink-0" />
                 Elektronischer Austausch mit Rechtsschutzversicherern (drebis): im Prototyp nicht angebunden – Versand per E-Mail oder Brief.
               </p>
@@ -205,7 +206,7 @@ function KontaktKarte({ rolle, k, extra, aktion }: { rolle: string; k: Kontakt; 
         <KontaktAvatar k={k} size={42} />
         <div className="min-w-0 flex-1">
           <div className="title-md truncate">{k.name}</div>
-          <div className="truncate text-[12.5px] text-fg-3">{k.typ === "person" ? [k.anrede, "Privatperson"].filter(Boolean).join(" · ") : "Organisation"}</div>
+          <div className="truncate text-[13px] text-fg-3">{k.typ === "person" ? [k.anrede, "Privatperson"].filter(Boolean).join(" · ") : "Organisation"}</div>
         </div>
       </div>
       <div className="mt-4 grid grid-cols-1 gap-1">
@@ -214,7 +215,7 @@ function KontaktKarte({ rolle, k, extra, aktion }: { rolle: string; k: Kontakt; 
         {k.telefon && <DatenZeile icon={<Phone className="size-3.5" />} label="Telefon" wert={k.telefon} />}
         {adresse && <DatenZeile icon={<MapPin className="size-3.5" />} label="Anschrift" wert={adresse} />}
         {k.safeId && <DatenZeile icon={<ShieldCheck className="size-3.5" />} label="beA SAFE-ID" wert={k.safeId} mono />}
-        {!k.email && !k.telefon && !adresse && !k.safeId && !extra && <p className="text-[12.5px] text-fg-3">Keine Kontaktdaten hinterlegt.</p>}
+        {!k.email && !k.telefon && !adresse && !k.safeId && !extra && <p className="text-[13px] text-fg-3">Keine Kontaktdaten hinterlegt.</p>}
       </div>
       <div className="flex-1" />
       <KontaktLink id={k.id} />
@@ -224,7 +225,7 @@ function KontaktKarte({ rolle, k, extra, aktion }: { rolle: string; k: Kontakt; 
 
 function KontaktLink({ id }: { id: string }) {
   return (
-    <Link to={`/kontakte?id=${id}`} className="mt-4 inline-flex items-center gap-1 self-start text-[12.5px] font-medium text-ink hover:underline">
+    <Link to={`/kontakte?id=${id}`} className="mt-4 inline-flex items-center gap-1 self-start text-[13px] font-medium text-ink hover:underline">
       Kontakt öffnen <ArrowUpRight className="size-3.5" />
     </Link>
   );
@@ -248,7 +249,7 @@ function DeckungsanfrageZeile({ akte, email, anschrift }: { akte: Akte; email?: 
   if (s.status === "versandt") {
     const wer = s.vonId ? team.find((u) => u.id === s.vonId)?.name : undefined;
     return (
-      <p className="mt-3 flex items-start gap-1.5 rounded-[12px] bg-[var(--ink-softer)] px-3 py-2 text-[12.5px] text-fg-2">
+      <p className="mt-3 flex items-start gap-1.5 rounded-md bg-[var(--surface-2)] px-3 py-2 text-[13px] text-fg-2">
         <Send className="mt-0.5 size-3.5 shrink-0 text-ink" />
         <span>
           Deckungsanfrage versandt{s.am ? ` am ${fmtDate(s.am.slice(0, 10))}, ${fmtTime(s.am)} Uhr` : ""}
@@ -260,8 +261,8 @@ function DeckungsanfrageZeile({ akte, email, anschrift }: { akte: Akte; email?: 
 
   const entwuerfe = deckungsanfragenDerAkte(akte.id, dokumente);
   return (
-    <div className="mt-3 rounded-[12px] bg-amber-soft px-3 py-2.5">
-      <p className="flex items-start gap-1.5 text-[12.5px] font-medium text-fg">
+    <div className="mt-3 rounded-md bg-amber-soft px-3 py-2.5">
+      <p className="flex items-start gap-1.5 text-[13px] font-medium text-fg">
         <FileText className="mt-0.5 size-3.5 shrink-0" />
         Deckungsanfrage: Entwurf – wartet auf Ihre Freigabe{entwuerfe.length > 1 ? ` (${entwuerfe.length} Fassungen in der E-Akte)` : ""}
       </p>
@@ -274,7 +275,7 @@ function DeckungsanfrageZeile({ akte, email, anschrift }: { akte: Akte; email?: 
             Freigeben und versenden …
           </Button>
         ) : (
-          <span className="self-center text-[12.5px] text-fg-3">Freigabe durch die Anwältin bzw. den Anwalt</span>
+          <span className="self-center text-[13px] text-fg-3">Freigabe durch die Anwältin bzw. den Anwalt</span>
         )}
       </div>
       <FreigabeVersandDialog open={dialog} onClose={() => setDialog(false)} akte={akte} entwuerfe={entwuerfe} email={email} anschrift={anschrift} />
@@ -335,13 +336,13 @@ function FreigabeVersandDialog({ open, onClose, akte, entwuerfe, email, anschrif
         </>
       }
     >
-      <div className="grid gap-4 text-[13.5px]">
+      <div className="grid gap-4 text-[14px]">
         {entwuerfe.length > 1 && (
           <fieldset>
             <legend className="label">Welche Fassung? ({entwuerfe.length} Deckungsanfragen in der E-Akte)</legend>
             <div className="grid gap-1.5">
               {entwuerfe.map((x) => (
-                <label key={x.id} className={cn("flex min-h-[44px] cursor-pointer items-center gap-2.5 rounded-[12px] px-3 py-2 ring-1 ring-inset", x.id === d.id ? "bg-ink-soft ring-[var(--ink)]" : "ring-[var(--line)] hover:bg-ink-softer")}>
+                <label key={x.id} className={cn("flex min-h-[44px] cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 ring-1 ring-inset", x.id === d.id ? "bg-ink-soft ring-[var(--ink)]" : "ring-[var(--line)] hover:bg-ink-softer")}>
                   <input type="radio" name="deckung-fassung" className="size-4 accent-[var(--ink)]" checked={x.id === d.id} onChange={() => setWahl(x.id)} />
                   <span className="min-w-0 flex-1 break-words">{dokumentBezeichnung(x)}</span>
                   {x.status && <Chip tone={DOK_STATUS_INFO[x.status].tone}>{DOK_STATUS_INFO[x.status].label}</Chip>}
@@ -351,7 +352,7 @@ function FreigabeVersandDialog({ open, onClose, akte, entwuerfe, email, anschrif
             </div>
           </fieldset>
         )}
-        <dl className="grid gap-x-4 gap-y-2 rounded-[16px] bg-ink-softer p-4 ring-1 ring-inset ring-[var(--line)] sm:grid-cols-[140px_minmax(0,1fr)]">
+        <dl className="grid gap-x-4 gap-y-2 rounded-md bg-[var(--surface-2)] p-4 sm:grid-cols-[140px_minmax(0,1fr)]">
           <dt className="text-fg-3">Dokument</dt>
           <dd className="break-words font-medium">{ohneEntwurfsVermerk(d.name)}</dd>
           <dt className="text-fg-3">Datum · Version</dt>
@@ -367,11 +368,11 @@ function FreigabeVersandDialog({ open, onClose, akte, entwuerfe, email, anschrif
           <dt className="text-fg-3">Versandweg</dt>
           <dd className="break-words">{weg}</dd>
         </dl>
-        <Link to={ansehen} onClick={onClose} className="inline-flex items-center gap-1.5 justify-self-start rounded-full px-1 text-[13px] font-medium text-ink hover:underline">
+        <Link to={ansehen} onClick={onClose} className="link inline-flex items-center gap-1.5 justify-self-start rounded-sm text-[13px] font-medium">
           <Eye className="size-4" /> Dokument ansehen
         </Link>
         {platzhalter.length > 0 ? (
-          <div role="alert" className="grid gap-2 rounded-[14px] bg-seal-soft p-3.5 text-[12.5px] leading-relaxed text-seal">
+          <div role="alert" className="grid gap-2 rounded-lg bg-seal-soft p-3.5 text-[13px] leading-relaxed text-seal">
             <div className="flex gap-2 font-semibold">
               <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
               {platzhalter.length} {platzhalter.length === 1 ? "Platzhalter ist" : "Platzhalter sind"} noch offen – so geht das Schreiben nicht hinaus:
@@ -388,7 +389,7 @@ function FreigabeVersandDialog({ open, onClose, akte, entwuerfe, email, anschrif
             </Link>
           </div>
         ) : (
-          <p className="flex items-start gap-2 text-[12.5px] text-fg-3">
+          <p className="flex items-start gap-2 text-[13px] text-fg-3">
             <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-green" />
             Keine offenen Platzhalter. Im Prototyp wird nichts versendet – Freigabe, Dokument, Version und Versandweg werden protokolliert.
           </p>
@@ -474,7 +475,7 @@ function RsvDialog({ akte, modus, onClose }: { akte: Akte; modus: "deckung" | "b
         <Field label="Selbstbeteiligung (€)" htmlFor="rsv-sb" hint={sbFehler ? <span className="text-seal">Bitte einen Betrag wie 150 oder 250,00 eingeben.</span> : "Leer lassen, wenn keine vereinbart ist."}>
           <Input id="rsv-sb" value={sb} onChange={(e) => setSb(e.target.value)} inputMode="decimal" className="num" />
         </Field>
-        <p className="text-[12.5px] text-fg-3">Änderungen stehen im Verlauf der Akte.</p>
+        <p className="text-[13px] text-fg-3">Änderungen stehen im Verlauf der Akte.</p>
       </div>
     </Modal>
   );
@@ -492,7 +493,7 @@ function NummerNachtragen({ akte }: { akte: Akte }) {
     toast("Versicherungsnummer gespeichert", { ton: "erfolg", text: n });
   };
   return (
-    <div className="flex items-center gap-2.5 rounded-[12px] px-2 py-1.5">
+    <div className="flex items-center gap-2.5 rounded-md px-2 py-1.5">
       <span className="text-fg-3">
         <BadgeCheck className="size-3.5" />
       </span>
@@ -507,7 +508,7 @@ function NummerNachtragen({ akte }: { akte: Akte }) {
             speichern();
           }}
         >
-          <Input id={`rsv-nr-${akte.id}`} value={nr} onChange={(e) => setNr(e.target.value)} placeholder="z. B. RS-4471209" autoComplete="off" className="mono !h-8 min-w-0 flex-1 !rounded-[9px] !px-2.5 text-[12.5px]" />
+          <Input id={`rsv-nr-${akte.id}`} value={nr} onChange={(e) => setNr(e.target.value)} placeholder="z. B. RS-4471209" autoComplete="off" className="mono !h-8 min-w-0 flex-1 !rounded-sm !px-2.5 text-[13px]" />
           <Button type="submit" size="sm" variant="secondary" disabled={!nr.trim()}>
             Speichern
           </Button>
@@ -519,11 +520,11 @@ function NummerNachtragen({ akte }: { akte: Akte }) {
 
 function DatenZeile({ icon, label, wert, mono, kopierbar = true }: { icon: ReactNode; label: string; wert: string; mono?: boolean; kopierbar?: boolean }) {
   return (
-    <div className="group flex items-center gap-2.5 rounded-[12px] px-2 py-1.5 transition-colors hover:bg-ink-softer">
+    <div className="group flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-[var(--surface-2)]">
       <span className="text-fg-3">{icon}</span>
       <div className="min-w-0 flex-1">
         <div className="text-[12px] font-medium text-fg-3">{label}</div>
-        <div className={cn("break-words text-[13px] text-fg", mono && "mono text-[12.5px]")} title={wert}>
+        <div className={cn("break-words text-[13px] text-fg", mono && "mono text-[13px]")} title={wert}>
           {wert}
         </div>
       </div>
@@ -534,7 +535,7 @@ function DatenZeile({ icon, label, wert, mono, kopierbar = true }: { icon: React
 
 function LeerKarte({ rolle, text, onZuordnen, aktion, aktionIcon }: { rolle: string; text: string; onZuordnen?: () => void; aktion?: string; aktionIcon?: ReactNode }) {
   return (
-    <div className="flex h-full min-h-[180px] flex-col rounded-[22px] border border-dashed border-[var(--line-strong)] p-5">
+    <div className="flex h-full min-h-[180px] flex-col rounded-lg border border-dashed border-[var(--line-strong)] p-5">
       <span className="eyebrow">{rolle}</span>
       <p className="mt-3 flex-1 text-[13px] text-fg-3">{text}</p>
       {onZuordnen && (
@@ -621,7 +622,7 @@ function RsvErgaenzenDialog({ akte, open, onClose }: { akte: Akte; open: boolean
             onBestaetigt={setGegenseiteOk}
           />
           {zeigeFehler && versFehler && (
-            <p id="rsvn-vers-fehler" role="alert" className="mt-1.5 flex items-start gap-1.5 text-[12.5px] font-medium text-seal">
+            <p id="rsvn-vers-fehler" role="alert" className="mt-1.5 flex items-start gap-1.5 text-[13px] font-medium text-seal">
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden /> {versFehler}
             </p>
           )}
@@ -643,7 +644,7 @@ function RsvErgaenzenDialog({ akte, open, onClose }: { akte: Akte; open: boolean
             <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[13px] text-fg-3">€</span>
           </div>
         </Field>
-        <div className="flex items-start gap-2 rounded-[14px] bg-ink-softer p-3 text-[12.5px] leading-snug text-fg-2 shadow-[inset_0_0_0_1px_var(--line)] sm:col-span-2">
+        <div className="flex items-start gap-2 rounded-md bg-[var(--surface-2)] p-3 text-[13px] leading-snug text-fg-2 sm:col-span-2">
           <Info className="mt-0.5 size-3.5 shrink-0 text-ink" aria-hidden />
           <span>Beim Speichern legt Apex wie in der Mandatsaufnahme die Deckungsanfrage als Entwurf an (wartet auf Ihre Freigabe) und setzt eine Wiedervorlage „Deckungszusage“ in 7 Tagen. Deckung: offen.</span>
         </div>

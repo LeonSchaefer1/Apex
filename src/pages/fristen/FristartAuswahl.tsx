@@ -4,11 +4,12 @@
 // gewählten Fristart im Feld statt des Suchtexts (I3-T18-01). Tastaturhinweis nur bei feinem Zeiger (I3-T14-03).
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { motion } from "motion/react";
-import { Check, ShieldAlert } from "lucide-react";
+import { Check, TriangleAlert } from "lucide-react";
 import { SearchField } from "@/components/ui";
 import { FRIST_REGELN, fristArt, type FristRegel } from "@/core/fristen";
 import { cn } from "@/lib/cn";
 import { sucheFristarten } from "./fristartSuche";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 const GEBIETE_REIHENFOLGE: FristRegel["gebiet"][] = ["Zivilprozess", "Arbeitsrecht", "Familienrecht", "Mahnverfahren", "Strafrecht", "Verwaltungsrecht", "Materielles Recht", "Vertraglich vereinbart"];
 
@@ -156,14 +157,14 @@ export function FristartAuswahl({
       <div
         ref={listeRef}
         id={`${id}-liste`}
-        className={cn("mt-2 overflow-y-auto rounded-[16px] bg-[var(--ink-softer)] p-1.5 ring-1 ring-inset ring-[var(--line)]", hoehe)}
+        className={cn("mt-2 overflow-y-auto rounded-lg bg-[var(--surface)] p-1.5 ring-1 ring-inset ring-[var(--line)]", hoehe)}
         role="listbox"
         aria-label="Fristarten"
         tabIndex={-1}
       >
         {gruppen.map((g) => (
           <div key={g.gebiet} role="group" aria-label={g.gebiet} className="mb-1 last:mb-0">
-            <div aria-hidden className="eyebrow sticky top-0 z-10 rounded-[10px] bg-[color-mix(in_oklab,var(--surface)_88%,transparent)] px-2.5 py-1.5 backdrop-blur">
+            <div aria-hidden className="eyebrow sticky top-0 z-10 rounded-sm bg-[var(--surface)] px-2.5 py-1.5">
               {g.gebiet}
             </div>
             {g.regeln.map((r) => {
@@ -179,37 +180,37 @@ export function FristartAuswahl({
                   onMouseDown={(e) => e.preventDefault()}
                   data-markiert={markiert || undefined}
                   className={cn(
-                    "relative isolate flex min-h-[44px] w-full cursor-pointer items-center gap-2 rounded-[12px] py-2 pl-3.5 pr-2.5 text-left",
+                    "relative isolate flex min-h-[44px] w-full cursor-pointer items-center gap-2 rounded-md py-2 pl-3.5 pr-2.5 text-left",
                     !gewaehlt && !markiert && "hover:bg-[var(--ink-softer)]",
                     // Markierung: getönter Hintergrund + Rahmen + Balken links – hell und dunkel deutlich von den Nachbarzeilen abgesetzt
-                    markiert && !gewaehlt && "bg-ink-soft",
-                    markiert && "ring-2 ring-inset ring-[var(--ink)]",
+                    markiert && !gewaehlt && "bg-[var(--surface-2)]",
+                    markiert && "ring-2 ring-inset ring-[var(--focus)]",
                   )}
                 >
                   {gewaehlt && (
-                    <motion.span layoutId={`${id}-gewaehlt`} className="absolute inset-0 -z-10 rounded-[12px] bg-surface shadow-[0_2px_10px_-4px_rgba(20,30,80,0.2),0_0_0_1px_var(--line)]" transition={{ type: "spring", stiffness: 520, damping: 38 }} />
+                    <motion.span layoutId={`${id}-gewaehlt`} className="absolute inset-0 -z-10 rounded-md bg-[var(--surface-3)]" transition={BEWEGUNG.standard} />
                   )}
-                  {markiert && <span aria-hidden className="absolute bottom-1.5 left-1 top-1.5 w-1 rounded-full bg-[var(--ink)]" />}
+                  {markiert && <span aria-hidden className="absolute inset-y-1.5 left-0 w-0.5 bg-[var(--ink)]" />}
                   <div className="min-w-0 flex-1">
                     <div className={cn("text-[13px] leading-snug", gewaehlt ? "font-semibold text-fg" : "font-medium text-fg-2")}>{r.titel}</div>
-                    <div className="text-[12.5px] leading-snug text-fg-3">
+                    <div className="text-[13px] leading-snug text-fg-3">
                       {r.grundlage} · {einheitText(r)}
                     </div>
                   </div>
                   {fristArt(r).kritisch && (
-                    <span className="inline-flex shrink-0 items-center gap-1 text-[11.5px] font-medium text-seal">
-                      <ShieldAlert className="size-3.5" aria-hidden />
+                    <span className="inline-flex shrink-0 items-center gap-1 text-[12px] font-medium text-seal">
+                      <TriangleAlert className="size-3.5" aria-hidden />
                       {r.typ === "notfrist" ? "Notfrist" : "nicht verlängerbar"}
                     </span>
                   )}
                   {gewaehlt ? (
-                    <span className="inline-flex shrink-0 items-center gap-1 text-[11.5px] font-semibold text-ink">
+                    <span className="inline-flex shrink-0 items-center gap-1 text-[12px] font-semibold text-ink">
                       <Check className="size-4" strokeWidth={2.6} aria-hidden />
                       gewählt
                     </span>
                   ) : (
                     markiert && (
-                      <span className="hidden shrink-0 text-[11.5px] font-medium text-ink pointer-fine:inline" aria-hidden>
+                      <span className="hidden shrink-0 text-[12px] font-medium text-ink pointer-fine:inline" aria-hidden>
                         Enter ↵
                       </span>
                     )
@@ -220,7 +221,7 @@ export function FristartAuswahl({
           </div>
         ))}
         {!sichtbar.length && (
-          <div role="option" aria-selected={false} aria-disabled className="px-3 py-6 text-center text-[12.5px] text-fg-3">
+          <div role="option" aria-selected={false} aria-disabled className="px-3 py-6 text-center text-[13px] text-fg-3">
             Keine Fristart gefunden. Tipp: „Frei bestimmte Frist“ für richterliche Fristen, „FamFG“ für Familiensachen.
           </div>
         )}

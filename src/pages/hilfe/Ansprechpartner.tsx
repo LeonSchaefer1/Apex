@@ -12,6 +12,7 @@ import { telHref } from "@/lib/telefon";
 import { fmtDateWd } from "@/core/dates";
 import { cn } from "@/lib/cn";
 import { CopyButton } from "./kopieren";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 const THEMEN = ["Umzug & Datenübernahme", "Fristen & beA", "Abrechnung & RVG", "Schnittstellen (E-Mail, Bank)", "Team & Zugänge", "Etwas anderes"];
 /** „sofort“ = jetzt + 30 Min. in der Servicezeit · „naechste“ = nächstmögliche Zeit außerhalb der Servicezeit · „wunschzeit“ */
@@ -29,7 +30,7 @@ export function AnsprechpartnerKarte({ ap, className }: { ap: Ansprechpartner; c
 
   return (
     <Card padded={false} className={className}>
-      <div className="relative overflow-hidden rounded-[22px] p-5 md:p-6">
+      <div className="relative overflow-hidden rounded-lg p-5 md:p-6">
         <div aria-hidden className="pointer-events-none absolute -right-24 -top-24 size-72 rounded-full bg-[radial-gradient(circle,var(--ink-soft),transparent_65%)]" />
         <div className="relative flex flex-wrap items-start gap-4">
           <div className="relative shrink-0">
@@ -80,11 +81,11 @@ export function AnsprechpartnerKarte({ ap, className }: { ap: Ansprechpartner; c
           </Button>
         </div>
 
-        <div className="relative mt-6 rounded-[18px] bg-[var(--surface-2)] p-4 ring-1 ring-[var(--line)]">
-          <div className="mb-3 text-[12.5px] font-semibold">Statt Warteschleife und Ticket-Sackgasse: {vorname} kennt Ihre Kanzlei.</div>
+        <div className="relative mt-6 rounded-lg bg-[var(--surface-2)] p-4 ring-1 ring-[var(--line)]">
+          <div className="mb-3 text-[13px] font-semibold">Statt Warteschleife und Ticket-Sackgasse: {vorname} kennt Ihre Kanzlei.</div>
           <Vergleich label="Telefon-Warteschleife klassischer Kanzleisoftware" wert="45–60 Min." anteil={1} ton="neutral" />
           <Vergleich label={`${ap.name} (Ø in der Servicezeit)`} wert="4 Min." anteil={4 / 60} ton="green" />
-          <p className="mt-2.5 text-[12.5px] leading-snug text-fg-3">Wartezeiten klassischer Telefon-Warteschleifen laut Bewertungen von Kanzleien; die Antwortzeit hier ist ein Beispielwert. Servicezeit {ap.verfuegbar}. {rueckrufRegel(ap.verfuegbar)}</p>
+          <p className="mt-2.5 text-[13px] leading-snug text-fg-3">Wartezeiten klassischer Telefon-Warteschleifen laut Bewertungen von Kanzleien; die Antwortzeit hier ist ein Beispielwert. Servicezeit {ap.verfuegbar}. {rueckrufRegel(ap.verfuegbar)}</p>
         </div>
       </div>
 
@@ -96,17 +97,17 @@ export function AnsprechpartnerKarte({ ap, className }: { ap: Ansprechpartner; c
 
 function KontaktZeile({ icon, label, wert, href }: { icon: React.ReactNode; label: string; wert: string; href?: string }) {
   return (
-    <div className="flex min-w-0 items-center gap-3 rounded-[14px] bg-[var(--ink-softer)] py-2 pl-3 pr-1.5">
+    <div className="flex min-w-0 items-center gap-3 rounded-lg bg-[var(--ink-softer)] py-2 pl-3 pr-1.5">
       <span className="text-ink">{icon}</span>
       <span className="min-w-0 flex-1">
-        <span className="block text-[12.5px] text-fg-3">{label}</span>
+        <span className="block text-[13px] text-fg-3">{label}</span>
         {href ? (
           // Am Smartphone antippen = anrufen (tel:), „Kopieren“ bleibt daneben (I3-T12-01)
-          <a href={href} className="inline-flex min-h-[32px] max-w-full items-center truncate pointer-coarse:min-h-11 text-[13.5px] font-semibold text-ink underline decoration-[var(--ink-soft)] underline-offset-2 hover:decoration-ink" aria-label={`${wert} anrufen`}>
+          <a href={href} className="inline-flex min-h-[32px] max-w-full items-center truncate pointer-coarse:min-h-11 text-[14px] font-semibold text-ink underline decoration-[var(--ink-soft)] underline-offset-2 hover:decoration-ink" aria-label={`${wert} anrufen`}>
             {wert}
           </a>
         ) : (
-          <span className="block select-all truncate text-[13.5px] font-medium">{wert}</span>
+          <span className="block select-all truncate text-[14px] font-medium">{wert}</span>
         )}
       </span>
       <CopyButton text={wert} label={`${label} kopieren`} />
@@ -117,7 +118,7 @@ function KontaktZeile({ icon, label, wert, href }: { icon: React.ReactNode; labe
 function Vergleich({ label, wert, anteil, ton }: { label: string; wert: string; anteil: number; ton: "neutral" | "green" }) {
   return (
     <div className="mb-2 last:mb-0">
-      <div className="mb-1 flex items-baseline justify-between gap-3 text-[12.5px]">
+      <div className="mb-1 flex items-baseline justify-between gap-3 text-[13px]">
         <span className="truncate text-fg-3">{label}</span>
         <span className="num shrink-0 font-semibold text-fg">{wert}</span>
       </div>
@@ -127,7 +128,7 @@ function Vergleich({ label, wert, anteil, ton }: { label: string; wert: string; 
           initial={{ width: 0 }}
           whileInView={{ width: `${Math.max(3, anteil * 100)}%` }}
           viewport={{ once: true }}
-          transition={{ type: "spring", stiffness: 140, damping: 24, delay: ton === "green" ? 0.25 : 0 }}
+          transition={BEWEGUNG.standard}
         />
       </div>
     </div>
@@ -219,11 +220,11 @@ function RueckrufModal({ open, onClose, ap }: { open: boolean; onClose: () => vo
     >
       {gesendet ? (
         <div className="flex flex-col items-center py-4 text-center">
-          <motion.div initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 420, damping: 20 }} className="mb-3 grid size-14 place-items-center rounded-full bg-green-soft text-green">
+          <motion.div initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={BEWEGUNG.standard} className="mb-3 grid size-14 place-items-center rounded-full bg-green-soft text-green">
             <Check className="size-7" strokeWidth={2.6} />
           </motion.div>
           <p className="text-[15px] font-semibold text-fg">{zusage}</p>
-          <p className="mt-1 text-[13.5px] text-fg-2">
+          <p className="mt-1 text-[14px] text-fg-2">
             {ap.name} ruft Sie an{nummer.trim() ? ` unter ${nummer.trim()}` : ""}.
           </p>
           <p className="mt-1 text-[13px] text-fg-3">
@@ -231,16 +232,16 @@ function RueckrufModal({ open, onClose, ap }: { open: boolean; onClose: () => vo
             {dringend && " · Priorität: dringend (Frist läuft heute ab)"}
           </p>
           {nachFristende && <ErsatzeinreichungHinweis datum={wunsch === "wunschzeit" ? undefined : zusageJetzt.datum} onWissen={zeigeStoerung} className="mt-4 text-left" />}
-          <p className="mt-4 rounded-[12px] bg-amber-soft px-3 py-2 text-[12.5px] text-fg-2">{RUECKRUF_SIMULIERT.replace(/^\(|\)$/g, "").replace(/^i/, "I")}. Der Wunsch steht im Aktivitätsprotokoll.</p>
+          <p className="mt-4 rounded-md bg-amber-soft px-3 py-2 text-[13px] text-fg-2">{RUECKRUF_SIMULIERT.replace(/^\(|\)$/g, "").replace(/^i/, "I")}. Der Wunsch steht im Aktivitätsprotokoll.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-3.5">
-          <div className="flex items-start gap-2.5 rounded-[14px] bg-green-soft px-3.5 py-2.5 text-[13px] text-fg-2">
+          <div className="flex items-start gap-2.5 rounded-lg bg-green-soft px-3.5 py-2.5 text-[13px] text-fg-2">
             <Clock className="mt-0.5 size-4 shrink-0 text-green" />
             <span>
               <strong className="text-fg">Zusage: {jetztZusage}</strong>
-              {zusageJetzt.ausserhalb && <span className="block text-[12.5px] text-fg-2">{rueckrufRegel(ap.verfuegbar)}</span>}
-              <span className="block text-[12.5px] text-fg-3">{RUECKRUF_SIMULIERT}</span>
+              {zusageJetzt.ausserhalb && <span className="block text-[13px] text-fg-2">{rueckrufRegel(ap.verfuegbar)}</span>}
+              <span className="block text-[13px] text-fg-3">{RUECKRUF_SIMULIERT}</span>
             </span>
           </div>
           <Field label="Worum geht es? (Pflicht)" htmlFor="rr-thema">
@@ -262,13 +263,13 @@ function RueckrufModal({ open, onClose, ap }: { open: boolean; onClose: () => vo
               ))}
             </Select>
             {themaFehler && (
-              <p id="rr-thema-fehler" role="alert" className="mt-1.5 flex items-start gap-1.5 text-[12.5px] font-medium text-seal">
+              <p id="rr-thema-fehler" role="alert" className="mt-1.5 flex items-start gap-1.5 text-[13px] font-medium text-seal">
                 <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
                 Bitte wählen Sie ein Thema – so kann sich {vorname} auf den Rückruf vorbereiten.
               </p>
             )}
           </Field>
-          <label htmlFor="rr-dringend" className="flex cursor-pointer items-center gap-2.5 rounded-[12px] px-1 text-[13.5px] text-fg-2">
+          <label htmlFor="rr-dringend" className="flex cursor-pointer items-center gap-2.5 rounded-md px-1 text-[14px] text-fg-2">
             <input id="rr-dringend" type="checkbox" checked={dringend} onChange={(e) => setDringend(e.target.checked)} className="size-4 accent-[var(--seal)]" />
             <AlarmClock className="size-4 text-seal" />
             Frist läuft heute ab – bitte vorrangig
@@ -277,7 +278,7 @@ function RueckrufModal({ open, onClose, ap }: { open: boolean; onClose: () => vo
             (nachFristende ? (
               <ErsatzeinreichungHinweis datum={wunsch === "wunschzeit" ? undefined : zusageJetzt.datum} onWissen={zeigeStoerung} />
             ) : (
-              <p className="flex items-start gap-2 rounded-[12px] bg-[var(--ink-softer)] px-3 py-2 text-[12.5px] text-fg-2">
+              <p className="flex items-start gap-2 rounded-md bg-[var(--ink-softer)] px-3 py-2 text-[13px] text-fg-2">
                 <BookOpen className="mt-0.5 size-3.5 shrink-0 text-ink" />
                 <span>
                   Ist das beA gestört? Was Sie bis zum Fristablauf tun können:{" "}
@@ -314,11 +315,11 @@ function RueckrufModal({ open, onClose, ap }: { open: boolean; onClose: () => vo
             <Textarea id="rr-anliegen" rows={3} placeholder="z. B. Fristen aus dem Umzug gemeinsam prüfen" value={anliegen} onChange={(e) => setAnliegen(e.target.value)} />
           </Field>
           {fehler && (
-            <div role="alert" className="rounded-[12px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal">
+            <div role="alert" className="rounded-md bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal">
               {fehler}
             </div>
           )}
-          <div className="flex items-center gap-2 text-[12.5px] text-fg-3">
+          <div className="flex items-center gap-2 text-[13px] text-fg-3">
             <Clock className="size-3.5" /> Servicezeit: {ap.verfuegbar}
           </div>
         </div>
@@ -333,15 +334,15 @@ function WunschOption({ id, checked, disabled, onChange, titel, text }: { id: st
     <label
       htmlFor={id}
       className={cn(
-        "flex items-start gap-2.5 rounded-[12px] px-3 py-2 ring-1 transition-colors",
+        "flex items-start gap-2.5 rounded-md px-3 py-2 ring-1 transition-colors",
         disabled ? "cursor-not-allowed bg-[var(--surface-2)] ring-[var(--line)]" : "cursor-pointer ring-[var(--line)] hover:ring-[var(--line-strong)]",
         checked && "bg-ink-soft ring-[var(--ink)]",
       )}
     >
       <input id={id} type="radio" name="rr-wann" checked={checked} disabled={disabled} onChange={onChange} className="mt-0.5 size-4 accent-[var(--ink)]" aria-describedby={`${id}-text`} />
       <span className="min-w-0">
-        <span className="block text-[13.5px] font-semibold text-fg">{titel}</span>
-        <span id={`${id}-text`} className="block text-[12.5px] text-fg-2">
+        <span className="block text-[14px] font-semibold text-fg">{titel}</span>
+        <span id={`${id}-text`} className="block text-[13px] text-fg-2">
           {text}
         </span>
       </span>
@@ -355,7 +356,7 @@ function WunschOption({ id, checked, disabled, onChange, titel, text }: { id: st
  */
 function ErsatzeinreichungHinweis({ datum, onWissen, className }: { datum?: string; onWissen: () => void; className?: string }) {
   return (
-    <div role="note" className={cn("flex items-start gap-2.5 rounded-[14px] border border-[color-mix(in_oklab,var(--seal)_45%,transparent)] bg-seal-soft px-3.5 py-3 text-[13px] text-fg", className)}>
+    <div role="note" className={cn("flex items-start gap-2.5 rounded-lg border border-[color-mix(in_oklab,var(--seal)_45%,transparent)] bg-seal-soft px-3.5 py-3 text-[13px] text-fg", className)}>
       <AlertTriangle className="mt-0.5 size-4 shrink-0 text-seal" aria-hidden />
       <div className="min-w-0">
         <p className="font-semibold">Warten Sie nicht auf den Rückruf – {datum ? `er kommt erst am ${fmtDateWd(datum)}.` : "er kommt womöglich erst nach Fristablauf."}</p>
@@ -392,23 +393,23 @@ function FernwartungModal({ open, onClose, ap }: { open: boolean; onClose: () =>
           { t: "Freigabe bestätigen", s: "Ihr Browser fragt, welches Fenster Sie teilen. Sie sehen jederzeit, was geteilt wird." },
           { t: "Jederzeit beenden", s: "Ein Klick auf „Freigabe beenden“ – die Verbindung ist sofort getrennt." },
         ].map((x, i) => (
-          <motion.li key={x.t} initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.05 + i * 0.06 }} className="flex gap-3">
+          <motion.li key={x.t} initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} transition={BEWEGUNG.standard} className="flex gap-3">
             <span className="num grid size-7 shrink-0 place-items-center rounded-full bg-ink-soft text-[12px] font-semibold text-ink">{i + 1}</span>
             <span className="min-w-0">
-              <span className="block text-[13.5px] font-semibold">{x.t}</span>
-              <span className="block text-[12.5px] text-fg-3">{x.s}</span>
+              <span className="block text-[14px] font-semibold">{x.t}</span>
+              <span className="block text-[13px] text-fg-3">{x.s}</span>
             </span>
           </motion.li>
         ))}
       </ol>
-      <div className="mt-5 flex items-center gap-3 rounded-[16px] bg-[var(--ink-softer)] p-3.5">
+      <div className="mt-5 flex items-center gap-3 rounded-lg bg-[var(--ink-softer)] p-3.5">
         <div className="min-w-0 flex-1">
-          <div className="text-[12.5px] text-fg-3">Ihr Sitzungscode (Beispiel)</div>
-          <div className="mono select-all text-[24px] font-semibold tracking-[0.12em]">{code}</div>
+          <div className="text-[13px] text-fg-3">Ihr Sitzungscode (Beispiel)</div>
+          <div className="mono select-all text-[24px] font-semibold">{code}</div>
         </div>
         <CopyButton text={code.replace(/\s/g, "")} label="Sitzungscode kopieren" />
       </div>
-      <p className="mt-3 flex gap-2 text-[12.5px] text-fg-3">
+      <p className="mt-3 flex gap-2 text-[13px] text-fg-3">
         <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-green" />
         Keine Software-Installation, keine lokalen Administratorrechte, kein dauerhafter Zugang. Im Demo-Betrieb wird keine Verbindung aufgebaut.
       </p>

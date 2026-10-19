@@ -11,6 +11,7 @@ import { cn } from "@/lib/cn";
 import { KontaktAvatar, ROLLE_LABEL, ROLLE_TONE, istTelefonSuche, telefonPasst, useInteressenkonflikte } from "./kontaktHelfer";
 import { KontaktDrawer } from "./KontaktDrawer";
 import { NeuerKontakt } from "./NeuerKontakt";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 type RollenFilter = "alle" | "mandant" | "gegner" | "gericht" | "versicherung" | "sonstige";
 
@@ -135,8 +136,8 @@ export default function Kontakte() {
             onClick={() => setNurKonflikte((v) => !v)}
             aria-pressed={nurKonflikte}
             className={cn(
-              "inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[12.5px] font-semibold transition-colors",
-              nurKonflikte ? "bg-seal text-surface shadow-[0_6px_16px_-8px_var(--seal)]" : "bg-seal-soft text-seal hover:bg-[color-mix(in_oklab,var(--seal)_18%,transparent)]",
+              "inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium transition-colors duration-100 max-sm:h-11",
+              nurKonflikte ? "bg-[var(--seal)] text-[var(--on-seal)]" : "bg-seal-soft text-[var(--seal-text)] hover:shadow-[inset_0_0_0_1px_var(--seal)]",
             )}
             title="Kontakte, die in einer Akte Mandant und in einer anderen Gegner sind"
           >
@@ -157,7 +158,7 @@ export default function Kontakte() {
       </div>
 
       {liste.length === 0 ? (
-        <div className="sheet rounded-[22px]">
+        <div className="sheet rounded-lg">
           <Empty
             icon={<Users className="size-6" />}
             title={kontakte.length ? "Kein Kontakt gefunden" : "Noch keine Kontakte"}
@@ -173,12 +174,12 @@ export default function Kontakte() {
         <>
           <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 min-[1800px]:grid-cols-4">
             <AnimatePresence initial={false}>
-              {liste.slice(0, anzahl).map((k, i) => (
+              {liste.slice(0, anzahl).map((k) => (
                 <motion.li
                   key={k.id}
                   layout="position"
                   initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0, transition: { delay: Math.min(i, 10) * 0.03, type: "spring", stiffness: 420, damping: 34 } }}
+                  animate={{ opacity: 1, y: 0, transition: BEWEGUNG.standard }}
                   exit={{ opacity: 0, scale: 0.97, transition: { duration: 0.15 } }}
                   className="min-w-0"
                 >
@@ -216,9 +217,9 @@ function KontaktKarte({ k, q, akten, konflikt, aktiv, onClick }: { k: Kontakt; q
       type="button"
       onClick={onClick}
       className={cn(
-        "sheet glow group relative flex h-full w-full flex-col rounded-[22px] p-3.5 text-left sm:p-4 transition-[transform,box-shadow] duration-300 ease-[var(--spring)] hover:-translate-y-0.5 hover:shadow-glass active:scale-[0.99]",
-        aktiv && "shadow-[0_0_0_1.5px_var(--ink)]",
-        konflikt && !aktiv && "shadow-[0_0_0_1px_color-mix(in_oklab,var(--seal)_45%,transparent)]",
+        "sheet group relative flex h-full w-full flex-col rounded-lg p-3.5 text-left transition-colors duration-100 hover:border-[var(--line-strong)] sm:p-4",
+        aktiv && "border-[var(--fg)] shadow-[inset_0_0_0_1px_var(--fg)]",
+        konflikt && !aktiv && "shadow-[inset_2px_0_0_var(--seal)]",
       )}
     >
       <div className="relative flex w-full items-start gap-3">
@@ -227,7 +228,7 @@ function KontaktKarte({ k, q, akten, konflikt, aktiv, onClick }: { k: Kontakt; q
           <div className="title-md truncate">
             <Highlight text={k.name} q={q} />
           </div>
-          <div className="truncate text-[12.5px] text-fg-3">{[ort, k.typ === "person" ? "Person" : "Organisation"].filter(Boolean).join(" · ")}</div>
+          <div className="truncate text-[13px] text-fg-3">{[ort, k.typ === "person" ? "Person" : "Organisation"].filter(Boolean).join(" · ")}</div>
         </div>
         {konflikt && (
           <span className="grid size-7 shrink-0 place-items-center rounded-full bg-seal-soft text-seal" title="Möglicher Interessenkonflikt">
@@ -242,19 +243,19 @@ function KontaktKarte({ k, q, akten, konflikt, aktiv, onClick }: { k: Kontakt; q
           </Chip>
         ))}
       </div>
-      <div className="relative mt-2 truncate text-[12.5px] text-fg-3 sm:hidden">{[k.email, k.telefon].filter(Boolean).join(" · ") || "keine Kontaktdaten"}</div>
-      <div className="relative mt-3 hidden w-full grid-cols-1 gap-1 text-[12.5px] text-fg-2 sm:grid">
+      <div className="relative mt-2 truncate text-[13px] text-fg-3 sm:hidden">{[k.email, k.telefon].filter(Boolean).join(" · ") || "keine Kontaktdaten"}</div>
+      <div className="relative mt-3 hidden w-full grid-cols-1 gap-1 text-[13px] text-fg-2 sm:grid">
         <span className="flex min-w-0 items-center gap-2">
           <AtSign className="size-3.5 shrink-0 text-fg-3" />
           <span className={cn("truncate", !k.email && "text-fg-3")}>{k.email ? <Highlight text={k.email} q={q} /> : "keine E-Mail"}</span>
         </span>
         <span className="flex min-w-0 items-center gap-2">
           <Phone className="size-3.5 shrink-0 text-fg-3" />
-          <span className={cn("num truncate", !k.telefon && "text-fg-3", istTelefonSuche(q) && telefonPasst(k.telefon, q) && "rounded-[6px] bg-ink-soft px-1 font-medium text-ink")}>{k.telefon ?? "kein Telefon"}</span>
+          <span className={cn("num truncate", !k.telefon && "text-fg-3", istTelefonSuche(q) && telefonPasst(k.telefon, q) && "rounded-sm bg-ink-soft px-1 font-medium text-ink")}>{k.telefon ?? "kein Telefon"}</span>
         </span>
       </div>
       <div className="flex-1" />
-      <div className="relative mt-3 flex w-full items-center gap-2 border-t border-[var(--line)] pt-2.5 text-[12.5px] sm:mt-3.5 sm:pt-3">
+      <div className="relative mt-3 flex w-full items-center gap-2 border-t border-[var(--line)] pt-2.5 text-[13px] sm:mt-3.5 sm:pt-3">
         <FolderOpen className="size-3.5 text-fg-3" />
         <span className="text-fg-2">
           {akten.length === 0 ? (
@@ -266,7 +267,7 @@ function KontaktKarte({ k, q, akten, konflikt, aktiv, onClick }: { k: Kontakt; q
             </>
           )}
         </span>
-        {akten[0] && <span className="mono ml-1 truncate text-[12.5px] text-fg-3">{akten.slice(0, 3).map((a) => a.aktenzeichen).join(" · ")}</span>}
+        {akten[0] && <span className="mono ml-1 truncate text-[13px] text-fg-3">{akten.slice(0, 3).map((a) => a.aktenzeichen).join(" · ")}</span>}
         <ChevronRight className="ml-auto size-4 shrink-0 text-fg-3 transition-transform group-hover:translate-x-0.5 group-hover:text-ink" />
       </div>
     </button>

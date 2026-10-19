@@ -9,6 +9,7 @@ import { useData } from "@/store/data";
 import { FallanalysePanel } from "@/components/ki/FallanalysePanel";
 import { Card, Chip, Empty, SearchField } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 const MAX_KARTEN = 8;
 
@@ -80,7 +81,7 @@ export function FallanalyseTab({ akteId, onAkte, autoStart, onAutoStart }: { akt
   if (!offene.length && !gewaehlt) {
     return (
       <Card>
-        <Empty icon={<FolderOpen className="size-6" />} title="Keine offene Akte" text="Legen Sie eine Akte an – danach analysiert die KI Sachverhalt, Präzedenzfälle und Erfolgsaussicht." />
+        <Empty icon={<FolderOpen />} title="Keine offene Akte" text="Legen Sie eine Akte an – danach analysiert die KI Sachverhalt, Präzedenzfälle und Erfolgsaussicht." />
       </Card>
     );
   }
@@ -88,74 +89,72 @@ export function FallanalyseTab({ akteId, onAkte, autoStart, onAutoStart }: { akt
   const mandantName = (a: Akte) => kontakte.find((k) => k.id === a.mandantId)?.name;
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
       <Card className="min-w-0 !p-4 sm:!p-5">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="min-w-0 flex-1">
             <h2 className="title-md">Akte wählen</h2>
-            <p className="mt-0.5 text-[12.5px] text-fg-3">Die KI liest Sachverhalt, Dokumente, Notizen und an die Akte geheftete Entscheidungen.</p>
+            <p className="mt-0.5 text-[13px] leading-[18px] text-fg-3">Die KI liest Sachverhalt, Dokumente, Notizen und an die Akte geheftete Entscheidungen.</p>
           </div>
           <SearchField id="ki-akte-suche" value={q} onChange={setQ} placeholder={`${offene.length} offene Akten durchsuchen …`} className="w-full sm:w-[300px]" />
         </div>
 
         {liste.top.length ? (
-          <div className="-mx-4 flex snap-x snap-mandatory gap-2.5 overflow-x-auto px-4 pb-1 no-scrollbar sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 lg:grid-cols-4">
-            {liste.top.map((a, i) => {
+          // Auswahl als ruhige Liste mit Linien (keine Karten in der Karte); gewählt = Fläche 3 + 2-px-Balken + Haken
+          <ul className="grid grid-cols-1 gap-x-6 border-t border-[var(--line)] lg:grid-cols-2">
+            {liste.top.map((a) => {
               const aktiv = a.id === gewaehlt?.id;
               return (
-                <motion.button
-                  key={a.id}
-                  type="button"
-                  onClick={() => onAkte(a.id)}
-                  aria-pressed={aktiv}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ type: "spring", stiffness: 460, damping: 34, delay: Math.min(i, 10) * 0.03 }}
-                  className={cn(
-                    "relative flex w-[78%] shrink-0 snap-start flex-col gap-1.5 rounded-[18px] p-3.5 text-left transition-[background-color,box-shadow,transform] duration-300 ease-[var(--spring)] active:scale-[0.98] sm:w-auto",
-                    aktiv ? "bg-[var(--ink-softer)]" : "ring-1 ring-[var(--line)] hover:-translate-y-0.5 hover:bg-[var(--ink-softer)]",
-                  )}
-                >
-                  {aktiv && <motion.span layoutId="ki-akte-auswahl" className="pointer-events-none absolute inset-0 rounded-[18px] ring-2 ring-[var(--ink)]" transition={{ type: "spring", stiffness: 520, damping: 38 }} />}
-                  <span className="flex items-center gap-2">
-                    <span className="mono text-[12px] text-fg-3">{a.aktenzeichen}</span>
-                    {a.prioritaet === "hoch" && <span className="size-1.5 rounded-full bg-[var(--seal)]" title="Hohe Priorität" />}
-                    <span className="ml-auto">
-                      {aktiv ? (
-                        <span className="grid size-5 place-items-center rounded-full bg-[var(--ink)] text-[var(--on-ink)]">
-                          <Check className="size-3" strokeWidth={3} />
-                        </span>
-                      ) : (
-                        <Chip className="!h-5">{a.sachgebiet}</Chip>
-                      )}
-                    </span>
-                  </span>
-                  <span className="break-words text-[13.5px] font-semibold leading-snug tracking-[-0.01em]">{a.titel}</span>
-                  <span className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] text-fg-3">
-                    <span className="min-w-0 flex-1 basis-[120px]">{a.phase}{mandantName(a) ? ` · ${mandantName(a)}` : ""}</span>
-                    {a.kiAnalyse && (
-                      <span className="inline-flex shrink-0 items-center gap-1 text-violet" title={`Letzte KI-Analyse ${relTime(a.kiAnalyse.erstelltAm)} – Einschätzung, keine Prozentangabe`}>
-                        <Gauge className="size-3.5" />
-                        <span>{stufeWort(a.kiAnalyse.stufe, a.kiAnalyse.prozent)}</span>
-                      </span>
+                <li key={a.id} className="min-w-0 border-b border-[var(--line)]">
+                  <button
+                    type="button"
+                    onClick={() => onAkte(a.id)}
+                    aria-pressed={aktiv}
+                    className={cn(
+                      "flex w-full min-w-0 items-start gap-3 px-3 py-3 text-left transition-colors duration-100 focus-visible:outline-offset-[-2px]",
+                      aktiv ? "bg-[var(--surface-3)] shadow-[inset_2px_0_0_var(--ink)]" : "hover:bg-[var(--surface-2)]",
                     )}
-                  </span>
-                </motion.button>
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="mono text-[13px] text-fg-3">{a.aktenzeichen}</span>
+                        {a.prioritaet === "hoch" && <span className="text-[12px] text-fg-4">· hohe Priorität</span>}
+                        <Chip className="ml-auto">{a.sachgebiet}</Chip>
+                      </span>
+                      <span className={cn("mt-0.5 block break-words text-[14px] leading-5 text-fg", aktiv ? "font-semibold" : "font-medium")}>{a.titel}</span>
+                      <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] leading-[18px] text-fg-4">
+                        <span className="min-w-0">
+                          {a.phase}
+                          {mandantName(a) ? ` · ${mandantName(a)}` : ""}
+                        </span>
+                        {a.kiAnalyse && (
+                          <span className="inline-flex shrink-0 items-center gap-1" title={`Letzte KI-Analyse ${relTime(a.kiAnalyse.erstelltAm)} – Einschätzung, keine Prozentangabe`}>
+                            <Gauge className="size-3.5" aria-hidden />
+                            <span>{stufeWort(a.kiAnalyse.stufe, a.kiAnalyse.prozent)}</span>
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                    <span className={cn("mt-0.5 grid size-5 shrink-0 place-items-center", aktiv ? "text-fg" : "text-transparent")} aria-hidden>
+                      <Check className="size-4" strokeWidth={2} />
+                    </span>
+                  </button>
+                </li>
               );
             })}
-          </div>
+          </ul>
         ) : (
-          <p className="rounded-[14px] bg-[var(--ink-softer)] px-4 py-3 text-[13px] text-fg-3">Keine offene Akte passt zu „{q}“.</p>
+          <p className="border-t border-[var(--line)] py-4 text-[14px] text-fg-3">Keine offene Akte passt zu „{q}“.</p>
         )}
         {liste.gesamt > MAX_KARTEN && (
-          <p className="mt-3 text-[12.5px] text-fg-3">
+          <p className="mt-3 text-[13px] text-fg-4">
             {liste.top.length} von {liste.gesamt} Akten – mit der Suche finden Sie jede weitere.
           </p>
         )}
       </Card>
 
       {gewaehlt && (
-        <motion.div ref={panelRef} key={gewaehlt.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", stiffness: 380, damping: 34 }} className={cn("min-w-0 scroll-mt-24", fokusId === gewaehlt.id && "min-h-[calc(100dvh-8rem)]")}>
+        <motion.div ref={panelRef} key={gewaehlt.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={BEWEGUNG.standard} className={cn("min-w-0 scroll-mt-24", fokusId === gewaehlt.id && "min-h-[calc(100dvh-8rem)]")}>
           <FallanalysePanel
             key={gewaehlt.id}
             akteId={gewaehlt.id}

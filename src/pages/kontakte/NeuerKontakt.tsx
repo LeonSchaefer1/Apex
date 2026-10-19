@@ -143,7 +143,7 @@ export function NeuerKontakt({ open, onClose, rolle, onAngelegt }: { open: boole
         <AnimatePresence initial={false}>
           {dublette && (
             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-              <section className="grid gap-3 rounded-[16px] bg-amber-soft p-3.5 text-[13px] text-fg-2" aria-labelledby="nk-dublette-titel">
+              <section className="grid gap-3 rounded-lg bg-amber-soft p-3.5 text-[13px] text-fg-2" aria-labelledby="nk-dublette-titel">
                 <div className="flex items-start gap-2.5" role="status">
                   <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[var(--amber-text)]" aria-hidden />
                   <div className="min-w-0 flex-1">
@@ -166,8 +166,8 @@ export function NeuerKontakt({ open, onClose, rolle, onAngelegt }: { open: boole
                     </p>
                   </div>
                 </div>
-                <div className="grid gap-2 rounded-[12px] bg-[var(--surface)] p-3 shadow-[0_0_0_1px_var(--line)]">
-                  <p id="nk-trotzdem-hinweis" className="text-[12.5px] text-fg-3">
+                <div className="grid gap-2 rounded-md bg-[var(--surface)] p-3 shadow-[0_0_0_1px_var(--line)]">
+                  <p id="nk-trotzdem-hinweis" className="text-[13px] text-fg-3">
                     Nur wenn es wirklich {dublette.kontakt.typ === "organisation" ? "eine andere Firma" : "eine andere Person"} ist: Begründung (mindestens {BEGRUENDUNG_MIN} Zeichen) und Bestätigung – beides steht im Protokoll.
                   </p>
                   <Field label="Andere Firma/Person, weil … (Pflicht)" htmlFor="nk-begruendung">
@@ -182,7 +182,7 @@ export function NeuerKontakt({ open, onClose, rolle, onAngelegt }: { open: boole
                     />
                   </Field>
                   {zeigeFehler && !begruendungOk && (
-                    <p id="nk-begruendung-fehler" role="alert" className="text-[12.5px] font-medium text-seal">
+                    <p id="nk-begruendung-fehler" role="alert" className="text-[13px] font-medium text-seal">
                       Bitte begründen, warum es nicht derselbe Datensatz ist – mindestens {BEGRUENDUNG_MIN} Zeichen.
                     </p>
                   )}
@@ -191,7 +191,7 @@ export function NeuerKontakt({ open, onClose, rolle, onAngelegt }: { open: boole
                     <span>Ich habe geprüft: Es ist nicht {dublette.kontakt.typ === "organisation" ? "dieselbe Firma" : "dieselbe Person"}.</span>
                   </label>
                   {zeigeFehler && begruendungOk && !geprueft && (
-                    <p role="alert" className="text-[12.5px] font-medium text-seal">
+                    <p role="alert" className="text-[13px] font-medium text-seal">
                       Bitte die Prüfung bestätigen.
                     </p>
                   )}
@@ -206,12 +206,12 @@ export function NeuerKontakt({ open, onClose, rolle, onAngelegt }: { open: boole
           </div>
           <RollenWahl value={rollen} onChange={setRollen} labelId="nk-rollen-label" beschreibungId={versucht && rollen.length === 0 ? "nk-rollen-fehler" : "nk-rollen-hinweis"} ungueltig={versucht && rollen.length === 0} erstesId="nk-rolle-erste" />
           {versucht && rollen.length === 0 ? (
-            <p id="nk-rollen-fehler" className="mt-1.5 flex items-start gap-1.5 text-[12.5px] font-medium text-seal">
+            <p id="nk-rollen-fehler" className="mt-1.5 flex items-start gap-1.5 text-[13px] font-medium text-seal">
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
               Bitte mindestens eine Rolle wählen – sie bestimmt, wo der Kontakt in Akten auswählbar ist.
             </p>
           ) : (
-            <p id="nk-rollen-hinweis" className="mt-1.5 text-[12.5px] text-fg-3">
+            <p id="nk-rollen-hinweis" className="mt-1.5 text-[13px] text-fg-3">
               Mindestens eine Rolle – sie bestimmt, wo der Kontakt in Akten auswählbar ist.
             </p>
           )}

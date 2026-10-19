@@ -1,12 +1,11 @@
 import { useId, useState } from "react";
-import { motion } from "motion/react";
 import { CalendarClock, FileText, Inbox, Landmark, MessagesSquare, Timer, UsersRound } from "lucide-react";
 import { AnimatedNumber, Input, Segmented } from "@/components/ui";
 import { AUTOMATION_DEFS, JAHRESARBEITSSTUNDEN, PERSONALKOSTEN_JAHR, REFA_VOLLKOSTEN_STUNDE, WERT_PRO_STUNDE, WOCHEN_PRO_JAHR, jahreswert, kostensatz } from "@/core/automationen";
 import { fmtEUR, fmtNum } from "@/core/dates";
 import { cn } from "@/lib/cn";
 import { useMedia } from "@/lib/useMedia";
-import { Abschnitt, Kopf, Reveal } from "./basis";
+import { Abschnitt, Kopf, Leise } from "./basis";
 import { NBSP, mitEinheit, schuetzeKennzahlen } from "@/lib/typografie";
 
 /** Zielwert der Werbeaussage: Ø 38 Std. gesparte Routine pro Kanzlei und Woche ≈ 36.000 € pro Jahr (mit 19,74 €/Std.). */
@@ -24,48 +23,51 @@ const KATEGORIE_ICON = {
 
 const AUSWAHL = ["posteingang-fristen", "zuordnung", "vorfristen", "mandanten-update", "mandatsaufnahme", "deckungsanfrage", "bankabgleich", "mahnwesen"];
 
+/**
+ * 38h-Motor (DESIGN-SYSTEM.md 14.5): links die Automatiken als Liste mit Linien (Zeit je Vorgang rechts, ohne grüne Plaketten),
+ * rechts der Rechner als ein flacher Block (Radius 12, Linie, kein Schatten). Alle Werte gleichrangig in Text 1.
+ */
 export function MotorAbschnitt() {
   const autos = AUSWAHL.map((k) => AUTOMATION_DEFS.find((a) => a.key === k)!).filter(Boolean);
   return (
-    <Abschnitt id="motor">
+    <Abschnitt id="motor" labelledBy="motor-titel">
       <Kopf
-        eyebrow={
-          <>
-            So spart der <span className="normal-case">38h</span>-Motor Zeit
-          </>
-        }
+        id="motor-titel"
+        eyebrow="So spart der 38h-Motor Zeit"
         titel={
           <>
             Routine erledigt sich.
-            <br /> <span className="text-fg-3">Sie bleiben beim Mandat.</span>
+            <br /> <Leise>Sie bleiben beim Mandat.</Leise>
           </>
         }
         text={schuetzeKennzahlen("Jede Automatik misst, wie viel Zeit sie je bearbeitetem Vorgang spart. Nach außen geht nichts ohne Ihre Freigabe. Unser Ziel: Ø 38 Stunden Routinearbeit pro Woche und Kanzlei – fast eine volle Stelle, die wieder für Mandate frei wird.")}
       />
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
-        <Reveal className="sheet relative overflow-hidden rounded-[28px] p-6 sm:p-7">
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="title-lg">Was der Motor übernimmt</h3>
-            <span className="hidden text-[12.5px] text-fg-3 sm:inline">Zeit je Vorgang</span>
+      <div className="grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-16">
+        <div className="min-w-0">
+          <div className="flex items-baseline justify-between gap-3 pb-3">
+            <h3 className="title-md">Was der Motor übernimmt</h3>
+            <span className="text-[13px] text-fg-4">Zeit je Vorgang</span>
           </div>
-          <ul className="mt-5 grid grid-cols-1 gap-1">
-            {autos.map((a, k) => (
-              <Reveal as="li" key={a.key} delay={k * 0.035} y={12} className="group flex min-w-0 items-center gap-3 rounded-[16px] px-2 py-2.5 transition-colors hover:bg-ink-softer">
-                <span className="grid size-9 shrink-0 place-items-center rounded-[11px] bg-ink-soft text-ink">{KATEGORIE_ICON[a.kategorie]}</span>
+          <ul className="divide-y divide-[var(--line)] border-y border-[var(--line)]">
+            {autos.map((a) => (
+              <li key={a.key} className="flex min-w-0 items-start gap-3 py-3.5">
+                <span className="mt-0.5 shrink-0 text-fg-4" aria-hidden>
+                  {KATEGORIE_ICON[a.kategorie]}
+                </span>
                 <span className="min-w-0 flex-1">
-                  <span className="line-clamp-2 hyphens-auto break-words text-[14px] font-semibold leading-snug sm:line-clamp-1">{a.name}</span>
-                  <span className="block truncate text-[12.5px] text-fg-3">Auslöser: {a.ausloeser}</span>
-                  {a.freigabe && <span className="block truncate text-[12.5px] text-fg-2">Freigabe: {a.freigabe}</span>}
+                  <span className="block hyphens-auto break-words text-[15px] font-medium leading-[22px] text-fg">{a.name}</span>
+                  <span className="block text-[13px] leading-[18px] text-fg-3">Auslöser: {a.ausloeser}</span>
+                  {a.freigabe && <span className="block text-[13px] leading-[18px] text-fg-3">Freigabe: {a.freigabe}</span>}
                 </span>
-                <span className="num shrink-0 rounded-full bg-green-soft px-2.5 py-1 text-right text-[12.5px] font-semibold leading-tight text-green" title={a.vorgang}>
-                  {a.minutenProLauf} Min.
-                  {a.vorgang && <span className="block text-[12px] font-medium opacity-80">{a.vorgang}</span>}
+                <span className="shrink-0 text-right" title={a.vorgang}>
+                  <span className="num block text-[14px] font-semibold leading-5 text-fg">{a.minutenProLauf}{NBSP}Min.</span>
+                  {a.vorgang && <span className="block text-[12px] leading-4 text-fg-4">{a.vorgang}</span>}
                 </span>
-              </Reveal>
+              </li>
             ))}
           </ul>
-          <p className="mt-4 text-[13px] leading-relaxed text-fg-2">Alle Automatiken laufen im Hintergrund, protokollieren jeden Schritt und lassen sich einzeln ein- und ausschalten. Was die Kanzlei verlässt, legt der Motor immer zur Freigabe vor; Fristen gehen in die Vier-Augen-Kontrolle. Gezählt wird nur, was tatsächlich bearbeitet wurde – ein Bankabruf ohne neue Zahlung spart keine Minute.</p>
-        </Reveal>
+          <p className="mt-5 text-[14px] leading-[22px] text-fg-3">Alle Automatiken laufen im Hintergrund, protokollieren jeden Schritt und lassen sich einzeln ein- und ausschalten. Was die Kanzlei verlässt, legt der Motor immer zur Freigabe vor; Fristen gehen in die Vier-Augen-Kontrolle. Gezählt wird nur, was tatsächlich bearbeitet wurde – ein Bankabruf ohne neue Zahlung spart keine Minute.</p>
+        </div>
         <Rechner />
       </div>
     </Abschnitt>
@@ -88,14 +90,13 @@ function Rechner() {
   const schmal = useMedia("(max-width: 359px)");
   return (
     // Unter 360 px (Reflow 320 px, WCAG 1.4.10): Innenabstand 16 px, Werte unter dem Etikett, Skala und Umschalter umbrechend
-    <Reveal delay={0.06} className="sheet relative flex min-w-0 flex-col overflow-hidden rounded-[28px] p-4 min-[360px]:p-6 sm:p-7">
-      <div aria-hidden className="pointer-events-none absolute -right-20 -top-24 size-72 rounded-full opacity-60 blur-3xl" style={{ background: "radial-gradient(circle, var(--green-soft), transparent 70%)" }} />
-      <div className="relative flex items-center justify-between gap-3">
+    <div className="flex min-w-0 flex-col self-start rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4 min-[360px]:p-6 sm:p-8">
+      <div className="flex items-center justify-between gap-3">
         <h3 className="title-lg">Ihre Ersparnis</h3>
         <span className="chip chip-outline">Beispielrechnung</span>
       </div>
 
-      <div className="relative mt-6 grid grid-cols-[minmax(0,1fr)] gap-6">
+      <div className="mt-6 grid grid-cols-[minmax(0,1fr)] gap-6">
         <Regler
           id="roi-stunden"
           label="Gesparte Routine pro Woche"
@@ -109,14 +110,15 @@ function Rechner() {
         />
         <div>
           <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 max-[359px]:flex-col max-[359px]:items-start">
-            <span className="text-[13.5px] font-medium text-fg-2" id="roi-satz-label">
+            <span className="text-[14px] font-medium text-fg-2" id="roi-satz-label">
               Interner Kostensatz je Stunde
             </span>
-            <span className="num shrink-0 whitespace-nowrap text-[18px] font-semibold tracking-[-0.02em]">{satzText}</span>
+            <span className="num shrink-0 whitespace-nowrap text-[18px] font-semibold tracking-[-0.01em] text-fg">{satzText}</span>
           </div>
           <Segmented<SatzModus>
             full
             wrap={schmal}
+            mobilGross
             size="sm"
             value={modus}
             onChange={setModus}
@@ -131,91 +133,94 @@ function Rechner() {
                 Personalkosten pro Jahr (Arbeitgeber-Brutto, €)
                 <Input id="roi-personal" inputMode="numeric" value={personal} onChange={(e) => setPersonal(e.target.value)} className="num" />
               </label>
-              <span className="pb-2.5 text-[13px] text-fg-3">÷ {mitEinheit(fmtNum(JAHRESARBEITSSTUNDEN), "Std.")} = {satzText}</span>
+              <span className="pb-2 text-[13px] text-fg-3">÷ {mitEinheit(fmtNum(JAHRESARBEITSSTUNDEN), "Std.")} = {satzText}</span>
             </div>
           ) : (
-            <p className="mt-2 text-[13px] leading-relaxed text-fg-3">{schuetzeKennzahlen("36.000 € ÷ (38 Std. × 48 Wochen) – ein bewusst niedrig angesetzter Zielwert.")}</p>
+            <p className="mt-2 text-[13px] leading-5 text-fg-3">{schuetzeKennzahlen("36.000 € ÷ (38 Std. × 48 Wochen) – ein bewusst niedrig angesetzter Zielwert.")}</p>
           )}
         </div>
       </div>
 
-      <div className="relative mt-7 rounded-[22px] bg-[var(--ink-softer)] p-5 shadow-[inset_0_0_0_1px_var(--line)] max-[359px]:p-4">
+      <div className="mt-8 border-t border-[var(--line)] pt-6">
         <div className="text-[13px] font-medium text-fg-3">Wert der gesparten Zeit pro Jahr</div>
-        <div className="mt-1 text-[clamp(38px,5vw,56px)] font-bold leading-none tracking-[-0.045em] text-green">
+        <div className="num mt-1 text-[clamp(32px,8vw,44px)] font-semibold leading-[1.1] tracking-[-0.03em] text-fg">
           ≈{NBSP}<AnimatedNumber value={jahr} format={(n) => fmtEUR(Math.round(n / 100) * 100, { cents: false })} />
         </div>
-        <div className="num mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-fg-2">
-          <span className="rounded-full bg-[var(--surface)] px-2.5 py-1 shadow-[inset_0_0_0_1px_var(--line)]">{mitEinheit(fmtNum(stunden), "Std./Woche")}</span>
-          <span className="text-fg-4">×</span>
-          <span className="rounded-full bg-[var(--surface)] px-2.5 py-1 shadow-[inset_0_0_0_1px_var(--line)]">{mitEinheit(WOCHEN_PRO_JAHR, "Arbeitswochen")}</span>
-          <span className="text-fg-4">×</span>
-          <span className="rounded-full bg-[var(--surface)] px-2.5 py-1 shadow-[inset_0_0_0_1px_var(--line)]">{satzText}</span>
-        </div>
-        <div className="mt-5 grid grid-cols-2 gap-3 max-[359px]:grid-cols-1">
-          <div className="rounded-[16px] bg-[var(--surface)] p-3.5 shadow-[inset_0_0_0_1px_var(--line)]">
-            <Timer className="size-4 text-ink" />
-            <div className="num mt-2 whitespace-nowrap text-[clamp(18px,4.8vw,22px)] font-semibold leading-none tracking-[-0.03em]">
+        <p className="num mt-2 text-[13px] text-fg-3">
+          {mitEinheit(fmtNum(stunden), "Std./Woche")} × {mitEinheit(WOCHEN_PRO_JAHR, "Arbeitswochen")} × {satzText}
+        </p>
+        <dl className="mt-6 grid grid-cols-2 border-t border-[var(--line)] max-[359px]:grid-cols-1">
+          <div className="pr-4 pt-4">
+            <dt className="flex items-center gap-1.5 text-[13px] text-fg-3">
+              <Timer className="size-4 text-fg-4" aria-hidden /> pro Jahr zurückgewonnen
+            </dt>
+            <dd className="num mt-1 whitespace-nowrap text-[20px] font-semibold leading-7 tracking-[-0.015em] text-fg">
               <AnimatedNumber value={stundenJahr} />{NBSP}Std.
-            </div>
-            <div className="mt-1 text-[12.5px] text-fg-3">pro Jahr zurückgewonnen</div>
+            </dd>
           </div>
-          <div className="rounded-[16px] bg-[var(--surface)] p-3.5 shadow-[inset_0_0_0_1px_var(--line)]">
-            <UsersRound className="size-4 text-ink" />
-            <div className="num mt-2 whitespace-nowrap text-[clamp(18px,4.8vw,22px)] font-semibold leading-none tracking-[-0.03em]">≈{NBSP}{fmtNum(stellen, stellen < 10 ? 2 : 1)}</div>
-            <div className="mt-1 text-[12.5px] text-fg-3">Vollzeitstellen ({mitEinheit(STUNDEN_JE_STELLE, "Std.")}) frei für Mandate</div>
+          <div className="border-l border-[var(--line)] pl-4 pt-4 max-[359px]:border-l-0 max-[359px]:pl-0">
+            <dt className="flex items-center gap-1.5 text-[13px] text-fg-3">
+              <UsersRound className="size-4 shrink-0 text-fg-4" aria-hidden /> Vollzeitstellen ({mitEinheit(STUNDEN_JE_STELLE, "Std.")}) frei für Mandate
+            </dt>
+            <dd className="num mt-1 whitespace-nowrap text-[20px] font-semibold leading-7 tracking-[-0.015em] text-fg">≈{NBSP}{fmtNum(stellen, stellen < 10 ? 2 : 1)}</dd>
           </div>
-        </div>
+        </dl>
       </div>
-      <p className="relative mt-4 text-[13px] leading-relaxed text-fg-2">
+      <p className="mt-6 text-[13px] leading-5 text-fg-2">
         {schuetzeKennzahlen(
           `Unser Zielwert von ≈ 36.000 € rechnet bewusst mit 19,74 €/Std.; mit ReFa-Vollkosten von ca. 26 €/Std. wären es ≈ ${fmtEUR(Math.round(jahreswert(RICHTWERT_STUNDEN, REFA_VOLLKOSTEN_STUNDE) / 100) * 100, { cents: false })} (38 × 48 × ${fmtEUR(REFA_VOLLKOSTEN_STUNDE)}).`,
         )}
       </p>
-      <p className="relative mt-2 text-[13px] leading-relaxed text-fg-3">
+      <p className="mt-2 text-[13px] leading-5 text-fg-3">
         Beispielrechnung: Stunden pro Woche × {mitEinheit(WOCHEN_PRO_JAHR, "Arbeitswochen")} × interner Kostensatz. ReFa-Vollkosten als Annahme: {fmtEUR(PERSONALKOSTEN_JAHR, { cents: false })} Personalkosten ÷ {mitEinheit(fmtNum(JAHRESARBEITSSTUNDEN), "Jahresarbeitsstunden")}. Kein garantiertes Ergebnis: Die tatsächliche Ersparnis hängt von Fallzahlen, Sachgebieten und Abläufen ab – der 38h-Motor misst sie in Ihrer Kanzlei je bearbeitetem Vorgang.
       </p>
-    </Reveal>
+    </div>
   );
 }
 
-/** Schieberegler im iOS-Stil – nativer Range-Input, voll per Tastatur bedienbar. */
+/**
+ * Schieberegler: nativer Range-Input (voll per Tastatur bedienbar) über einer eigenen Spur – gefüllter Teil Akzent, Rest Linie
+ * stark (≥ 3 : 1), Daumen in Akzent. Kein Verlauf. Trefferfläche 28 px, am Telefon 44 px.
+ */
 function Regler({ id, label, wert, min, max, schritt, onChange, anzeige, hinweis }: { id: string; label: string; wert: number; min: number; max: number; schritt: number; onChange: (v: number) => void; anzeige: string; hinweis?: string }) {
   const p = ((wert - min) / (max - min)) * 100;
   const hid = useId();
   return (
     <div>
-      <div className="mb-2.5 flex items-baseline justify-between gap-x-3 gap-y-0.5 max-[359px]:flex-col max-[359px]:items-start">
-        <label htmlFor={id} className="text-[13.5px] font-medium text-fg-2">
+      <div className="mb-1 flex items-baseline justify-between gap-x-3 gap-y-0.5 max-[359px]:flex-col max-[359px]:items-start">
+        <label htmlFor={id} className="text-[14px] font-medium text-fg-2">
           {label}
         </label>
-        <motion.span key={anzeige} initial={{ scale: 0.9, opacity: 0.5 }} animate={{ scale: 1, opacity: 1 }} className="num shrink-0 whitespace-nowrap text-[18px] font-semibold tracking-[-0.02em]">
-          {anzeige}
-        </motion.span>
+        <span className="num shrink-0 whitespace-nowrap text-[18px] font-semibold tracking-[-0.01em] text-fg">{anzeige}</span>
       </div>
-      <input
-        id={id}
-        type="range"
-        min={min}
-        max={max}
-        step={schritt}
-        value={wert}
-        aria-describedby={hinweis ? hid : undefined}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className={cn(
-          "h-7 w-full cursor-pointer appearance-none bg-transparent focus-visible:outline-none",
-          "[&::-webkit-slider-runnable-track]:h-[6px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-[image:var(--track)]",
-          "[&::-webkit-slider-thumb]:-mt-[11px] [&::-webkit-slider-thumb]:size-7 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_2px_8px_rgba(0,0,0,0.22),0_0_0_0.5px_rgba(0,0,0,0.06)] [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:duration-200 active:[&::-webkit-slider-thumb]:scale-110",
-          "[&::-moz-range-track]:h-[6px] [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-[image:var(--track)]",
-          "[&::-moz-range-thumb]:size-7 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:shadow-[0_2px_8px_rgba(0,0,0,0.22)]",
-          "focus-visible:[&::-webkit-slider-thumb]:ring-4 focus-visible:[&::-webkit-slider-thumb]:ring-[var(--focus)]",
-        )}
-        style={{ ["--track" as string]: `linear-gradient(to right, var(--ink) 0%, var(--ink-bright) ${p}%, var(--line-strong) ${p}%)` }}
-      />
-      <div className="mt-1 flex flex-wrap justify-between gap-x-2 text-[12.5px] text-fg-3">
+      <div className="relative h-11 sm:h-7">
+        <span aria-hidden className="pointer-events-none absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-[var(--line-strong)]">
+          <span className="absolute inset-y-0 left-0 rounded-full bg-[var(--ink)]" style={{ width: `calc(${(p / 100).toFixed(4)} * (100% - 18px) + 9px)` }} />
+        </span>
+        <input
+          id={id}
+          type="range"
+          min={min}
+          max={max}
+          step={schritt}
+          value={wert}
+          aria-describedby={hinweis ? hid : undefined}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className={cn(
+            "relative block h-full w-full cursor-pointer appearance-none bg-transparent focus-visible:outline-none",
+            "[&::-webkit-slider-runnable-track]:h-full [&::-webkit-slider-runnable-track]:bg-transparent",
+            "[&::-webkit-slider-thumb]:mt-[calc((var(--rh)-18px)/2)] [&::-webkit-slider-thumb]:size-[18px] [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[var(--ink)] [&::-webkit-slider-thumb]:shadow-[0_0_0_3px_var(--surface)]",
+            "[&::-moz-range-track]:bg-transparent [&::-moz-range-thumb]:size-[18px] [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-[var(--ink)] [&::-moz-range-thumb]:shadow-[0_0_0_3px_var(--surface)]",
+            "focus-visible:[&::-webkit-slider-thumb]:shadow-[0_0_0_3px_var(--surface),0_0_0_5px_var(--focus)] focus-visible:[&::-moz-range-thumb]:shadow-[0_0_0_3px_var(--surface),0_0_0_5px_var(--focus)]",
+            "[--rh:44px] sm:[--rh:28px]",
+          )}
+        />
+      </div>
+      <div className="flex flex-wrap justify-between gap-x-2 text-[12px] leading-4 text-fg-4">
         <span>{min}</span>
         {hinweis && (
-          // unter 360 px eigene Zeile unter der Skala (5 … 120), sonst mittig zwischen den Marken
-          <span id={hid} className="px-2 text-center max-[359px]:order-last max-[359px]:basis-full max-[359px]:px-0 max-[359px]:text-left">
+          // am Telefon eigene Zeile unter der Skala (5 … 120), sonst mittig zwischen den Marken
+          <span id={hid} className="px-2 text-center text-fg-3 max-sm:order-last max-sm:mt-1 max-sm:basis-full max-sm:px-0 max-sm:text-left">
             {hinweis}
           </span>
         )}

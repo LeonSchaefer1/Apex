@@ -197,7 +197,7 @@ export function KorrekturDialog({ f, user, open, onClose }: { f: Frist; user: Us
 
   const fehlerText = (k: keyof typeof fehler) =>
     zeigeFehler(k) ? (
-      <p id={`${feldId[k]}-fehler`} className="mt-1.5 flex items-start gap-1.5 text-[12.5px] font-medium text-seal">
+      <p id={`${feldId[k]}-fehler`} className="mt-1.5 flex items-start gap-1.5 text-[13px] font-medium text-seal">
         <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
         {fehler[k]}
       </p>
@@ -234,12 +234,12 @@ export function KorrekturDialog({ f, user, open, onClose }: { f: Frist; user: Us
     >
       <div className="grid gap-4">
         {f.korrekturAngefordert && (
-          <p className="rounded-[14px] bg-amber-soft px-3.5 py-2.5 text-[12.5px] leading-relaxed text-fg-2">
+          <p className="rounded-lg bg-amber-soft px-3.5 py-2.5 text-[13px] leading-relaxed text-fg-2">
             <strong className="font-semibold text-fg">Korrektur angefordert:</strong> {f.korrekturAngefordert.grund}
           </p>
         )}
         {eeb && eebDatum && (
-          <p id="korr-eeb" className="flex items-start gap-2 rounded-[14px] bg-[var(--ink-softer)] px-3.5 py-2.5 text-[12.5px] leading-relaxed text-fg-2 ring-1 ring-inset ring-[var(--line)]">
+          <p id="korr-eeb" className="flex items-start gap-2 rounded-md bg-[var(--surface-2)] px-3.5 py-2.5 text-[13px] leading-relaxed text-fg-2">
             <ShieldCheck className="mt-0.5 size-4 shrink-0 text-green" aria-hidden />
             <span>
               <strong className="num font-semibold text-fg">Zustellungsdatum laut eEB: {fmtDateWd(eebDatum)}</strong>
@@ -287,7 +287,7 @@ export function KorrekturDialog({ f, user, open, onClose }: { f: Frist; user: Us
                 aria-describedby={[ereignisSperre ? "korr-ereignis-sperre" : "", zeigeFehler("ereignis") ? "korr-ereignis-fehler" : "", eebDatum ? "korr-eeb" : ""].filter(Boolean).join(" ") || undefined}
               />
               {ereignisSperre && (
-                <p id="korr-ereignis-sperre" className="mt-1.5 flex items-start gap-1.5 text-[12.5px] font-medium text-seal">
+                <p id="korr-ereignis-sperre" className="mt-1.5 flex items-start gap-1.5 text-[13px] font-medium text-seal">
                   <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
                   {ereignisSperre}
                 </p>
@@ -304,7 +304,7 @@ export function KorrekturDialog({ f, user, open, onClose }: { f: Frist; user: Us
                     : `Wie bei der ursprünglichen Berechnung${ortFrist.quelle === "akte" ? " (Gericht der Akte)" : ortFrist.quelle === "hand" ? " (von Hand gewählt)" : ""} – maßgeblich sind die Feiertage am Ort der Fristwahrung (§ 222 Abs. 2 ZPO).`
                 }
               >
-                <div id="korr-land" className="flex min-h-11 items-center gap-2 rounded-[14px] bg-ink-softer px-3.5 py-2 text-[13.5px] ring-1 ring-inset ring-[var(--line)]">
+                <div id="korr-land" className="flex min-h-11 items-center gap-2 rounded-md bg-[var(--surface-2)] px-3.5 py-2 text-[14px]">
                   <Landmark className="size-4 shrink-0 text-fg-3" aria-hidden />
                   <span className="min-w-0 break-words font-medium">{ortText}</span>
                 </div>
@@ -335,7 +335,7 @@ export function KorrekturDialog({ f, user, open, onClose }: { f: Frist; user: Us
                     ))}
                   </Select>
                   {widerspruch && landWahl && (
-                    <div role="alert" className="grid gap-2 rounded-[14px] bg-seal-soft p-3 text-[12.5px] leading-relaxed text-seal">
+                    <div role="alert" className="grid gap-2 rounded-lg bg-seal-soft p-3 text-[13px] leading-relaxed text-seal">
                       <div className="flex gap-2">
                         <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
                         <span>
@@ -360,7 +360,7 @@ export function KorrekturDialog({ f, user, open, onClose }: { f: Frist; user: Us
         )}
         {/* Abweichung vom Zustellungsdatum laut eEB: später → rote Warnung mit Pflichthäkchen, früher → Hinweis */}
         {spaeterAlsEeb && eebDatum && (
-          <div role="alert" className="grid gap-2 rounded-[14px] bg-seal-soft p-3 text-[12.5px] leading-relaxed text-seal">
+          <div role="alert" className="grid gap-2 rounded-lg bg-seal-soft p-3 text-[13px] leading-relaxed text-seal">
             <div className="flex gap-2">
               <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
               <span>
@@ -381,7 +381,7 @@ export function KorrekturDialog({ f, user, open, onClose }: { f: Frist; user: Us
           </div>
         )}
         {modus === "rechner" && pruefung.abweichung && !pruefung.abweichung.spaeter && !ereignisSperre && (
-          <p role="status" className="flex items-start gap-2 rounded-[14px] bg-amber-soft px-3.5 py-2.5 text-[12.5px] leading-relaxed text-fg-2">
+          <p role="status" className="flex items-start gap-2 rounded-lg bg-amber-soft px-3.5 py-2.5 text-[13px] leading-relaxed text-fg-2">
             <Info className="mt-0.5 size-4 shrink-0 text-amber" aria-hidden />
             <span>
               <strong className="font-semibold text-fg">Früher als das Zustellungsdatum laut eEB ({fmtDate(eebDatum)}).</strong> {pruefung.abweichung.text}
@@ -389,12 +389,12 @@ export function KorrekturDialog({ f, user, open, onClose }: { f: Frist; user: Us
           </p>
         )}
         {neu && (
-          <div className="rounded-[16px] bg-ink-softer p-3.5 ring-1 ring-inset ring-[var(--line)]">
-            <div className="flex flex-wrap items-center gap-2 text-[13.5px]">
+          <div className="rounded-md bg-[var(--surface-2)] p-3.5">
+            <div className="flex flex-wrap items-center gap-2 text-[14px]">
               <span className="num text-fg-3 line-through">{fmtDateWd(f.datum)}</span>
               <ArrowRight className="size-4 text-fg-3" aria-hidden />
               <span className="num font-semibold text-fg">{fmtDateWd(neu.datum)}</span>
-              {neu.vorfrist && <span className="num text-[12.5px] text-fg-3">· Vorfrist {fmtDateWd(neu.vorfrist)}</span>}
+              {neu.vorfrist && <span className="num text-[13px] text-fg-3">· Vorfrist {fmtDateWd(neu.vorfrist)}</span>}
             </div>
             {modus === "rechner" && erg && (
               <div className="mt-3">
@@ -407,7 +407,7 @@ export function KorrekturDialog({ f, user, open, onClose }: { f: Frist; user: Us
           </div>
         )}
         {geschwister.length > 0 && (
-          <fieldset className="grid gap-1.5 rounded-[16px] p-3.5 ring-1 ring-inset ring-[var(--line)]">
+          <fieldset className="grid gap-1.5 rounded-lg p-3.5 ring-1 ring-inset ring-[var(--line)]">
             <legend className="eyebrow px-1">Fristen aus derselben Nachricht</legend>
             {geschwister.map((g) => (
               <label key={g.f.id} className="flex min-h-11 items-start gap-2 py-1 text-[13px] text-fg sm:min-h-0">
@@ -429,7 +429,7 @@ export function KorrekturDialog({ f, user, open, onClose }: { f: Frist; user: Us
           <Textarea id="korr-grund" rows={2} value={grund} onChange={(e) => setGrund(e.target.value)} placeholder="z. B. Fristart falsch gewählt" {...fehlerAttr("grund")} />
           {fehlerText("grund")}
         </Field>
-        <p className="text-[12.5px] text-fg-3">Der vorherige Stand bleibt nachvollziehbar gespeichert; die Korrektur steht im Verlauf der Akte. Danach ist die Vier-Augen-Kontrolle wieder offen.</p>
+        <p className="text-[13px] text-fg-3">Der vorherige Stand bleibt nachvollziehbar gespeichert; die Korrektur steht im Verlauf der Akte. Danach ist die Vier-Augen-Kontrolle wieder offen.</p>
       </div>
     </Modal>
   );
@@ -468,7 +468,7 @@ export function KorrekturAnfordernDialog({ f, user, open, onClose, verantwortlic
       <Field label="Was ist zu korrigieren? (Pflicht)" htmlFor="korr-anf-grund">
         <Textarea id="korr-anf-grund" rows={3} value={grund} onChange={(e) => setGrund(e.target.value)} placeholder="z. B. Fristart oder Ereignisdatum prüfen" />
       </Field>
-      <p className="mt-3 text-[12.5px] text-fg-3">Die Frist bleibt bis zur Korrektur unkontrolliert; der Hinweis erscheint an der Frist und im Verlauf.</p>
+      <p className="mt-3 text-[13px] text-fg-3">Die Frist bleibt bis zur Korrektur unkontrolliert; der Hinweis erscheint an der Frist und im Verlauf.</p>
     </Modal>
   );
 }

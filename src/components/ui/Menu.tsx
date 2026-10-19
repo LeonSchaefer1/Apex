@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { cn } from "@/lib/cn";
 import { useEscEbene } from "./Modal";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 export interface MenuItem {
   label: ReactNode;
@@ -34,7 +35,7 @@ const RAND = 8;
 const ABSTAND = 8;
 
 /**
- * Kontextmenü als Glas-Popover in eigener Ebene (Portal in `document.body`, position: fixed): Es wird von keinem Container mit
+ * Kontextmenü als schwebende Ebene (Fläche, 1-px-Linie, leiser Schatten im Hellen) in eigener Ebene (Portal in `document.body`, position: fixed): Es wird von keinem Container mit
  * `overflow: hidden` abgeschnitten und liegt über Kopfleiste, Kacheln und offenen Dialogen (I3-T16-01). Es öffnet nach unten;
  * nach oben nur, wenn es dort vollständig passt – sonst scrollt es in sich. Beim Scrollen und bei Größenänderung wandert es mit
  * dem Auslöser (verschwindet der Auslöser aus dem Bild, schließt es). Pfeiltasten, Pos1/Ende, Escape und Tab wie bei Menüs üblich.
@@ -190,12 +191,10 @@ export function Menu({ trigger, items, align = "end", className }: { trigger: (p
               <motion.div
                 ref={menuRef}
                 id={menuId}
-                initial={{ opacity: 0, scale: 0.92, y: lage?.nachOben ? 6 : -6 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: lage?.nachOben ? 4 : -4 }}
-                transition={{ type: "spring", stiffness: 520, damping: 34 }}
+                initial={{ opacity: 0, y: lage?.nachOben ? 4 : -4 }}
+                animate={{ opacity: 1, y: 0, transition: BEWEGUNG.standard }}
+                exit={{ opacity: 0, y: lage?.nachOben ? 4 : -4, transition: BEWEGUNG.schnell }}
                 style={{
-                  transformOrigin: `${lage?.nachOben ? "bottom" : "top"} ${align === "end" ? "right" : "left"}`,
                   top: lage ? lage.top : 0,
                   bottom: lage?.bottom,
                   left: lage ? lage.left : 0,
@@ -203,18 +202,18 @@ export function Menu({ trigger, items, align = "end", className }: { trigger: (p
                   // bis zur ersten Messung unsichtbar (kein Aufblitzen an falscher Stelle)
                   visibility: lage ? undefined : "hidden",
                 }}
-                className="glass-strong glass-menu fixed z-[95] min-w-[220px] max-w-[calc(100vw-16px)] rounded-[18px]"
+                className="glass-menu fixed z-[95] min-w-[200px] max-w-[calc(100vw-16px)] rounded-lg"
                 role="menu"
                 onKeyDown={pfeile}
               >
                 <div
                   ref={innenRef}
-                  className="overflow-y-auto overscroll-contain rounded-[inherit] p-1.5"
+                  className="overflow-y-auto overscroll-contain rounded-[inherit] p-1"
                   style={{ maxHeight: lage ? `min(72dvh, ${lage.maxHoehe}px)` : "min(72dvh, 560px)" }}
                 >
                   {items.map((it, i) =>
                     it === "sep" ? (
-                      <div key={i} role="separator" className="my-1 h-px bg-[var(--line)]" />
+                      <div key={i} role="separator" className="-mx-1 my-1 h-px bg-[var(--line)]" />
                     ) : (
                       <button
                         key={i}
@@ -230,13 +229,13 @@ export function Menu({ trigger, items, align = "end", className }: { trigger: (p
                           it.onClick();
                         }}
                         className={cn(
-                          "flex min-h-[44px] w-full items-center sm:min-h-[36px] gap-2.5 rounded-[12px] px-3 py-2 text-left text-[13.5px] transition-colors focus-visible:bg-ink-softer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-                          it.disabled ? "cursor-not-allowed text-fg-3" : cn("hover:bg-ink-softer", it.danger ? "text-seal" : "text-fg"),
+                          "flex min-h-[44px] w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-[14px] leading-5 transition-colors duration-100 sm:min-h-8 focus-visible:bg-[var(--surface-pop-hover)] focus-visible:outline-offset-[-2px]",
+                          it.disabled ? "cursor-not-allowed text-fg-4" : cn("hover:bg-[var(--surface-pop-hover)]", it.danger ? "text-seal-text" : "text-fg-2 hover:text-fg focus-visible:text-fg"),
                         )}
                       >
-                        {it.icon && <span className="text-fg-3 [&>svg]:size-4">{it.icon}</span>}
-                        <span className="flex-1">{it.label}</span>
-                        {it.hint && <span className="text-[12.5px] text-fg-3">{it.hint}</span>}
+                        {it.icon && <span className={cn("shrink-0 [&>svg]:size-4", it.danger && !it.disabled ? "text-seal" : "text-fg-4")}>{it.icon}</span>}
+                        <span className="min-w-0 flex-1">{it.label}</span>
+                        {it.hint && <span className="text-[12px] text-fg-4">{it.hint}</span>}
                       </button>
                     ),
                   )}

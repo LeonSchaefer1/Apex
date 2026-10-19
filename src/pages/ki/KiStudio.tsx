@@ -1,8 +1,8 @@
 import { useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { BrainCircuit, FileScan, FileSignature } from "lucide-react";
-import { PageHeader, Segmented } from "@/components/ui";
+import { PageHeader } from "@/components/ui";
 import { useIsMobile } from "@/lib/useMedia";
+import { Reiter } from "@/pages/einstellungen/Reiter";
 import { KiStatusKarte } from "./KiStatusKarte";
 import { FallanalyseTab } from "./FallanalyseTab";
 import { DokumentAnalyseTab } from "./DokumentAnalyseTab";
@@ -46,38 +46,29 @@ export default function KiStudio() {
     <div className="min-w-0">
       <PageHeader
         eyebrow="Intelligenz"
-        title={
-          <>
-            Apex <span className="ai-text">KI</span>
-          </>
-        }
+        title="Apex KI"
         hilfe="ki"
         subtitle="Fallanalyse, Dokument-Analyse und Schriftsatz-Entwürfe – nachvollziehbar und geprüft."
       />
 
       <KiStatusKarte />
 
-      <div className="mb-5 mt-7 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
-        <Segmented<Tab>
-          className="sm:shrink-0"
-          full={mobil}
+      <div className="mb-6 mt-8">
+        <Reiter<Tab>
+          label="Bereiche der Apex KI"
           value={tab}
           onChange={(t) => setze({ tab: t === "fallanalyse" ? null : t, start: null, dok: null })}
           options={[
-            { value: "fallanalyse", label: "Fallanalyse", icon: mobil ? undefined : <BrainCircuit className="size-4" /> },
-            { value: "dokument", label: mobil ? "Dokument" : "Dokument-Analyse", icon: mobil ? undefined : <FileScan className="size-4" /> },
-            { value: "schriftsatz", label: mobil ? "Schriftsatz" : "Schriftsatz-Entwurf", icon: mobil ? undefined : <FileSignature className="size-4" /> },
+            { value: "fallanalyse", label: "Fallanalyse" },
+            { value: "dokument", label: mobil ? "Dokument" : "Dokument-Analyse" },
+            { value: "schriftsatz", label: mobil ? "Schriftsatz" : "Schriftsatz-Entwurf" },
           ]}
         />
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.p key={tab} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.2 }} className="min-w-0 text-[12.5px] leading-snug text-fg-3">
-            {ERKLAERUNG[tab]}
-          </motion.p>
-        </AnimatePresence>
+        <p className="mt-3 min-w-0 max-w-[72ch] text-[14px] leading-5 text-fg-3">{ERKLAERUNG[tab]}</p>
       </div>
 
       <AnimatePresence mode="wait" initial={false}>
-        <motion.div key={tab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ type: "spring", stiffness: 420, damping: 36 }} className="min-w-0">
+        <motion.div key={tab} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.12, ease: "linear" }} className="min-w-0">
           {tab === "fallanalyse" && <FallanalyseTab akteId={akteParam} onAkte={(id) => setze({ akte: id, start: null })} autoStart={startWunsch} onAutoStart={() => setze({ start: null })} />}
           {tab === "dokument" && <DokumentAnalyseTab akteParam={akteParam} dokParam={dokParam} />}
           {tab === "schriftsatz" && <SchriftsatzTab akteParam={akteParam} onAkte={(id) => setze({ akte: id })} />}

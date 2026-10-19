@@ -4,12 +4,14 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { addDays, fromISO, monatName, wochentagName } from "@/core/dates";
 import { feiertagAm } from "@/core/feiertage";
 import type { Akte, Bundesland, Frist } from "@/core/types";
-import { Button, Card, IconButton } from "@/components/ui";
+import { Button, IconButton } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { FristPille } from "./FristDetail";
 import { TYP_REIHENFOLGE, kalenderwoche, wochenAnsichtStart } from "./logik";
+import { BEWEGUNG } from "@/lib/bewegung";
 
-const SCHRAFFUR = "bg-[repeating-linear-gradient(135deg,var(--ink-softer)_0_6px,transparent_6px_12px)]";
+/** Wochenende und gesetzliche Feiertage: ruhige Fläche 2 statt Schraffur (kein Verlauf, DESIGN-SYSTEM.md 2). */
+const SCHRAFFUR = "bg-[var(--surface-2)]";
 
 export function sortiereTag(a: Frist, b: Frist) {
   return (a.uhrzeit ?? "99").localeCompare(b.uhrzeit ?? "99") || TYP_REIHENFOLGE.indexOf(a.typ) - TYP_REIHENFOLGE.indexOf(b.typ);
@@ -50,7 +52,8 @@ export function WochenAnsicht({
   const kwBis = kalenderwoche(addDays(start, 6));
   const markiertHier = !!markiert && tage.includes(markiert);
   /** Hervorhebungsring: der angesprungene Tag, sonst heute */
-  const ring = (t: string) => (markiertHier ? t === markiert : t === heute);
+  // Rahmen nur für den per Deep-Link markierten Tag; „heute“ zeigt der gefüllte Kreis am Datum (ruhiger als ein zweiter Rahmen)
+  const ring = (t: string) => markiertHier && t === markiert;
 
   useEffect(() => {
     if (!markiert) return;
@@ -80,7 +83,7 @@ export function WochenAnsicht({
             KW {kwVon === kwBis ? kwVon : `${kwVon}/${kwBis}`} <span className="font-normal text-fg-3">· {zeitraum(start)}</span>
           </div>
         </div>
-        <span className="num text-[12.5px] text-fg-3">
+        <span className="num text-[13px] text-fg-3">
           {summe} {summe === 1 ? "Eintrag" : "Einträge"}
         </span>
         {!aktuelleWoche && (
@@ -91,21 +94,21 @@ export function WochenAnsicht({
       </div>
 
       {/* Desktop: 7 Spalten */}
-      <motion.div key={start} initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} transition={{ type: "spring", stiffness: 420, damping: 38 }} className="hidden grid-cols-7 gap-2 lg:grid">
+      <motion.div key={start} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={BEWEGUNG.standard} className="sheet hidden grid-cols-7 divide-x divide-[var(--line)] overflow-hidden rounded-lg lg:grid">
         {tage.map((t) => {
           const ft = feiertagAm(t, land);
           const frei = [0, 6].includes(fromISO(t).getUTCDay()) || (ft && !ft.teilweise);
           const istHeute = t === heute;
           const items = proTag.get(t) ?? [];
           return (
-            <div key={t} data-tag={t} aria-current={t === markiert ? "date" : undefined} className={cn("sheet flex min-h-[320px] min-w-0 scroll-mt-24 flex-col rounded-[18px]", ring(t) && "ring-2 ring-[var(--ink)]", t === markiert && "bg-ink-softer")}>
+            <div key={t} data-tag={t} aria-current={t === markiert ? "date" : undefined} className={cn("flex min-h-[320px] min-w-0 scroll-mt-24 flex-col", ring(t) && "outline outline-2 -outline-offset-2 outline-[var(--focus)]")}>
               <div className="flex items-center gap-2 border-b border-[var(--line)] px-2.5 py-2">
-                <span className={cn("text-[12px] font-semibold uppercase tracking-[0.06em]", frei ? "text-fg-3" : "text-fg-3")}>{wochentagName(t, true)}</span>
-                <span className={cn("num ml-auto grid size-7 place-items-center rounded-full text-[13.5px] font-semibold", istHeute ? "bg-ink text-on-ink" : frei ? "text-fg-3" : "text-fg")}>{Number(t.slice(8, 10))}</span>
+                <span className="text-[12px] font-medium text-fg-3">{wochentagName(t, true)}</span>
+                <span className={cn("num ml-auto grid size-7 place-items-center rounded-full text-[14px] font-semibold", istHeute ? "bg-[var(--ink)] text-[var(--on-ink)]" : frei ? "text-fg-3" : "text-fg")}>{Number(t.slice(8, 10))}</span>
               </div>
-              <div className={cn("flex flex-1 flex-col gap-1.5 rounded-b-[18px] p-1.5", frei && SCHRAFFUR)}>
+              <div className={cn("flex flex-1 flex-col gap-1.5 p-1.5", frei && SCHRAFFUR)}>
                 {ft && (
-                  <div className={cn("truncate rounded-[8px] px-2 py-1 text-[12px] font-semibold", ft.teilweise ? "bg-amber-soft text-amber" : "bg-surface text-fg-2 ring-1 ring-inset ring-[var(--line)]")} title={ft.teilweise ? `${ft.name} – nur regional, verlängert Fristen nicht` : `${ft.name} – gesetzlicher Feiertag`}>
+                  <div className={cn("truncate rounded-sm px-2 py-1 text-[12px] font-semibold", ft.teilweise ? "bg-amber-soft text-[var(--amber-text)]" : "bg-[var(--surface)] text-fg-2 ring-1 ring-inset ring-[var(--line)]")} title={ft.teilweise ? `${ft.name} – nur regional, verlängert Fristen nicht` : `${ft.name} – gesetzlicher Feiertag`}>
                     {ft.name}
                   </div>
                 )}
@@ -119,26 +122,26 @@ export function WochenAnsicht({
       </motion.div>
 
       {/* Smartphone/Tablet: Tagesliste */}
-      <motion.div key={`m-${start}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-2 lg:hidden">
+      <motion.div key={`m-${start}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={BEWEGUNG.standard} className="sheet divide-y divide-[var(--line)] overflow-hidden rounded-lg lg:hidden">
         {tage.map((t) => {
           const ft = feiertagAm(t, land);
           const frei = [0, 6].includes(fromISO(t).getUTCDay()) || (ft && !ft.teilweise);
           const items = proTag.get(t) ?? [];
           const istHeute = t === heute;
           return (
-            <Card key={t} padded={false} data-tag={t} aria-current={t === markiert ? "date" : undefined} className={cn("flex scroll-mt-24 gap-3 p-3", ring(t) && "ring-2 ring-[var(--ink)]", frei && !items.length && t !== markiert && "opacity-80")}>
+            <div key={t} data-tag={t} aria-current={t === markiert ? "date" : undefined} className={cn("flex scroll-mt-24 gap-3 px-3 py-3", ring(t) && "outline outline-2 -outline-offset-2 outline-[var(--focus)]")}>
               <div className="w-11 shrink-0 text-center">
-                <div className={cn("text-[12px] font-semibold uppercase", frei ? "text-fg-3" : "text-fg-3")}>{wochentagName(t, true)}</div>
-                <div className={cn("num mx-auto mt-0.5 grid size-9 place-items-center rounded-full text-[16px] font-semibold", istHeute ? "bg-ink text-on-ink" : frei ? "text-fg-3" : "")}>{Number(t.slice(8, 10))}</div>
+                <div className="text-[12px] font-medium text-fg-3">{wochentagName(t, true)}</div>
+                <div className={cn("num mx-auto mt-0.5 grid size-8 place-items-center rounded-full text-[15px] font-semibold", istHeute ? "bg-[var(--ink)] text-[var(--on-ink)]" : frei ? "text-fg-3" : "text-fg")}>{Number(t.slice(8, 10))}</div>
               </div>
-              <div className={cn("min-w-0 flex-1 space-y-1.5 rounded-[12px]", frei && !items.length && cn(SCHRAFFUR, "min-h-10"))}>
-                {ft && <div className={cn("text-[12px] font-semibold", ft.teilweise ? "text-amber" : "text-fg-2")}>{ft.name}{ft.teilweise ? " (regional)" : ""}</div>}
+              <div className="min-w-0 flex-1 space-y-1.5">
+                {ft && <div className={cn("text-[12px] font-medium", ft.teilweise ? "text-[var(--amber-text)]" : "text-fg-2")}>{ft.name}{ft.teilweise ? " (regional)" : ""}</div>}
                 {items.map((f) => (
                   <FristPille key={f.id} f={f} akte={akten.get(f.akteId)} onClick={() => onOpen(f)} />
                 ))}
                 {!items.length && !ft && <div className="flex h-10 items-center text-[12px] text-fg-3">{frei ? "Wochenende" : "Keine Einträge"}</div>}
               </div>
-            </Card>
+            </div>
           );
         })}
       </motion.div>

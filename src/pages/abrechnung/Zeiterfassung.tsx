@@ -2,8 +2,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { AlertTriangle, Clock, FilePlus2, FileSignature, Hourglass, PenLine, Play, Plus, Square, Timer, Wallet } from "lucide-react";
-import { AnimatedNumber, Avatar, Button, Card, CardHeader, Chip, Empty, Field, Input, Segmented, Select, Stat, Switch } from "@/components/ui";
+import { AlertTriangle, FilePlus2, FileSignature, PenLine, Play, Plus, Square, Timer } from "lucide-react";
+import { AnimatedNumber, Avatar, Button, Card, CardHeader, Chip, Empty, Field, Input, Segmented, Select, Stat, StatLeiste, Switch } from "@/components/ui";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
@@ -165,8 +165,8 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
         {mitEntfernen && (
           <Button
             size="sm"
-            variant="ghost"
-            className="ml-auto !text-seal"
+            variant="danger"
+            className="ml-auto"
             onClick={() => {
               vvEntfernen();
               setVvForm(null);
@@ -269,7 +269,6 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
   return (
     <>
       <TabKopf
-        icon={<Timer className="size-[18px]" />}
         titel="Zeiterfassung"
         text="Zeiten je Akte erfassen – per Formular oder Stoppuhr – und mit dem Stundensatz der Vergütungsvereinbarung abrechnen."
         aktionen={
@@ -285,60 +284,54 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 [&>*:last-child]:col-span-2 md:[&>*:last-child]:col-span-1">
+      <StatLeiste spalten={3} className="max-sm:grid-cols-1">
         <Stat
           label="Diese Woche"
-          icon={<Clock className="size-4" />}
-          tone="ink"
           value={<span className="num text-[20px] sm:text-[28px]">{fmtDauer(kpi.woche)}</span>}
           sub={`KW ${isoWoche(heute).kw} · ${wer === "meine" ? "Ihre Zeiten" : "ganzes Team"}`}
         />
         <Stat
           label="Abrechenbar"
-          icon={<Hourglass className="size-4" />}
-          tone="green"
           value={<span className="num text-[20px] sm:text-[28px]">{fmtDauer(kpi.wocheAbr)}</span>}
           sub={kpi.woche ? `${Math.round((kpi.wocheAbr / kpi.woche) * 100)} % Quote` : "noch keine Zeiten"}
         />
         <Stat
           label="Noch nicht abgerechnet"
-          icon={<Wallet className="size-4" />}
-          tone="amber"
           value={<AnimatedNumber value={kpi.offenWert} format={(n) => fmtEUR(n, { cents: false })} className="text-[20px] sm:text-[28px]" />}
           sub={`${fmtDauer(kpi.offenMin)} abrechenbar, noch offen`}
         />
-      </div>
+      </StatLeiste>
 
-      <div className="mt-4 grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="mt-8 grid items-start gap-8 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="order-2 grid grid-cols-1 min-w-0 gap-4 xl:order-1">
           {wochen.length === 0 && (
             <Card>
-              <Empty icon={<Timer className="size-6" />} title="Noch keine Zeiten" text="Erfassen Sie Ihre erste Zeit über das Formular oder starten Sie die Stoppuhr." />
+              <Empty icon={<Timer />} title="Noch keine Zeiten" text="Erfassen Sie Ihre erste Zeit über das Formular oder starten Sie die Stoppuhr." />
             </Card>
           )}
-          {wochen.map((w, wi) => {
+          {wochen.map((w) => {
             const alle = [...w.tage.values()].flat();
             const gesamt = alle.reduce((s, z) => s + z.minuten, 0);
             const abr = alle.filter((z) => z.abrechenbar);
             const abrMin = abr.reduce((s, z) => s + z.minuten, 0);
             const abrWert = round2(abr.reduce((s, z) => s + wert(z), 0));
             return (
-              <motion.div key={w.montag} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(wi, 6) * 0.05 }}>
+              <div key={w.montag}>
                 <Card padded={false} className="overflow-hidden">
-                  <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-[var(--line)] bg-[var(--surface-2)] px-4 py-3">
+                  <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-[var(--line)] px-4 py-3">
                     <div className="flex items-baseline gap-2">
                       <span className="title-md">KW {w.kw}</span>
-                      <span className="text-[12.5px] text-fg-3">
+                      <span className="text-[13px] text-fg-3">
                         {fmtDateShort(w.montag)} – {fmtDateShort(addDays(w.montag, 6))}
                         {w.montag === wocheJetzt && " · diese Woche"}
                       </span>
                     </div>
-                    <div className="ml-auto flex flex-wrap gap-x-4 text-[12.5px] text-fg-3">
+                    <div className="ml-auto flex flex-wrap gap-x-4 text-[13px] text-fg-3">
                       <span>
                         <span className="num font-semibold text-fg">{fmtDauer(gesamt)}</span> gesamt
                       </span>
                       <span>
-                        <span className="num font-semibold text-green">{fmtDauer(abrMin)}</span> abrechenbar
+                        <span className="num font-semibold text-fg">{fmtDauer(abrMin)}</span> abrechenbar
                       </span>
                       <span>
                         Wert <span className="num font-semibold text-fg">{fmtEUR(abrWert, { cents: false })}</span>
@@ -348,11 +341,11 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                   {[...w.tage.entries()].map(([tag, eintraege]) => (
                     <div key={tag}>
                       <div className="flex items-center justify-between px-4 pb-1 pt-3">
-                        <span className="eyebrow">
+                        <span className="text-[13px] font-medium text-fg-2">
                           {fmtDateWd(tag)}
                           {(tag === heute || tag === addDays(heute, -1)) && ` · ${relDays(tag, heute)}`}
                         </span>
-                        <span className="num text-[12.5px] text-fg-3">{fmtDauer(eintraege.reduce((s, z) => s + z.minuten, 0))}</span>
+                        <span className="num text-[13px] text-fg-3">{fmtDauer(eintraege.reduce((s, z) => s + z.minuten, 0))}</span>
                       </div>
                       <ul className="pb-1">
                         <AnimatePresence initial={false}>
@@ -366,20 +359,20 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                                 type="button"
                                 onClick={() => useData.getState().patch("zeiten", z.id, { abrechenbar: !z.abrechenbar })}
                                 title="Abrechenbarkeit umschalten"
-                                className="rounded-full"
+                                className="rounded-sm"
                               >
-                                <Chip tone={z.abrechenbar ? "green" : "neutral"} dot>
+                                <Chip tone={z.abrechenbar ? "neutral" : "outline"}>
                                   {z.abrechenbar ? "abrechenbar" : "nicht abrechenbar"}
                                 </Chip>
                               </button>
                             );
                             return (
                               <motion.li key={z.id} layout initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-                                <div className="flex items-center gap-3 px-4 py-2 transition-colors hover:bg-ink-softer">
-                                  <Avatar initialen={u?.initialen ?? "?"} farbe={u?.farbe} size={30} title={u?.name} />
+                                <div className="flex items-center gap-3 px-4 py-2.5 transition-colors duration-100 hover:bg-[var(--surface-2)]">
+                                  <Avatar initialen={u?.initialen ?? "?"} farbe={u?.farbe} size={28} title={u?.name} />
                                   <div className="min-w-0 flex-1">
-                                    <div className="break-words text-[13.5px] font-medium">{z.taetigkeit}</div>
-                                    <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-[12.5px] text-fg-3">
+                                    <div className="break-words text-[14px] font-medium">{z.taetigkeit}</div>
+                                    <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-[13px] text-fg-3">
                                       <span className="mono shrink-0">{a?.aktenzeichen}</span>
                                       <span className="min-w-0">{a?.titel}</span>
                                       <span className="hidden shrink-0 sm:inline">· {u?.name}</span>
@@ -388,8 +381,8 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                                   </div>
                                   <div className="hidden shrink-0 items-center gap-1.5 sm:flex">{status}</div>
                                   <div className="w-[76px] shrink-0 text-right">
-                                    <div className="num text-[13.5px] font-semibold">{fmtDauer(z.minuten)}</div>
-                                    <div className={cn("num text-[12.5px]", z.abrechenbar ? "text-fg-3" : "text-fg-3 line-through")} title={abrSatzAbweichend(z) ? "Mit dem Satz dieser Abrechnung („Aus Zeiten abrechnen“)" : undefined}>
+                                    <div className="num text-[14px] font-medium">{fmtDauer(z.minuten)}</div>
+                                    <div className={cn("num text-[13px]", z.abrechenbar ? "text-fg-3" : "text-fg-3 line-through")} title={abrSatzAbweichend(z) ? "Mit dem Satz dieser Abrechnung („Aus Zeiten abrechnen“)" : undefined}>
                                       {fmtEUR(wert(z), { cents: false })}
                                       {abrSatzAbweichend(z) && <span className="sr-only"> – Satz dieser Abrechnung</span>}
                                     </div>
@@ -403,27 +396,28 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                     </div>
                   ))}
                 </Card>
-              </motion.div>
+              </div>
             );
           })}
         </div>
 
         <div className="order-1 grid grid-cols-1 gap-4 xl:order-2">
-          <Card ref={erfKarte} className={cn("overflow-hidden scroll-mt-4", timerStart && "ai-ring")}>
-            <CardHeader icon={<Plus className="size-4" />} title="Zeit erfassen" subtitle="Dauer eintragen oder die Stoppuhr mitlaufen lassen." />
-            <div className="mb-4 flex items-center gap-3 rounded-[18px] bg-ink-softer px-4 py-3">
+          <Card ref={erfKarte} className={cn("overflow-hidden scroll-mt-4", timerStart && "border-[var(--line-strong)]")}>
+            <CardHeader title="Zeit erfassen" subtitle="Dauer eintragen oder die Stoppuhr mitlaufen lassen." />
+            <div className="mb-4 flex items-center gap-3 border-y border-[var(--line)] py-3">
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 text-[12.5px] font-medium text-fg-3">
+                <div className="flex items-center gap-2 text-[13px] font-medium text-fg-3">
                   {timerStart ? (
                     <>
-                      <motion.span className="size-2 rounded-full bg-seal" animate={{ opacity: [1, 0.25, 1] }} transition={{ duration: 1.4, repeat: Infinity }} />
+                      {/* Aufnahme läuft: ruhender Punkt in Siegelrot plus Text – kein Pulsieren */}
+                      <span className="size-2 rounded-full bg-[var(--seal)]" aria-hidden />
                       Stoppuhr läuft{timerAkteId && akten.get(timerAkteId) ? ` · ${akten.get(timerAkteId)!.aktenzeichen}` : ""}
                     </>
                   ) : (
                     "Stoppuhr"
                   )}
                 </div>
-                <div className={cn("mt-0.5 text-[26px] font-semibold tracking-[-0.02em]", !timerStart && "text-fg-3")}>
+                <div className={cn("mt-0.5 text-[28px] font-semibold leading-8 tracking-[-0.02em]", !timerStart && "text-fg-3")}>
                   {timerStart ? <Uhr start={timerStart} /> : <span className="mono num">00:00:00</span>}
                 </div>
               </div>
@@ -444,7 +438,7 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
               </Field>
               {/* Stundensatz dieser Zeit – wie im Dialog „Zeit erfassen“ (I3-T07-04) */}
               {erfassenAkte && (
-                <div className="-mt-1 rounded-[12px] bg-ink-softer px-3 py-2 text-[12.5px] leading-snug text-fg-2" role="status">
+                <div className="-mt-1 rounded-md bg-[var(--surface-2)] px-3 py-2 text-[13px] leading-[18px] text-fg-2" role="status">
                   {erfSatz.quelle === "vereinbarung" && erfassenAkte.verguetungsvereinbarung ? (
                     <span>
                       <span className="num font-semibold text-fg">{fmtEUR(erfSatz.satz, { cents: !Number.isInteger(erfSatz.satz) })}/Std.</span> lt. Vergütungsvereinbarung vom {fmtDate(erfassenAkte.verguetungsvereinbarung.datum)}
@@ -455,7 +449,7 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                       {vvForm?.ort !== "erf" && (
                         <>
                           {" · "}
-                          <button type="button" className="inline-flex min-h-6 items-center font-medium text-ink underline" onClick={() => vvOeffnen("erf", erfassenAkte)}>
+                          <button type="button" className="link inline-flex min-h-6 items-center rounded-sm font-medium" onClick={() => vvOeffnen("erf", erfassenAkte)}>
                             Vereinbarung erfassen
                           </button>
                         </>
@@ -479,7 +473,7 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                     key={m}
                     type="button"
                     onClick={() => setMinuten(String(m))}
-                    className={cn("chip num cursor-pointer transition-colors", minuten === String(m) ? "chip-ink" : "hover:bg-ink-soft")}
+                    className={cn("chip num cursor-pointer transition-colors duration-100", minuten === String(m) ? "chip-ink" : "chip-outline hover:bg-[var(--surface-2)]")}
                   >
                     {m} Min.
                   </button>
@@ -517,7 +511,7 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
           </Card>
 
           <Card>
-            <CardHeader icon={<FilePlus2 className="size-4" />} title="Aus Zeiten abrechnen" subtitle="Offene, abrechenbare Zeiten einer Akte als Rechnung nach Stundensatz (§ 3a RVG)." />
+            <CardHeader title="Aus Zeiten abrechnen" subtitle="Offene, abrechenbare Zeiten einer Akte als Rechnung nach Stundensatz (§ 3a RVG)." />
             {abrechenbareAkten.length === 0 ? (
               <p className="text-[13px] text-fg-3">Alle abrechenbaren Zeiten sind abgerechnet.</p>
             ) : (
@@ -533,20 +527,20 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                 </Field>
                 {/* Einzelauswahl der offenen Einträge – die Summe läuft mit, nicht gewählte bleiben offen */}
                 <fieldset className="mt-3">
-                  <legend className="mb-1.5 flex w-full items-baseline justify-between gap-2 text-[12.5px] font-medium text-fg-2">
+                  <legend className="mb-1.5 flex w-full items-baseline justify-between gap-2 text-[13px] font-medium text-fg-2">
                     <span>Offene Einträge abrechnen</span>
                     <span className="num font-normal text-fg-3">
                       {abrEintraege.length} von {offeneEintraege.length} gewählt
                     </span>
                   </legend>
-                  <ul className="grid max-h-[260px] grid-cols-1 gap-0.5 overflow-y-auto rounded-[14px] border border-[var(--line)] p-1">
+                  <ul className="grid max-h-[260px] grid-cols-1 divide-y divide-[var(--line)] overflow-y-auto border-y border-[var(--line)]">
                     {offeneEintraege.map((z) => {
                       const an = !abgewaehlt.has(z.id);
                       const u = users.get(z.userId);
                       const { satz } = satzFuerEintrag(z, abrAkteObj, users, eingabeSatz);
                       return (
                         <li key={z.id}>
-                          <label className={cn("flex min-h-[44px] cursor-pointer items-start gap-2.5 rounded-[10px] px-2 py-1.5 text-[12.5px] transition-colors hover:bg-ink-softer", !an && "opacity-60")}>
+                          <label className={cn("flex min-h-[44px] cursor-pointer items-start gap-2.5 px-1 py-2 text-[13px] transition-colors duration-100 hover:bg-[var(--surface-2)]", !an && "text-fg-3")}>
                             <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[var(--ink)]" checked={an} onChange={() => umschaltenAuswahl(z.id)} />
                             <span className="min-w-0 flex-1">
                               <span className="block break-words font-medium text-fg">{z.taetigkeit}</span>
@@ -564,25 +558,25 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                     })}
                   </ul>
                   {offeneEintraege.length > 1 && (
-                    <div className="mt-1.5 flex flex-wrap gap-2 text-[12.5px]">
-                      <button type="button" className="rounded-full px-2 py-1 font-medium text-ink hover:bg-ink-soft" onClick={() => setAbgewaehlt(new Set())}>
+                    <div className="mt-1.5 flex flex-wrap gap-2 text-[13px]">
+                      <button type="button" className="rounded-md px-2 py-1 font-medium text-fg-2 transition-colors duration-100 hover:bg-[var(--surface-2)] hover:text-fg max-sm:min-h-11" onClick={() => setAbgewaehlt(new Set())}>
                         Alle wählen
                       </button>
-                      <button type="button" className="rounded-full px-2 py-1 font-medium text-ink hover:bg-ink-soft" onClick={() => setAbgewaehlt(new Set(offeneEintraege.map((z) => z.id)))}>
+                      <button type="button" className="rounded-md px-2 py-1 font-medium text-fg-2 transition-colors duration-100 hover:bg-[var(--surface-2)] hover:text-fg max-sm:min-h-11" onClick={() => setAbgewaehlt(new Set(offeneEintraege.map((z) => z.id)))}>
                         Keine
                       </button>
                     </div>
                   )}
                 </fieldset>
                 {!abrVereinbarung && abrPositionen.length > 0 && (
-                  <p className="mt-3 flex items-start gap-1.5 text-[12.5px] font-medium text-amber">
+                  <p className="mt-3 flex items-start gap-1.5 text-[13px] font-medium text-amber-text">
                     <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
                     Satz der Person – ohne Vereinbarung, nur Vorschau
                   </p>
                 )}
                 <ul className="mt-3 grid grid-cols-1 gap-1.5" aria-label="Positionen der Abrechnung">
                   {abrPositionen.map((p, i) => (
-                    <li key={i} className="flex items-baseline justify-between gap-3 text-[12.5px]">
+                    <li key={i} className="flex items-baseline justify-between gap-3 text-[13px]">
                       <span className="min-w-0 text-fg-2">
                         <span className="num font-semibold text-fg">{fmtDauerAusMenge(p.menge ?? 0)}</span> ·{" "}
                         {p.bezeichnung.replace(/^Tätigkeit /, "").replace(/ (lt\. Vergütungsvereinbarung( vom [\d.]+)?|nach Zeitaufwand)/, "")}
@@ -592,10 +586,10 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                   ))}
                 </ul>
                 {/* Vergütungsvereinbarung (§ 3a RVG): Datum und vereinbarter Stundensatz */}
-                <div className="mt-3 rounded-[14px] bg-ink-softer p-3">
+                <div className="mt-3 rounded-md bg-[var(--surface-2)] p-3">
                   <div className="flex items-start gap-2">
-                    <FileSignature className="mt-0.5 size-4 shrink-0 text-ink" />
-                    <div className="min-w-0 flex-1 text-[12.5px] leading-snug">
+                    <FileSignature className="mt-0.5 size-4 shrink-0 text-fg-4" aria-hidden />
+                    <div className="min-w-0 flex-1 text-[13px] leading-snug">
                       <div className="font-semibold">Vergütungsvereinbarung · § 3a RVG, Textform</div>
                       {vv ? (
                         <div className="text-fg-2">
@@ -605,11 +599,11 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                               {" "}· <span className="num font-medium text-fg">{fmtEUR(vv.stundensatz)}/Std.</span> netto
                             </>
                           ) : (
-                            <span className="text-amber"> · kein vereinbarter Stundensatz hinterlegt</span>
+                            <span className="text-amber-text"> · kein vereinbarter Stundensatz hinterlegt</span>
                           )}
                         </div>
                       ) : abrVereinbarung ? (
-                        <div className="text-amber">In der E-Akte vorhanden – kein vereinbarter Stundensatz hinterlegt</div>
+                        <div className="text-amber-text">In der E-Akte vorhanden – kein vereinbarter Stundensatz hinterlegt</div>
                       ) : (
                         <div className="text-fg-3">Noch nicht erfasst</div>
                       )}
@@ -639,14 +633,14 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                   </Field>
                 )}
                 {abrVereinbarung && satzWahl.quelle === "person" && (
-                  <p className="mt-2 flex items-start gap-1.5 rounded-[12px] bg-amber-soft px-3 py-2 text-[12.5px] leading-snug text-fg-2">
-                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber" />
+                  <p className="mt-2 flex items-start gap-1.5 rounded-md bg-[var(--amber-soft)] px-3 py-2 text-[13px] leading-[18px] text-fg-2">
+                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-[var(--amber)]" aria-hidden />
                     <span>
                       Kein vereinbarter Stundensatz hinterlegt – abgerechnet wird mit dem Satz der jeweiligen Person ohne den Zusatz „lt. Vergütungsvereinbarung“. Bitte den Satz der Vereinbarung erfassen.
                     </span>
                   </p>
                 )}
-                <div className="mt-3 grid gap-1 border-t border-[var(--line)] pt-3 text-[12.5px]">
+                <div className="mt-3 grid gap-1 border-t border-[var(--line)] pt-3 text-[13px]">
                   <div className="flex justify-between">
                     <span className="text-fg-3">Netto</span>
                     <span className="num">{fmtEUR(abrSummen.netto)}</span>
@@ -659,25 +653,25 @@ export function ZeiterfassungTab({ onTab }: { onTab: (t: TabKey) => void }) {
                     <span className="text-fg-3">
                       {abrEintraege.length} {abrEintraege.length === 1 ? "Eintrag" : "Einträge"} · {fmtDauer(abrEintraege.reduce((s, z) => s + z.minuten, 0))} · brutto
                     </span>
-                    <span className="num text-[17px] font-semibold">{fmtEUR(abrSummen.brutto)}</span>
+                    <span className="num text-[18px] font-semibold">{fmtEUR(abrSummen.brutto)}</span>
                   </div>
                 </div>
                 {!abrVereinbarung && (
-                  <p className="mt-2 rounded-[12px] bg-amber-soft px-3 py-2 text-[12.5px] leading-snug text-fg-2">
+                  <p className="mt-2 rounded-md bg-[var(--amber-soft)] px-3 py-2 text-[13px] leading-[18px] text-fg-2">
                     Nach Zeit abrechnen setzt eine Vergütungsvereinbarung in Textform voraus (§ 3a Abs. 1 RVG). Ohne Vereinbarung gelten die gesetzlichen Gebühren – dann über den RVG-Rechner.
                   </p>
                 )}
                 <Button variant="primary" className="mt-3 w-full" icon={<FilePlus2 className="size-4" />} onClick={abrechnen} disabled={!abrVereinbarung || !abrEintraege.length}>
                   {abrEintraege.length && abrEintraege.length < offeneEintraege.length ? `${abrEintraege.length} von ${offeneEintraege.length} Einträgen abrechnen` : "Aus Zeiten abrechnen"}
                 </Button>
-                <p className="mt-2 text-center text-[12.5px] text-fg-3">Erstellt einen Rechnungsentwurf mit Tätigkeitsnachweis; die Zeiten werden als abgerechnet markiert und beim Löschen des Entwurfs wieder frei.</p>
+                <p className="mt-2 text-center text-[13px] text-fg-3">Erstellt einen Rechnungsentwurf mit Tätigkeitsnachweis; die Zeiten werden als abgerechnet markiert und beim Löschen des Entwurfs wieder frei.</p>
               </>
             )}
           </Card>
         </div>
       </div>
       {wochen.length > 0 && (
-        <p className="mt-4 text-[12.5px] text-fg-3">Erfasste Zeiten vom {fmtDate(wochen[wochen.length - 1].montag)} bis heute. Abrechenbarkeit per Tipp auf den Status umschalten.</p>
+        <p className="mt-4 text-[13px] text-fg-3">Erfasste Zeiten vom {fmtDate(wochen[wochen.length - 1].montag)} bis heute. Abrechenbarkeit per Tipp auf den Status umschalten.</p>
       )}
     </>
   );

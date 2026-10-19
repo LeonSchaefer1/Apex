@@ -17,6 +17,7 @@ import { Anschrift, Betrag, Briefkopf, FORMAT_INFO, FormatChip, InfoZeile, Statu
 import { xrechnungXml, zugferdXml } from "./erechnung";
 import { DateiDialog, type AusgabeDatei } from "@/pages/fristen/dateiAusgabe";
 import { useAbrechnungUI } from "./store";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 const FORMATE: Rechnung["format"][] = ["PDF", "XRechnung", "ZUGFeRD"];
 
@@ -49,7 +50,7 @@ function PositionZeile({ p }: { p: RechnungsPosition }) {
   const wert = std ? (p.menge ? `à ${fmtEUR(satzAusPosition(p))}` : "") : p.gegenstandswert ? fmtEUR(p.gegenstandswert) : "";
   return (
     <tr className="border-b border-black/[0.07] align-top">
-      <td className="mono py-2 pr-2 text-[12.5px] opacity-70">{vvAnzeige(p.vv)}</td>
+      <td className="mono py-2 pr-2 text-[13px] opacity-70">{vvAnzeige(p.vv)}</td>
       <td className="py-2 pr-3">{p.bezeichnung}</td>
       <td className="num whitespace-nowrap py-2 pr-3 text-right">{satz}</td>
       <td className="num hidden whitespace-nowrap py-2 pr-3 text-right opacity-70 sm:table-cell">{wert}</td>
@@ -74,10 +75,10 @@ function Taetigkeitsnachweis({ r, zeiten, users }: { r: Rechnung; zeiten: Zeitei
   return (
     <section className="mt-8 border-t border-black/15 pt-5" aria-label="Anlage Tätigkeitsnachweis">
       <div className="text-[14px] font-semibold">Anlage: Tätigkeitsnachweis</div>
-      <div className="mt-0.5 text-[12.5px] opacity-65">Einzelaufstellung der abgerechneten Zeiten (netto)</div>
+      <div className="mt-0.5 text-[13px] opacity-65">Einzelaufstellung der abgerechneten Zeiten (netto)</div>
       <table className="mt-3 w-full border-collapse text-[12px]">
         <thead>
-          <tr className="border-b border-black/15 text-left text-[12.5px] uppercase tracking-[0.06em] opacity-60">
+          <tr className="border-b border-black/15 text-left text-[13px] opacity-60">
             <th className="py-1.5 pr-2 font-semibold">Datum</th>
             <th className="py-1.5 pr-2 font-semibold">Person</th>
             <th className="py-1.5 pr-2 font-semibold">Tätigkeit</th>
@@ -147,7 +148,7 @@ export function RechnungPapier({
     <div className="paper relative overflow-hidden px-5 py-6 sm:px-10 sm:py-9">
       {r.status === "entwurf" && (
         <div aria-hidden className="pointer-events-none absolute inset-0 grid place-items-center">
-          <span className="-rotate-[24deg] text-[86px] font-black tracking-[0.12em] opacity-[0.05] sm:text-[120px]">ENTWURF</span>
+          <span className="-rotate-[24deg] text-[86px] font-black opacity-[0.05] sm:text-[120px]">ENTWURF</span>
         </div>
       )}
       <Briefkopf tenant={tenant} />
@@ -166,35 +167,33 @@ export function RechnungPapier({
       {/* Stempel im eigenen Bereich rechts neben dem Betreff (nicht darüber) – Gegenstandswert und Betreff bleiben lesbar, auch im Druck (I3-T07-05) */}
       <div className="mt-8 flex flex-wrap items-start justify-between gap-x-8 gap-y-3">
         <div className="min-w-0 flex-1 basis-[240px]">
-          <div className="text-[19px] font-semibold tracking-[-0.02em]">{belegArt(r)}</div>
-          {r.korrekturVon && korrekturNummer && <div className="mt-0.5 text-[12.5px] font-medium">{korrekturText(korrekturNummer)} (storniert)</div>}
+          <div className="text-[18px] font-semibold tracking-[-0.01em]">{belegArt(r)}</div>
+          {r.korrekturVon && korrekturNummer && <div className="mt-0.5 text-[13px] font-medium">{korrekturText(korrekturNummer)} (storniert)</div>}
           {akte && (
-            <div className="mt-1 text-[12.5px] opacity-75">
+            <div className="mt-1 text-[13px] opacity-75">
               In Sachen {akte.titel}
               {wert ? ` · Gegenstandswert ${fmtEUR(wert)}` : ""}
             </div>
           )}
         </div>
         {stempel && (
-          <motion.div
-            initial={{ scale: 1.6, opacity: 0, rotate: -14 }}
-            animate={{ scale: 1, opacity: 1, rotate: -6 }}
-            transition={{ type: "spring", stiffness: 380, damping: 18 }}
+          // Vermerk auf dem Papier: feste Papierwerte (Papier ist in beiden Modi weiß, DESIGN-SYSTEM.md 12.18) – ohne Drehung und Einflug
+          <div
             className={cn(
-              "pointer-events-none mr-2 mt-1 shrink-0 self-center rounded-[8px] border-[2.5px] border-current px-3 py-1 text-center font-black uppercase tracking-[0.14em]",
-              r.status === "storniert" ? "text-seal" : "text-green",
+              "pointer-events-none mt-1 shrink-0 self-center rounded-sm border-2 border-current px-3 py-1 text-center font-semibold",
+              r.status === "storniert" ? "text-[#ae2621]" : "text-[#196b3c]",
             )}
           >
-            <div className="text-[18px] leading-none">{r.status === "storniert" ? "Storniert" : "Bezahlt"}</div>
-            {r.status === "bezahlt" && r.bezahltAm && <div className="mt-1 text-[12.5px] font-bold tracking-[0.1em]">am {fmtDate(r.bezahltAm)}</div>}
-            {r.status === "storniert" && r.storniertAm && <div className="mt-1 text-[12.5px] font-bold tracking-[0.1em]">am {fmtDate(r.storniertAm)}</div>}
-          </motion.div>
+            <div className="text-[16px] leading-none">{r.status === "storniert" ? "Storniert" : "Bezahlt"}</div>
+            {r.status === "bezahlt" && r.bezahltAm && <div className="mt-1 text-[13px] font-medium">am {fmtDate(r.bezahltAm)}</div>}
+            {r.status === "storniert" && r.storniertAm && <div className="mt-1 text-[13px] font-medium">am {fmtDate(r.storniertAm)}</div>}
+          </div>
         )}
       </div>
 
-      <table className="mt-5 w-full border-collapse text-[12.5px]">
+      <table className="mt-5 w-full border-collapse text-[13px]">
         <thead>
-          <tr className="border-b border-black/15 text-left text-[12.5px] uppercase tracking-[0.06em] opacity-60">
+          <tr className="border-b border-black/15 text-left text-[13px] opacity-60">
             {/* Reine Zeitrechnung (§ 3a RVG): Spalten nach Zeit und Stundensatz benannt – ein Gegenstandswert spielt keine Rolle */}
             <th className="py-2 pr-2 font-semibold">{reineZeit ? "Art" : "Nr. VV"}</th>
             <th className="py-2 pr-3 font-semibold">{reineZeit ? "Leistung" : "Gebührentatbestand"}</th>
@@ -210,7 +209,7 @@ export function RechnungPapier({
         </tbody>
       </table>
 
-      <div className="ml-auto mt-4 w-full max-w-[300px] text-[12.5px]">
+      <div className="ml-auto mt-4 w-full max-w-[300px] text-[13px]">
         <div className="flex justify-between py-1">
           <span className="opacity-65">Summe netto</span>
           <span className="num">{fmtEUR(r.netto)}</span>
@@ -238,7 +237,7 @@ export function RechnungPapier({
       </div>
 
       {r.rsv && r.status !== "storniert" && (
-        <div className="mt-5 rounded-[6px] border border-black/20 px-3.5 py-2.5 text-[12px] leading-relaxed">
+        <div className="mt-5 rounded-sm border border-black/20 px-3.5 py-2.5 text-[12px] leading-relaxed">
           <div className="font-semibold">Rechtsschutz</div>
           <div>{rsvBlockText(r.rsv, fmtEUR)}</div>
           <div className="mt-1 opacity-70">
@@ -249,7 +248,7 @@ export function RechnungPapier({
 
       <div className="mt-7 space-y-2 text-[12px] leading-relaxed">
         {r.status === "storniert" && r.stornoNummer && (
-          <p className="rounded-[6px] border border-black/15 px-3 py-2 text-[12.5px]">
+          <p className="rounded-sm border border-black/15 px-3 py-2 text-[13px]">
             Diese {belegArt(r)} wurde{r.storniertAm ? ` am ${fmtDate(r.storniertAm)}` : ""} durch die Stornorechnung <span className="mono font-medium">{r.stornoNummer}</span> in voller Höhe
             storniert.{r.bezahlt > 0 && <> Bereits gezahlte {fmtEUR(r.bezahlt)} werden erstattet oder verrechnet.</>}
           </p>
@@ -284,7 +283,7 @@ export function RechnungPapier({
             )}
           </p>
         )}
-        <div className="rounded-[6px] bg-black/[0.035] px-3 py-2 text-[12.5px]">
+        <div className="rounded-sm bg-black/[0.035] px-3 py-2 text-[13px]">
           <span className="font-medium">Bankverbindung</span> · {konto.bank ?? `Geschäftskonto ${tenant.kurzname}`} · IBAN <span className="mono">{konto.iban}</span>
           {konto.bic && (
             <>
@@ -300,7 +299,7 @@ export function RechnungPapier({
             </span>
           ))}
         </div>
-        {rvg && <p className="text-[12.5px] opacity-60">Abrechnung nach dem Rechtsanwaltsvergütungsgesetz, Gebührentabelle {FASSUNG_LABEL[fassung]} (§ 13 RVG, Übergangsrecht § 60 RVG).</p>}
+        {rvg && <p className="text-[13px] opacity-60">Abrechnung nach dem Rechtsanwaltsvergütungsgesetz, Gebührentabelle {FASSUNG_LABEL[fassung]} (§ 13 RVG, Übergangsrecht § 60 RVG).</p>}
       </div>
 
       {r.zeitIds?.length && users ? <Taetigkeitsnachweis r={r} zeiten={zeiten} users={users} /> : null}
@@ -308,10 +307,10 @@ export function RechnungPapier({
       <div className="mt-6 text-[12px] leading-snug">
         <div className="opacity-65">Mit freundlichen Grüßen</div>
         <div className="mt-2 font-medium">{bearbeiter?.name ?? tenant.name}</div>
-        <div className="text-[12.5px] opacity-60">{bearbeiter ? `${bearbeiter.titel.split(" · ")[0]} · ${tenant.name}` : "Rechtsanwälte"}</div>
+        <div className="text-[13px] opacity-60">{bearbeiter ? `${bearbeiter.titel.split(" · ")[0]} · ${tenant.name}` : "Rechtsanwälte"}</div>
       </div>
 
-      <div className="mt-6 flex items-center gap-2 border-t border-black/10 pt-3 text-[12.5px] opacity-65">
+      <div className="mt-6 flex items-center gap-2 border-t border-black/10 pt-3 text-[13px] opacity-65">
         <FileCode2 className="size-3.5 shrink-0" />
         {r.format === "PDF" ? "Als PDF – E-Rechnung (XRechnung, ZUGFeRD) nach EN 16931 ebenfalls abrufbar." : `Diese Rechnung wird als ${r.format} (EN 16931) übermittelt; diese Ansicht dient der Lesbarkeit.`}
       </div>
@@ -479,7 +478,7 @@ export function RechnungVorschau({ id, onClose }: { id: string | null; onClose: 
   const footer = r ? (
     r.status === "entwurf" ? (
       <>
-        <Button variant="ghost" className="mr-auto !text-seal" icon={<Trash2 className="size-4" />} onClick={entwurfLoeschen}>
+        <Button variant="danger" className="mr-auto" icon={<Trash2 className="size-4" />} onClick={entwurfLoeschen}>
           Entwurf löschen
         </Button>
         <Button variant="primary" icon={<Send className="size-4" />} onClick={() => setStellenFrage(true)}>
@@ -503,7 +502,7 @@ export function RechnungVorschau({ id, onClose }: { id: string | null; onClose: 
       </>
     ) : (
       <>
-        <Button variant="ghost" className="!text-seal" icon={<Ban className="size-4" />} onClick={stornieren}>
+        <Button variant="danger" icon={<Ban className="size-4" />} onClick={stornieren}>
           Stornieren
         </Button>
         <Button variant="ghost" className="mr-auto" icon={<FilePenLine className="size-4" />} onClick={korrigieren}>
@@ -545,7 +544,7 @@ export function RechnungVorschau({ id, onClose }: { id: string | null; onClose: 
             <PapierSchalter className="order-last sm:ml-auto" />
             <StatusChip r={r} />
             <FormatChip format={r.format} />
-            <span className="text-[12.5px] text-fg-3">
+            <span className="text-[13px] text-fg-3">
               fällig {fmtDate(r.faellig)}
               {istOffen(r) && (
                 <>
@@ -557,17 +556,17 @@ export function RechnungVorschau({ id, onClose }: { id: string | null; onClose: 
           </div>
 
           {r.status === "entwurf" ? (
-            <div className="mb-4 rounded-[18px] bg-ink-softer p-3.5">
+            <div className="mb-4 rounded-lg bg-[var(--surface-2)] p-4">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[12.5px] font-semibold text-fg-2">Format</span>
+                <span className="text-[13px] font-medium text-fg-2">Format</span>
                 <Segmented size="sm" value={r.format} onChange={(f) => setzeFormat(r, f)} options={FORMATE.map((f) => ({ value: f, label: f }))} />
-                <span className="min-w-0 flex-1 basis-[220px] text-[12.5px] text-fg-3">
+                <span className="min-w-0 flex-1 basis-[220px] text-[13px] text-fg-3">
                   {FORMAT_INFO[r.format].text}
                   {empfaenger?.typ === "organisation" && r.format === "PDF" ? " Empfänger ist eine Organisation – E-Rechnung empfohlen." : ""}
                 </span>
               </div>
-              <p className="mt-2 flex items-start gap-1.5 text-[12.5px] text-fg-3">
-                <Info className="mt-0.5 size-3.5 shrink-0" /> {ERECHNUNG_PFLICHT}
+              <p className="mt-2 flex items-start gap-1.5 text-[13px] text-fg-3">
+                <Info className="mt-0.5 size-3.5 shrink-0 text-fg-4" aria-hidden /> {ERECHNUNG_PFLICHT}
               </p>
               <div className="mt-2.5">
                 <Button size="sm" variant={bearbeiten ? "primary" : "secondary"} icon={<FilePenLine className="size-4" />} onClick={() => setBearbeiten((b) => !b)}>
@@ -577,8 +576,8 @@ export function RechnungVorschau({ id, onClose }: { id: string | null; onClose: 
               {bearbeiten && <PositionenEditor r={r} />}
             </div>
           ) : (
-            <div className="mb-4 flex flex-wrap items-center gap-2 text-[12.5px] text-fg-3">
-              <span className="font-semibold text-fg-2">Formate abrufen</span>
+            <div className="mb-4 flex flex-wrap items-center gap-2 text-[13px] text-fg-3">
+              <span className="font-medium text-fg-2">Formate abrufen</span>
               <Button size="sm" variant="secondary" icon={<FileCode2 className="size-4" />} onClick={() => formatAbrufen("XRechnung")}>
                 XRechnung (XML)
               </Button>
@@ -589,8 +588,8 @@ export function RechnungVorschau({ id, onClose }: { id: string | null; onClose: 
             </div>
           )}
           {r.rsv && r.status !== "storniert" && (
-            <p className="mb-4 flex items-start gap-2 rounded-[14px] bg-ink-softer px-3.5 py-2.5 text-[12.5px] text-fg-2">
-              <ShieldCheck className="mt-0.5 size-4 shrink-0 text-ink" />
+            <p className="banner mb-4">
+              <ShieldCheck aria-hidden />
               <span>
                 Rechnung an {empfaenger?.name ?? "den Mandanten"} (Leistungsempfänger, § 14 UStG). {rsvBlockText(r.rsv, fmtEUR)}.{" "}
                 {r.status === "entwurf" ? `Beim Stellen entsteht in der E-Akte das ${r.art === "vorschuss" ? "Schreiben „Zahlungsaufforderung" : "„Abrechnungsschreiben"} an ${r.rsv.versicherung}“.` : `Das Schreiben an ${r.rsv.versicherung} liegt in der E-Akte (Korrespondenz).`}
@@ -604,12 +603,12 @@ export function RechnungVorschau({ id, onClose }: { id: string | null; onClose: 
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: "auto", opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
-                transition={{ type: "spring", stiffness: 420, damping: 36 }}
+                transition={BEWEGUNG.standard}
                 className="overflow-hidden"
               >
-                <div className="mb-4 rounded-[18px] bg-ink-softer p-4">
-                  <div className="mb-3 flex items-center gap-2 text-[13px] font-semibold">
-                    <BadgeCheck className="size-4 text-ink" /> Zahlung erfassen
+                <div className="mb-4 rounded-lg bg-[var(--surface-2)] p-4">
+                  <div className="mb-3 flex items-center gap-2 text-[14px] font-medium">
+                    <BadgeCheck className="size-4 text-fg-4" aria-hidden /> Zahlung erfassen
                   </div>
                   <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
                     <Field label="Betrag (€)" htmlFor="zahlung-betrag">
@@ -623,8 +622,8 @@ export function RechnungVorschau({ id, onClose }: { id: string | null; onClose: 
                     </Button>
                   </div>
                   {ueberzahlt ? (
-                    <div className="mt-3 rounded-[14px] bg-amber-soft px-3.5 py-3 text-[12.5px] text-fg-2" role="alert">
-                      <div className="font-semibold text-amber">Überzahlung: {fmtEUR(mehrbetrag)} mehr als offen</div>
+                    <div className="mt-3 rounded-md bg-[var(--amber-soft)] px-3.5 py-3 text-[14px] text-fg-2" role="alert">
+                      <div className="font-medium text-amber-text">Überzahlung: {fmtEUR(mehrbetrag)} mehr als offen</div>
                       <p className="mt-0.5">Offen sind nur {fmtEUR(offenJetzt)}. Wie soll der Betrag gebucht werden?</p>
                       <div className="mt-2.5 flex flex-wrap gap-2">
                         <Button size="sm" variant="secondary" onClick={() => buchen("nurOffen")}>
@@ -636,14 +635,17 @@ export function RechnungVorschau({ id, onClose }: { id: string | null; onClose: 
                       </div>
                     </div>
                   ) : (
-                    <p className="mt-2 text-[12px] text-fg-3">Ein geringerer Betrag wird als Teilzahlung gebucht; die Rechnung bleibt dann offen.</p>
+                    <p className="mt-2 text-[13px] text-fg-4">Ein geringerer Betrag wird als Teilzahlung gebucht; die Rechnung bleibt dann offen.</p>
                   )}
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
 
-          <RechnungPapier r={r} akte={akte} empfaenger={empfaenger} tenant={tenant} bearbeiter={bearbeiter} zeiten={zeitenAlle} users={users} korrekturNummer={korrekturNummer} rechnungen={rechnungen} />
+          {/* Papier liegt auf der Vorschau-Bühne (DESIGN-SYSTEM.md 12.18) */}
+          <div className="buehne -mx-1 p-2 sm:mx-0 sm:p-6">
+            <RechnungPapier r={r} akte={akte} empfaenger={empfaenger} tenant={tenant} bearbeiter={bearbeiter} zeiten={zeitenAlle} users={users} korrekturNummer={korrekturNummer} rechnungen={rechnungen} />
+          </div>
         </>
       )}
       <DateiDialog datei={datei} onClose={() => setDatei(null)} />

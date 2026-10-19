@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { Calculator, CalendarCheck2, CalendarClock, CalendarPlus, Check, ChevronDown, Clock, MapPin, PenLine, RotateCcw, ShieldAlert, Trash2 } from "lucide-react";
+import { Calculator, CalendarCheck2, CalendarClock, CalendarPlus, Check, ChevronDown, Clock, MapPin, PenLine, RotateCcw, Trash2, TriangleAlert } from "lucide-react";
 import type { Akte, Frist } from "@/core/types";
 import { fristArtZu } from "@/core/fristen";
 import { istKritisch } from "@/core/fristenLage";
@@ -20,6 +20,7 @@ import { DateiDialog, type AusgabeDatei } from "@/pages/fristen/dateiAusgabe";
 import { erzeugeIcs, icsDateiname } from "@/pages/fristen/ics";
 import { TYP_META } from "@/pages/fristen/logik";
 import { FRIST_TYP_LABEL, beruehreAkte, dringlichkeit, useTeam } from "./helfer";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 export function TabFristen({ akte, onNeu }: { akte: Akte; onNeu: (modus?: "regel" | "frei") => void }) {
   const alle = useCol("fristen");
@@ -51,14 +52,14 @@ export function TabFristen({ akte, onNeu }: { akte: Akte; onNeu: (modus?: "regel
           ]}
         />
         {ohneKontrolle > 0 && ansicht === "offen" && (
-          <Chip tone="amber" icon={<ShieldAlert className="size-3" />}>
+          <Chip tone="amber" icon={<TriangleAlert className="size-3" />}>
             Vier-Augen-Kontrolle offen: {ohneKontrolle} {ohneKontrolle === 1 ? "Frist" : "Fristen"}
           </Chip>
         )}
         <div className="flex-1" />
         <Link
           to={`/fristen?rechner=1&akte=${akte.id}`}
-          className="inline-flex h-[38px] items-center gap-1.5 rounded-full px-3.5 text-[13.5px] font-medium text-fg-2 transition-colors hover:bg-ink-softer hover:text-fg max-sm:h-11"
+          className="inline-flex h-[38px] items-center gap-1.5 rounded-md px-3 text-[14px] font-medium text-fg-2 transition-colors duration-100 hover:bg-[var(--surface-2)] hover:text-fg max-sm:h-11"
           title="Fristenrechner mit dieser Akte öffnen – mit Kalender aller Fristen der Kanzlei"
         >
           <Calculator className="size-4" /> Im Fristenrechner öffnen
@@ -94,15 +95,15 @@ export function TabFristen({ akte, onNeu }: { akte: Akte; onNeu: (modus?: "regel
           />
         </Card>
       ) : (
-        <ul className="grid grid-cols-1 gap-2.5">
+        <ul className="sheet grid grid-cols-1 divide-y divide-[var(--line)] overflow-hidden rounded-lg">
           <AnimatePresence initial={false}>
-            {liste.map((f, i) => (
+            {liste.map((f) => (
               <motion.li
                 key={f.id}
                 layout
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0, transition: { delay: Math.min(i, 10) * 0.03, type: "spring", stiffness: 460, damping: 36 } }}
-                exit={{ opacity: 0, x: 24, transition: { duration: 0.2 } }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1, transition: BEWEGUNG.standard }}
+                exit={{ opacity: 0, transition: BEWEGUNG.standard }}
               >
                 <FristKarte f={f} akte={akte} />
               </motion.li>
@@ -131,10 +132,11 @@ function FristKarte({ f, akte }: { f: Frist; akte: Akte }) {
     });
   const verantw = byId.get(f.verantwortlichId);
   const erledigtVon = f.erledigtVon ? byId.get(f.erledigtVon) : undefined;
-  const d = dringlichkeit(f.datum);
+  const d = dringlichkeit(f.datum, istKritisch(f));
   const istOffen = f.status === "offen";
   const dt = fromISO(f.datum);
-  const tonDatum = !istOffen ? "bg-green-soft text-green" : d.tone === "seal" ? "bg-seal-soft text-seal" : d.tone === "amber" ? "bg-amber-soft text-amber" : "bg-ink-softer text-fg";
+  // Datum als ruhiger Textblock – die Lage nennt der Chip daneben (keine farbige Kachel)
+  const tonDatum = !istOffen ? "text-fg-3" : d.tone === "seal" ? "text-[var(--seal-text)]" : "text-fg";
   // Rechtsnatur aus der Fristregel: Notfrist bzw. nicht verlängerbare Frist (§ 4 KSchG, StPO, OWiG) rot – wie im Fristenkalender
   const art = f.typ === "notfrist" || f.typ === "frist" ? fristArtZu(f) : undefined;
   const kritisch = istKritisch(f);
@@ -153,28 +155,28 @@ function FristKarte({ f, akte }: { f: Frist; akte: Akte }) {
   };
 
   return (
-    <Card padded={false} className={cn("p-4", !istOffen && "opacity-90")}>
+    <div className={cn("relative p-4", kritisch && istOffen && "shadow-[inset_2px_0_0_var(--seal)]")}>
       <div className="flex items-start gap-3.5">
-        <div className={cn("grid w-[60px] shrink-0 place-items-center rounded-[14px] py-2 text-center", tonDatum)}>
-          <div className="text-[12px] font-semibold uppercase tracking-[0.06em] opacity-80">{wochentagName(f.datum, true)}</div>
-          <div className="num text-[22px] font-semibold leading-none tracking-[-0.03em]">{dt.getUTCDate()}</div>
-          <div className="text-[12px] font-medium opacity-80">{monatName(dt.getUTCMonth(), true)}</div>
+        <div className={cn("grid w-12 shrink-0 place-items-center pt-0.5 text-center", tonDatum)}>
+          <div className="text-[12px] font-medium text-fg-3">{wochentagName(f.datum, true)}</div>
+          <div className="num text-[22px] font-semibold leading-7 tracking-[-0.02em]">{dt.getUTCDate()}</div>
+          <div className="text-[12px] text-fg-3">{monatName(dt.getUTCMonth(), true)}</div>
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <Chip tone={kritisch ? "seal" : f.typ === "termin" ? "ink" : "neutral"} icon={kritisch ? <ShieldAlert className="size-3" /> : undefined} title={art?.kurz}>
+            <Chip tone={kritisch ? "seal" : f.typ === "termin" ? "outline" : "neutral"} title={art?.kurz}>
               {/* „Frist · nicht verlängerbar“ wie Kalender und Liste – Text, nicht nur Farbe (I2-T04-01) */}
               {kritisch && art && art.label !== "Notfrist" ? `${art.label} · nicht verlängerbar` : (art?.label ?? FRIST_TYP_LABEL[f.typ])}
             </Chip>
             {istOffen && (
-              <Chip tone={d.tone} dot={d.stufe !== "normal"}>
+              <Chip tone={d.tone}>
                 {d.label}
               </Chip>
             )}
             <QuelleChip quelle={f.quelle} notiz={f.notiz} />
           </div>
-          <div className="mt-1.5 text-[14.5px] font-semibold leading-snug">{f.titel}</div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-fg-3">
+          <div className="mt-1.5 text-[15px] font-medium leading-snug text-fg">{f.titel}</div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-fg-3">
             <span>{fmtDateWd(f.datum)}</span>
             {f.uhrzeit && (
               <span className="inline-flex items-center gap-1">
@@ -189,12 +191,12 @@ function FristKarte({ f, akte }: { f: Frist; akte: Akte }) {
             {f.grundlage && <span className="font-medium text-fg-2">{f.grundlage}</span>}
             {f.vorfrist && <span>Vorfrist {fmtDate(f.vorfrist)}</span>}
           </div>
-          {f.notiz && <p className="mt-1.5 text-[12.5px] text-fg-2">{f.notiz}</p>}
+          {f.notiz && <p className="mt-1.5 text-[13px] text-fg-2">{f.notiz}</p>}
           <KorrekturHinweis f={f} team={team} />
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {verantw && (
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] text-fg-3">
+              <span className="inline-flex items-center gap-1.5 text-[13px] text-fg-3">
                 <Avatar initialen={verantw.initialen} farbe={verantw.farbe} size={20} /> {verantw.name}
               </span>
             )}
@@ -202,7 +204,7 @@ function FristKarte({ f, akte }: { f: Frist; akte: Akte }) {
             <EebAbweichungChip f={f} />
             {istOffen && <KontrolleAktion f={f} user={user} kontrollieren={kontrolliere} verantwortlich={verantw} anfordern={korrekturAnfordern} />}
             {!istOffen && (
-              <span className="text-[12.5px] text-fg-3">
+              <span className="text-[13px] text-fg-3">
                 Erledigt {f.erledigtAm ? relTime(f.erledigtAm) : ""}
                 {erledigtVon ? ` von ${erledigtVon.name}` : ""}
               </span>
@@ -212,8 +214,8 @@ function FristKarte({ f, akte }: { f: Frist; akte: Akte }) {
 
           {f.rechenweg && f.rechenweg.length > 0 && (
             <div className="mt-3">
-              <button type="button" onClick={() => setRechenweg((v) => !v)} className="inline-flex items-center gap-1 rounded-full text-[12.5px] font-medium text-ink hover:underline max-sm:min-h-11" aria-expanded={rechenweg}>
-                <motion.span animate={{ rotate: rechenweg ? 180 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }}>
+              <button type="button" onClick={() => setRechenweg((v) => !v)} className="link-leise rounded-sm max-sm:min-h-11" aria-expanded={rechenweg}>
+                <motion.span animate={{ rotate: rechenweg ? 180 : 0 }} transition={BEWEGUNG.standard}>
                   <ChevronDown className="size-3.5" />
                 </motion.span>
                 {rechenweg ? "Rechenweg ausblenden" : "Rechenweg anzeigen"}
@@ -224,13 +226,13 @@ function FristKarte({ f, akte }: { f: Frist; akte: Akte }) {
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: "auto", opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
-                    transition={{ type: "spring", stiffness: 420, damping: 38 }}
+                    transition={BEWEGUNG.standard}
                     className="overflow-hidden"
                   >
-                    <ol className="mt-2 grid grid-cols-1 gap-1.5 rounded-[14px] bg-ink-softer p-3">
+                    <ol className="mt-2 grid grid-cols-1 gap-1.5 border-l-2 border-[var(--line)] py-1 pl-3">
                       {f.rechenweg.map((s, i) => (
-                        <li key={i} className="flex gap-2.5 text-[12.5px] leading-snug text-fg-2">
-                          <span className="num mt-px grid grid-cols-1 size-[18px] shrink-0 place-items-center rounded-full bg-ink-soft text-[11px] font-semibold text-ink" aria-hidden>{i + 1}</span>
+                        <li key={i} className="flex gap-2.5 text-[13px] leading-snug text-fg-2">
+                          <span className="num mt-px grid grid-cols-1 size-[18px] shrink-0 place-items-center rounded-full bg-[var(--surface-2)] text-[12px] font-semibold text-fg-2" aria-hidden>{i + 1}</span>
                           <span>{s}</span>
                         </li>
                       ))}
@@ -270,6 +272,6 @@ function FristKarte({ f, akte }: { f: Frist; akte: Akte }) {
       </div>
       {dialog}
       <DateiDialog datei={datei} onClose={() => setDatei(null)} />
-    </Card>
+    </div>
   );
 }

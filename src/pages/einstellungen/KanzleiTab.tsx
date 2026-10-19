@@ -115,7 +115,7 @@ export function KanzleiTab() {
                 ))}
               </Select>
               {abweichend && ausStadt && (
-                <div id="k-land-vorschlag" role="status" className="mt-2 flex flex-wrap items-center gap-2 rounded-[12px] bg-amber-soft px-3 py-2 text-[13px] text-fg-2">
+                <div id="k-land-vorschlag" role="status" className="mt-2 flex flex-wrap items-center gap-2 rounded-md bg-amber-soft px-3 py-2 text-[13px] text-fg-2">
                   <Info className="size-4 shrink-0 text-amber" />
                   <span className="min-w-0 flex-1">
                     {p.stadt.trim()} liegt in {bundeslandName(ausStadt)}, gewählt ist {bundeslandName(p.bundesland)}.
@@ -143,7 +143,7 @@ export function KanzleiTab() {
                     aria-pressed={an}
                     disabled={!darf}
                     onClick={() => toggle(sg)}
-                    className={cn("chip !h-8 !px-3 !text-[12.5px] transition-colors", an ? "chip-ink" : "chip-outline hover:bg-[var(--ink-softer)]")}
+                    className={cn("chip !h-8 !px-3 !text-[13px] transition-colors", an ? "chip-ink" : "chip-outline hover:bg-[var(--ink-softer)]")}
                   >
                     {an && <Check className="size-3" strokeWidth={3} />}
                     {sg}
@@ -155,13 +155,13 @@ export function KanzleiTab() {
 
           </fieldset>
           {fehler && (
-            <div role="alert" className="rounded-[12px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal">
+            <div role="alert" className="rounded-md bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal">
               {fehler}
             </div>
           )}
 
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-4">
-            <span className="flex min-w-0 flex-1 basis-[220px] items-center gap-1.5 text-[12.5px] text-fg-3">
+            <span className="flex min-w-0 flex-1 basis-[220px] items-center gap-1.5 text-[13px] text-fg-3">
               <Info className="size-3.5 shrink-0" />
               {darf ? "Änderungen gelten sofort für Seitenleiste, Briefkopf, Rechnungen und Schriftsätze." : "Das Kanzleiprofil ändern Partner und Administration Ihrer Kanzlei."}
             </span>
@@ -184,7 +184,7 @@ export function KanzleiTab() {
       </div>
 
       <div className="flex min-w-0 flex-col gap-4">
-        <div className="sheet rounded-[22px] p-5">
+        <div className="sheet rounded-lg p-5">
           <div className="eyebrow mb-3">Vorschau Briefkopf</div>
           <div className="paper p-5">
             <div className="flex items-start justify-between gap-3">
@@ -193,7 +193,7 @@ export function KanzleiTab() {
                 <div className="text-[15px] font-semibold leading-snug tracking-[-0.01em] [overflow-wrap:anywhere]">{p.name || "Name der Kanzlei"}</div>
                 <div className="mt-0.5 text-[12px] leading-snug opacity-70 [overflow-wrap:anywhere]">{p.schwerpunkte.join(" · ") || "Schwerpunkte"}</div>
               </div>
-              <span className="size-6 shrink-0 rounded-[7px]" style={{ background: tenant.farbe }} aria-hidden />
+              <span className="size-6 shrink-0 rounded-sm" style={{ background: tenant.farbe }} aria-hidden />
             </div>
             <div className="my-3 h-px bg-current opacity-[0.12]" />
             <div className="text-[12px] leading-relaxed opacity-70">{p.adresse || "Anschrift"}</div>
@@ -204,7 +204,7 @@ export function KanzleiTab() {
             </div>
           </div>
         </div>
-        <div className="sheet rounded-[22px] p-5 text-[13px]">
+        <div className="sheet rounded-lg p-5 text-[13px]">
           <div className="eyebrow mb-3">Stammdaten</div>
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
             <dt className="text-fg-3">Kunde seit</dt>
@@ -216,7 +216,7 @@ export function KanzleiTab() {
             <dt className="text-fg-3">Kanzleifarbe</dt>
             <dd className="flex items-center justify-end gap-2" title={`Farbwert ${tenant.farbe}`}>
               <span className="size-3.5 rounded-full ring-1 ring-[var(--line)]" style={{ background: tenant.farbe }} />
-              <span className="text-[12.5px] text-fg-3">im Briefkopf</span>
+              <span className="text-[13px] text-fg-3">im Briefkopf</span>
             </dd>
           </dl>
         </div>

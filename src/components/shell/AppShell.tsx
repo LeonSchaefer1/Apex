@@ -4,7 +4,6 @@ import { AnimatePresence, motion } from "motion/react";
 import { useSession } from "@/store/session";
 import { useData } from "@/store/data";
 import { hatBeispieldaten, istConsole } from "@/lib/backend";
-import { usePointerGlow } from "@/lib/usePointerGlow";
 import { useMotor } from "@/lib/motor";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
@@ -22,7 +21,7 @@ import { bereichErlaubt } from "@/app/nav";
 import { useUI } from "@/store/ui";
 import { pausiereDialoge } from "@/components/ui/Modal";
 
-/** Rahmen der Kanzlei-App: schwebende Glas-Navigation über dem belichteten Arbeitsgrund. */
+/** Rahmen der Kanzlei-App: Seitenleiste | Inhalt, die Kopfleiste über der Inhaltsspalte – alles auf dem einfarbigen Grund. */
 export function AppShell() {
   const { sitzung, status, gesperrt } = useSession();
   const dataStatus = useData((s) => s.status);
@@ -30,7 +29,6 @@ export function AppShell() {
   const loc = useLocation();
   const nav = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
-  usePointerGlow();
   const zweiFaktorFehlt = !!sitzung && !istConsole(sitzung) && !!sitzung.betrieb?.zweiFaktorFehlt;
   // Simulierter 38h-Motor nur für Präsentations- und Beispieldaten-Kanzleien – nie in echten Kundendaten.
   useMotor(dataStatus === "bereit" && hatBeispieldaten(sitzung) && !gesperrt);
@@ -102,29 +100,28 @@ export function AppShell() {
             ziel?.focus({ preventScroll: true });
             ziel?.scrollIntoView({ block: "start" });
           }}
-          className="sr-only z-[120] rounded-full bg-[var(--surface)] px-4 py-2 text-[14px] font-semibold text-ink shadow-[var(--glass-shadow)] ring-2 ring-[var(--focus)] focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:inline-flex focus:min-h-11 focus:items-center"
+          className="sr-only z-[120] rounded-md border border-[var(--line)] bg-[var(--surface-pop)] px-4 py-2 text-[14px] font-medium text-fg shadow-pop focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:inline-flex focus:min-h-11 focus:items-center"
         >
           Zum Inhalt springen
         </a>
         <Sidebar />
         <div className="relative z-10 flex min-w-0 flex-1 flex-col">
           {/* Kopfleiste über (nicht in) der Scrollfläche: Inhalt läuft nie unter ihre Knöpfe – kein verdecktes Bedienelement
-              beim Scrollen (WCAG 2.4.11, 2.5.8; I3-T07-02). Ihr Verlauf blendet die oberste Inhaltskante weich aus. */}
+              beim Scrollen (WCAG 2.4.11, 2.5.8; I3-T07-02). */}
           <TopBar />
           {/* Ebene für Kurzköpfe einzelner Seiten (z. B. Akte): liegt wie die Kopfleiste über der Scrollfläche, nicht darin */}
           <div id="kopf-ebene" className="pointer-events-none relative z-30 h-0 shrink-0" />
           {/* Unten Freiraum für die Assistent-Kugel bzw. mobil für Tab-Leiste und schwebende Aktionsleiste: Fokus und letzte Inhalte liegen nie darunter (WCAG 2.4.11). */}
           <div ref={scrollRef} className="haupt-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden" id="haupt-scroll">
-            <main id="inhalt" tabIndex={-1} className="mx-auto w-full max-w-[1480px] px-4 pb-[calc(var(--tabbar-h)+env(safe-area-inset-bottom)+76px)] pt-6 outline-none md:px-8 md:pb-28">
+            <main id="inhalt" tabIndex={-1} className="mx-auto w-full max-w-[1480px] px-4 pb-[calc(var(--tabbar-h)+env(safe-area-inset-bottom)+76px)] pt-6 outline-none sm:px-6 md:pb-28 md:pt-8 lg:px-8">
               <AnimatePresence mode="wait">
+                {/* Seitenwechsel: nur Überblenden (120 ms, linear) – kein Versatz, keine Unschärfe (DESIGN-SYSTEM.md 10) */}
                 <motion.div
                   key={loc.pathname}
-                  initial={{ opacity: 0, y: 10, filter: "blur(4px)" }}
-                  // Nach dem Einblenden filter/transform entfernen: Sonst wird der Seitenrahmen zum Bezugsrahmen für
-                  // position: fixed (z. B. die mobile Aktionsleiste der Akte klebte am Seitenende statt über der Tab-Leiste).
-                  animate={{ opacity: 1, y: 0, filter: "blur(0px)", transitionEnd: { filter: "none", transform: "none" } }}
-                  exit={{ opacity: 0, y: -6, filter: "blur(3px)" }}
-                  transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.12, ease: "linear" }}
                 >
                   {erlaubt ? <FrozenOutlet /> : <KeinZugriff />}
                 </motion.div>

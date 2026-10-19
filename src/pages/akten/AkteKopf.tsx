@@ -10,7 +10,7 @@ import { istOffen, offenerBetrag } from "@/pages/abrechnung/lib";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast, useUI } from "@/store/ui";
-import { Avatar, Button, Card, Chip, Field, IconButton, Input, Menu, Modal } from "@/components/ui";
+import { Avatar, Button, Chip, Field, IconButton, Input, Menu, Modal } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { KontaktAvatar, kopiere } from "@/pages/kontakte/kontaktHelfer";
 import { DECKUNG_INFO, PHASEN, PRIO_INFO, SACHGEBIET_ICON, STATUS_INFO, SachgebietChip, abschlussText, kontoSummen, useKontaktMap, useTeam } from "./helfer";
@@ -18,6 +18,7 @@ import { PORTAL_WV_TITEL, portalOffenBis, sperrePortal, useMandantenportal } fro
 import { legeFristAn } from "@/pages/fristen/logik";
 import { DateiDialog, type AusgabeDatei } from "@/pages/fristen/dateiAusgabe";
 import { erzeugeIcs, icsDateiname } from "@/pages/fristen/ics";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 /** Nächster offener Termin einer Akte (Datum, Uhrzeit, Gericht/Saal) */
 export function naechsterTermin(akteId: string, fristen: Frist[]): Frist | undefined {
@@ -157,23 +158,23 @@ function AbschlussDialog({ akte, open, onClose }: { akte: Akte; open: boolean; o
         {text} Die Akte wird archiviert und die Aufbewahrungsfrist der Handakte (§ 50 BRAO, sechs Jahre) vorgemerkt.{warnung ? "" : " Sie können sie jederzeit wieder öffnen."}
       </p>
       {akte.mandantenportal && (
-        <fieldset className="mt-4 rounded-[16px] bg-ink-softer p-3.5 ring-1 ring-inset ring-[var(--line)]">
+        <fieldset className="mt-4 rounded-md border border-[var(--line)] p-3.5">
           <legend className="sr-only">Mandantenportal nach dem Abschluss</legend>
           <div className="flex items-center gap-1.5 text-[13px] font-semibold text-fg">
-            <Globe className="size-4 text-green" aria-hidden /> Das Mandantenportal ist aktiv – was soll damit geschehen?
+            <Globe className="size-4 text-fg-4" aria-hidden /> Das Mandantenportal ist aktiv – was soll damit geschehen?
           </div>
-          <label className="mt-2.5 flex min-h-11 cursor-pointer items-start gap-2.5 text-[13.5px]">
+          <label className="mt-2.5 flex min-h-11 cursor-pointer items-start gap-2.5 text-[14px]">
             <input type="radio" name={`portal-${akte.id}`} className="mt-1 size-4 accent-[var(--ink)]" checked={portalArt === "sperren"} onChange={() => setPortalArt("sperren")} />
             <span>
               <span className="font-medium">Portal sperren</span>
-              <span className="block text-[12.5px] text-fg-3">Der Mandant verliert den Zugang mit dem Abschluss (empfohlen).</span>
+              <span className="block text-[13px] text-fg-3">Der Mandant verliert den Zugang mit dem Abschluss (empfohlen).</span>
             </span>
           </label>
-          <label className="flex min-h-11 cursor-pointer items-start gap-2.5 text-[13.5px]">
+          <label className="flex min-h-11 cursor-pointer items-start gap-2.5 text-[14px]">
             <input type="radio" name={`portal-${akte.id}`} className="mt-1 size-4 accent-[var(--ink)]" checked={portalArt === "offen"} onChange={() => setPortalArt("offen")} />
             <span className="min-w-0 flex-1">
               <span className="font-medium">Offen lassen bis …</span>
-              <span className="block text-[12.5px] text-fg-3">Für Nachfragen oder Unterlagen; am gewählten Tag erinnert eine Wiedervorlage ans Sperren.</span>
+              <span className="block text-[13px] text-fg-3">Für Nachfragen oder Unterlagen; am gewählten Tag erinnert eine Wiedervorlage ans Sperren.</span>
             </span>
           </label>
           {portalArt === "offen" && (
@@ -241,24 +242,23 @@ export function AkteKopf({
   const portal = () => (akte.mandantenportal ? portalAktionen.sperren() : portalAktionen.freischalten());
 
   return (
-    <Card padded={false}>
-      <div className="p-5">
+    // Aktenkopf frei auf dem Grund (keine Karte): Kennung, Titel, Fakten und Verfahrensstand, gegliedert durch Linien
+    <section aria-label="Aktenkopf" className="min-w-0 border-b border-[var(--line)]">
+      <div className="pb-5">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
           <div className="min-w-0 flex-1 basis-[240px]">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="grid grid-cols-1 size-8 place-items-center rounded-[10px] bg-ink-soft text-ink">
-                <Icon className="size-4" />
-              </span>
+              <Icon className="size-4 shrink-0 text-fg-4" aria-hidden />
               <button
                 type="button"
                 onClick={() => kopiere(akte.aktenzeichen, "Aktenzeichen")}
                 title="Aktenzeichen kopieren"
-                className="group mono inline-flex h-8 items-center gap-1.5 rounded-full max-sm:h-11 bg-ink-softer px-3 text-[13.5px] font-semibold text-fg shadow-[inset_0_0_0_1px_var(--line)] transition-colors hover:bg-ink-soft"
+                className="group mono -ml-1.5 inline-flex h-8 items-center gap-1.5 rounded-md px-1.5 text-[14px] font-medium text-fg transition-colors duration-100 hover:bg-[var(--surface-2)] max-sm:h-11"
               >
                 {akte.aktenzeichen}
-                <Copy className="size-3 text-fg-3 transition-colors group-hover:text-ink" />
+                <Copy className="size-3.5 text-fg-4 transition-colors group-hover:text-fg" aria-hidden />
               </button>
-              <span className="text-[12.5px] text-fg-3">angelegt am {fmtDate(akte.createdAt.slice(0, 10))}</span>
+              <span className="text-[13px] text-fg-3">angelegt am {fmtDate(akte.createdAt.slice(0, 10))}</span>
             </div>
           </div>
           {/* Telefon: Ist diese Knopfreihe aus dem Bild gescrollt, erscheint unten die Aktionsleiste „Notiz · Frist · Wiedervorlage“ (AkteDetail, I5-T14-01) */}
@@ -292,7 +292,7 @@ export function AkteKopf({
             </Button>
             <Menu
               trigger={({ toggle }) => (
-                <IconButton label="Weitere Aktionen" onClick={toggle} className="shadow-[inset_0_0_0_1px_var(--line)] max-sm:!size-11">
+                <IconButton label="Weitere Aktionen" onClick={toggle} className="shadow-[inset_0_0_0_1px_var(--line-strong)] max-sm:!size-11">
                   <MoreHorizontal className="size-[18px]" />
                 </IconButton>
               )}
@@ -403,7 +403,7 @@ export function AkteKopf({
               termin ? (
                 <>
                   <span className="block">{[termin.titel, termin.ort].filter(Boolean).join(" · ")}</span>
-                  <button type="button" onClick={terminIcs} className="mt-0.5 inline-flex min-h-11 items-center gap-1 font-medium text-ink hover:underline sm:min-h-6 pointer-coarse:min-h-11" title="Termin als Kalenderdatei (.ics) für Outlook, Apple oder Google Kalender">
+                  <button type="button" onClick={terminIcs} className="link mt-0.5 inline-flex min-h-11 items-center gap-1 font-medium sm:min-h-6 pointer-coarse:min-h-11" title="Termin als Kalenderdatei (.ics) für Outlook, Apple oder Google Kalender">
                     <CalendarPlus className="size-3.5" aria-hidden />
                     In Kalender (.ics)
                   </button>
@@ -439,7 +439,7 @@ export function AkteKopf({
       {portalAktionen.dialoge}
       <AbschlussDialog akte={akte} open={abschluss} onClose={() => setAbschluss(false)} />
       <DateiDialog datei={datei} onClose={() => setDatei(null)} />
-    </Card>
+    </section>
   );
 }
 
@@ -447,9 +447,9 @@ function Fakt({ label, sub, children, className }: { label: string; sub?: React.
   return (
     <div className={cn("min-w-0", className)}>
       <dt className="eyebrow">{label}</dt>
-      <dd className="mt-1.5 min-w-0 text-[13.5px]">
+      <dd className="mt-1.5 min-w-0 text-[14px]">
         <div className="flex min-w-0 items-center">{children}</div>
-        {sub && <div className="mt-0.5 break-words text-[12.5px] text-fg-3">{sub}</div>}
+        {sub && <div className="mt-0.5 break-words text-[13px] text-fg-3">{sub}</div>}
       </dd>
     </div>
   );
@@ -509,28 +509,28 @@ function PhasenLeiste({ akte, onAbschliessen }: { akte: Akte; onAbschliessen: ()
   };
 
   return (
-    <div className={cn("rounded-b-[22px] border-t border-[var(--line)] bg-[color-mix(in_oklab,var(--ink-softer)_70%,transparent)] px-2 sm:px-4", offen ? "pb-2 pt-1.5" : "py-1.5")}>
-      <div className="flex items-center justify-between gap-3 px-1 sm:px-3">
-        <button type="button" onClick={umschalten} aria-expanded={offen} className="flex min-h-11 min-w-0 items-center gap-2 rounded-full pr-2 text-left sm:min-h-9">
-          <ChevronDown className={cn("size-4 shrink-0 text-fg-3 transition-transform duration-300", !offen && "-rotate-90")} />
+    <div className={cn("border-t border-[var(--line)]", offen ? "pb-3 pt-1.5" : "py-1.5")}>
+      <div className="flex items-center justify-between gap-3">
+        <button type="button" onClick={umschalten} aria-expanded={offen} className="-ml-1 flex min-h-11 min-w-0 items-center gap-2 rounded-md pl-1 pr-2 text-left sm:min-h-9">
+          <ChevronDown className={cn("size-4 shrink-0 text-fg-3 transition-transform duration-150", !offen && "-rotate-90")} aria-hidden />
           <span className="eyebrow">Verfahrensstand</span>
           {!offen && (
-            <span className="min-w-0 text-[12.5px] font-medium text-fg-2">
+            <span className="min-w-0 text-[13px] font-medium text-fg-2">
               Phase {idx + 1} von {PHASEN.length}: {akte.phase}
             </span>
           )}
         </button>
-        {offen && <span className="hidden text-[12.5px] text-fg-3 sm:inline">Zum Ändern auf eine Phase klicken</span>}
+        {offen && <span className="hidden text-[13px] text-fg-3 sm:inline">Zum Ändern auf eine Phase klicken</span>}
       </div>
       {offen && (
       <div ref={scrollRef} className="no-scrollbar overflow-x-auto">
         <div className="relative min-w-[700px] pt-1">
-          <div className="pointer-events-none absolute top-[24px] h-[2px] rounded-full bg-[var(--line-strong)]" style={{ left: `${100 / 14}%`, right: `${100 / 14}%` }} aria-hidden>
+          <div className="pointer-events-none absolute top-[24px] h-px bg-[var(--line-strong)]" style={{ left: `${100 / 14}%`, right: `${100 / 14}%` }} aria-hidden>
             <motion.div
-              className={cn("h-full rounded-full", fertig ? "bg-green" : "bg-ink")}
+              className={cn("h-full", fertig ? "bg-[var(--green)]" : "bg-[var(--ink)]")}
               initial={false}
               animate={{ width: `${(idx / (PHASEN.length - 1)) * 100}%` }}
-              transition={{ type: "spring", stiffness: 260, damping: 32 }}
+              transition={BEWEGUNG.standard}
             />
           </div>
         {/* Nur li als direkte Kinder der Liste (Fortschrittslinie liegt außerhalb) */}
@@ -545,24 +545,24 @@ function PhasenLeiste({ akte, onAbschliessen }: { akte: Akte; onAbschliessen: ()
                   onClick={() => void setze(p)}
                   aria-current={aktiv ? "step" : undefined}
                   title={aktiv ? `Aktuelle Phase: ${p}` : `Phase auf „${p}“ setzen`}
-                  className="group relative flex w-full flex-col items-center gap-1.5 rounded-[14px] px-1 pb-2 pt-2.5"
+                  className="group relative flex w-full flex-col items-center gap-1.5 rounded-md px-1 pb-2 pt-2.5"
                 >
                   {aktiv && (
                     <motion.span
                       layoutId={`phase-pill-${akte.id}`}
-                      transition={{ type: "spring", stiffness: 480, damping: 36 }}
-                      className="absolute inset-x-1 inset-y-0 rounded-[14px] bg-[var(--glass-strong)] shadow-[0_1px_0_0_var(--glass-rim-3)_inset,0_4px_14px_-6px_rgba(20,30,80,0.22),0_0_0_1px_var(--line)]"
+                      transition={BEWEGUNG.standard}
+                      className="absolute inset-x-1 inset-y-0 rounded-md bg-[var(--surface-3)]"
                     />
                   )}
                   <span
                     className={cn(
-                      "relative grid size-[24px] place-items-center rounded-full transition-all duration-300",
-                      aktiv ? (fertig ? "bg-green text-surface" : "bg-ink text-on-ink shadow-[0_0_0_5px_var(--ink-soft)]") : erledigt ? (fertig ? "bg-green text-surface" : "bg-ink text-on-ink") : "bg-[var(--surface)] text-fg-3 shadow-[inset_0_0_0_1.5px_var(--line-strong)] group-hover:shadow-[inset_0_0_0_1.5px_var(--ink)]",
+                      "relative grid size-[24px] place-items-center rounded-full transition-colors duration-100",
+                      aktiv || erledigt ? (fertig ? "bg-[var(--green)] text-[var(--on-green)]" : "bg-[var(--ink)] text-[var(--on-ink)]") : "bg-[var(--surface)] text-fg-3 shadow-[inset_0_0_0_1px_var(--line-strong)] group-hover:shadow-[inset_0_0_0_1px_var(--fg)]",
                     )}
                   >
-                    {erledigt || (aktiv && fertig) ? <Check className="size-3.5" strokeWidth={3} /> : aktiv ? <span className="size-2 rounded-full bg-on-ink" /> : <span className="num text-[12.5px] font-semibold">{i + 1}</span>}
+                    {erledigt || (aktiv && fertig) ? <Check className="size-3.5" strokeWidth={2} /> : aktiv ? <span className="size-2 rounded-full bg-[var(--on-ink)]" /> : <span className="num text-[12px] font-semibold">{i + 1}</span>}
                   </span>
-                  <span className={cn("relative whitespace-nowrap text-[12.5px] font-medium transition-colors", aktiv ? "text-fg" : erledigt ? "text-fg-2" : "text-fg-3 group-hover:text-fg-2")}>{p}</span>
+                  <span className={cn("relative whitespace-nowrap text-[13px] font-medium transition-colors", aktiv ? "text-fg" : erledigt ? "text-fg-2" : "text-fg-3 group-hover:text-fg-2")}>{p}</span>
                 </button>
               </li>
             );

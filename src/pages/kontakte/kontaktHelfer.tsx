@@ -10,6 +10,7 @@ import { useCol } from "@/store/data";
 import { toast } from "@/store/ui";
 import { Avatar, type Tone } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 export const ROLLE_LABEL: Record<KontaktRolle, string> = {
   mandant: "Mandant",
@@ -48,7 +49,7 @@ export function KontaktAvatar({ k, size = 40, className }: { k: Kontakt; size?: 
   const Icon = k.rollen.includes("gericht") || k.rollen.includes("behoerde") ? Landmark : k.rollen.includes("versicherung") ? ShieldCheck : k.rollen.includes("gegneranwalt") ? Scale : Building2;
   return (
     <span
-      className={cn("inline-grid shrink-0 place-items-center bg-ink-soft text-ink", className)}
+      className={cn("inline-grid shrink-0 place-items-center bg-[var(--surface-3)] text-fg-2", className)}
       style={{ width: size, height: size, borderRadius: Math.round(size * 0.32) }}
       aria-hidden
     >
@@ -101,7 +102,7 @@ export function CopyButton({ text, was, className }: { text: string; was: string
       className={cn("icon-btn !size-7 shrink-0 text-fg-3", className)}
     >
       <AnimatePresence mode="wait" initial={false}>
-        <motion.span key={ok ? "ok" : "copy"} initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.5, opacity: 0 }} transition={{ type: "spring", stiffness: 520, damping: 30 }}>
+        <motion.span key={ok ? "ok" : "copy"} initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.5, opacity: 0 }} transition={BEWEGUNG.standard}>
           {ok ? <Check className="size-3.5 text-green" /> : <Copy className="size-3.5" />}
         </motion.span>
       </AnimatePresence>

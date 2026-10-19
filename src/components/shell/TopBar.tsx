@@ -7,7 +7,7 @@ import { useKanzlei, useSession } from "@/store/session";
 import { useData } from "@/store/data";
 import { relTime } from "@/core/dates";
 import { Avatar, Menu } from "@/components/ui";
-import { AppIcon } from "@/components/Logo";
+import { LogoMark } from "@/components/Logo";
 import { ApexIsland } from "./ApexIsland";
 import { cn } from "@/lib/cn";
 import { useAiStatus } from "@/ai/status";
@@ -18,20 +18,6 @@ import { useMedia } from "@/lib/useMedia";
 /** Im Prototyp sind beA, E-Mail und Bank simuliert – einheitlicher Wortlaut mit Posteingang, Bankabgleich und Systemstatus. */
 import { SIMULIERT_STATUS, SYSTEMSTATUS_NAME } from "@/lib/betriebsstatus";
 export { SIMULIERT_STATUS };
-
-/** Kopfleiste wird deckend, sobald Inhalt darunter durchläuft (kein Text schimmert durch). */
-function useGescrollt(): boolean {
-  const [gescrollt, setGescrollt] = useState(false);
-  useEffect(() => {
-    const el = document.getElementById("haupt-scroll");
-    if (!el) return;
-    const pruefe = () => setGescrollt(el.scrollTop > 4);
-    pruefe();
-    el.addEventListener("scroll", pruefe, { passive: true });
-    return () => el.removeEventListener("scroll", pruefe);
-  }, []);
-  return gescrollt;
-}
 
 /**
  * Geringe Höhe (z. B. 200 % Zoom auf dem Notebook: 720 × 450 CSS-px, I4-T15-03): Die kompakte Kopfleiste blendet sich beim
@@ -73,9 +59,9 @@ function useKopfAusblenden(pfad: string): [boolean, () => void] {
 }
 
 const THEME_ICON: Record<ThemeWahl, React.ReactNode> = {
-  system: <MonitorSmartphone className="size-[18px]" />,
-  light: <Sun className="size-[18px]" />,
-  dark: <Moon className="size-[18px]" />,
+  system: <MonitorSmartphone className="size-4" />,
+  light: <Sun className="size-4" />,
+  dark: <Moon className="size-4" />,
 };
 
 export function TopBar() {
@@ -83,7 +69,6 @@ export function TopBar() {
   const nav = useNavigate();
   const item = navFor(loc.pathname);
   const { theme, setTheme, setPalette, setKuerzel } = useUI();
-  const gescrollt = useGescrollt();
   const [kopfWeg, kopfZeigen] = useKopfAusblenden(loc.pathname);
   const kopfRef = useRef<HTMLElement>(null);
   const { user, tenant } = useKanzlei();
@@ -108,6 +93,8 @@ export function TopBar() {
   });
   const neuesteMeldung = meldungen.reduce((max, m) => (m.zeit > max ? m.zeit : max), "");
   const ungelesen = meldungen.filter((m) => m.zeit > gesehen).length;
+  // Punkt an der Glocke: Siegelrot nur bei Kritischem (gehäufte Fehlanmeldungen), sonst Text 1
+  const ungelesenKritisch = meldungen.some((m) => m.zeit > gesehen && m.kategorie === "anmeldung" && !!m.meldung);
   const alsGelesenMarkieren = () => {
     if (!neuesteMeldung || neuesteMeldung <= gesehen) return;
     setGesehen(neuesteMeldung);
@@ -119,35 +106,37 @@ export function TopBar() {
   };
 
   return (
+    // Kopfleiste (DESIGN-SYSTEM.md 12.11): 56 px, deckend auf dem Grund, Linie unten – immer gleich, auch beim Scrollen.
     <header
       ref={kopfRef}
-      className={cn("kopfleiste relative z-40 shrink-0 px-3 pt-[max(12px,env(safe-area-inset-top))] transition-[margin-top] duration-200 md:px-5", gescrollt && "kopfleiste-gescrollt")}
+      className="kopfleiste relative z-40 shrink-0 border-b border-[var(--line)] bg-[var(--bg)] pt-[env(safe-area-inset-top)] transition-[margin-top] duration-200"
       style={kopfWeg ? { marginTop: -(kopfRef.current?.offsetHeight ?? 48) } : undefined}
       data-ausgeblendet={kopfWeg || undefined}
       onFocusCapture={kopfZeigen}
     >
-      <div className={cn("kopf-innen glass flex h-14 items-center gap-1 rounded-[22px] pl-3 pr-2 sm:gap-2 md:pl-4", gescrollt && "glass-deckend")}>
-        {/* Mobil: App-Icon + Seitentitel – unter 360 px ohne App-Icon, der Titel bricht bei Bedarf in eine zweite Zeile um (I4-T01-01) */}
-        <div className="flex min-w-0 flex-1 items-center gap-2 md:hidden">
-          <AppIcon size={28} className="max-[359px]:hidden" />
-          <span className="truncate text-[15px] font-semibold tracking-[-0.02em] max-[379px]:text-[14px] max-[379px]:tracking-[-0.03em] max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:text-[13.5px] max-[359px]:leading-[1.15] max-[359px]:hyphens-auto">
+      <div className="kopf-innen flex h-14 items-center gap-1 pl-4 pr-2 sm:gap-1.5 sm:pr-3 md:px-6">
+        {/* Mobil: Bildmarke + Seitentitel – unter 360 px ohne Marke, der Titel bricht bei Bedarf in eine zweite Zeile um (I4-T01-01) */}
+        <div className="flex min-w-0 flex-1 items-center gap-2.5 md:hidden">
+          <LogoMark size={20} className="text-fg max-[359px]:hidden" />
+          <span className="truncate text-[15px] font-semibold tracking-[-0.01em] max-[379px]:text-[14px] max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:text-[13.5px] max-[359px]:leading-[1.15] max-[359px]:hyphens-auto">
             {item?.label ?? "Apex"}
           </span>
         </div>
 
+        {/* Suchfeld: sieht aus wie ein Feld, öffnet die globale Suche (Strg+K) */}
         <button
           type="button"
           onClick={() => setPalette(true)}
           aria-label="Suchen (Strg+K)"
-          className="group hidden h-10 min-w-[132px] flex-1 items-center gap-2.5 rounded-full bg-[var(--ink-softer)] px-4 text-left text-[13.5px] text-fg-3 shadow-[inset_0_0_0_1px_var(--line)] transition-colors hover:bg-[var(--ink-soft)] md:flex md:max-w-[460px]"
+          className="group hidden h-8 min-w-[132px] flex-1 items-center gap-2 rounded-md border border-[var(--line-strong)] bg-[var(--surface)] pl-2.5 pr-1.5 text-left text-[14px] text-fg-4 transition-colors duration-100 hover:border-[var(--fg-3)] md:flex md:max-w-[360px]"
         >
           <Search className="size-4 shrink-0" />
           <span className="flex-1 truncate">
             <span className="2xl:hidden">Akten, Fristen, Urteile …</span>
-            <span className="hidden 2xl:inline">Akten, Dokumente, Fristen, Urteile durchsuchen …</span>
+            <span className="hidden 2xl:inline">Akten, Dokumente, Fristen, Urteile …</span>
           </span>
           <span className="kbd hidden xl:inline-grid">{isMac ? "⌘" : "Strg"}</span>
-          <span className="kbd -ml-1.5 hidden xl:inline-grid">K</span>
+          <span className="kbd -ml-1 hidden xl:inline-grid">K</span>
         </button>
 
         <div className="hidden min-w-0 flex-1 justify-center md:flex md:max-lg:grow-[0.25]">
@@ -155,7 +144,7 @@ export function TopBar() {
         </div>
 
         {/* Mobil (< 640 px): Bedienflächen der Kopfleiste mindestens 44 × 44 px (Daumen, WCAG 2.5.5) */}
-        <button type="button" className="icon-btn md:hidden max-sm:!size-11" aria-label="Suchen" onClick={() => setPalette(true)}>
+        <button type="button" className="icon-btn md:hidden" aria-label="Suchen" onClick={() => setPalette(true)}>
           <Search className="size-[18px]" />
         </button>
 
@@ -163,22 +152,22 @@ export function TopBar() {
         <button
           type="button"
           onClick={() => nav(SYSTEMSTATUS.to)}
-          className="icon-btn relative md:hidden max-sm:!size-11"
+          className="icon-btn relative md:hidden"
           aria-label={SYSTEMSTATUS_NAME}
           title={`Systemstatus öffnen – ${SIMULIERT_STATUS}`}
         >
           <RadioTower className="size-[18px]" aria-hidden />
-          <span className="absolute right-2 top-2 size-2 rounded-full bg-[var(--amber)] ring-2 ring-[var(--glass-strong)] max-sm:right-2.5 max-sm:top-2.5" aria-hidden />
+          <span className="absolute right-2.5 top-2.5 size-1.5 rounded-full bg-[var(--amber)] max-sm:right-3 max-sm:top-3" aria-hidden />
         </button>
 
         <button
           type="button"
           onClick={() => nav("/hilfe#status")}
-          className="hidden h-8 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-medium text-fg-3 hover:bg-ink-softer xl:inline-flex"
+          className="hidden h-8 items-center gap-1.5 rounded-md px-2 text-[13px] text-fg-3 transition-colors duration-100 hover:bg-[var(--surface-2)] hover:text-fg xl:inline-flex"
           title={`Systemstatus öffnen – ${SIMULIERT_STATUS}`}
           aria-label={`Systemstatus: simuliert verbunden – ${SIMULIERT_STATUS}. Systemstatus öffnen`}
         >
-          <span className="relative inline-flex size-2 rounded-full bg-[var(--amber)]" aria-hidden />
+          <span className="relative inline-flex size-1.5 rounded-full bg-[var(--amber)]" aria-hidden />
           <span className="2xl:hidden">Simuliert verbunden</span>
           <span className="hidden 2xl:inline">{SIMULIERT_STATUS}</span>
         </button>
@@ -191,19 +180,19 @@ export function TopBar() {
                 if (!open) alsGelesenMarkieren();
                 toggle();
               }}
-              className="icon-btn relative max-sm:!size-11"
+              className="icon-btn relative"
               aria-label={ungelesen ? `Benachrichtigungen – ${ungelesen} neu` : "Benachrichtigungen"}
             >
               <Bell className="size-[18px]" />
-              {ungelesen > 0 && <span className="absolute right-2 top-2 size-2 rounded-full bg-seal ring-2 ring-[var(--glass-strong)] max-sm:right-2.5 max-sm:top-2.5" />}
+              {ungelesen > 0 && <span className={cn("absolute right-2 top-2 size-1.5 rounded-full max-sm:right-3 max-sm:top-3", ungelesenKritisch ? "bg-[var(--seal)]" : "bg-[var(--fg)]")} />}
             </button>
           )}
           items={[
             ...meldungen.map((m) => ({
               label: (
                 <span className="block max-w-[280px]">
-                  <span className="line-clamp-2 text-[13px] leading-snug">{m.text}</span>
-                  <span className="text-[12.5px] text-fg-3">
+                  <span className="line-clamp-2 text-[13px] leading-snug text-fg">{m.text}</span>
+                  <span className="text-[12px] text-fg-4">
                     {relTime(m.zeit)}
                     {m.minutenGespart ? ` · ${m.minutenGespart} Min. gespart` : ""}
                   </span>
@@ -223,16 +212,16 @@ export function TopBar() {
 
         <Menu
           trigger={({ toggle }) => (
-            <button type="button" onClick={toggle} className="kopf-knopf ml-0.5 flex shrink-0 items-center justify-center gap-2 rounded-full p-0.5 pr-0.5 transition-colors hover:bg-ink-softer max-sm:size-11 xl:pr-3" aria-label="Benutzermenü">
-              <Avatar initialen={user.initialen} farbe={user.farbe} size={34} />
+            <button type="button" onClick={toggle} className="kopf-knopf ml-1 flex shrink-0 items-center justify-center gap-2 rounded-md p-1 transition-colors duration-100 hover:bg-[var(--surface-2)] max-sm:size-11 xl:pr-2" aria-label="Benutzermenü">
+              <Avatar initialen={user.initialen} farbe={user.farbe} size={28} />
               <span className="kopf-optional hidden text-left leading-tight xl:block">
-                <span className="block max-w-[150px] truncate text-[13px] font-semibold">{user.name}</span>
-                <span className={cn("block text-[12.5px]", ai.quelle === "demo" ? "text-fg-3" : "text-green")}>{ai.label}</span>
+                <span className="block max-w-[150px] truncate text-[13px] font-medium leading-[18px] text-fg">{user.name}</span>
+                <span className="block text-[12px] leading-4 text-fg-4">{ai.label}</span>
               </span>
             </button>
           )}
           items={[
-            { label: <span className="block"><span className="block font-semibold">{user.name}</span><span className="text-[12.5px] text-fg-3">{rollenLabel(user)}</span></span>, icon: <UserIcon />, onClick: () => nav("/einstellungen?tab=team") },
+            { label: <span className="block"><span className="block font-medium text-fg">{user.name}</span><span className="text-[12px] text-fg-4">{rollenLabel(user)}</span></span>, icon: <UserIcon />, onClick: () => nav("/einstellungen?tab=team") },
             { label: tenant.name, icon: <Building2 />, onClick: () => nav("/einstellungen") },
             "sep",
             { label: "Einstellungen", icon: <Settings />, onClick: () => nav("/einstellungen") },

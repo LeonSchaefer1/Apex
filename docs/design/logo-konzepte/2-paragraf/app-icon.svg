@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Apex">
+  <title>Apex – App-Icon</title>
+  <rect width="1024" height="1024" rx="228" fill="#0A0A0A"/>
+  <g transform="translate(224 224) scale(18)" fill="#FFFFFF" color="#FFFFFF">
+  <path fill="none" stroke="currentColor" stroke-width="3" d="M22 4.5h-8a4 4 0 0 0 0 8h4a4 4 0 0 1 0 8h-4a4 4 0 0 1 0-8M18 20.5a4 4 0 0 1 0 8h-8"/>
+  </g>
+</svg>

@@ -27,7 +27,7 @@ export function islandAusblenden() {
 }
 
 /**
- * „Apex Island“: schwarze Kapsel mit der Bilanz des 38h-Motors. Feste Breite (kein Aus- und Einklappen), keine Daueranimation;
+ * „Apex Island“: ruhiges Feld (Fläche, 1-px-Linie, Radius 8) mit der Bilanz des 38h-Motors (DESIGN-SYSTEM.md 12.12). Feste Breite (kein Aus- und Einklappen), keine Daueranimation;
  * Live-Meldungen höchstens alle 90 s, abschaltbar unter Einstellungen → Darstellung, bei „Bewegung reduzieren“ gar keine.
  * Im Prototyp sind die Werte simuliert – deshalb immer mit der Plakette „Beispiel“.
  */
@@ -66,47 +66,45 @@ export function ApexIsland() {
       <button
         type="button"
         onClick={() => nav("/automatisierung")}
-        className="relative inline-flex h-9 w-[248px] min-w-[196px] max-w-full items-center gap-2 overflow-hidden rounded-full bg-[#090b14] pl-2 pr-2.5 text-white shadow-[0_8px_24px_-10px_rgba(0,0,0,0.6)] ring-1 ring-white/10 xl:w-[300px] 2xl:w-[360px]"
+        className="relative inline-flex h-8 w-[248px] min-w-[196px] max-w-full items-center gap-2 overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--surface)] pl-2.5 pr-1.5 text-fg transition-colors duration-100 hover:border-[var(--line-strong)] xl:w-[300px] 2xl:w-[360px]"
         aria-label={label}
         aria-describedby="apex-island-tipp"
       >
-        <span className="relative grid size-6 shrink-0 place-items-center rounded-full bg-white/10">
-          <Zap className="size-3.5 text-[#ffd166]" fill="#ffd166" />
-        </span>
+        <Zap className="size-3.5 shrink-0 text-fg-3" aria-hidden />
         <span className="relative min-w-0 flex-1 text-left">
           <AnimatePresence initial={false} mode="wait">
             {meldung ? (
-              <motion.span key="meldung" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }} className="block truncate text-[13px] font-medium" title={meldung.text}>
+              <motion.span key="meldung" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.16 }} className="block truncate text-[13px] font-medium" title={meldung.text}>
                 {meldung.text}
-                {meldung.minuten > 0 && <span className="text-[#7ee2b8]"> · +{meldung.minuten} Min.</span>}
+                {meldung.minuten > 0 && <span className="font-normal text-fg-3"> · +{meldung.minuten} Min.</span>}
               </motion.span>
             ) : (
-              <motion.span key="ruhe" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }} className="flex min-w-0 items-baseline gap-1 text-[13px] font-medium">
-                <span className="num shrink-0 text-[#7ee2b8]">{zahl}</span>
-                <span className="min-w-0 truncate">in 7 Tagen</span>
+              <motion.span key="ruhe" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.16 }} className="flex min-w-0 items-baseline gap-1 text-[13px]">
+                <span className="num shrink-0 font-semibold text-fg">{zahl}</span>
+                <span className="min-w-0 truncate text-fg-3">in 7 Tagen</span>
               </motion.span>
             )}
           </AnimatePresence>
         </span>
-        <span className="shrink-0 rounded-full bg-white/14 px-1.5 py-0.5 text-[12px] font-semibold leading-none text-white/90 ring-1 ring-white/15">Beispiel</span>
+        <span className="chip chip-outline shrink-0 !h-5 !px-1.5">Beispiel</span>
       </button>
       {/* Ausblenden direkt an der Island (1 Aktion) – wieder einschalten unter Einstellungen → Darstellung */}
       {/* Trefferfläche 24×24 px (WCAG 2.5.8), sichtbar bleibt der 20-px-Kreis */}
       <button
         type="button"
         onClick={islandAusblenden}
-        className="absolute -right-2 -top-2 z-10 grid size-6 place-items-center rounded-full text-fg-2 opacity-0 transition-opacity hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"
+        className="absolute -right-2.5 -top-2.5 z-10 grid size-6 place-items-center rounded-full text-fg-2 opacity-0 transition-opacity duration-100 hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"
         aria-label="Apex Island ausblenden"
         title="Apex Island ausblenden"
       >
-        <span aria-hidden className="grid size-5 place-items-center rounded-full bg-[var(--surface)] shadow ring-1 ring-[var(--line-strong)]">
+        <span aria-hidden className="grid size-5 place-items-center rounded-full border border-[var(--line-strong)] bg-[var(--surface-pop)]">
           <X className="size-3" />
         </span>
       </button>
       <span
         id="apex-island-tipp"
         role="tooltip"
-        className="pointer-events-none absolute left-1/2 top-[calc(100%+8px)] z-50 w-[300px] -translate-x-1/2 rounded-[14px] bg-[#0b0e18] px-3 py-2 text-[13px] leading-snug text-white opacity-0 shadow-lg ring-1 ring-white/10 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+        className="pointer-events-none absolute left-1/2 top-[calc(100%+8px)] z-50 w-[300px] -translate-x-1/2 rounded-lg border border-[var(--line)] bg-[var(--surface-pop)] px-3 py-2 text-[13px] leading-[18px] text-fg-2 opacity-0 shadow-pop transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
       >
         {ERKLAERUNG}
       </span>

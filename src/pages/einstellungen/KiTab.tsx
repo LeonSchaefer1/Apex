@@ -10,6 +10,7 @@ import { cn } from "@/lib/cn";
 import { FLOW_CSS } from "@/pages/motor/shared";
 import { DRITTLAND, VERARBEITUNGSORT } from "@/content/datenschutz";
 import { Abschnitt, Zeile } from "./teile";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 const QUELLE_TEXT = { server: "Claude (Anthropic-API) über Ihren Kanzlei-Server", artefakt: "Claude (Anthropic) über die Vorschau-Laufzeit", demo: "Arbeitet nach festen Regeln vollständig in Ihrem Browser" } as const;
 /** Einheitlicher Name der Offline-KI in der ganzen App: DEMO_KI_NAME aus src/ai/status.ts. */
@@ -33,14 +34,14 @@ export function KiTab() {
       <style>{FLOW_CSS}</style>
       <div className="flex min-w-0 flex-col gap-4">
         <Abschnitt titel="KI-Quelle" text="Welche KI gerade für Fallanalyse, Posteingang und den Apex Assistenten arbeitet." icon={<Sparkles className="size-[18px]" />} aktion={<AiChip>KI</AiChip>}>
-          <div className={cn("flex items-center gap-3 rounded-[18px] p-4", live ? "bg-green-soft" : "bg-[var(--ink-softer)]")}>
+          <div className={cn("flex items-center gap-3 rounded-lg p-4", live ? "bg-green-soft" : "bg-[var(--ink-softer)]")}>
             <span className="relative flex size-2.5 shrink-0">
               {live && <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--green)] opacity-60 [animation-duration:2s]" />}
               <span className={cn("relative inline-flex size-2.5 rounded-full", live ? "bg-[var(--green)]" : "bg-[var(--fg-4)]")} />
             </span>
             <div className="min-w-0 flex-1">
               <div className="text-[14px] font-semibold">{QUELLE_NAME[ai.quelle]}</div>
-              <div className="text-[12.5px] text-fg-3">
+              <div className="text-[13px] text-fg-3">
                 {QUELLE_TEXT[ai.quelle]}
                 {live && ai.modell ? ` · Modell ${ai.modell}` : ""}
               </div>
@@ -81,7 +82,7 @@ export function KiTab() {
           icon={<Server className="size-[18px]" />}
         >
           <Datenfluss live={live} quelle={ai.quelle} />
-          <p className="mt-4 text-[12.5px] leading-relaxed text-fg-2">
+          <p className="mt-4 text-[13px] leading-relaxed text-fg-2">
             {ai.quelle === "server"
               ? "Live-Betrieb: Ihr Arbeitsplatz spricht nur mit dem Kanzlei-Server. Er prüft die Berechtigung, sendet die für die Aufgabe nötigen Inhalte (z. B. Sachverhalt und Dokumente einer Akte) an die Anthropic-API, protokolliert die Anfrage ohne Inhalte und begrenzt die Nutzung je Kanzlei."
               : ai.quelle === "artefakt"
@@ -89,7 +90,7 @@ export function KiTab() {
                 : `Demo-Betrieb: Die ${DEMO_KI_NAME} arbeitet vollständig in Ihrem Browser – es werden keine Inhalte an einen KI-Anbieter übertragen.`}
           </p>
           <Verarbeitungsort live={live} />
-          <div className="mt-3 rounded-[14px] bg-[var(--ink-softer)] px-3.5 py-3 text-[12.5px] leading-relaxed text-fg-2">
+          <div className="mt-3 rounded-lg bg-[var(--ink-softer)] px-3.5 py-3 text-[13px] leading-relaxed text-fg-2">
             <span className="font-semibold text-fg">Vor dem Live-Betrieb:</span> Anthropic verarbeitet Mandatsinhalte als Dienstleister. Erforderlich sind ein Vertrag nach § 43e BRAO (Verschwiegenheit, Zugriff nur soweit nötig) und eine Auftragsverarbeitung nach
             Art. 28 DSGVO. {DRITTLAND} Die Anbindung sendet nur aufgabenbezogene Inhalte und ist so eingerichtet, dass sie nicht zu Trainingszwecken verwendet werden –
             maßgeblich sind die Vereinbarungen mit dem Anbieter.
@@ -99,12 +100,12 @@ export function KiTab() {
 
       <Abschnitt titel="Grundsätze der Apex KI" text="Damit Sie der KI vertrauen können, ohne ihr blind zu vertrauen." icon={<BadgeCheck className="size-[18px]" />}>
         <ul className="grid grid-cols-1 gap-3">
-          {GRUNDSAETZE.map((g, i) => (
-            <motion.li key={g.t} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 + i * 0.05, type: "spring", stiffness: 420, damping: 34 }} className="flex gap-3 rounded-[16px] bg-[var(--surface-2)] p-3.5 ring-1 ring-[var(--line)]">
-              <span className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-violet-soft text-violet">{g.icon}</span>
+          {GRUNDSAETZE.map((g) => (
+            <motion.li key={g.t} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={BEWEGUNG.standard} className="flex gap-3 rounded-lg bg-[var(--surface-2)] p-3.5 ring-1 ring-[var(--line)]">
+              <span className="grid size-8 shrink-0 place-items-center rounded-md bg-[var(--surface-2)] text-fg-3">{g.icon}</span>
               <span className="min-w-0">
-                <span className="block text-[13.5px] font-semibold">{g.t}</span>
-                <span className="mt-0.5 block text-[12.5px] leading-relaxed text-fg-3">{g.s}</span>
+                <span className="block text-[14px] font-semibold">{g.t}</span>
+                <span className="mt-0.5 block text-[13px] leading-relaxed text-fg-3">{g.s}</span>
               </span>
             </motion.li>
           ))}
@@ -128,11 +129,11 @@ function Datenfluss({ live, quelle }: { live: boolean; quelle: "server" | "artef
         const aktiv = live || i === 0;
         return (
           <Fragment key={k.t}>
-            <div className={cn("flex min-w-0 flex-1 items-center gap-3 rounded-[16px] p-3 ring-1 sm:flex-col sm:text-center", aktiv ? "bg-[var(--surface-2)] ring-[var(--line)]" : "border border-dashed border-[var(--line-strong)] bg-transparent ring-transparent")}>
-              <span className={cn("grid size-10 shrink-0 place-items-center rounded-[12px]", !aktiv ? "bg-[var(--ink-softer)] text-fg-2" : i === 2 ? "bg-violet-soft text-violet" : "bg-ink-soft text-ink")}>{k.icon}</span>
+            <div className={cn("flex min-w-0 flex-1 items-center gap-3 rounded-lg p-3 ring-1 sm:flex-col sm:text-center", aktiv ? "bg-[var(--surface-2)] ring-[var(--line)]" : "border border-dashed border-[var(--line-strong)] bg-transparent ring-transparent")}>
+              <span className={cn("grid size-10 shrink-0 place-items-center rounded-md", !aktiv ? "bg-[var(--ink-softer)] text-fg-2" : i === 2 ? "bg-[var(--surface-2)] text-fg-3" : "bg-ink-soft text-ink")}>{k.icon}</span>
               <span className="min-w-0">
                 <span className="block text-[13px] font-semibold text-fg">{k.t}</span>
-                <span className="block text-[12.5px] leading-snug text-fg-2">{k.s}</span>
+                <span className="block text-[13px] leading-snug text-fg-2">{k.s}</span>
                 {!aktiv && <span className="mt-1 inline-block rounded-full bg-[var(--ink-softer)] px-2 py-px text-[12px] font-semibold text-fg-2 ring-1 ring-[var(--line)]">nicht aktiv</span>}
               </span>
             </div>
@@ -159,22 +160,22 @@ function Verarbeitungsort({ live }: { live: boolean }) {
     { key: "demo", text: VERARBEITUNGSORT.demo, aktiv: !live },
   ];
   return (
-    <section aria-labelledby="ki-verarbeitungsort" className="mt-4 rounded-[16px] p-3.5 ring-1 ring-[var(--line)]">
-      <h3 id="ki-verarbeitungsort" className="text-[13.5px] font-semibold">
+    <section aria-labelledby="ki-verarbeitungsort" className="mt-4 rounded-lg p-3.5 ring-1 ring-[var(--line)]">
+      <h3 id="ki-verarbeitungsort" className="text-[14px] font-semibold">
         {VERARBEITUNGSORT.titel}
       </h3>
       <ul className="mt-2 grid gap-2">
         {zeilen.map((z) => (
-          <li key={z.key} className={cn("flex items-start gap-2.5 rounded-[12px] px-3 py-2 text-[13px] leading-relaxed", z.aktiv ? "bg-ink-soft text-fg" : "text-fg-2")}>
+          <li key={z.key} className={cn("flex items-start gap-2.5 rounded-md px-3 py-2 text-[13px] leading-relaxed", z.aktiv ? "bg-ink-soft text-fg" : "text-fg-2")}>
             <span className={cn("mt-[7px] size-2 shrink-0 rounded-full", z.aktiv ? "bg-ink" : "bg-[var(--fg-4)]")} aria-hidden />
             <span className="min-w-0">
               {z.text}
-              {z.aktiv && <span className="ml-1.5 inline-block rounded-full bg-[var(--surface)] px-2 py-px text-[12.5px] font-semibold text-ink ring-1 ring-[var(--line)]">aktueller Modus</span>}
+              {z.aktiv && <span className="ml-1.5 inline-block rounded-full bg-[var(--surface)] px-2 py-px text-[13px] font-semibold text-ink ring-1 ring-[var(--line)]">aktueller Modus</span>}
             </span>
           </li>
         ))}
       </ul>
-      <p className="mt-2 px-3 text-[12.5px] leading-relaxed text-fg-3">{VERARBEITUNGSORT.eu}</p>
+      <p className="mt-2 px-3 text-[13px] leading-relaxed text-fg-3">{VERARBEITUNGSORT.eu}</p>
     </section>
   );
 }

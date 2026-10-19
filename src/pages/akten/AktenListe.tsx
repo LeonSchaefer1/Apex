@@ -5,7 +5,7 @@ import { AlarmClock, AlertTriangle, Archive, CalendarClock, Check, FolderOpen, F
 import type { Akte, Frist, User } from "@/core/types";
 import { fmtDate, fmtDateShort, fmtTime, nowLocal, relTime, today, uid } from "@/core/dates";
 import { search } from "@/core/search";
-import { aktenMitFrist } from "@/core/fristenLage";
+import { aktenMitFrist, istKritisch } from "@/core/fristenLage";
 import { aktenZahlen, wochenbeginn } from "@/core/kennzahlen";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
@@ -21,6 +21,7 @@ import {
 import { Mandatsaufnahme, ladeMandatsEntwurf } from "./Mandatsaufnahme";
 import { offeneEintraege, offeneEintraegeText, schliesseAkteAb } from "./AkteKopf";
 import { sperrePortal } from "./Mandantenportal";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 type StatusFilter = "offen" | "ruhend" | "abgeschlossen" | "alle";
 
@@ -193,7 +194,7 @@ export default function AktenListe() {
         size: 76,
         accessorFn: (a) => azSortKey(a.aktenzeichen),
         cell: ({ row }) => (
-          <span className="mono text-[12.5px] font-semibold text-fg-2">
+          <span className="mono text-[13px] font-semibold text-fg-2">
             <Highlight text={row.original.aktenzeichen} q={q} />
           </span>
         ),
@@ -223,7 +224,7 @@ export default function AktenListe() {
                   <Highlight text={a.titel} q={q} />
                 </span>
               </div>
-              <div className="whitespace-normal break-words text-[12.5px] text-fg-3">
+              <div className="whitespace-normal break-words text-[13px] text-fg-3">
                 <Highlight text={kontakte.get(a.mandantId)?.name ?? "–"} q={q} />
                 {a.gerichtsAz && !mitGericht && <span className="mono text-fg-3"> · {a.gerichtsAz}</span>}
                 {ra && (
@@ -247,11 +248,11 @@ export default function AktenListe() {
           const g = row.original.gerichtId ? kontakte.get(row.original.gerichtId)?.name : undefined;
           return g ? (
             <div className="min-w-0 whitespace-normal" title={g}>
-              <div className="break-words text-[12.5px] leading-snug text-fg-2">{gerichtKurz(g)}</div>
+              <div className="break-words text-[13px] leading-snug text-fg-2">{gerichtKurz(g)}</div>
               {row.original.gerichtsAz && <div className="mono break-words text-[12px] text-fg-3">{row.original.gerichtsAz}</div>}
             </div>
           ) : (
-            <span className="whitespace-normal text-[12.5px] text-fg-3">noch kein Verfahren</span>
+            <span className="whitespace-normal text-[13px] text-fg-3">noch kein Verfahren</span>
           );
         },
       },
@@ -264,7 +265,7 @@ export default function AktenListe() {
         cell: ({ row }) => (
           <div className="min-w-0">
             <SachgebietChip sg={row.original.sachgebiet} className="max-w-full" />
-            <div className="mt-1 truncate text-[12.5px] text-fg-2">{row.original.status === "offen" ? row.original.phase : STATUS_INFO[row.original.status].label}</div>
+            <div className="mt-1 truncate text-[13px] text-fg-2">{row.original.status === "offen" ? row.original.phase : STATUS_INFO[row.original.status].label}</div>
             <PhasenBalken phase={row.original.phase} className="mt-1 w-[84px]" />
           </div>
         ),
@@ -276,11 +277,11 @@ export default function AktenListe() {
         accessorFn: (a) => naechste.get(a.id)?.datum ?? "9999-12-31",
         cell: ({ row }) => {
           const f = naechste.get(row.original.id);
-          if (!f) return <span className="text-[12.5px] text-fg-3">–</span>;
+          if (!f) return <span className="text-[13px] text-fg-3">–</span>;
           return (
             <div className="min-w-0" title={`${f.titel} – ${fmtDate(f.datum)}`}>
-              <FristChip datum={f.datum} />
-              <div className="mt-0.5 whitespace-normal text-[12.5px] leading-snug text-fg-3">
+              <FristChip datum={f.datum} kritisch={istKritisch(f)} />
+              <div className="mt-0.5 whitespace-normal text-[13px] leading-snug text-fg-3">
                 {fmtDateShort(f.datum)} · {FRIST_TYP_LABEL[f.typ]}
               </div>
             </div>
@@ -319,7 +320,7 @@ export default function AktenListe() {
         header: "Geändert",
         size: 88,
         accessorFn: (a) => a.updatedAt,
-        cell: ({ row }) => <span className="block whitespace-normal text-[12.5px] leading-snug text-fg-3">{relTime(row.original.updatedAt)}</span>,
+        cell: ({ row }) => <span className="block whitespace-normal text-[13px] leading-snug text-fg-3">{relTime(row.original.updatedAt)}</span>,
       },
     ],
     [q, kontakte, naechste, byId],
@@ -469,40 +470,39 @@ export default function AktenListe() {
       />
 
       {/* Kennzahlen – auf dem Tablet kompakt in einer Zeile, ohne Abbruch mitten im Wort */}
-      <div className={cn("no-scrollbar -mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0", tablet ? "mb-3 !gap-2" : "mb-5")}>
+      <div className={cn("sheet no-scrollbar flex snap-x divide-x divide-[var(--line)] overflow-x-auto rounded-lg sm:grid sm:grid-cols-3", tablet ? "mb-3" : "mb-5")}>
         {[
           { label: "Offene Akten", value: kpi.offen, sub: `davon ${kpi.hoch} mit hoher Priorität`, icon: <FolderOpen className="size-4" />, tone: "ink" as const, on: () => setze({ status: "offen", sg: "", ra: "", prio: "", frist: "", seit: "" }) },
           { label: "Neu diese Woche", value: kpi.neu, sub: `seit Montag, ${fmtDate(kpi.montag)}`, icon: <Sparkle className="size-4" />, tone: "green" as const, on: () => setze({ status: "alle", sg: "", ra: "", prio: "", frist: "", seit: "woche" }) },
           { label: "Akten mit Frist ≤ 7 Tage", value: kpi.frist, sub: kpi.notfrist ? `davon ${kpi.notfrist} mit kritischer Frist` : "keine kritische Frist darunter", icon: <AlarmClock className="size-4" />, tone: kpi.notfrist ? ("seal" as const) : ("amber" as const), on: () => setze({ status: "offen", frist: "frist7", sg: "", ra: "", prio: "", seit: "" }) },
-        ].map((k, i) => (
+        ].map((k) => (
           <motion.button
             key={k.label}
             type="button"
             onClick={k.on}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.05 + i * 0.05, type: "spring", stiffness: 420, damping: 34 }}
+            initial={false}
             className={cn(
-              "sheet glow relative flex min-w-[230px] snap-start items-center text-left transition-transform duration-300 ease-[var(--spring)] hover:-translate-y-0.5 active:scale-[0.98] sm:min-w-0",
-              tablet ? "gap-2.5 rounded-[18px] px-3 py-2" : "gap-3.5 rounded-[22px] p-4",
+              "relative flex min-w-[220px] snap-start items-start text-left transition-colors duration-100 hover:bg-[var(--surface-2)] focus-visible:outline-offset-[-2px] sm:min-w-0",
+              tablet ? "gap-2 px-4 py-2.5" : "gap-2 px-5 py-4",
             )}
           >
-            <span className={cn("grid shrink-0 place-items-center rounded-[12px]", tablet ? "size-8" : "size-10", { ink: "bg-ink-soft text-ink", green: "bg-green-soft text-green", seal: "bg-seal-soft text-seal", amber: "bg-amber-soft text-amber" }[k.tone])}>{k.icon}</span>
+            {/* Symbol ohne Kachel; der Ton färbt nur das Symbol (Rot nur bei kritischer Frist) */}
+            <span className={cn("mt-0.5 shrink-0 [&>svg]:size-3.5", { ink: "text-fg-4", green: "text-fg-4", seal: "text-[var(--seal)]", amber: "text-[var(--amber)]" }[k.tone])} aria-hidden>{k.icon}</span>
             {tablet ? (
               <span className="min-w-0 flex-1">
                 <span className="flex items-baseline gap-1.5">
                   <AnimatedNumber value={k.value} className="text-[20px] font-semibold leading-tight tracking-[-0.03em]" />
-                  <span className="min-w-0 text-[12.5px] font-medium leading-snug text-fg-2">{k.label}</span>
+                  <span className="min-w-0 text-[13px] font-medium leading-snug text-fg-2">{k.label}</span>
                 </span>
                 <span className="block text-[12px] leading-snug text-fg-3">{k.sub}</span>
               </span>
             ) : (
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[12.5px] font-medium text-fg-3">{k.label}</span>
-                <span className="block text-[26px] font-semibold leading-tight tracking-[-0.03em]">
+                <span className="block truncate text-[13px] font-medium text-fg-3">{k.label}</span>
+                <span className="num block text-[28px] font-semibold leading-8 tracking-[-0.02em] text-fg">
                   <AnimatedNumber value={k.value} />
                 </span>
-                <span className="block truncate text-[12.5px] text-fg-3">{k.sub}</span>
+                <span className="block truncate text-[13px] text-fg-3">{k.sub}</span>
               </span>
             )}
           </motion.button>
@@ -522,18 +522,18 @@ export default function AktenListe() {
                 title={a.hinweis}
                 onClick={() => setze({ ...a.filter })}
                 className={cn(
-                  "relative inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-medium transition-colors",
-                  aktiv ? "text-on-ink" : "text-fg-2 shadow-[inset_0_0_0_1px_var(--line-strong)] hover:bg-ink-softer hover:text-fg",
+                  "relative inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 text-[13px] transition-colors duration-100 max-sm:h-11",
+                  aktiv ? "font-semibold text-fg shadow-[inset_0_0_0_1px_var(--line-strong)]" : "font-medium text-fg-3 hover:bg-[var(--surface-2)] hover:text-fg",
                 )}
               >
-                {aktiv && <motion.span layoutId="akten-ansicht" transition={{ type: "spring", stiffness: 520, damping: 38 }} className="absolute inset-0 -z-0 rounded-full bg-ink shadow-[0_6px_16px_-8px_var(--ink)]" />}
+                {aktiv && <motion.span layoutId="akten-ansicht" transition={BEWEGUNG.standard} className="absolute inset-0 -z-0 rounded-md bg-[var(--surface-3)]" />}
                 <span className="relative">{a.icon}</span>
                 <span className="relative">{a.label}</span>
               </button>
             );
           })}
           {filterAktiv && !aktiveAnsicht && (
-            <button type="button" onClick={() => setze({ q: "", status: "offen", sg: "", ra: "", prio: "", frist: "", seit: "" })} className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full px-3 text-[12.5px] font-medium text-fg-3 hover:bg-ink-softer hover:text-fg">
+            <button type="button" onClick={() => setze({ q: "", status: "offen", sg: "", ra: "", prio: "", frist: "", seit: "" })} className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md px-3 text-[13px] font-medium text-fg-3 hover:bg-[var(--surface-2)] hover:text-fg max-sm:h-11">
               <X className="size-3.5" /> Filter zurücksetzen
             </button>
           )}
@@ -570,13 +570,13 @@ export default function AktenListe() {
               ]}
             />
             <div className="flex min-w-0 flex-1 gap-2 sm:flex-none">
-              <Select id="akten-sachgebiet" aria-label="Sachgebiet" value={filter.sg} onChange={(e) => setze({ sg: e.target.value })} className="!h-8 min-w-0 flex-1 !rounded-full !text-[12.5px] sm:!w-[170px] sm:flex-none">
+              <Select id="akten-sachgebiet" aria-label="Sachgebiet" value={filter.sg} onChange={(e) => setze({ sg: e.target.value })} className="!h-8 min-w-0 flex-1 !rounded-full sm:!w-[170px] sm:flex-none">
                 <option value="">Alle Sachgebiete</option>
                 {SACHGEBIETE.map((s) => (
                   <option key={s}>{s}</option>
                 ))}
               </Select>
-              <Select id="akten-bearbeiter" aria-label="Bearbeitung" value={filter.ra} onChange={(e) => setze({ ra: e.target.value })} className="!h-8 min-w-0 flex-1 !rounded-full !text-[12.5px] sm:!w-[170px] sm:flex-none">
+              <Select id="akten-bearbeiter" aria-label="Bearbeitung" value={filter.ra} onChange={(e) => setze({ ra: e.target.value })} className="!h-8 min-w-0 flex-1 !rounded-full sm:!w-[170px] sm:flex-none">
                 <option value="">Alle Bearbeiter</option>
                 {team.map((u) => (
                   <option key={u.id} value={u.id}>
@@ -613,16 +613,16 @@ export default function AktenListe() {
                   {a.prioritaet === "hoch" && <span className="size-1.5 rounded-full bg-seal" />}
                   {a.status !== "offen" && <Chip tone={STATUS_INFO[a.status].tone}>{STATUS_INFO[a.status].label}</Chip>}
                 </div>
-                <div className="mt-0.5 line-clamp-2 break-words text-[14.5px] font-semibold leading-snug">
+                <div className="mt-0.5 line-clamp-2 break-words text-[15px] font-semibold leading-snug">
                   <Highlight text={a.titel} q={q} />
                 </div>
-                <div className="break-words text-[12.5px] text-fg-3">
+                <div className="break-words text-[13px] text-fg-3">
                   {kontakte.get(a.mandantId)?.name ?? "–"} · {a.sachgebiet}
                 </div>
               </div>
               <div className="flex shrink-0 flex-col items-end gap-1">
-                {f ? <FristChip datum={f.datum} /> : <span className="text-[12.5px] text-fg-3">keine Frist</span>}
-                <span className="text-[12.5px] text-fg-3">{relTime(a.updatedAt)}</span>
+                {f ? <FristChip datum={f.datum} kritisch={istKritisch(f)} /> : <span className="text-[13px] text-fg-3">keine Frist</span>}
+                <span className="text-[13px] text-fg-3">{relTime(a.updatedAt)}</span>
               </div>
             </div>
           );
@@ -646,7 +646,7 @@ export default function AktenListe() {
           />
         }
       />
-      <p className="mt-3 px-1 text-[12.5px] text-fg-3">
+      <p className="mt-3 px-1 text-[13px] text-fg-3">
         {liste.length} {liste.length === 1 ? "Akte" : "Akten"} · Spaltenbreite, sichtbare Spalten und Zeilendichte merkt sich Apex für Sie · {tenant.kurzname}
       </p>
 
@@ -708,15 +708,15 @@ export default function AktenListe() {
                       key={u.id}
                       type="button"
                       onClick={() => setUebergabe({ an: u, fristen: true, wiedervorlage: true })}
-                      className="flex min-h-11 items-center gap-3 rounded-[14px] px-3 py-2.5 text-left transition-colors hover:bg-ink-softer"
+                      className="flex min-h-11 items-center gap-3 rounded-md px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-2)]"
                     >
                       <Avatar initialen={u.initialen} farbe={u.farbe} size={34} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[14px] font-medium">{u.name}</span>
-                        <span className="block truncate text-[12.5px] text-fg-3">{u.titel}</span>
+                        <span className="block truncate text-[13px] text-fg-3">{u.titel}</span>
                       </span>
                       {alle && (
-                        <span className="flex items-center gap-1 text-[12.5px] text-fg-3">
+                        <span className="flex items-center gap-1 text-[13px] text-fg-3">
                           <Check className="size-4 text-ink" /> bisher
                         </span>
                       )}
@@ -737,14 +737,14 @@ export default function AktenListe() {
                     if (s === "abgeschlossen" && bulk.rows.some((r) => r.status !== "abgeschlossen")) setAbschlussPruefen(true);
                     else setzeBulkStatus(s);
                   }}
-                  className="flex items-center gap-3 rounded-[14px] px-3 py-3 text-left transition-colors hover:bg-ink-softer"
+                  className="flex items-center gap-3 rounded-md px-3 py-3 text-left transition-colors hover:bg-[var(--surface-2)]"
                 >
                   <span className="w-[118px] shrink-0">
                     <Chip tone={STATUS_INFO[s].tone} dot>
                       {STATUS_INFO[s].label}
                     </Chip>
                   </span>
-                  <span className="flex-1 text-[12.5px] text-fg-3">
+                  <span className="flex-1 text-[13px] text-fg-3">
                     {s === "offen" ? "Wird aktiv bearbeitet" : s === "ruhend" ? "Pausiert, z. B. bis zur Entscheidung eines anderen Verfahrens" : "Mandat beendet – Aufbewahrungsfrist nach § 50 BRAO beginnt"}
                   </span>
                 </button>
@@ -780,41 +780,41 @@ function UebergabeOptionen({
   return (
     <div className="grid grid-cols-1 gap-3 text-[13px]">
       {betroffen.length ? (
-        <ul className="grid grid-cols-1 gap-1 rounded-[14px] bg-ink-softer p-3">
+        <ul className="grid grid-cols-1 gap-1 rounded-md bg-[var(--surface-2)] p-3">
           {betroffen.slice(0, 6).map((a) => (
             <li key={a.id} className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-              <span className="mono shrink-0 text-[12.5px] font-semibold text-fg-2">{a.aktenzeichen}</span>
+              <span className="mono shrink-0 text-[13px] font-semibold text-fg-2">{a.aktenzeichen}</span>
               <span className="min-w-0 flex-1 break-words text-fg">{a.titel}</span>
-              <span className="text-[12.5px] text-fg-3">bisher {byId.get(a.bearbeiterId)?.name ?? "–"}</span>
+              <span className="text-[13px] text-fg-3">bisher {byId.get(a.bearbeiterId)?.name ?? "–"}</span>
             </li>
           ))}
-          {betroffen.length > 6 && <li className="text-[12.5px] text-fg-3">und {betroffen.length - 6} weitere</li>}
+          {betroffen.length > 6 && <li className="text-[13px] text-fg-3">und {betroffen.length - 6} weitere</li>}
         </ul>
       ) : (
-        <p className="rounded-[14px] bg-ink-softer p-3 text-fg-2">Alle ausgewählten Akten liegen schon bei {an.name}.</p>
+        <p className="rounded-md bg-[var(--surface-2)] p-3 text-fg-2">Alle ausgewählten Akten liegen schon bei {an.name}.</p>
       )}
       {betroffen.length > 0 && betroffen.length < rows.length && (
-        <p className="px-1 text-[12.5px] text-fg-3">
+        <p className="px-1 text-[13px] text-fg-3">
           {rows.length - betroffen.length} {rows.length - betroffen.length === 1 ? "Akte liegt" : "Akten liegen"} schon bei {an.name} – bleibt unverändert.
         </p>
       )}
-      <label className="flex cursor-pointer items-start gap-2.5 rounded-[12px] px-1 py-1">
+      <label className="flex cursor-pointer items-start gap-2.5 rounded-md px-1 py-1">
         <input type="checkbox" className="mt-0.5 size-4 accent-[var(--ink)]" checked={fristen} onChange={(e) => onFristen(e.target.checked)} />
         <span>
           <span className="font-medium text-fg">
             Offene Fristen mit übertragen ({fristZahl} {fristZahl === 1 ? "Eintrag" : "Einträge"})
           </span>
-          <span className="block text-[12.5px] text-fg-3">Fristen, Vorfristen, Wiedervorlagen und Termine, für die bisher die alte Bearbeitung verantwortlich ist.</span>
+          <span className="block text-[13px] text-fg-3">Fristen, Vorfristen, Wiedervorlagen und Termine, für die bisher die alte Bearbeitung verantwortlich ist.</span>
         </span>
       </label>
-      <label className="flex cursor-pointer items-start gap-2.5 rounded-[12px] px-1 py-1">
+      <label className="flex cursor-pointer items-start gap-2.5 rounded-md px-1 py-1">
         <input type="checkbox" className="mt-0.5 size-4 accent-[var(--ink)]" checked={wiedervorlage} onChange={(e) => onWiedervorlage(e.target.checked)} />
         <span>
           <span className="font-medium text-fg">Wiedervorlage für {an.name}: „Übernommene Akte sichten“ (heute)</span>
-          <span className="block text-[12.5px] text-fg-3">So sieht {an.name} die Übergabe im Cockpit und im Fristenkalender.</span>
+          <span className="block text-[13px] text-fg-3">So sieht {an.name} die Übergabe im Cockpit und im Fristenkalender.</span>
         </span>
       </label>
-      <p className="px-1 text-[12.5px] text-fg-3">Jede Akte erhält den Verlaufseintrag „Bearbeitung von … an {an.name} übergeben“ mit Ihrem Namen.</p>
+      <p className="px-1 text-[13px] text-fg-3">Jede Akte erhält den Verlaufseintrag „Bearbeitung von … an {an.name} übergeben“ mit Ihrem Namen.</p>
     </div>
   );
 }
@@ -829,7 +829,7 @@ function AbschlussPruefung({ rows, fristen }: { rows: Akte[]; fristen: Frist[] }
   return (
     <div className="grid grid-cols-1 gap-3">
       {mitOffenen.length > 0 ? (
-        <div className="flex gap-3 rounded-[16px] bg-seal-soft p-3.5 text-[13px]" role="alert">
+        <div className="flex gap-3 rounded-lg bg-seal-soft p-3.5 text-[13px]" role="alert">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-seal" />
           <div className="min-w-0 flex-1">
             <div className="font-semibold text-seal">
@@ -851,12 +851,12 @@ function AbschlussPruefung({ rows, fristen }: { rows: Akte[]; fristen: Frist[] }
           </div>
         </div>
       ) : (
-        <div className="flex gap-3 rounded-[16px] bg-green-soft p-3.5 text-[13px]">
+        <div className="flex gap-3 rounded-lg bg-green-soft p-3.5 text-[13px]">
           <Check className="mt-0.5 size-4 shrink-0 text-green" />
           <div className="text-fg-2">{rows.length === 1 ? "Die Akte hat keine offenen Fristen, Wiedervorlagen oder Termine mehr." : "Keine der Akten hat noch offene Fristen, Wiedervorlagen oder Termine."}</div>
         </div>
       )}
-      <p className="px-1 text-[12.5px] leading-relaxed text-fg-3">
+      <p className="px-1 text-[13px] leading-relaxed text-fg-3">
         {rows.length === 1 ? "Die Akte wird" : `Die ${rows.length} Akten werden`} archiviert, die Aufbewahrungsfrist der Handakte (§ 50 BRAO, sechs Jahre) wird vorgemerkt und der Abschluss im Verlauf jeder Akte protokolliert. Sie können Akten jederzeit wieder öffnen.
       </p>
     </div>

@@ -10,13 +10,14 @@ import { fmtDate, fmtDateWd, fmtEUR, nowLocal, relTime, uid } from "@/core/dates
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
-import { Avatar, Button, Card, CardHeader, Chip, Switch, Textarea } from "@/components/ui";
+import { Avatar, Button, Card, CardHeader, Chip, Stat, StatLeiste, Switch, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { useMedia } from "@/lib/useMedia";
 import { DOK_ART_LABEL, FRIST_TYP_LABEL, FristChip, MOBIL_TREFFER, beruehreAkte, schlagwortAnzeige, useKontaktMap, useTeam } from "./helfer";
 import { DokIcon } from "./TabDokumente";
 import { DiktatKnopf } from "./Diktat";
 import { useMandantenportal } from "./Mandantenportal";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 /** Kerndokumente einer Akte – in dieser Reihenfolge vorn angeheftet (Kündigung, Klage, Ladung, Urteil). */
 const KERN: RegExp[] = [/kündigung(?!sschutz)|kuendigung/i, /klage(?!erwiderung)|kündigungsschutz/i, /ladung/i, /urteil/i];
@@ -90,26 +91,12 @@ export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onT
 
   return (
     <div className={cn("grid grid-cols-1 gap-4", MOBIL_TREFFER)}>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {kennzahlen.map((k, i) => (
-          <motion.button
-            key={k.label}
-            type="button"
-            disabled={!k.on}
-            onClick={k.on}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.04 }}
-            className={cn("sheet flex min-w-0 items-center gap-3 rounded-[18px] p-3.5 text-left transition-transform duration-300 ease-[var(--spring)] disabled:cursor-default", k.on && "hover:-translate-y-0.5 active:scale-[0.98]")}
-          >
-            <span className="grid grid-cols-1 size-9 shrink-0 place-items-center rounded-[11px] bg-ink-soft text-ink">{k.icon}</span>
-            <span className="min-w-0">
-              <span className="block text-[12.5px] text-fg-3">{k.label}</span>
-              <span className="num block truncate text-[16px] font-semibold tracking-[-0.02em]">{k.wert}</span>
-            </span>
-          </motion.button>
+      {/* Kennzahlen in einer Leiste, getrennt durch Linien (DESIGN-SYSTEM.md 12.14) – antippen öffnet den passenden Reiter */}
+      <StatLeiste>
+        {kennzahlen.map((k) => (
+          <Stat key={k.label} label={k.label} icon={k.icon} value={k.wert} onClick={k.on} className="[&>div:nth-child(2)]:text-[20px] [&>div:nth-child(2)]:leading-7" />
         ))}
-      </div>
+      </StatLeiste>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="grid grid-cols-1 min-w-0 content-start gap-4 lg:col-span-2">
@@ -173,13 +160,13 @@ export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onT
                 <ul id="ue-dokumente" className="-mx-2 grid grid-cols-1 gap-0.5">
                   {(alleDoks ? dokListe : dokListe.slice(0, DOKS_KURZ)).map((d) => (
                     <li key={d.id}>
-                      <button type="button" onClick={() => onDok(d.id)} className="flex min-h-11 w-full items-center gap-3 rounded-[14px] px-2 py-2 text-left transition-colors hover:bg-ink-softer">
+                      <button type="button" onClick={() => onDok(d.id)} className="flex min-h-11 w-full items-center gap-3 rounded-md px-2 py-2 text-left transition-colors duration-100 hover:bg-[var(--surface-2)]">
                         <DokIcon d={d} size={34} />
                         <span className="min-w-0 flex-1">
-                          <span className="block break-words text-[13.5px] font-medium">{d.name}</span>
-                          <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12.5px] text-fg-3">
+                          <span className="block break-words text-[14px] font-medium">{d.name}</span>
+                          <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-fg-3">
                             {kernRang(d) < KERN.length && (
-                              <Chip tone="ink" icon={<Pin className="size-3" aria-hidden />} className="!h-5 !px-1.5 !text-[11px]">
+                              <Chip tone="ink" icon={<Pin className="size-3" aria-hidden />}>
                                 Kerndokument
                               </Chip>
                             )}
@@ -222,23 +209,23 @@ export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onT
                 </Button>
               </div>
             </div>
-            <ul className="mt-3 grid grid-cols-1 gap-2">
+            <ul className="mt-3 grid grid-cols-1 divide-y divide-[var(--line)]">
               <AnimatePresence initial={false}>
                 {notizen.map((n) => {
                   const u = byId.get(n.userId);
                   return (
-                    <motion.li key={n.id} layout initial={{ opacity: 0, y: -8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: 460, damping: 34 }} className="rounded-[14px] bg-ink-softer p-3">
-                      <div className="flex items-center gap-2 text-[12.5px] text-fg-3">
+                    <motion.li key={n.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={BEWEGUNG.standard} className="py-3 first:pt-0">
+                      <div className="flex items-center gap-2 text-[13px] text-fg-3">
                         {u && <Avatar initialen={u.initialen} farbe={u.farbe} size={20} />}
                         <span className="font-medium text-fg-2">{u?.name ?? "Unbekannt"}</span>
                         <span>· {relTime(n.zeit)}</span>
                       </div>
-                      <p className="mt-1.5 whitespace-pre-wrap text-[13.5px] leading-relaxed text-fg">{n.text}</p>
+                      <p className="mt-1.5 whitespace-pre-wrap text-[14px] leading-relaxed text-fg">{n.text}</p>
                     </motion.li>
                   );
                 })}
               </AnimatePresence>
-              {notizen.length === 0 && <li className="text-[12.5px] text-fg-3">Noch keine Notizen.</li>}
+              {notizen.length === 0 && <li className="text-[13px] text-fg-3">Noch keine Notizen.</li>}
             </ul>
           </Card>
         </div>
@@ -260,23 +247,23 @@ export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onT
               <ul className="-mx-2 grid grid-cols-1 gap-0.5">
                 {offen.slice(0, 4).map((f) => (
                   <li key={f.id}>
-                    <button type="button" onClick={() => onTab("fristen")} className="flex w-full items-start gap-3 rounded-[14px] px-2 py-2 text-left transition-colors hover:bg-ink-softer">
-                      <span className={cn("mt-1 size-2 shrink-0 rounded-full", istKritisch(f) ? "bg-seal" : f.typ === "termin" ? "bg-ink" : "bg-[var(--line-strong)]")} />
+                    <button type="button" onClick={() => onTab("fristen")} className="flex w-full items-start gap-3 rounded-md px-2 py-2 text-left transition-colors duration-100 hover:bg-[var(--surface-2)]">
+                      <span className={cn("mt-1.5 size-1.5 shrink-0 rounded-full", istKritisch(f) ? "bg-[var(--seal)]" : "bg-[var(--fg-4)]")} aria-hidden />
                       <span className="min-w-0 flex-1">
-                        <span className="block break-words text-[13.5px] font-medium">{f.titel}</span>
-                        <span className="block text-[12.5px] text-fg-3">
+                        <span className="block break-words text-[14px] font-medium">{f.titel}</span>
+                        <span className="block text-[13px] text-fg-3">
                           {FRIST_TYP_LABEL[f.typ]} · {fmtDateWd(f.datum)}
                           {f.uhrzeit ? `, ${f.uhrzeit} Uhr` : ""}
                         </span>
                       </span>
-                      <FristChip datum={f.datum} className="shrink-0" />
+                      <FristChip datum={f.datum} kritisch={istKritisch(f)} className="shrink-0" />
                     </button>
                   </li>
                 ))}
               </ul>
             )}
             {offen.length > 4 && (
-              <button type="button" onClick={() => onTab("fristen")} className="mt-2 text-[12.5px] font-medium text-ink hover:underline">
+              <button type="button" onClick={() => onTab("fristen")} className="link-leise mt-2 min-h-8 rounded-sm">
                 Alle {offen.length} offenen Fristen anzeigen
               </button>
             )}
@@ -295,8 +282,8 @@ export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onT
                 : `Schalten Sie das Portal frei, damit ${mandant?.name ?? "der Mandant"} den Stand jederzeit selbst einsehen und Unterlagen sicher hochladen kann.`}
             </p>
             {akte.mandantenportal && mandant?.email && (
-              <div className="mt-3 flex items-center gap-2 break-all rounded-[12px] bg-green-soft px-3 py-2 text-[12.5px] text-green">
-                <Send className="size-3.5 shrink-0" /> Zugang an {mandant.email}
+              <div className="mt-3 flex items-center gap-2 break-all text-[13px] text-fg-2">
+                <Send className="size-3.5 shrink-0 text-fg-4" aria-hidden /> Zugang an {mandant.email}
               </div>
             )}
             <Button size="sm" variant="ghost" icon={<Eye className="size-4" />} className="mt-3" onClick={portalAktionen.ansehen}>
@@ -315,16 +302,16 @@ export function TabUebersicht({ akte, onTab, onDok, onFrist }: { akte: Akte; onT
                 </Button>
               </div>
             ) : (
-              <ul className="grid grid-cols-1 gap-2.5">
+              <ul className="grid grid-cols-1 divide-y divide-[var(--line)]">
                 {entscheidungen.map((e) => (
-                  <li key={e.id} className="rounded-[14px] bg-ink-softer p-3">
+                  <li key={e.id} className="py-3 first:pt-0 last:pb-0">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <Chip tone="ink">{e.gericht}</Chip>
+                      <Chip>{e.gericht}</Chip>
                       <span className="mono text-[12px] text-fg-2">{e.az}</span>
-                      <span className="text-[12.5px] text-fg-3">· {fmtDate(e.datum)}</span>
+                      <span className="text-[13px] text-fg-3">· {fmtDate(e.datum)}</span>
                     </div>
-                    <div className="mt-1.5 text-[13.5px] font-semibold">{e.titel}</div>
-                    <p className="mt-1 line-clamp-3 text-[12.5px] leading-relaxed text-fg-2">{e.leitsatz}</p>
+                    <div className="mt-1.5 text-[14px] font-medium text-fg">{e.titel}</div>
+                    <p className="mt-1 line-clamp-3 text-[13px] leading-relaxed text-fg-2">{e.leitsatz}</p>
                   </li>
                 ))}
               </ul>

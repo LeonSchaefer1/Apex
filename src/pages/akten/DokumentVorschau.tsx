@@ -16,6 +16,7 @@ import { Highlight } from "@/components/Highlight";
 import { kopiere } from "@/pages/kontakte/kontaktHelfer";
 import { DOK_ART_LABEL, DOK_STATUS_INFO, beruehreAkte, eigenesSchreiben, fmtKb, offenePlatzhalter, quelleLabel, useTeam } from "./helfer";
 import { imPortal, portalSperrgrund, setzePortal } from "./Mandantenportal";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 /** Eingangsvermerk außerhalb des Blattes: „Eingang 14.10.2026 · Scan“ */
 function eingangsVermerk(d: Dokument): string {
@@ -196,7 +197,7 @@ export function DokumentVorschau({
                 <ChevronRight className="size-[18px]" />
               </IconButton>
             </div>
-            <Button size="sm" variant="ghost" icon={<Trash2 className="size-4" />} onClick={() => onLoeschen(d)} className="!text-seal">
+            <Button size="sm" variant="ghost" icon={<Trash2 className="size-4" />} onClick={() => onLoeschen(d)} className="!text-[var(--seal-text)]">
               Löschen
             </Button>
             <Button size="sm" variant="secondary" icon={<PenLine className="size-4" />} onClick={() => setBenennt(true)}>
@@ -211,7 +212,7 @@ export function DokumentVorschau({
     >
       {d && (
         <AnimatePresence mode="wait" initial={false}>
-          <motion.div key={d.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ type: "spring", stiffness: 460, damping: 36 }} className="grid grid-cols-1 gap-4">
+          <motion.div key={d.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={BEWEGUNG.standard} className="grid grid-cols-1 gap-4">
             <div className="flex flex-wrap items-center gap-1.5">
               <Chip tone="ink">{DOK_ART_LABEL[d.art]}</Chip>
               {d.status && <Chip tone={DOK_STATUS_INFO[d.status].tone}>{DOK_STATUS_INFO[d.status].label}</Chip>}
@@ -245,7 +246,7 @@ export function DokumentVorschau({
 
             {/* Bearbeitungsstand und Mandantenportal */}
             {(eigen || akte.mandantenportal) && (
-              <div className="flex flex-wrap items-center gap-2 rounded-[16px] bg-ink-softer px-3.5 py-2.5 text-[12.5px] text-fg-2 ring-1 ring-inset ring-[var(--line)]">
+              <div className="flex flex-wrap items-center gap-2 rounded-md bg-[var(--surface-2)] px-3.5 py-2.5 text-[13px] text-fg-2">
                 {eigen && d.status !== "versandt" && bearbeitet === null && (
                   <Button size="sm" variant="secondary" icon={<PenLine className="size-4" />} onClick={() => setBearbeitet(d.inhalt)}>
                     Text bearbeiten
@@ -286,7 +287,7 @@ export function DokumentVorschau({
             )}
 
             {platzhalter.length > 0 && bearbeitet === null && (
-              <div role="status" className="flex gap-2 rounded-[14px] bg-amber-soft px-3.5 py-2.5 text-[12.5px] leading-relaxed text-fg-2">
+              <div role="status" className="flex gap-2 rounded-lg bg-amber-soft px-3.5 py-2.5 text-[13px] leading-relaxed text-fg-2">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber" aria-hidden />
                 <span>
                   <strong className="font-semibold text-fg">
@@ -298,13 +299,13 @@ export function DokumentVorschau({
             )}
 
             {d.ki?.zusammenfassung && (
-              <div className="ai-ring rounded-[18px] bg-[var(--surface)] p-4">
+              <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
                 <div className="flex items-center gap-2">
-                  <Sparkles className="size-4 text-violet" />
-                  <span className="text-[13px] font-semibold">KI-Zusammenfassung</span>
+                  <Sparkles className="size-4 text-fg-3" aria-hidden />
+                  <span className="text-[13px] font-medium text-fg">KI-Zusammenfassung</span>
                   <AiChip />
                 </div>
-                <p className="mt-1.5 text-[13.5px] leading-relaxed text-fg-2">{d.ki.zusammenfassung}</p>
+                <p className="mt-1.5 text-[14px] leading-relaxed text-fg-2">{d.ki.zusammenfassung}</p>
                 {d.ki.erkannteFristen ? (
                   <p className="mt-2 text-[12px] text-fg-3">
                     {d.ki.erkannteFristen} {d.ki.erkannteFristen === 1 ? "Frist" : "Fristen"} erkannt – berechnet vom Fristenrechner, zu finden im Reiter „Fristen“.
@@ -313,10 +314,10 @@ export function DokumentVorschau({
               </div>
             )}
 
-            <div className="rounded-[18px] bg-[var(--bg-deep)] p-3 sm:p-6">
+            <div className="rounded-lg bg-[var(--bg-deep)] p-3 sm:p-6">
               {/* Eingänge: Aktenzeichen und Eingangsvermerk außerhalb des Blattes – das Blatt zeigt nur das Original */}
               {!eigen && (
-                <div className="mx-auto mb-2.5 flex w-full max-w-[640px] flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-fg-2">
+                <div className="mx-auto mb-2.5 flex w-full max-w-[640px] flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-fg-2">
                   <span className="inline-flex items-center gap-1.5 font-medium">
                     <Inbox className="size-3.5 text-ink" aria-hidden />
                     {eingangsVermerk(d)}
@@ -328,14 +329,14 @@ export function DokumentVorschau({
               {/* Dunkelmodus: Papier gedimmt statt voll weiß (Helligkeit ≈ 87 %); Hellmodus und Druck unverändert */}
               <article className="paper mx-auto w-full max-w-[640px] px-6 py-8 sm:px-12 sm:py-12" data-gedimmt={gedimmt || undefined}>
                 {eigen && (
-                  <header className="mb-7 flex items-start justify-between gap-4 border-b border-current/10 pb-3 text-[12px] font-semibold uppercase tracking-[0.1em] opacity-55">
+                  <header className="mb-7 flex items-start justify-between gap-4 border-b border-current/10 pb-3 text-[12px] font-medium opacity-60">
                     <span className="truncate">{tenant.name}</span>
                     <span className="mono shrink-0">Az. {akte.aktenzeichen}</span>
                   </header>
                 )}
                 {bearbeitet !== null ? (
                   <div className="grid gap-2">
-                    <label htmlFor="dok-bearbeiten" className="text-[12.5px] font-semibold opacity-70">
+                    <label htmlFor="dok-bearbeiten" className="text-[13px] font-semibold opacity-70">
                       Text bearbeiten – Platzhalter in [eckigen Klammern] ersetzen
                     </label>
                     <Textarea
@@ -344,7 +345,7 @@ export function DokumentVorschau({
                       rows={18}
                       value={bearbeitet}
                       onChange={(e) => setBearbeitet(e.target.value)}
-                      className="text-[13.5px] leading-[1.6]"
+                      className="text-[14px] leading-[1.6]"
                       style={{ fontFamily: "ui-serif, Georgia, 'Times New Roman', serif" }}
                     />
                     <div className="flex flex-wrap items-center gap-2">
@@ -354,13 +355,13 @@ export function DokumentVorschau({
                       <Button size="sm" variant="ghost" icon={<X className="size-4" />} onClick={() => setBearbeitet(null)}>
                         Verwerfen
                       </Button>
-                      <span className="text-[12.5px] opacity-65">
+                      <span className="text-[13px] opacity-65">
                         {offenePlatzhalter(bearbeitet).length ? `${offenePlatzhalter(bearbeitet).length} Platzhalter offen` : "Keine offenen Platzhalter"}
                       </span>
                     </div>
                   </div>
                 ) : (
-                  <div className="whitespace-pre-wrap break-words text-[13.5px] leading-[1.7]" style={{ fontFamily: "ui-serif, Georgia, 'Times New Roman', serif" }}>
+                  <div className="whitespace-pre-wrap break-words text-[14px] leading-[1.7]" style={{ fontFamily: "ui-serif, Georgia, 'Times New Roman', serif" }}>
                     <Highlight text={d.inhalt} q={q} />
                   </div>
                 )}

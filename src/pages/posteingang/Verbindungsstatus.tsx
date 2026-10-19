@@ -20,8 +20,8 @@ function seit(ms: number, jetzt: number) {
 
 function Punkt({ aktiv }: { aktiv: boolean }) {
   return (
-    <span className="relative flex size-2 shrink-0">
-      <span className={cn("relative inline-flex size-2 rounded-full", aktiv ? "bg-[var(--green)]" : "bg-amber")} />
+    <span className="relative flex size-1.5 shrink-0">
+      <span className={cn("relative inline-flex size-1.5 rounded-full", aktiv ? "bg-[var(--green)]" : "bg-[var(--amber)]")} />
     </span>
   );
 }
@@ -49,21 +49,21 @@ export function Verbindungsstatus({ className }: { className?: string }) {
   };
 
   return (
-    <div className={cn("glass-thin flex min-w-0 items-center gap-2 rounded-[18px] py-2 pl-3.5 pr-1.5 sm:gap-4", className)} aria-live="polite">
+    <div className={cn("flex min-w-0 items-center gap-2 sm:gap-4", className)} aria-live="polite">
       <div className="grid min-w-0 flex-1 grid-cols-2 gap-3 sm:flex sm:items-center sm:gap-4">
         <div className="flex min-w-0 items-center gap-2" title={`${SIMULIERT_STATUS} – im Echtbetrieb: besonderes elektronisches Anwaltspostfach, Abruf alle ${ABRUF_MINUTEN} Minuten, Zustellungen mit Zeitstempel`}>
           <Punkt aktiv={!laeuft} />
           <div className="min-w-0 leading-tight">
-            <div className="text-[12.5px] font-semibold">beA (simuliert)</div>
-            <div className="num text-[12.5px] text-fg-3">{laeuft ? "Abfrage läuft …" : `Abfrage ${seit(zuletzt, jetzt)}`}</div>
+            <div className="text-[13px] font-medium text-fg">beA (simuliert)</div>
+            <div className="num text-[13px] text-fg-3">{laeuft ? "Abfrage läuft …" : `Abfrage ${seit(zuletzt, jetzt)}`}</div>
           </div>
         </div>
         <div className="hidden h-7 w-px bg-[var(--line)] sm:block" />
         <div className="flex min-w-0 items-center gap-2" title={`Im Prototyp simuliert – im Echtbetrieb: E-Mail-Postfach über Microsoft 365${domain ? ` (@${domain})` : ""}, verschlüsselt (TLS)`}>
           <Punkt aktiv={!laeuft} />
           <div className="min-w-0 leading-tight">
-            <div className="text-[12.5px] font-semibold">E-Mail (simuliert)</div>
-            <div className="text-[12.5px] text-fg-3">
+            <div className="text-[13px] font-medium text-fg">E-Mail (simuliert)</div>
+            <div className="text-[13px] text-fg-3">
               Microsoft 365<span className="hidden 2xl:inline">{domain ? ` · @${domain}` : ""}</span>
             </div>
           </div>

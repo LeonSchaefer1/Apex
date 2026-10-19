@@ -1,17 +1,16 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router";
-import { motion } from "motion/react";
-import { AnimatePresence } from "motion/react";
-import { ArrowLeft, ArrowRight, KeyRound, Lock, Mail, ShieldCheck, Sparkles, Infinity as InfinityIcon, Building2, Eye, EyeOff, HelpCircle, Phone, Smartphone } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { ArrowLeft, ArrowRight, CircleAlert, Eye, EyeOff, KeyRound, Loader2, Phone, Smartphone } from "lucide-react";
 import { useSession } from "@/store/session";
 import { useData } from "@/store/data";
 import { PASSWORT_MIN, PasswortWechselNoetig, ZweiFaktorNoetig, getBackend, getInfo, istConsole, pruefeNeuesPasswort, type SchnellLogin } from "@/lib/backend";
-import { Avatar, Button, Input } from "@/components/ui";
+import { Avatar, Button, Field, Input } from "@/components/ui";
 import { CONSOLE_DEMO, DEMO_PASSWORT, DEMO_TENANTS } from "@/core/seed/tenants";
 import { STANDARD_ANSPRECHPARTNER } from "@/core/seed/kunde";
 import { ansprechBezeichnung } from "@/lib/rollen";
-import { AppIcon, Wordmark } from "@/components/Logo";
-import { cn } from "@/lib/cn";
+import { Wortmarke } from "@/components/Logo";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 const BEISPIEL_STAEDTE = DEMO_TENANTS.map((t) => t.tenant.stadt).join(", ");
 const AP = STANDARD_ANSPRECHPARTNER;
@@ -123,285 +122,238 @@ export default function Login() {
     setCode("");
   };
 
-  return (
-    <div className="relative z-10 h-full overflow-y-auto">
-      <div className="mx-auto grid min-h-full w-full max-w-[1200px] items-center gap-10 px-[max(16px,env(safe-area-inset-left))] py-10 lg:grid-cols-[1.1fr_1fr] lg:gap-16">
-        <motion.section initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }} className="order-2 lg:order-1">
-          <Link to="/willkommen" className="mb-8 inline-flex items-center gap-3">
-            <AppIcon size={44} />
-            <Wordmark size={22} />
-          </Link>
-          <h1 className="text-[clamp(32px,4.4vw,52px)] font-bold leading-[1.02] tracking-[-0.045em]">
-            Die Kanzlei-Software,
-            <br />
-            <span className="ai-text">die mitdenkt.</span>
-          </h1>
-          <p className="mt-5 max-w-[46ch] text-[16px] leading-relaxed text-fg-2">
-            Ein Werkzeug, volle Kontrolle: Akten, beA, Fristen, Abrechnung und eine KI, die passende Präzedenzfälle in Sekunden findet. Einmal investieren, dauerhaft nutzen.
-          </p>
-          <ul className="mt-8 grid max-w-[520px] gap-3 sm:grid-cols-2">
-            {[
-              { icon: <Sparkles className="size-4" />, t: "KI-Fallanalyse", s: "Erfolgsaussicht & Präzedenzfälle" },
-              { icon: <ShieldCheck className="size-4" />, t: "Fristen mit Rechenweg", s: "§ 222 ZPO, Vier-Augen-Prinzip" },
-              { icon: <InfinityIcon className="size-4" />, t: "Lifetime-Lizenz", s: "Keine Monatsgebühren" },
-              { icon: <Building2 className="size-4" />, t: "Ihre Ansprechpartnerin", s: "Direkt erreichbar, ohne Warteschleife" },
-            ].map((x, i) => (
-              <motion.li key={x.t} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 + i * 0.07 }} className="glass-thin flex items-start gap-3 rounded-[18px] p-3.5">
-                <span className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-ink-soft text-ink">{x.icon}</span>
-                <span>
-                  <span className="block text-[13.5px] font-semibold">{x.t}</span>
-                  <span className="block text-[12px] text-fg-3">{x.s}</span>
-                </span>
-              </motion.li>
-            ))}
-          </ul>
-        </motion.section>
+  const fehlerHinweis = fehler && (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={BEWEGUNG.standard} className="banner banner-seal" role="alert">
+      <CircleAlert aria-hidden />
+      <span>{fehler}</span>
+    </motion.div>
+  );
 
-        <motion.section
-          initial={{ opacity: 0, y: 24, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ type: "spring", stiffness: 220, damping: 26, delay: 0.1 }}
-          className="order-1 lg:order-2"
-        >
-          <div className="glass-strong glow rounded-[32px] p-6 sm:p-8" style={{ boxShadow: "var(--glass-shadow-lg)" }}>
-            {zweiFaktor ? (
-              <motion.form
-                key="zweifaktor"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="grid gap-3.5"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void codeSenden();
-                }}
-              >
-                <div className="mb-2.5 flex items-start gap-3">
-                  <span className="grid size-10 shrink-0 place-items-center rounded-[13px] bg-ink-soft text-ink">
-                    <Smartphone className="size-5" />
-                  </span>
-                  <div className="min-w-0">
-                    <h2 className="title-lg">Code aus Ihrer Authenticator-App</h2>
-                    <p className="mt-1 text-[13px] text-fg-2">
-                      Ihr Passwort stimmt. Bitte geben Sie jetzt den 6-stelligen Code ein, den Ihre App für <span className="break-all font-medium">Apex · {zweiFaktor.email}</span> anzeigt.
-                    </p>
-                  </div>
-                </div>
-                <label htmlFor="login-code" className="sr-only">
-                  {mitWiederherstellung ? "Wiederherstellungscode" : "6-stelliger Code"}
-                </label>
-                <Input
-                  id="login-code"
-                  autoFocus
-                  inputMode={mitWiederherstellung ? "text" : "numeric"}
-                  autoComplete="one-time-code"
-                  maxLength={mitWiederherstellung ? 12 : 7}
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  placeholder={mitWiederherstellung ? "z. B. 7KQ4-M2XD" : "123 456"}
-                  className="mono !h-14 text-center !text-[22px] tracking-[0.3em]"
-                />
-                {fehler && (
-                  <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="rounded-[12px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal" role="alert">
-                    {fehler}
-                  </motion.div>
-                )}
-                <Button type="submit" variant="primary" size="lg" loading={laedt === "code"} iconRight={<ArrowRight className="size-4" />} className="mt-1 w-full">
-                  Bestätigen und anmelden
-                </Button>
-                <button
-                  type="button"
-                  className="justify-self-center text-[13px] font-medium text-ink underline-offset-2 hover:underline"
-                  onClick={() => {
-                    setMitWiederherstellung((v) => !v);
-                    setCode("");
-                    setFehler(null);
-                  }}
-                >
-                  {mitWiederherstellung ? "Doch den Code aus der App verwenden" : "Telefon nicht zur Hand? Wiederherstellungscode verwenden"}
-                </button>
-                <Button variant="ghost" icon={<ArrowLeft className="size-4" />} onClick={zurueck}>
-                  Zurück zur Anmeldung
-                </Button>
-              </motion.form>
-            ) : wechsel ? (
-              <motion.form
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="grid gap-3.5"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void eigenesPasswort();
-                }}
-              >
-                <div className="mb-2.5 flex items-start gap-3">
-                  <span className="grid size-10 shrink-0 place-items-center rounded-[13px] bg-ink-soft text-ink">
-                    <KeyRound className="size-5" />
-                  </span>
-                  <div className="min-w-0">
-                    <h2 className="title-lg">Eigenes Passwort festlegen</h2>
-                    <p className="mt-1 text-[13px] text-fg-3">
-                      Sie melden sich zum ersten Mal mit dem Startpasswort an. Bitte vergeben Sie jetzt ein eigenes Passwort für <span className="break-all font-medium text-fg-2">{wechsel.email}</span>.
-                    </p>
-                  </div>
-                </div>
-                <input type="email" autoComplete="username" value={wechsel.email} readOnly hidden />
-                <label htmlFor="login-neu" className="label !mb-0">
-                  Neues Passwort
-                </label>
-                <div className="relative -mt-2">
-                  <Lock className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-fg-4" />
-                  <Input id="login-neu" type={zeigePw ? "text" : "password"} autoComplete="new-password" required value={neuPw} onChange={(e) => setNeuPw(e.target.value)} aria-describedby="login-neu-regel" className="!h-12 !pl-10 !pr-11" />
-                  <button type="button" onClick={() => setZeigePw((v) => !v)} className="icon-btn absolute right-1.5 top-1/2 !size-9 -translate-y-1/2" aria-label={zeigePw ? "Passwort verbergen" : "Passwort anzeigen"}>
-                    {zeigePw ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                  </button>
-                </div>
-                <label htmlFor="login-neu2" className="label !mb-0">
-                  Neues Passwort wiederholen
-                </label>
-                <div className="relative -mt-2">
-                  <Lock className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-fg-4" />
-                  <Input id="login-neu2" type={zeigePw ? "text" : "password"} autoComplete="new-password" required value={neuPw2} onChange={(e) => setNeuPw2(e.target.value)} className="!h-12 !pl-10" />
-                </div>
-                <p id="login-neu-regel" className="text-[13px] text-fg-3">Mindestens {PASSWORT_MIN} Zeichen mit Buchstaben und mindestens einer Ziffer – anders als das Startpasswort.</p>
-                {fehler && (
-                  <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="rounded-[12px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal" role="alert">
-                    {fehler}
-                  </motion.div>
-                )}
-                <Button type="submit" variant="primary" size="lg" loading={laedt === "wechsel"} iconRight={<ArrowRight className="size-4" />} className="mt-1 w-full">
-                  Passwort speichern und anmelden
-                </Button>
-                <Button variant="ghost" icon={<ArrowLeft className="size-4" />} onClick={zurueck}>
-                  Zurück zur Anmeldung
-                </Button>
-              </motion.form>
-            ) : (
-            <>
-            <div className="mb-6">
-              <h2 className="title-lg">Anmelden</h2>
-              <p className="mt-1 text-[13px] text-fg-3">Mit dem Zugang Ihrer Kanzlei.</p>
-            </div>
-            <form
-              className="grid gap-3.5"
+  return (
+    <div className="login-scroll relative z-10 h-full overflow-y-auto bg-[var(--bg)]">
+      {/* Anmeldung (DESIGN-SYSTEM.md 14): Wortmarke oben mittig, Formular in einer Karte (400 px) auf --bg, ein Primärknopf */}
+      <div className="mx-auto flex min-h-full w-full max-w-[432px] flex-col px-4 pb-10 pt-[max(40px,env(safe-area-inset-top))] sm:pt-16">
+        <Link to="/willkommen" className="mx-auto mb-10 inline-flex min-h-11 items-center rounded-md px-2" aria-label="Apex – zur Startseite">
+          <Wortmarke size={24} />
+        </Link>
+
+        <main className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-6 sm:p-8">
+          {zweiFaktor ? (
+            <motion.form
+              key="zweifaktor"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={BEWEGUNG.standard}
+              className="grid gap-4"
               onSubmit={(e) => {
                 e.preventDefault();
-                void anmelden();
+                void codeSenden();
               }}
             >
-              <div className="relative">
-                <Mail className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-fg-4" />
-                <Input id="login-email" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-Mail-Adresse" className="!h-12 !pl-10" />
+              <div>
+                <Smartphone className="mb-3 size-5 text-fg-3" aria-hidden />
+                <h1 className="title-lg">Code aus Ihrer Authenticator-App</h1>
+                <p className="mt-1 text-[14px] leading-5 text-fg-3">
+                  Ihr Passwort stimmt. Bitte geben Sie jetzt den 6-stelligen Code ein, den Ihre App für <span className="break-all font-medium text-fg-2">Apex · {zweiFaktor.email}</span> anzeigt.
+                </p>
               </div>
-              <div className="relative">
-                <Lock className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-fg-4" />
-                <Input id="login-passwort" type={zeigePw ? "text" : "password"} autoComplete="current-password" required value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Passwort" className="!h-12 !pl-10 !pr-11" />
-                <button type="button" onClick={() => setZeigePw((v) => !v)} className="icon-btn absolute right-1.5 top-1/2 !size-9 -translate-y-1/2" aria-label={zeigePw ? "Passwort verbergen" : "Passwort anzeigen"}>
-                  {zeigePw ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                </button>
-              </div>
-              <div className="-mt-1 flex justify-end">
-                <button type="button" aria-expanded={vergessen} aria-controls="pw-vergessen" onClick={() => setVergessen((v) => !v)} className="inline-flex items-center gap-1.5 rounded-full px-1 text-[13px] font-medium text-ink underline-offset-2 hover:underline">
-                  <HelpCircle className="size-3.5" /> Passwort vergessen?
-                </button>
-              </div>
-              <AnimatePresence initial={false}>
-                {vergessen && (
-                  <motion.div
-                    id="pw-vergessen"
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ type: "spring", stiffness: 460, damping: 36 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="rounded-[14px] bg-[var(--ink-softer)] px-3.5 py-3 text-[13px] leading-relaxed text-fg-2 ring-1 ring-[var(--line)]">
-                      <p>
-                        Ein neues Startpasswort vergibt Ihre Kanzleiverwaltung (Partner oder Administration unter <span className="font-medium">Einstellungen → Team</span>) – bei Testzugängen Ihre {ansprechBezeichnung(AP)} {AP.name}, Tel.{" "}
-                        <a href={`tel:${AP.telefon.replace(/\s+/g, "")}`} className="font-medium text-ink underline-offset-2 hover:underline">
-                          {AP.telefon}
-                        </a>
-                        , {AP.verfuegbar}.
-                      </p>
-                      <p className="mt-1.5 flex items-start gap-1.5 text-fg-3">
-                        <Phone className="mt-0.5 size-3.5 shrink-0" /> Aus Sicherheitsgründen versendet Apex keine Passwörter per E-Mail.
-                      </p>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-              {fehler && (
-                <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="rounded-[12px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal" role="alert">
-                  {fehler}
-                </motion.div>
-              )}
-              <Button type="submit" variant="primary" size="lg" loading={laedt === "form"} iconRight={<ArrowRight className="size-4" />} className="mt-1 w-full">
-                Anmelden
+              <label htmlFor="login-code" className="sr-only">
+                {mitWiederherstellung ? "Wiederherstellungscode" : "6-stelliger Code"}
+              </label>
+              <Input
+                id="login-code"
+                autoFocus
+                inputMode={mitWiederherstellung ? "text" : "numeric"}
+                autoComplete="one-time-code"
+                maxLength={mitWiederherstellung ? 12 : 7}
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder={mitWiederherstellung ? "z. B. 7KQ4-M2XD" : "123 456"}
+                className="mono !h-14 text-center !text-[22px] tracking-[0.3em]"
+              />
+              {fehlerHinweis}
+              <Button type="submit" variant="primary" size="lg" loading={laedt === "code"} iconRight={<ArrowRight className="size-4" />} className="w-full">
+                Bestätigen und anmelden
               </Button>
-            </form>
-
-            {kacheln.length > 0 && (
-              <div className="mt-7">
-                <div className="mb-3 flex items-center gap-3">
-                  <div className="h-px flex-1 bg-[var(--line)]" />
-                  <span className="eyebrow">Öffentliche Demo</span>
-                  <div className="h-px flex-1 bg-[var(--line)]" />
-                </div>
-                <div className="grid gap-2">
-                  {kacheln.map((s) => (
-                    <button
-                      key={s.email}
-                      type="button"
-                      onClick={() => {
-                        setEmail(s.email);
-                        setPw(s.passwort);
-                        void anmelden(s.email, s.passwort, s.email);
-                      }}
-                      className={cn(
-                        "glow group relative flex items-center gap-3 rounded-[18px] p-2.5 pr-3.5 text-left ring-1 ring-[var(--line)] transition-all duration-300 ease-[var(--spring)] hover:-translate-y-0.5 hover:bg-[var(--surface)] hover:shadow-glass active:scale-[0.99]",
-                        s.console && "bg-[var(--ink-softer)]",
-                      )}
-                    >
-                      <Avatar initialen={s.initialen} farbe={s.farbe} size={38} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13.5px] font-semibold">{s.kanzlei}</span>
-                        <span className="block truncate text-[13px] text-fg-3">
-                          {s.name} · {s.stadt}
-                        </span>
-                      </span>
-                      {laedt === s.email ? (
-                        <span className="size-4 animate-spin rounded-full border-2 border-ink border-t-transparent" />
-                      ) : (
-                        <ArrowRight className="size-4 text-fg-4 transition-transform group-hover:translate-x-0.5 group-hover:text-ink" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-                <div className="mt-3 text-[13px] leading-snug text-fg-3">
-                  <p>
-                    Ein Klick meldet direkt an – das gilt nur für die <span className="font-medium text-fg-2">Beispielkanzleien mit öffentlichem Demo-Passwort</span>. Jede Kanzlei sieht ausschließlich ihre eigenen Daten. Zugänge mit eigenem Passwort (auch Kundentests) melden sich immer mit E-Mail-Adresse und Passwort an.
-                  </p>
-                  <p className="mt-1.5 font-medium text-fg-2">Öffentliche Demo-Passwörter für die Anmeldung von Hand:</p>
-                  <ul className="mt-1 grid gap-0.5">
-                    <li>
-                      Beispielkanzleien ({BEISPIEL_STAEDTE}): <span className="mono text-fg-2">{DEMO_PASSWORT}</span>
-                    </li>
-                    {anbieter.length > 0 && (
-                      <li>
-                        Anbieterzugang (Apex Console, nur Demo): <span className="mono text-fg-2">{CONSOLE_DEMO.passwort}</span>
-                      </li>
-                    )}
-                  </ul>
-                  {info?.modus === "demo" && (
-                    <p className="mt-1.5">{info.speicherDauerhaft === false ? "Demo-Modus: Änderungen gelten nur für diese Sitzung – der Browser-Speicher ist hier nicht verfügbar." : "Demo-Modus: Ihre Änderungen bleiben in diesem Browser gespeichert."}</p>
-                  )}
-                </div>
+              <button
+                type="button"
+                className="link min-h-11 justify-self-center text-[13px] font-medium sm:min-h-6"
+                onClick={() => {
+                  setMitWiederherstellung((v) => !v);
+                  setCode("");
+                  setFehler(null);
+                }}
+              >
+                {mitWiederherstellung ? "Doch den Code aus der App verwenden" : "Telefon nicht zur Hand? Wiederherstellungscode verwenden"}
+              </button>
+              <Button variant="ghost" icon={<ArrowLeft className="size-4" />} onClick={zurueck}>
+                Zurück zur Anmeldung
+              </Button>
+            </motion.form>
+          ) : wechsel ? (
+            <motion.form
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={BEWEGUNG.standard}
+              className="grid gap-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void eigenesPasswort();
+              }}
+            >
+              <div>
+                <KeyRound className="mb-3 size-5 text-fg-3" aria-hidden />
+                <h1 className="title-lg">Eigenes Passwort festlegen</h1>
+                <p className="mt-1 text-[14px] leading-5 text-fg-3">
+                  Sie melden sich zum ersten Mal mit dem Startpasswort an. Bitte vergeben Sie jetzt ein eigenes Passwort für <span className="break-all font-medium text-fg-2">{wechsel.email}</span>.
+                </p>
               </div>
-            )}
+              <input type="email" autoComplete="username" value={wechsel.email} readOnly hidden />
+              <Field label="Neues Passwort" htmlFor="login-neu">
+                <div className="relative">
+                  <Input id="login-neu" type={zeigePw ? "text" : "password"} autoComplete="new-password" required value={neuPw} onChange={(e) => setNeuPw(e.target.value)} aria-describedby="login-neu-regel" className="!pr-11 sm:!h-10" />
+                  <AugeKnopf an={zeigePw} onClick={() => setZeigePw((v) => !v)} />
+                </div>
+              </Field>
+              <Field label="Neues Passwort wiederholen" htmlFor="login-neu2">
+                <Input id="login-neu2" type={zeigePw ? "text" : "password"} autoComplete="new-password" required value={neuPw2} onChange={(e) => setNeuPw2(e.target.value)} className="sm:!h-10" />
+              </Field>
+              <p id="login-neu-regel" className="-mt-1 text-[13px] leading-5 text-fg-3">
+                Mindestens {PASSWORT_MIN} Zeichen mit Buchstaben und mindestens einer Ziffer – anders als das Startpasswort.
+              </p>
+              {fehlerHinweis}
+              <Button type="submit" variant="primary" size="lg" loading={laedt === "wechsel"} iconRight={<ArrowRight className="size-4" />} className="w-full">
+                Passwort speichern und anmelden
+              </Button>
+              <Button variant="ghost" icon={<ArrowLeft className="size-4" />} onClick={zurueck}>
+                Zurück zur Anmeldung
+              </Button>
+            </motion.form>
+          ) : (
+            <>
+              <div className="mb-6">
+                <h1 className="title-xl">Anmelden</h1>
+                <p className="mt-1 text-[14px] leading-5 text-fg-3">Mit dem Zugang Ihrer Kanzlei.</p>
+              </div>
+              <form
+                className="grid gap-4"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void anmelden();
+                }}
+              >
+                <Field label="E-Mail-Adresse" htmlFor="login-email">
+                  <Input id="login-email" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@kanzlei.de" className="sm:!h-10" />
+                </Field>
+                <div>
+                  <div className="mb-1.5 flex items-end justify-between gap-3">
+                    <label htmlFor="login-passwort" className="label !mb-0">
+                      Passwort
+                    </label>
+                    <button type="button" aria-expanded={vergessen} aria-controls="pw-vergessen" onClick={() => setVergessen((v) => !v)} className="link-leise -my-3 min-h-11 sm:-my-1 sm:min-h-6">
+                      Passwort vergessen?
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <Input id="login-passwort" type={zeigePw ? "text" : "password"} autoComplete="current-password" required value={pw} onChange={(e) => setPw(e.target.value)} className="!pr-11 sm:!h-10" />
+                    <AugeKnopf an={zeigePw} onClick={() => setZeigePw((v) => !v)} />
+                  </div>
+                </div>
+                <AnimatePresence initial={false}>
+                  {vergessen && (
+                    <motion.div id="pw-vergessen" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={BEWEGUNG.standard} className="overflow-hidden">
+                      <div className="banner flex-col !gap-1.5 text-[13px] leading-5">
+                        <p>
+                          Ein neues Startpasswort vergibt Ihre Kanzleiverwaltung (Partner oder Administration unter <span className="font-medium text-fg">Einstellungen → Team</span>) – bei Testzugängen Ihre {ansprechBezeichnung(AP)} {AP.name}, Tel.{" "}
+                          <a href={`tel:${AP.telefon.replace(/\s+/g, "")}`} className="link font-medium">
+                            {AP.telefon}
+                          </a>
+                          , {AP.verfuegbar}.
+                        </p>
+                        <p className="flex items-start gap-1.5 text-fg-3">
+                          <Phone className="mt-[3px] size-3.5 shrink-0" aria-hidden /> Aus Sicherheitsgründen versendet Apex keine Passwörter per E-Mail.
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                {fehlerHinweis}
+                <Button type="submit" variant="primary" size="lg" loading={laedt === "form"} iconRight={<ArrowRight className="size-4" />} className="mt-1 w-full">
+                  Anmelden
+                </Button>
+              </form>
+
+              {kacheln.length > 0 && (
+                <section aria-labelledby="demo-titel" className="mt-8 border-t border-[var(--line)] pt-6">
+                  <h2 id="demo-titel" className="text-[13px] font-medium text-fg-3">
+                    Öffentliche Demo
+                  </h2>
+                  <ul className="mt-2 divide-y divide-[var(--line)]">
+                    {kacheln.map((s) => (
+                      <li key={s.email}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEmail(s.email);
+                            setPw(s.passwort);
+                            void anmelden(s.email, s.passwort, s.email);
+                          }}
+                          className="group -mx-2 flex w-[calc(100%+16px)] items-center gap-3 rounded-md px-2 py-2.5 text-left transition-colors duration-100 hover:bg-[var(--surface-2)] focus-visible:outline-offset-[-2px]"
+                        >
+                          <Avatar initialen={s.initialen} size={32} />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[14px] font-medium leading-5 text-fg">{s.kanzlei}</span>
+                            <span className="block truncate text-[13px] leading-[18px] text-fg-3">
+                              {s.name} · {s.stadt}
+                            </span>
+                          </span>
+                          {laedt === s.email ? <Loader2 className="size-4 animate-spin text-fg-3 motion-reduce:animate-none" aria-label="Anmeldung läuft" /> : <ArrowRight className="size-4 text-fg-4 transition-colors duration-100 group-hover:text-fg" aria-hidden />}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-4 grid gap-2 text-[13px] leading-5 text-fg-3">
+                    <p>
+                      Ein Klick meldet direkt an – das gilt nur für die <span className="font-medium text-fg-2">Beispielkanzleien mit öffentlichem Demo-Passwort</span>. Jede Kanzlei sieht ausschließlich ihre eigenen Daten. Zugänge mit eigenem Passwort (auch Kundentests) melden sich immer mit E-Mail-Adresse und Passwort an.
+                    </p>
+                    <div>
+                      <p className="font-medium text-fg-2">Öffentliche Demo-Passwörter für die Anmeldung von Hand:</p>
+                      <ul className="mt-1 grid gap-0.5">
+                        <li>
+                          Beispielkanzleien ({BEISPIEL_STAEDTE}): <span className="mono whitespace-nowrap text-fg-2">{DEMO_PASSWORT}</span>
+                        </li>
+                        {anbieter.length > 0 && (
+                          <li>
+                            Anbieterzugang (Apex Console, nur Demo): <span className="mono whitespace-nowrap text-fg-2">{CONSOLE_DEMO.passwort}</span>
+                          </li>
+                        )}
+                      </ul>
+                    </div>
+                    {info?.modus === "demo" && <p>{info.speicherDauerhaft === false ? "Demo-Modus: Änderungen gelten nur für diese Sitzung – der Browser-Speicher ist hier nicht verfügbar." : "Demo-Modus: Ihre Änderungen bleiben in diesem Browser gespeichert."}</p>}
+                  </div>
+                </section>
+              )}
             </>
-            )}
-          </div>
-        </motion.section>
+          )}
+        </main>
+
+        <p className="mt-8 text-center text-[13px] leading-5 text-fg-4">Die Kanzlei-Software, die mitdenkt.</p>
       </div>
     </div>
+  );
+}
+
+/** Passwort anzeigen/verbergen: Trefferfläche über die ganze Feldhöhe (Telefon 44 × 44 px, Desktop 40 × 40 px). */
+function AugeKnopf({ an, onClick }: { an: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="absolute inset-y-0 right-0 grid w-11 place-items-center rounded-r-md text-fg-3 transition-colors duration-100 hover:text-fg focus-visible:outline-offset-[-2px] sm:w-10"
+      aria-label={an ? "Passwort verbergen" : "Passwort anzeigen"}
+      title={an ? "Passwort verbergen" : "Passwort anzeigen"}
+    >
+      {an ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+    </button>
   );
 }

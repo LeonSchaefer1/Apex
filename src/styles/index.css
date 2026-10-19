@@ -1,7 +1,8 @@
 /*
-  Apex-Designsystem „Glas & Tinte"
-  Layout-Konzept: schwebende Glas-Ebenen (Navigation, Werkzeuge) über ruhigem, farbig belichtetem Arbeitsgrund –
-  Inhalt bleibt hell und lesbar, Glas ist der Steuerung vorbehalten (Apple Liquid Glass Prinzip).
+  Apex-Designsystem „Robe & Papier“ (verbindlich: docs/design/DESIGN-SYSTEM.md)
+  Robenschwarz auf warmem Papierweiß, eine Schrift, feine Linien. Deckende Flächen statt Glas, Linien statt Schatten,
+  kein Verlauf, kein Leuchten. Farbe erscheint nur, wenn sie etwas bedeutet: Siegelrot = Notfrist/kritisch/Löschen,
+  Bernstein = bald fällig, Grün = erledigt. Der einzige Akzent ist die Textfarbe selbst.
 */
 @import "tailwindcss";
 
@@ -31,198 +32,180 @@
   font-display: swap;
 }
 
-/* ───────────── Farb- & Material-Tokens ───────────── */
+/* ───────────── Farb- & Material-Tokens (DESIGN-SYSTEM.md 4.2/4.3) ───────────── */
 :root {
-  /* Grund */
-  --bg: #edf0f7;
-  --bg-deep: #e3e8f3;
+  /* Flächen */
+  --bg: #fafaf9;
   --surface: #ffffff;
-  --surface-2: #f6f8fc;
-  --fg: #0b1020; /* Robe */
-  --fg-2: #39415a;
-  /* Kontrast (WCAG AA ≥ 4,5:1 auch auf dünnstem Glas über dem blauen Arbeitsgrund-Licht): fg-3 ≥ 5,6:1, fg-4 ≥ 4,9:1;
-     auf Weiß fg-3 ≈ 8,0:1, fg-4 ≈ 7,1:1 */
-  --fg-3: #4a5268;
-  --fg-4: #535b70;
-  --line: rgba(16, 24, 48, 0.08);
-  --line-strong: rgba(16, 24, 48, 0.15);
-
-  /* Marke: Königsblau-Tinte */
-  --ink: #2440d8;
-  --ink-bright: #4c6bff;
-  --ink-deep: #16247a;
-  --ink-soft: rgba(36, 64, 216, 0.1);
-  --ink-softer: rgba(36, 64, 216, 0.06);
+  --surface-2: #f3f3f1;
+  --surface-3: #ebeae7;
+  --surface-pop: #ffffff;
+  --surface-pop-hover: #f3f3f1;
+  /* Linien: --line dekorativ (Trenner, Kartenrand), --line-strong für Bedienelemente (≥ 3 : 1) */
+  --line: #e6e5e2;
+  --line-strong: #8c8882;
+  /* Text (kleinster Wert: --fg-4 auf Fläche 3 = 4,89 : 1) */
+  --fg: #1a1917;
+  --fg-2: #3f3d39;
+  --fg-3: #55524d;
+  --fg-4: #68645e;
+  /* Akzent = Text 1 (Robenschwarz) */
+  --ink: #1a1917;
+  --ink-hover: #3a3834;
   --on-ink: #ffffff;
-  /* Fläche der Primärknöpfe (weiße Schrift ≥ 4,5:1) */
-  --ink-fill-top: color-mix(in oklab, var(--ink-bright) 70%, var(--ink));
+  --focus: #1a1917;
+  --selection: #e0ded9;
+  /* Signale: Symbol/Fläche · Schrift · zarte Fläche · Schrift auf voller Fläche */
+  --seal: #c8302b;
+  --seal-text: #ae2621;
+  --seal-soft: #fceeec;
+  --on-seal: #ffffff;
+  --amber: #b06a00;
+  --amber-text: #875000;
+  --amber-soft: #fbf2e2;
+  --green: #1f8048;
+  --green-text: #196b3c;
+  --green-soft: #ebf5ee;
+  --on-green: #ffffff;
+  --scrim: rgb(17 17 16 / 0.32);
+  --shadow-pop: 0 8px 24px -12px rgb(0 0 0 / 0.16);
+  --shadow-modal: 0 24px 48px -16px rgb(0 0 0 / 0.2);
+
+  /* Ableitungen – in Hell und Dunkel gleich, darum nur hier. var() löst am Wurzelelement auf; die dunklen Werte greifen
+     automatisch, weil :root hell und dunkel dasselbe Element ist. */
+  --bg-deep: var(--bg);
   --ink-fill: var(--ink);
+  --ink-fill-top: var(--ink);
+  --ink-bright: var(--ink-hover);
+  --ink-deep: var(--ink);
+  --ink-soft: var(--surface-3);
+  --ink-softer: var(--surface-2);
+  --violet: var(--fg-2);
+  --violet-soft: var(--surface-2);
+  --ai-1: var(--fg-3);
+  --ai-2: var(--fg-3);
+  --ai-3: var(--fg-3);
+  --ai-4: var(--fg-3);
+  --chart-1: var(--ink);
+  --chart-2: var(--line-strong);
+  --chart-grid: var(--line);
+  /* Glas-Tokens auf ruhige Werte abgebildet – Code, der sie noch liest, bricht nicht und sieht ruhig aus */
+  --glass: var(--surface);
+  --glass-strong: var(--surface);
+  --glass-thin: var(--surface);
+  --glass-rim-1: transparent;
+  --glass-rim-2: transparent;
+  --glass-rim-3: transparent;
+  --glass-sheen: transparent;
+  --glass-shade: transparent;
+  --glow-light: transparent;
+  /* kein `none`: die Variable steht in Komma-Listen mit Innenschatten */
+  --glass-shadow: 0 0 0 0 transparent;
+  --glass-shadow-lg: var(--shadow-pop);
+  --aura-1: transparent;
+  --aura-2: transparent;
+  --aura-3: transparent;
+  --aura-4: transparent;
 
-  /* Semantik */
-  --seal: #d4283a; /* Siegellack: Notfrist / kritisch */
-  --seal-soft: rgba(212, 40, 58, 0.1);
-  --amber: #b86b00;
-  --amber-soft: rgba(230, 150, 20, 0.14);
-  --green: #0f7f55;
-  --green-soft: rgba(15, 127, 85, 0.11);
-  --on-green: #ffffff; /* Schrift/Icons auf vollflächigem --green */
-  --violet: #6d4bd8;
-  --violet-soft: rgba(109, 75, 216, 0.1);
-  /* Schrift in Statuschips auf der zarten Tönung (≥ 4,5:1 auch über Glas): dunkler als die Signalfarbe */
-  --seal-text: #b01e2f;
-  --amber-text: #8a4f00;
-  --green-text: #0b6b47;
-
-  /* KI-Schimmer (Iridescence) */
-  --ai-1: #3d5cff;
-  --ai-2: #8b5cf6;
-  --ai-3: #ec5fa8;
-  --ai-4: #ff9d3d;
-
-  /* Glas */
-  --glass: rgba(255, 255, 255, 0.58);
-  --glass-strong: rgba(255, 255, 255, 0.78);
-  --glass-thin: rgba(255, 255, 255, 0.38);
-  --glass-rim-1: rgba(255, 255, 255, 0.95);
-  --glass-rim-2: rgba(255, 255, 255, 0.15);
-  --glass-rim-3: rgba(255, 255, 255, 0.55);
-  --glass-sheen: rgba(255, 255, 255, 0.55);
-  --glass-shade: rgba(20, 30, 70, 0.07);
-  --glass-shadow: 0 10px 34px -8px rgba(20, 30, 80, 0.16), 0 2px 8px -2px rgba(20, 30, 80, 0.07);
-  --glass-shadow-lg: 0 30px 70px -20px rgba(20, 30, 80, 0.28), 0 8px 22px -8px rgba(20, 30, 80, 0.12);
-  --glow-light: rgba(255, 255, 255, 0.55);
-
-  /* Arbeitsgrund-Licht */
-  --aura-1: rgba(76, 107, 255, 0.34);
-  --aura-2: rgba(255, 176, 102, 0.3);
-  --aura-3: rgba(56, 200, 200, 0.22);
-  --aura-4: rgba(167, 139, 250, 0.28);
-
-  --scrim: rgba(10, 14, 30, 0.28);
-  --focus: rgba(76, 107, 255, 0.55);
-
-  --radius-xl: 28px;
-  --radius-lg: 22px;
-  --radius-md: 16px;
-  --radius-sm: 11px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
 
   --font-ui: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
-  --spring: cubic-bezier(0.22, 1.2, 0.36, 1);
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --spring: var(--ease-out);
+  --dur-1: 100ms;
+  --dur-2: 160ms;
+  --dur-3: 220ms;
+
+  /* Höhe der mobilen Tab-Leiste (bündig am unteren Rand) – Grundlage für Freiraum und Scroll-Abstand unten */
+  --tabbar-h: 56px;
 
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #05070d;
-    --bg-deep: #03040a;
-    --surface: #0e1220;
-    --surface-2: #121729;
-    --fg: #f1f3fa;
-    --fg-2: #bcc3d7;
-    --fg-3: #a3abc1;
-    --fg-4: #9098b0;
-    --line: rgba(255, 255, 255, 0.075);
-    --line-strong: rgba(255, 255, 255, 0.14);
-    --ink: #5c7bff;
-    --ink-bright: #8098ff;
-    --ink-deep: #c9d3ff;
-    --ink-soft: rgba(92, 123, 255, 0.17);
-    --ink-softer: rgba(92, 123, 255, 0.09);
-    --on-ink: #ffffff;
-    --ink-fill-top: #4a68f0;
-    --ink-fill: #3f5ce4;
-    --seal: #ff5a68;
-    --seal-soft: rgba(255, 90, 104, 0.15);
-    --amber: #ffb547;
-    --amber-soft: rgba(255, 181, 71, 0.14);
-    --green: #3ed79a;
-    --green-soft: rgba(62, 215, 154, 0.13);
-    --on-green: #04130c;
-    --violet: #a78bfa;
-    --violet-soft: rgba(167, 139, 250, 0.15);
-    --seal-text: #ff5a68;
-    --amber-text: #ffb547;
-    --green-text: #3ed79a;
-    --glass: rgba(24, 29, 48, 0.5);
-    --glass-strong: rgba(26, 31, 52, 0.76);
-    --glass-thin: rgba(26, 31, 52, 0.32);
-    --glass-rim-1: rgba(255, 255, 255, 0.28);
-    --glass-rim-2: rgba(255, 255, 255, 0.04);
-    --glass-rim-3: rgba(255, 255, 255, 0.12);
-    --glass-sheen: rgba(255, 255, 255, 0.07);
-    --glass-shade: rgba(0, 0, 0, 0.25);
-    --glass-shadow: 0 14px 40px -10px rgba(0, 0, 0, 0.6), 0 2px 8px -2px rgba(0, 0, 0, 0.4);
-    --glass-shadow-lg: 0 34px 80px -20px rgba(0, 0, 0, 0.75), 0 10px 26px -8px rgba(0, 0, 0, 0.5);
-    --glow-light: rgba(150, 170, 255, 0.16);
-    --aura-1: rgba(44, 76, 240, 0.42);
-    --aura-2: rgba(124, 58, 237, 0.26);
-    --aura-3: rgba(14, 165, 165, 0.2);
-    --aura-4: rgba(245, 158, 11, 0.1);
-    --scrim: rgba(0, 0, 0, 0.5);
-    --focus: rgba(128, 152, 255, 0.6);
+    --bg: #111110;
+    --surface: #181816;
+    --surface-2: #21201e;
+    --surface-3: #2a2926;
+    --surface-pop: #21201e;
+    --surface-pop-hover: #2a2926;
+    --line: #2d2c29;
+    --line-strong: #6f6b65;
+    --fg: #f4f3f1;
+    --fg-2: #d3d1cc;
+    --fg-3: #b0ada7;
+    --fg-4: #9a968f;
+    --ink: #f4f3f1;
+    --ink-hover: #d9d7d2;
+    --on-ink: #1a1917;
+    --focus: #f4f3f1;
+    --selection: #3a3834;
+    --seal: #f06a60;
+    --seal-text: #ff8e85;
+    --seal-soft: #2c1715;
+    --on-seal: #111110;
+    --amber: #e0a43a;
+    --amber-text: #f2bc5e;
+    --amber-soft: #2a2112;
+    --green: #4dbe7c;
+    --green-text: #6fd497;
+    --green-soft: #132519;
+    --on-green: #111110;
+    --scrim: rgb(0 0 0 / 0.6);
+    --shadow-pop: 0 0 0 0 transparent;
+    --shadow-modal: 0 0 0 0 transparent;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #05070d;
-  --bg-deep: #03040a;
-  --surface: #0e1220;
-  --surface-2: #121729;
-  --fg: #f1f3fa;
-  --fg-2: #bcc3d7;
-  --fg-3: #a3abc1;
-  --fg-4: #9098b0;
-  --line: rgba(255, 255, 255, 0.075);
-  --line-strong: rgba(255, 255, 255, 0.14);
-  --ink: #5c7bff;
-  --ink-bright: #8098ff;
-  --ink-deep: #c9d3ff;
-  --ink-soft: rgba(92, 123, 255, 0.17);
-  --ink-softer: rgba(92, 123, 255, 0.09);
-  --on-ink: #ffffff;
-  --ink-fill-top: #4a68f0;
-  --ink-fill: #3f5ce4;
-  --seal: #ff5a68;
-  --seal-soft: rgba(255, 90, 104, 0.15);
-  --amber: #ffb547;
-  --amber-soft: rgba(255, 181, 71, 0.14);
-  --green: #3ed79a;
-  --green-soft: rgba(62, 215, 154, 0.13);
-  --on-green: #04130c;
-  --violet: #a78bfa;
-  --violet-soft: rgba(167, 139, 250, 0.15);
-  --seal-text: #ff5a68;
-  --amber-text: #ffb547;
-  --green-text: #3ed79a;
-  --glass: rgba(24, 29, 48, 0.5);
-  --glass-strong: rgba(26, 31, 52, 0.76);
-  --glass-thin: rgba(26, 31, 52, 0.32);
-  --glass-rim-1: rgba(255, 255, 255, 0.28);
-  --glass-rim-2: rgba(255, 255, 255, 0.04);
-  --glass-rim-3: rgba(255, 255, 255, 0.12);
-  --glass-sheen: rgba(255, 255, 255, 0.07);
-  --glass-shade: rgba(0, 0, 0, 0.25);
-  --glass-shadow: 0 14px 40px -10px rgba(0, 0, 0, 0.6), 0 2px 8px -2px rgba(0, 0, 0, 0.4);
-  --glass-shadow-lg: 0 34px 80px -20px rgba(0, 0, 0, 0.75), 0 10px 26px -8px rgba(0, 0, 0, 0.5);
-  --glow-light: rgba(150, 170, 255, 0.16);
-  --aura-1: rgba(44, 76, 240, 0.42);
-  --aura-2: rgba(124, 58, 237, 0.26);
-  --aura-3: rgba(14, 165, 165, 0.2);
-  --aura-4: rgba(245, 158, 11, 0.1);
-  --scrim: rgba(0, 0, 0, 0.5);
-  --focus: rgba(128, 152, 255, 0.6);
+  --bg: #111110;
+  --surface: #181816;
+  --surface-2: #21201e;
+  --surface-3: #2a2926;
+  --surface-pop: #21201e;
+  --surface-pop-hover: #2a2926;
+  --line: #2d2c29;
+  --line-strong: #6f6b65;
+  --fg: #f4f3f1;
+  --fg-2: #d3d1cc;
+  --fg-3: #b0ada7;
+  --fg-4: #9a968f;
+  --ink: #f4f3f1;
+  --ink-hover: #d9d7d2;
+  --on-ink: #1a1917;
+  --focus: #f4f3f1;
+  --selection: #3a3834;
+  --seal: #f06a60;
+  --seal-text: #ff8e85;
+  --seal-soft: #2c1715;
+  --on-seal: #111110;
+  --amber: #e0a43a;
+  --amber-text: #f2bc5e;
+  --amber-soft: #2a2112;
+  --green: #4dbe7c;
+  --green-text: #6fd497;
+  --green-soft: #132519;
+  --on-green: #111110;
+  --scrim: rgb(0 0 0 / 0.6);
+  --shadow-pop: 0 0 0 0 transparent;
+  --shadow-modal: 0 0 0 0 transparent;
   color-scheme: dark;
 }
 
-/* Tailwind-Anbindung: Utilities wie bg-surface, text-fg-3, border-line, text-ink … */
+/* Tailwind-Anbindung: Utilities wie bg-surface, bg-surface-2, text-fg-3, border-line, text-seal-text, shadow-pop … */
 @theme inline {
   --color-bg: var(--bg);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-surface-pop: var(--surface-pop);
+  --color-surface-pop-hover: var(--surface-pop-hover);
   --color-fg: var(--fg);
   --color-fg-2: var(--fg-2);
   --color-fg-3: var(--fg-3);
@@ -230,18 +213,29 @@
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
   --color-ink: var(--ink);
+  --color-ink-hover: var(--ink-hover);
   --color-ink-bright: var(--ink-bright);
   --color-ink-soft: var(--ink-soft);
   --color-ink-softer: var(--ink-softer);
   --color-on-ink: var(--on-ink);
+  --color-focus: var(--focus);
+  --color-selection: var(--selection);
   --color-seal: var(--seal);
+  --color-seal-text: var(--seal-text);
   --color-seal-soft: var(--seal-soft);
+  --color-on-seal: var(--on-seal);
   --color-amber: var(--amber);
+  --color-amber-text: var(--amber-text);
   --color-amber-soft: var(--amber-soft);
   --color-green: var(--green);
+  --color-green-text: var(--green-text);
   --color-green-soft: var(--green-soft);
+  --color-on-green: var(--on-green);
   --color-violet: var(--violet);
   --color-violet-soft: var(--violet-soft);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-grid: var(--chart-grid);
   --color-glass: var(--glass);
   --color-glass-strong: var(--glass-strong);
   --font-sans: var(--font-ui);
@@ -250,10 +244,18 @@
   --radius-lg: var(--radius-lg);
   --radius-md: var(--radius-md);
   --radius-sm: var(--radius-sm);
+  --shadow-pop: var(--shadow-pop);
+  --shadow-modal: var(--shadow-modal);
   --shadow-glass: var(--glass-shadow);
   --shadow-glass-lg: var(--glass-shadow-lg);
   --ease-spring: var(--spring);
   --ease-out-soft: var(--ease-out);
+}
+/* Nur 400/500/600: „font-bold“ und schwerer werden 600 (DESIGN-SYSTEM.md 5) */
+@theme {
+  --font-weight-bold: 600;
+  --font-weight-extrabold: 600;
+  --font-weight-black: 600;
 }
 
 /* ───────────── Grundlagen ───────────── */
@@ -273,8 +275,7 @@
     color: var(--fg);
     font-family: var(--font-ui);
     font-size: 14px;
-    line-height: 1.5;
-    font-feature-settings: "ss01", "cv11";
+    line-height: 1.43;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
@@ -285,15 +286,15 @@
   h3,
   h4 {
     text-wrap: balance;
-    letter-spacing: -0.02em;
   }
   ::selection {
-    background: var(--ink-soft);
+    background: var(--selection);
+    color: var(--fg);
   }
+  /* Fokus: 2 px Ring mit 2 px Abstand in Text 1 – folgt dem eigenen Radius des Elements */
   :focus-visible {
     outline: 2px solid var(--focus);
     outline-offset: 2px;
-    border-radius: 8px;
   }
   button {
     cursor: pointer;
@@ -312,129 +313,67 @@
     scrollbar-width: thin;
     scrollbar-color: var(--line-strong) transparent;
   }
+  /* Icons: lucide einheitlich mit Strich 1,5 (Status-Symbole in Chips: 2) */
+  svg.lucide {
+    stroke-width: 1.5;
+  }
 }
 
-/* ───────────── Arbeitsgrund (belichtete Fläche hinter dem Glas) ───────────── */
+@layer components {
+/* ───────────── Arbeitsgrund ───────────── */
+/* Früher belichteter Grund mit Farbkugeln – jetzt einfarbig. Die Klasse bleibt, damit vorhandenes Markup nicht bricht. */
 .aura {
   position: fixed;
   inset: 0;
   z-index: 0;
-  overflow: hidden;
   pointer-events: none;
-  background: radial-gradient(120% 90% at 50% 0%, var(--bg) 0%, var(--bg-deep) 100%);
+  background: var(--bg);
 }
-.aura i {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(70px);
-  will-change: transform;
-  animation: aura-drift 26s var(--ease-out) infinite alternate;
-}
-.aura i:nth-child(1) {
-  width: 46vw;
-  height: 46vw;
-  left: -8vw;
-  top: -14vw;
-  background: var(--aura-1);
-}
-.aura i:nth-child(2) {
-  width: 38vw;
-  height: 38vw;
-  right: -10vw;
-  top: 6vh;
-  background: var(--aura-2);
-  animation-duration: 31s;
-  animation-delay: -6s;
-}
-.aura i:nth-child(3) {
-  width: 34vw;
-  height: 34vw;
-  left: 26vw;
-  bottom: -18vw;
-  background: var(--aura-3);
-  animation-duration: 37s;
-  animation-delay: -12s;
-}
-.aura i:nth-child(4) {
-  width: 28vw;
-  height: 28vw;
-  right: 14vw;
-  bottom: -6vw;
-  background: var(--aura-4);
-  animation-duration: 29s;
-  animation-delay: -3s;
-}
+.aura i,
 .aura::after {
-  /* feines Korn gegen Banding */
-  content: "";
-  position: absolute;
-  inset: 0;
-  opacity: 0.035;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-}
-@keyframes aura-drift {
-  0% {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  50% {
-    transform: translate3d(4vw, 3vh, 0) scale(1.08);
-  }
-  100% {
-    transform: translate3d(-3vw, 5vh, 0) scale(0.96);
-  }
+  display: none;
 }
 
-@property --ai-angle {
-  syntax: "<angle>";
-  initial-value: 0deg;
-  inherits: false;
-}
-@layer components {
-/* ───────────── Glas-Material ───────────── */
+/* ───────────── Flächen (statt Glas) ───────────── */
+/* Alle Glas-Töne sind deckende Flächen mit 1-px-Linie – kein backdrop-filter, keine Lichtkante. */
 .glass,
 .glass-strong,
 .glass-thin {
   position: relative;
-  isolation: isolate;
-  background: linear-gradient(160deg, var(--glass-sheen) 0%, transparent 42%), var(--glass);
-  -webkit-backdrop-filter: blur(22px) saturate(185%);
-  backdrop-filter: blur(22px) saturate(185%);
-  box-shadow: var(--glass-shadow), inset 0 1px 0 0 var(--glass-rim-3), inset 0 -1px 0 0 var(--glass-shade);
+  background: var(--surface);
+  border: 1px solid var(--line);
 }
-.glass-strong {
-  background: linear-gradient(160deg, var(--glass-sheen) 0%, transparent 42%), var(--glass-strong);
-  -webkit-backdrop-filter: blur(30px) saturate(190%);
-  backdrop-filter: blur(30px) saturate(190%);
+/* Popover und Menüs: schwebende Ebene */
+.glass-menu {
+  background: var(--surface-pop);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-pop);
 }
-.glass-thin {
-  background: var(--glass-thin);
-  -webkit-backdrop-filter: blur(14px) saturate(170%);
-  backdrop-filter: blur(14px) saturate(170%);
+/* Kopf- und Tab-Leiste deckend auf dem Grund */
+.glass-deckend,
+.tabbar-deckend {
+  background: var(--bg);
 }
-/* Kopfleiste beim Scrollen: deckend (≥ 97 %), damit kein Inhalt durch Such- und Kopfleiste schimmert; der Rand darüber
-   bekommt einen ruhigen Verlauf aus dem Arbeitsgrund. */
-.glass-deckend {
-  background: linear-gradient(160deg, var(--glass-sheen) 0%, transparent 42%), color-mix(in oklab, var(--surface) 97%, transparent);
+/* Lichtreflex (usePointerGlow) entfällt – Klasse ohne Wirkung */
+.glow {
+  position: relative;
 }
-.kopfleiste::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 -10px 0;
-  z-index: -1;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.2s var(--ease-out);
-  background: linear-gradient(to bottom, var(--bg) 0%, color-mix(in oklab, var(--bg) 92%, transparent) 70%, transparent 100%);
+/* Inhaltsfläche: Karte, Panel, Tabelle */
+.sheet {
+  background: var(--surface);
+  border: 1px solid var(--line);
 }
-.kopfleiste-gescrollt::before {
-  opacity: 1;
+.hairline {
+  border-color: var(--line);
 }
-/* Höhe der mobilen Tab-Leiste (62 px Leiste + 10 px Abstand) – Grundlage für Freiraum und Scroll-Abstand unten */
-:root {
-  --tabbar-h: 72px;
+/* Vorschau-Bühne: Fläche, auf der Papier oder Produktbilder liegen */
+.buehne {
+  background: var(--surface-2);
+  border-radius: var(--radius-lg);
 }
+
 /* Tastaturfokus scrollt nie unter die Assistent-Kugel bzw. die Tab-Leiste (WCAG 2.4.11). Die Kopfleiste liegt über der
-   Scrollfläche (nicht darin); oben genügt deshalb Luft für ihren Verlauf (10 px) plus Abstand. */
+   Scrollfläche (nicht darin). */
 .haupt-scroll {
   scroll-padding-top: 16px;
   scroll-padding-bottom: 110px;
@@ -444,18 +383,6 @@
     /* + Platz für schwebende Aktionsleisten über der Tab-Leiste (z. B. Notiz/Frist/Wiedervorlage in der Akte) */
     scroll-padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 76px);
   }
-}
-/* Mobile Tab-Leiste deckend wie die Kopfleiste: kein Text scheint durch – auch nicht neben der schwebenden Leiste */
-.tabbar-zone::before {
-  content: "";
-  position: absolute;
-  inset: -14px 0 0 0;
-  z-index: -1;
-  pointer-events: none;
-  background: linear-gradient(to top, var(--bg) 0%, var(--bg) 72%, color-mix(in oklab, var(--bg) 0%, transparent) 100%);
-}
-.tabbar-deckend {
-  background: linear-gradient(160deg, var(--glass-sheen) 0%, transparent 42%), var(--surface);
 }
 /* Schriftgröße (Einstellungen → Darstellung): die Oberfläche nutzt px-Größen – zoom skaliert alles gleichmäßig */
 :root[data-schrift="112"] {
@@ -510,39 +437,26 @@
   :root {
     --tabbar-h: 48px;
   }
-  .kopfleiste {
-    padding-top: max(4px, env(safe-area-inset-top)) !important;
-  }
   .kopfleiste .kopf-innen {
-    height: 40px !important;
-    border-radius: 16px;
+    height: 44px !important;
   }
   .kopfleiste .kopf-innen .icon-btn,
   .kopfleiste .kopf-innen .kopf-knopf {
     width: 36px !important;
     height: 36px !important;
   }
-  .tabbar-zone {
-    padding-bottom: max(4px, env(safe-area-inset-bottom)) !important;
-  }
   .tabbar-zone .tabbar-leiste {
-    height: 40px !important;
+    height: 48px !important;
   }
-  .tabbar-zone .tabbar-tab {
-    height: 34px !important;
-  }
-  .tabbar-zone .tabbar-kugel {
+  .tabbar-zone .tabbar-kugel,
+  .tabbar-zone .tabbar-kugel > div {
     width: 40px !important;
     height: 40px !important;
   }
-  .tabbar-zone .tabbar-kugel > div {
-    width: 36px !important;
-    height: 36px !important;
-  }
 }
 /* Unter 500 px Höhe (z. B. 200 % Zoom, 720 × 450 CSS-px – I5-T15-01): Beschriftung neben dem Symbol statt darunter, einzeilig
-   in mindestens 12,5 px – gerade wer vergrößert, braucht die Wörter. Die Leiste bleibt 40 px hoch; die Zahl am Symbol folgt
-   der Beschriftung („Post 6“). Zugängliche Namen bleiben unverändert. !important, weil die Tab-Klassen Utilities sind. */
+   in mindestens 12,5 px – gerade wer vergrößert, braucht die Wörter. Die Zahl am Symbol folgt der Beschriftung („Post 6“).
+   Zugängliche Namen bleiben unverändert. !important, weil die Tab-Klassen Utilities sind. */
 @media (max-height: 499px) {
   .tabbar-zone .tabbar-tab {
     flex-direction: row !important;
@@ -586,483 +500,541 @@
     white-space: nowrap;
   }
 }
-/* Popover-Menüs liegen meist in einem Glas-Container (Kopfleiste, Karten). Dort kann ihr backdrop-filter den
-   Seiteninhalt nicht weichzeichnen – Chromium zeigt ihn bei jedem teiltransparenten Hintergrund sogar scharf durch.
-   Deshalb deckende Fläche mit Glanzverlauf, Lichtkante und Schatten des Glas-Materials. */
-.glass-menu {
-  background: linear-gradient(160deg, var(--glass-sheen) 0%, transparent 42%), var(--surface);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-}
-/* Lichtkante: Specular Rim, oben hell, unten zart */
-.glass::before,
-.glass-strong::before,
-.glass-thin::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(
-    150deg,
-    var(--glass-rim-1) 0%,
-    var(--glass-rim-2) 38%,
-    var(--glass-rim-2) 62%,
-    var(--glass-rim-3) 100%
-  );
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-  z-index: 1;
-}
-/* Lichtreflex folgt dem Zeiger (siehe usePointerGlow) – liegt über dem Hintergrund, aber unter dem Inhalt */
-.glow {
-  isolation: isolate;
-}
-.glow::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: radial-gradient(
-    320px circle at var(--mx, 50%) var(--my, -40%),
-    var(--glow-light),
-    transparent 60%
-  );
-  opacity: var(--glow-o, 0);
-  transition: opacity 0.4s var(--ease-out);
-  pointer-events: none;
-  z-index: -1;
-}
-.glow:hover {
-  --glow-o: 1;
-}
 
-/* Inhaltsflächen: ruhig, fast opak – Lesbarkeit vor Effekt */
-.sheet {
-  background: color-mix(in oklab, var(--surface) 82%, transparent);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
-  backdrop-filter: blur(18px) saturate(160%);
-  border: 1px solid var(--line);
-  box-shadow: 0 1px 0 0 var(--glass-rim-3) inset, 0 12px 32px -18px rgba(20, 30, 80, 0.22);
-}
-.hairline {
-  border-color: var(--line);
-}
-
-/* KI-Schimmer: animierter, irisierender Rand für alles, was die KI tut */
+/* ───────────── KI-Kennzeichnung (DESIGN-SYSTEM.md 12.19) ───────────── */
+/* Kein Verlauf, keine Animation: KI wird mit dem Wort „KI“ und dem Symbol Sparkles gekennzeichnet. */
 .ai-ring {
   position: relative;
-  isolation: isolate;
-}
-.ai-ring::before {
-  content: "";
-  position: absolute;
-  inset: -1.5px;
-  border-radius: inherit;
-  padding: 1.5px;
-  background: conic-gradient(
-    from var(--ai-angle, 0deg),
-    var(--ai-1),
-    var(--ai-2),
-    var(--ai-3),
-    var(--ai-4),
-    var(--ai-1)
-  );
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  animation: ai-spin 4s linear infinite;
-  pointer-events: none;
-  z-index: 2;
-}
-.ai-ring.ai-glow::after {
-  content: "";
-  position: absolute;
-  inset: -10px;
-  border-radius: inherit;
-  background: conic-gradient(
-    from var(--ai-angle, 0deg),
-    var(--ai-1),
-    var(--ai-2),
-    var(--ai-3),
-    var(--ai-4),
-    var(--ai-1)
-  );
-  filter: blur(22px);
-  opacity: 0.35;
-  animation: ai-spin 4s linear infinite;
-  z-index: -1;
-  pointer-events: none;
-}
-@keyframes ai-spin {
-  to {
-    --ai-angle: 360deg;
-  }
+  box-shadow: inset 0 0 0 1px var(--line-strong);
 }
 .ai-text {
-  background: linear-gradient(90deg, var(--ai-1), var(--ai-2), var(--ai-3), var(--ai-4), var(--ai-1));
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: ai-shimmer 6s linear infinite;
-}
-@keyframes ai-shimmer {
-  to {
-    background-position: 200% 0;
-  }
-}
-.ai-fill {
-  background: linear-gradient(120deg, var(--ai-1), var(--ai-2) 45%, var(--ai-3) 75%, var(--ai-4));
+  color: var(--fg);
+  background: none;
 }
 
-/* Schimmer beim Laden */
+/* Ladeplatzhalter: ruhende Fläche, kein Schimmer */
 .shimmer {
-  background: linear-gradient(90deg, var(--line) 0%, var(--line-strong) 40%, var(--line) 80%);
-  background-size: 300% 100%;
-  animation: shimmer 1.6s linear infinite;
-}
-@keyframes shimmer {
-  from {
-    background-position: 100% 0;
-  }
-  to {
-    background-position: -200% 0;
-  }
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
 }
 
-/* ───────────── Bausteine ───────────── */
+/* ───────────── Knöpfe (12.1) ───────────── */
 .btn {
-  --h: 38px;
+  --h: 32px;
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   height: var(--h);
-  padding-inline: 16px;
-  border-radius: 999px;
-  font-weight: 560;
-  font-size: 13.5px;
-  letter-spacing: -0.005em;
+  padding-inline: 12px;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  letter-spacing: 0;
   white-space: nowrap;
   user-select: none;
   transition:
-    transform 0.35s var(--spring),
-    background-color 0.2s,
-    box-shadow 0.25s,
-    color 0.2s,
-    opacity 0.2s;
+    background-color var(--dur-1) var(--ease-out),
+    color var(--dur-1) var(--ease-out),
+    box-shadow var(--dur-1) var(--ease-out);
 }
-.btn:active:not(:disabled) {
-  transform: scale(0.96);
-}
-.btn:disabled {
-  opacity: 0.5;
+.btn svg {
+  flex: none;
 }
 .btn-sm {
-  --h: 32px;
-  padding-inline: 12px;
-  font-size: 12.5px;
+  --h: 28px;
+  padding-inline: 10px;
+  font-size: 13px;
   gap: 6px;
 }
+.btn-sm svg {
+  width: 14px;
+  height: 14px;
+}
 .btn-lg {
-  --h: 46px;
-  padding-inline: 22px;
+  --h: 40px;
+  padding-inline: 16px;
   font-size: 15px;
+}
+/* Telefon: Trefferfläche 44 px. sm bleibt sichtbar 36 px, ein unsichtbares Polster bringt sie auf 44 px. */
+@media (max-width: 639px) {
+  .btn {
+    --h: 44px;
+    /* Reflow (WCAG 1.4.10): lange Beschriftungen umbrechen statt über den Rand zu laufen */
+    height: auto;
+    min-height: var(--h);
+    padding-block: 4px;
+    white-space: normal;
+    text-align: center;
+  }
+  .btn-sm {
+    --h: 36px;
+  }
+  .btn-sm::after {
+    content: "";
+    position: absolute;
+    inset: -4px 0;
+  }
 }
 .btn-primary {
   color: var(--on-ink);
-  background: linear-gradient(180deg, var(--ink-fill-top) 0%, var(--ink-fill) 100%);
-  box-shadow:
-    0 1px 0 0 rgba(255, 255, 255, 0.35) inset,
-    0 -1px 0 0 rgba(0, 0, 0, 0.12) inset,
-    0 8px 20px -8px color-mix(in oklab, var(--ink) 70%, transparent);
+  background: var(--ink);
 }
-.btn-primary:hover:not(:disabled) {
-  box-shadow:
-    0 1px 0 0 rgba(255, 255, 255, 0.4) inset,
-    0 -1px 0 0 rgba(0, 0, 0, 0.12) inset,
-    0 12px 26px -8px color-mix(in oklab, var(--ink) 80%, transparent);
-  transform: translateY(-1px);
+.btn-primary:hover:not(:disabled),
+.btn-primary:active:not(:disabled) {
+  background: var(--ink-hover);
 }
-.btn-secondary {
+.btn-secondary,
+.btn-ai {
   color: var(--fg);
-  background: var(--glass-strong);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
-  backdrop-filter: blur(16px) saturate(180%);
-  box-shadow:
-    0 1px 0 0 var(--glass-rim-3) inset,
-    0 0 0 1px var(--line),
-    0 4px 14px -6px rgba(20, 30, 80, 0.14);
-}
-.btn-secondary:hover:not(:disabled) {
   background: var(--surface);
-  transform: translateY(-1px);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.btn-secondary:hover:not(:disabled),
+.btn-ai:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+.btn-secondary:active:not(:disabled),
+.btn-ai:active:not(:disabled) {
+  background: var(--surface-3);
 }
 .btn-ghost {
   color: var(--fg-2);
   background: transparent;
 }
 .btn-ghost:hover:not(:disabled) {
-  background: var(--ink-softer);
+  background: var(--surface-2);
   color: var(--fg);
 }
+.btn-ghost:active:not(:disabled) {
+  background: var(--surface-3);
+}
+/* Gefahr („Löschen“ in Menüs, Formularen, Zeilen): wie sekundär, Schrift und Symbol in Siegelrot */
 .btn-danger {
-  color: #fff;
-  background: linear-gradient(180deg, color-mix(in oklab, var(--seal) 80%, white) 0%, var(--seal) 100%);
-  box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.3) inset, 0 8px 20px -10px var(--seal);
+  color: var(--seal-text);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
 }
-.btn-ai {
-  color: #fff;
-  background: linear-gradient(120deg, var(--ai-1), var(--ai-2) 50%, var(--ai-3));
-  background-size: 160% 100%;
-  box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.35) inset, 0 10px 24px -10px var(--ai-2);
-  transition:
-    background-position 0.6s var(--ease-out),
-    transform 0.35s var(--spring),
-    box-shadow 0.25s;
+.btn-danger svg {
+  color: var(--seal);
 }
-.btn-ai:hover:not(:disabled) {
-  background-position: 100% 0;
-  transform: translateY(-1px);
+.btn-danger:hover:not(:disabled),
+.btn-danger:active:not(:disabled) {
+  background: var(--seal-soft);
 }
-/* Gesperrte Hauptknöpfe (I4-T18-01): neutral statt blasser Verlauf – hell und dunkel klar von einem aktiven Knopf zu unterscheiden */
+/* Vollflächig nur zur Bestätigung in confirmDialog mit gefahr */
+.btn-danger.btn-danger-voll {
+  color: var(--on-seal);
+  background: var(--seal);
+  box-shadow: none;
+}
+.btn-danger.btn-danger-voll svg {
+  color: inherit;
+}
+.btn-danger.btn-danger-voll:hover:not(:disabled),
+.btn-danger.btn-danger-voll:active:not(:disabled) {
+  background: var(--seal-text);
+}
+/* Gesperrt (I4-T18-01): neutral statt blass – hell und dunkel klar von einem aktiven Knopf zu unterscheiden */
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: 1;
+  color: var(--fg-4);
+  cursor: not-allowed;
+}
 .btn-primary:disabled,
 .btn-primary[aria-disabled="true"],
 .btn-primary[aria-disabled="true"]:hover,
 .btn-primary[aria-disabled="true"]:active,
-.btn-ai:disabled,
-.btn-ai[aria-disabled="true"],
-.btn-ai[aria-disabled="true"]:hover,
-.btn-ai[aria-disabled="true"]:active {
-  opacity: 1;
+.btn-danger.btn-danger-voll:disabled,
+.btn-danger.btn-danger-voll[aria-disabled="true"] {
   color: var(--fg-3);
   background: transparent;
-  box-shadow: 0 0 0 1px var(--line-strong) inset;
-  transform: none;
-  cursor: not-allowed;
+  box-shadow: inset 0 0 0 1px var(--line-strong);
 }
+.btn-secondary:disabled,
+.btn-ai:disabled,
+.btn-danger:disabled,
+.btn-secondary[aria-disabled="true"],
+.btn-ai[aria-disabled="true"],
+.btn-danger[aria-disabled="true"] {
+  background: var(--surface);
+}
+.btn-danger:disabled svg {
+  color: inherit;
+}
+.btn-ghost:disabled,
+.btn-ghost[aria-disabled="true"] {
+  background: transparent;
+}
+
+/* Symbolknopf: 32 × 32 px, ghost-Farben; am Telefon 44 × 44 px */
 .icon-btn {
   display: inline-grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 999px;
-  color: var(--fg-2);
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: var(--radius-md);
+  color: var(--fg-3);
   transition:
-    background-color 0.2s,
-    transform 0.35s var(--spring),
-    color 0.2s;
+    background-color var(--dur-1) var(--ease-out),
+    color var(--dur-1) var(--ease-out);
+}
+.icon-btn svg {
+  width: 16px;
+  height: 16px;
 }
 .icon-btn:hover {
-  background: var(--ink-softer);
+  background: var(--surface-2);
   color: var(--fg);
 }
 .icon-btn:active {
-  transform: scale(0.92);
+  background: var(--surface-3);
+}
+@media (max-width: 639px) {
+  .icon-btn {
+    width: 44px;
+    height: 44px;
+  }
 }
 
+/* ───────────── Formulare (12.2) ───────────── */
 .field {
   width: 100%;
-  height: 40px;
-  padding-inline: 14px;
-  border-radius: 12px;
-  background: color-mix(in oklab, var(--surface) 75%, transparent);
+  height: 32px;
+  padding-inline: 10px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
   border: 1px solid var(--line-strong);
   color: var(--fg);
+  font-size: 14px;
+  line-height: 20px;
   transition:
-    border-color 0.2s,
-    box-shadow 0.2s,
-    background-color 0.2s;
+    border-color var(--dur-1) var(--ease-out),
+    box-shadow var(--dur-1) var(--ease-out);
+}
+@media (max-width: 639px) {
+  .field {
+    height: 44px;
+    font-size: 16px;
+  }
 }
 .field::placeholder {
   color: var(--fg-4);
 }
 .field:hover {
-  border-color: color-mix(in oklab, var(--ink) 30%, var(--line-strong));
+  border-color: var(--fg-3);
 }
-.field:focus {
+.field:focus,
+.field:focus-visible {
   outline: none;
-  border-color: var(--ink);
-  box-shadow: 0 0 0 4px var(--ink-soft);
-  background: var(--surface);
+  border-color: var(--fg);
+  box-shadow: inset 0 0 0 1px var(--fg);
+}
+.field[aria-invalid="true"] {
+  border-color: var(--seal);
+  box-shadow: inset 0 0 0 1px var(--seal);
+}
+.field:disabled {
+  background: var(--surface-2);
+  color: var(--fg-3);
+  border-color: var(--line);
 }
 textarea.field {
   height: auto;
-  padding-block: 10px;
-  line-height: 1.55;
+  padding: 8px 10px;
+  line-height: 1.5;
   resize: vertical;
 }
 select.field {
   appearance: none;
-  padding-right: 34px;
+  padding-right: 32px;
   /* lange Optionen enden mit „…“ vor dem Pfeil statt hart abgeschnitten */
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23878ea6' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2355524D' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
   background-repeat: no-repeat;
-  background-position: right 12px center;
+  background-position: right 10px center;
 }
 .label {
   display: block;
-  font-size: 12px;
-  font-weight: 560;
-  color: var(--fg-3);
+  font-size: 13px;
+  line-height: 1.385;
+  font-weight: 500;
+  color: var(--fg-2);
   margin-bottom: 6px;
 }
 
+/* ───────────── Chips (12.6) ───────────── */
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   height: 22px;
-  padding-inline: 8px;
-  border-radius: 999px;
+  padding-inline: 7px;
+  border-radius: var(--radius-sm);
   /* Mindestgröße für Status- und Metaangaben (A-08): 12 px */
   font-size: 12px;
-  font-weight: 560;
+  line-height: 16px;
+  font-weight: 500;
   white-space: nowrap;
-  background: var(--ink-softer);
+  background: var(--surface-2);
   color: var(--fg-2);
 }
+.chip svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+.chip svg.lucide {
+  stroke-width: 2;
+}
 .chip-ink {
-  background: var(--ink-soft);
-  color: var(--ink);
+  background: var(--surface-3);
+  color: var(--fg);
 }
 .chip-seal {
   background: var(--seal-soft);
   color: var(--seal-text);
 }
+.chip-seal svg {
+  color: var(--seal);
+}
+/* Notfrist dringend (kritisch, überfällig/heute/morgen) – das Lauteste auf dem Bildschirm */
+.chip-seal-voll {
+  background: var(--seal);
+  color: var(--on-seal);
+}
 .chip-amber {
   background: var(--amber-soft);
   color: var(--amber-text);
+}
+.chip-amber svg {
+  color: var(--amber);
 }
 .chip-green {
   background: var(--green-soft);
   color: var(--green-text);
 }
-.chip-violet {
-  background: var(--violet-soft);
-  color: var(--violet);
+.chip-green svg {
+  color: var(--green);
 }
+/* KI-Kennzeichnung und Umriss: transparent mit Rand in Linie stark */
+.chip-violet,
 .chip-outline {
   background: transparent;
-  box-shadow: 0 0 0 1px var(--line-strong) inset;
+  color: var(--fg-2);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
 }
 .dot {
   width: 6px;
   height: 6px;
-  border-radius: 99px;
+  border-radius: 999px;
   background: currentColor;
   flex: none;
 }
 
+/* Tastenhinweis */
 .kbd {
   display: inline-grid;
   place-items: center;
-  min-width: 22px;
-  height: 22px;
+  min-width: 20px;
+  height: 20px;
   padding-inline: 5px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
   color: var(--fg-3);
-  background: var(--ink-softer);
-  box-shadow: 0 0 0 1px var(--line) inset;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
-/* Tastenhinweis auf gefüllten Knöpfen (z. B. „Fristenrechner F“): Schrift in der Knopffarbe statt Grau – sonst 2 : 1 auf Ink */
-.btn-primary .kbd,
-.btn-ai .kbd {
+/* Tastenhinweis auf gefüllten Knöpfen: Schrift erbt die Knopfschrift */
+.btn-primary .kbd {
   color: inherit;
   background: transparent;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--on-ink) 45%, transparent);
 }
 .btn-primary:disabled .kbd,
-.btn-primary[aria-disabled="true"] .kbd,
-.btn-ai:disabled .kbd,
-.btn-ai[aria-disabled="true"] .kbd {
-  background: var(--ink-softer);
-  box-shadow: 0 0 0 1px var(--line) inset;
+.btn-primary[aria-disabled="true"] .kbd {
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 
+/* ───────────── Typografie (5) ───────────── */
 .mono {
   font-family: var(--font-mono);
   font-feature-settings: "zero";
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 .num {
   font-variant-numeric: tabular-nums;
 }
+/* Überzeile: normale Schreibung, keine Versalien */
 .eyebrow {
-  font-size: 12.5px;
-  font-weight: 620;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--fg-3);
 }
 .title-xl {
-  font-size: clamp(26px, 3.2vw, 34px);
-  line-height: 1.08;
-  font-weight: 700;
-  letter-spacing: -0.035em;
+  font-size: 24px;
+  line-height: 1.333;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+@media (max-width: 639px) {
+  .title-xl {
+    font-size: 22px;
+    line-height: 1.273;
+  }
 }
 .title-lg {
-  font-size: 20px;
-  line-height: 1.2;
-  font-weight: 650;
-  letter-spacing: -0.025em;
+  font-size: 18px;
+  line-height: 1.444;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 .title-md {
   font-size: 15px;
-  line-height: 1.3;
-  font-weight: 620;
-  letter-spacing: -0.015em;
+  line-height: 1.467;
+  font-weight: 600;
+  letter-spacing: -0.005em;
 }
 
-/* Tabellen */
+/* Links im Fließtext: Akzent = Textfarbe, darum immer unterstrichen (WCAG 1.4.1) */
+.link {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--line-strong);
+  transition: text-decoration-color var(--dur-1) var(--ease-out);
+}
+.link:hover {
+  text-decoration-color: var(--fg);
+}
+/* Eigenständige Links („Alle Fristen ›“): 13/500 ohne Unterstrich */
+.link-leise {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--fg-2);
+  transition: color var(--dur-1) var(--ease-out);
+}
+.link-leise:hover {
+  color: var(--fg);
+}
+.link-leise svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ───────────── Hinweisbanner (12.22) ───────────── */
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--fg-2);
+  font-size: 14px;
+  line-height: 20px;
+}
+.banner > svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  color: var(--fg-3);
+}
+.banner-amber {
+  background: var(--amber-soft);
+  border-color: transparent;
+}
+.banner-amber > svg {
+  color: var(--amber);
+}
+.banner-seal {
+  background: var(--seal-soft);
+  border-color: transparent;
+}
+.banner-seal > svg {
+  color: var(--seal);
+}
+.banner-green {
+  background: var(--green-soft);
+  border-color: transparent;
+}
+.banner-green > svg {
+  color: var(--green);
+}
+
+/* ───────────── Tabellen (12.4) ───────────── */
 .table {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 1.43;
 }
 .table th {
   position: sticky;
   top: 0;
   z-index: 1;
+  height: 36px;
   text-align: left;
-  font-size: 11.5px;
-  font-weight: 600;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
   color: var(--fg-3);
   padding: 10px 12px;
-  background: color-mix(in oklab, var(--surface) 92%, transparent);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
+  background: var(--surface);
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
 }
 .table td {
-  padding: 11px 12px;
+  padding: 12px;
   border-bottom: 1px solid var(--line);
   vertical-align: middle;
 }
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
 .table[data-density="compact"] td {
-  padding-block: 6px;
+  padding-block: 8px;
 }
 .table[data-density="compact"] th {
-  padding-block: 7px;
+  padding-block: 8px;
+  height: 32px;
 }
 .table tbody tr {
-  transition: background-color 0.15s;
+  transition: background-color var(--dur-1) var(--ease-out);
 }
 .table tbody tr:hover {
-  background: var(--ink-softer);
+  background: var(--surface-2);
 }
 .table tbody tr[data-selected="true"] {
-  background: var(--ink-soft);
+  background: var(--surface-3);
+}
+.table tbody tr[data-selected="true"] > td:first-child {
+  box-shadow: inset 2px 0 0 var(--ink);
+}
+/* Fokus innerhalb von Behältern mit overflow: hidden nach innen, damit er nicht abgeschnitten wird */
+.table :focus-visible {
+  outline-offset: -2px;
 }
 /* Öffnen-Ziel einer Tabellenzeile (DataTable, I4-T07-01): sieht aus wie der Zelleninhalt, ist aber per Tab erreichbar */
 .zeile-oeffnen {
@@ -1079,10 +1051,10 @@ select.field {
   white-space: inherit;
   overflow: hidden;
   text-overflow: ellipsis;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 
-/* Scrollbereiche mit sanft auslaufenden Kanten */
+/* Scrollbereiche mit sanft auslaufenden Kanten (einzige erlaubte Verlaufs-Maske) */
 .fade-x {
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 16px, #000 calc(100% - 16px), transparent);
   mask-image: linear-gradient(90deg, transparent, #000 16px, #000 calc(100% - 16px), transparent);
@@ -1094,10 +1066,10 @@ select.field {
   display: none;
 }
 
-/* Fortschrittsbalken */
+/* Fortschrittsbalken: Spur Linie, Wert Akzent, ohne Verlauf */
 .bar {
-  height: 6px;
-  border-radius: 99px;
+  height: 4px;
+  border-radius: 999px;
   background: var(--line);
   overflow: hidden;
 }
@@ -1105,31 +1077,35 @@ select.field {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--ink-bright), var(--ink));
-  transition: width 0.8s var(--ease-out);
+  background: var(--ink);
+  transition: width var(--dur-3) var(--ease-out);
 }
 
-/* Prosa (Schriftsätze, Wiki, KI-Antworten) */
+/* Prosa (Wiki, KI-Antworten, Schriftsätze): 15/24, höchstens ~68 Zeichen breit setzt die Seite selbst */
 .prose-apex {
-  font-size: 14px;
-  line-height: 1.65;
+  font-size: 15px;
+  line-height: 1.6;
   color: var(--fg-2);
 }
 .prose-apex h1,
 .prose-apex h2,
 .prose-apex h3 {
   color: var(--fg);
+  font-weight: 600;
   margin: 1.1em 0 0.4em;
-  line-height: 1.25;
 }
 .prose-apex h1 {
   font-size: 18px;
+  line-height: 1.444;
+  letter-spacing: -0.01em;
 }
 .prose-apex h2 {
-  font-size: 15.5px;
+  font-size: 15px;
+  line-height: 1.467;
 }
 .prose-apex h3 {
   font-size: 14px;
+  line-height: 1.43;
 }
 .prose-apex p {
   margin: 0 0 0.75em;
@@ -1150,37 +1126,50 @@ select.field {
 }
 .prose-apex strong {
   color: var(--fg);
-  font-weight: 620;
+  font-weight: 600;
+}
+.prose-apex a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--line-strong);
 }
 .prose-apex code {
   font-family: var(--font-mono);
   font-size: 0.92em;
-  background: var(--ink-softer);
+  background: var(--surface-2);
   padding: 1px 5px;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
 }
 .prose-apex blockquote {
   margin: 0 0 0.8em;
   padding: 2px 0 2px 12px;
-  border-left: 2px solid var(--ink-soft);
+  border-left: 2px solid var(--line-strong);
   color: var(--fg-3);
 }
 
-/* Dokument-Papier (Schriftsatz-Vorschau) */
+/* Dokument-Papier (Schriftsatz-Vorschau): in beiden Modi weiß – Druck = Bildschirm. Feste Werte sind hier gewollt. */
 .paper {
-  background: #fdfdfb;
-  color: #1b1d24;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 18px 40px -20px rgba(20, 30, 80, 0.35);
-  border-radius: 6px;
+  background: #ffffff;
+  color: #1a1917;
+  border: 1px solid #e6e5e2;
+  border-radius: var(--radius-sm);
   font-size: 13px;
   line-height: 1.6;
 }
-/* Papier-Dimmung im Dunkelmodus (I4-T06-01): jedes Blatt leicht abgedunkelt, damit es abends nicht blendet – außer die Nutzerin
-   wählt „Original“ (PapierSchalter setzt html[data-papier="original"]). Gleiche Einstellung für alle Vorschauen. */
+/* Papier-Dimmung im Dunkelmodus (I4-T06-01): jedes Blatt leicht abgedunkelt, damit es abends nicht blendet – außer die
+   Nutzerin wählt „Original“ (PapierSchalter setzt html[data-papier="original"]). Gleiche Einstellung für alle Vorschauen. */
 @media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .paper {
+    border-color: transparent;
+  }
   :root:not([data-theme="light"]):not([data-papier="original"]) .paper {
     filter: brightness(0.87);
   }
+}
+:root[data-theme="dark"] .paper {
+  border-color: transparent;
 }
 :root[data-theme="dark"]:not([data-papier="original"]) .paper {
   filter: brightness(0.87);
@@ -1188,54 +1177,84 @@ select.field {
 @media print {
   .paper {
     filter: none !important;
+    border: 0 !important;
   }
 }
 
-/* Schwebende Navigation mit Lichtbrechung (Chromium) */
-@supports (backdrop-filter: url(#x)) {
-  .refract {
-    -webkit-backdrop-filter: blur(4px) url(#apex-refraction) blur(10px) saturate(190%);
-    backdrop-filter: blur(4px) url(#apex-refraction) blur(10px) saturate(190%);
+/* Dialog-Fuß am Telefon: reine Knopfzeilen untereinander in voller Breite, Primär oben */
+@media (max-width: 639px) {
+  .dialog-fuss:not(:has(> :not(.btn))) {
+    flex-direction: column-reverse;
+    align-items: stretch;
   }
 }
 
+/* Kennzahlenleiste (StatLeiste): Kennzahlen in einer Karte, getrennt durch 1-px-Linien */
+.stat-leiste {
+  display: grid;
+  grid-template-columns: repeat(var(--stat-spalten, 4), minmax(0, 1fr));
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.stat-leiste > * {
+  box-shadow: -1px 0 0 var(--line);
+}
+@media (max-width: 767px) {
+  .stat-leiste {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .stat-leiste > * {
+    box-shadow: -1px 0 0 var(--line), 0 -1px 0 var(--line);
+  }
+}
 }
 
-/* Abschlusskarte der Landing (Kontakt): hell invertiert (Schrift --bg auf --fg); dunkel eine erhöhte dunkle Fläche mit Akzentrand
-   und Glühen in --ink, Schrift --fg – keine große helle Fläche im Dunkelmodus (I4-T00-02). --sk-fg ist die Schriftfarbe darin. */
+/* Abschlusskarte der Landing (Kontakt): ruhiger Block auf Fläche 2, Schrift Text 1 – keine invertierte Fläche, kein Glühen.
+   --sk-fg ist die Schriftfarbe darin. */
 .schluss-karte {
-  --sk-fg: var(--bg);
-  background: var(--fg);
-  color: var(--sk-fg);
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .schluss-karte {
-    --sk-fg: var(--fg);
-    background: linear-gradient(160deg, color-mix(in oklab, var(--ink) 16%, var(--surface-2)) 0%, var(--surface) 70%);
-    box-shadow: 0 0 0 1px color-mix(in oklab, var(--ink) 45%, transparent), 0 30px 80px -30px color-mix(in oklab, var(--ink) 60%, transparent);
-  }
-}
-:root[data-theme="dark"] .schluss-karte {
   --sk-fg: var(--fg);
-  background: linear-gradient(160deg, color-mix(in oklab, var(--ink) 16%, var(--surface-2)) 0%, var(--surface) 70%);
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--ink) 45%, transparent), 0 30px 80px -30px color-mix(in oklab, var(--ink) 60%, transparent);
+  background: var(--surface-2);
+  color: var(--sk-fg);
+  border-radius: var(--radius-xl);
 }
 
-/* Gefüllte Ink-Flächen mit weißer Schrift (Zähler, Häkchen, Kalendermarken, Plaketten – I4-T09-01): Im Dunkelmodus ist --ink hell
-   (#5c7bff, Weiß darauf nur 3,7 : 1). Als Fläche gilt dort --ink-fill (#3f5ce4, Weiß ≥ 5,4 : 1); text-ink bleibt hell. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .bg-ink,
-  :root:not([data-theme="light"]) .bg-\[var\(--ink\)\],
-  :root:not([data-theme="light"]) .hover\:bg-\[var\(--ink\)\]:hover,
-  :root:not([data-theme="light"]) .group:hover .group-hover\:bg-ink {
-    background-color: var(--ink-fill);
+/* Schutz für Signal-Schrift: Die Utilities text-seal, text-amber und text-green stehen oft an Text (Fristen, Beträge, Hinweise).
+   Sie nutzen deshalb die Schrift-Tokens (≥ 4,5 : 1 auf Grund, Fläche und Signalfläche); Symbole bleiben damit ebenfalls ≥ 3 : 1.
+   Wer bewusst die hellere Symbolfarbe will, schreibt text-[var(--seal)] usw. Gleiche Ebene wie Tailwind, darum gewinnen
+   Varianten wie hover:text-fg weiterhin. */
+@layer utilities {
+  .text-seal {
+    color: var(--seal-text);
+  }
+  .text-amber {
+    color: var(--amber-text);
+  }
+  .text-green {
+    color: var(--green-text);
   }
 }
-:root[data-theme="dark"] .bg-ink,
-:root[data-theme="dark"] .bg-\[var\(--ink\)\],
-:root[data-theme="dark"] .hover\:bg-\[var\(--ink\)\]:hover,
-:root[data-theme="dark"] .group:hover .group-hover\:bg-ink {
-  background-color: var(--ink-fill);
+
+/* Übergang für Seiten, die noch feste weiße Schrift auf Akzent- oder Signalflächen setzen: Im Dunkelmodus sind --ink, --seal
+   und --green hell, Weiß darauf wäre unlesbar. Diese Regeln liegen außerhalb der Ebenen und gehen deshalb vor Utilities. */
+.bg-ink.text-white,
+.bg-\[var\(--ink\)\].text-white,
+.bg-\[var\(--ink-fill\)\].text-white {
+  color: var(--on-ink);
+}
+.bg-seal.text-white,
+.bg-\[var\(--seal\)\].text-white {
+  color: var(--on-seal);
+}
+.bg-green.text-white,
+.bg-\[var\(--green\)\].text-white {
+  color: var(--on-green);
+}
+/* .ai-fill (früher KI-Verlauf): Akzentfläche mit passender Schrift – geht vor text-white */
+.ai-fill {
+  background: var(--ink);
+  color: var(--on-ink);
 }
 
 /* Bewegung reduzieren */
@@ -1252,24 +1271,35 @@ select.field {
 
 /* Eingebettete Ansicht (Artefakt): Der Viewer bringt ggf. eine eigene, nicht geschichtete Regel wie
    body{font:14px system-ui} mit – sie überstimmt @layer base. Diese Regel liegt deshalb außerhalb jeder Ebene
-   und trifft nur body selbst; Kinder erben, Tailwind-Utilities auf Kindelementen bleiben wirksam.
-   (Der font-Kurzbefehl des Viewers setzt auch font-feature-settings zurück.) */
+   und trifft nur body selbst; Kinder erben, Tailwind-Utilities auf Kindelementen bleiben wirksam. */
 html body {
   font-family: var(--font-ui);
   font-size: 14px;
-  line-height: 1.5;
-  font-feature-settings: "ss01", "cv11";
+  line-height: 1.43;
+  font-feature-settings: normal;
+}
+
+/* Select-Pfeil im Dunkelmodus in Text 3 */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) select.field {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23B0ADA7' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
+  }
+}
+:root[data-theme="dark"] select.field {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23B0ADA7' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
 }
 
 /* Dichte (Einstellungen → Darstellung) */
 :root[data-density="compact"] body {
   font-size: 13px;
+  line-height: 1.385;
 }
 /* Tabellen ohne eigene Dichte-Einstellung (Aktenkonto, RVG, Forderungskonto) folgen der globalen Dichte;
    DataTable übernimmt sie über data-density selbst. */
 :root[data-density="compact"] .table:not([data-density]) td {
-  padding-block: 6px;
+  padding-block: 8px;
 }
 :root[data-density="compact"] .table:not([data-density]) th {
-  padding-block: 7px;
+  padding-block: 8px;
+  height: 32px;
 }

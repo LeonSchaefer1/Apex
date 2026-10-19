@@ -6,6 +6,7 @@ import {
 import { ArrowDown, ArrowUp, Columns3, Rows3, Rows4, Check } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "@/lib/cn";
+import { BEWEGUNG } from "@/lib/bewegung";
 import { useIsMobile } from "@/lib/useMedia";
 import { useUI } from "@/store/ui";
 import { Menu } from "./Menu";
@@ -173,26 +174,26 @@ export function DataTable<T>({
   );
 
   return (
-    <div className="sheet relative overflow-hidden rounded-[22px]">
+    <div className="sheet relative overflow-hidden rounded-lg">
       {(toolbar || !mobile) && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] px-3 py-2.5">
+        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] px-3 py-2">
           <div className="min-w-0 flex-1">{toolbar}</div>
           {!mobile && controls}
         </div>
       )}
       {selectable && selectedRows.length > 0 && bulkActions && (
-        <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] bg-ink-softer px-4 py-2 text-[13px]">
-          <span className="font-semibold">{selectedRows.length} ausgewählt</span>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={BEWEGUNG.standard} className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] bg-[var(--surface-2)] px-4 py-2 text-[14px]">
+          <span className="num font-medium">{selectedRows.length} ausgewählt</span>
           <div className="flex flex-wrap gap-2">{bulkActions(selectedRows, () => setSelection({}))}</div>
         </motion.div>
       )}
       {rows.length === 0 ? (
-        empty ?? <div className="px-6 py-12 text-center text-[13px] text-fg-3">Keine Einträge.</div>
+        empty ?? <div className="px-6 py-12 text-center text-[14px] text-fg-3">Keine Einträge.</div>
       ) : mobile && mobileRow ? (
         <ul className="divide-y divide-[var(--line)]">
           {rows.map((r) => (
             <li key={r.id}>
-              <KartenKnopf label={onRowClick ? (rowLabel?.(r.original) ?? "Zeile öffnen") : undefined} onClick={() => onRowClick?.(r.original)} className={cn("block w-full px-4 text-left active:bg-ink-softer", dichte === "compact" ? "py-2" : "py-3")}>
+              <KartenKnopf label={onRowClick ? (rowLabel?.(r.original) ?? "Zeile öffnen") : undefined} onClick={() => onRowClick?.(r.original)} className={cn("block min-h-11 w-full px-4 text-left transition-colors duration-100 active:bg-[var(--surface-2)] focus-visible:outline-offset-[-2px]", dichte === "compact" ? "py-2" : "py-3")}>
                 {mobileRow(r.original)}
               </KartenKnopf>
             </li>
@@ -210,11 +211,12 @@ export function DataTable<T>({
                         <button
                           type="button"
                           onClick={h.column.getToggleSortingHandler()}
-                          className={cn("inline-flex items-center gap-1 hover:text-fg", (h.column.columnDef.meta as { align?: string } | undefined)?.align === "right" && "w-full justify-end")}
+                          className={cn("group/sort inline-flex items-center gap-1 transition-colors duration-100 hover:text-fg", h.column.getIsSorted() && "text-fg", (h.column.columnDef.meta as { align?: string } | undefined)?.align === "right" && "w-full justify-end")}
                         >
                           {flexRender(h.column.columnDef.header, h.getContext())}
                           {h.column.getIsSorted() === "asc" && <ArrowUp className="size-3" />}
                           {h.column.getIsSorted() === "desc" && <ArrowDown className="size-3" />}
+                          {!h.column.getIsSorted() && <ArrowUp className="size-3 opacity-0 transition-opacity group-hover/sort:opacity-60 group-focus-visible/sort:opacity-60" aria-hidden />}
                         </button>
                       ) : (
                         <div className={cn("inline-flex items-center", (h.column.columnDef.meta as { align?: string } | undefined)?.align === "right" && "w-full justify-end")}>
@@ -226,8 +228,8 @@ export function DataTable<T>({
                           onMouseDown={h.getResizeHandler()}
                           onTouchStart={h.getResizeHandler()}
                           className={cn(
-                            "absolute right-0 top-2 bottom-2 w-[5px] cursor-col-resize rounded-full opacity-0 transition-opacity group-hover:opacity-100",
-                            h.column.getIsResizing() ? "bg-ink opacity-100" : "bg-[var(--line-strong)]",
+                            "absolute right-0 top-2 bottom-2 w-[3px] cursor-col-resize rounded-full opacity-0 transition-opacity group-hover:opacity-100",
+                            h.column.getIsResizing() ? "bg-[var(--ink)] opacity-100" : "bg-[var(--line-strong)]",
                           )}
                           aria-hidden
                         />
@@ -344,7 +346,7 @@ function KartenKnopf({ label, onClick, className, children }: { label?: string; 
 }
 
 /**
- * Kontrollkästchen mit Trefferfläche über Polster (wie die E-Akte, I5-T14-02): sichtbar 18 px, getroffen 44×44 px am Telefon
+ * Kontrollkästchen mit Trefferfläche über Polster (wie die E-Akte, I5-T14-02): sichtbar 16 px, getroffen 44×44 px am Telefon
  * und 24×24 px ab sm – die negativen Ränder halten das Layout unverändert.
  */
 export function Checkbox({ checked, indeterminate, onChange, label }: { checked: boolean; indeterminate?: boolean; onChange: () => void; label?: string }) {
@@ -358,17 +360,17 @@ export function Checkbox({ checked, indeterminate, onChange, label }: { checked:
         e.stopPropagation();
         onChange();
       }}
-      className="group/kasten -m-[13px] grid shrink-0 place-items-center rounded-[10px] p-[13px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] sm:-m-[3px] sm:p-[3px]"
+      className="group/kasten -m-[14px] grid shrink-0 place-items-center rounded-md p-[14px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] sm:-m-1 sm:p-1"
     >
       <span
         aria-hidden
         className={cn(
-          "grid size-[18px] place-items-center rounded-[6px] border transition-all duration-200",
-          checked || indeterminate ? "border-transparent bg-ink text-white" : "border-[var(--line-strong)] bg-[var(--surface)] group-hover/kasten:border-ink",
+          "grid size-4 place-items-center rounded-sm border transition-colors duration-100",
+          checked || indeterminate ? "border-transparent bg-[var(--ink)] text-[var(--on-ink)]" : "border-[var(--line-strong)] bg-[var(--surface)] group-hover/kasten:border-[var(--fg-3)]",
         )}
       >
-        {checked && <Check className="size-3" strokeWidth={3} />}
-        {!checked && indeterminate && <span className="h-0.5 w-2 rounded bg-white" />}
+        {checked && <Check className="size-3 [stroke-width:2.5]" />}
+        {!checked && indeterminate && <span className="h-0.5 w-2 rounded bg-[var(--on-ink)]" />}
       </span>
     </button>
   );

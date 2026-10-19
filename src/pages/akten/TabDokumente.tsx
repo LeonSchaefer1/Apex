@@ -18,6 +18,7 @@ import { useMedia } from "@/lib/useMedia";
 import { DOK_ART_LABEL, DOK_STATUS_INFO, MOBIL_TREFFER, ORDNER, ORDNER_ICON, beruehreAkte, fmtKb, quelleLabel, useTeam } from "./helfer";
 import { DokumentVorschau } from "./DokumentVorschau";
 import { imPortal, portalSperrgrund, setzePortal } from "./Mandantenportal";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 type Ordner = Dokument["ordner"];
 const DND_TYP = "application/x-apex-dokumente";
@@ -39,9 +40,10 @@ const ART_ICON: Partial<Record<Dokument["art"], typeof FileText>> = {
 export function DokIcon({ d, size = 38 }: { d: Dokument; size?: number }) {
   const Icon = ART_ICON[d.art] ?? FileText;
   return (
-    <span className="relative inline-grid shrink-0 place-items-center rounded-[11px] bg-ink-soft text-ink" style={{ width: size, height: size }}>
-      <Icon className="size-[18px]" strokeWidth={1.8} />
-      <span className="absolute -bottom-1 -right-1 rounded-[5px] bg-[var(--surface)] px-1 text-[9px] font-bold uppercase leading-[13px] tracking-[0.04em] text-fg-3 shadow-[0_0_0_1px_var(--line)]" aria-hidden>{d.format}</span>
+    // Dateisymbol ohne Kachel, darunter das Format klein in Text 4 (keine Versalien-Plakette)
+    <span className="relative inline-flex shrink-0 flex-col items-center justify-center gap-0.5 text-fg-4" style={{ width: size, height: size }}>
+      <Icon className="size-[18px]" />
+      <span className="text-[12px] font-medium leading-none" aria-hidden>{d.format.toLowerCase()}</span>
     </span>
   );
 }
@@ -406,23 +408,23 @@ export function TabDokumente({ akte }: { akte: Akte }) {
                     }}
                     {...(key !== "alle" ? ordnerDnD(key) : {})}
                     className={cn(
-                      "relative flex h-10 w-full items-center gap-2.5 rounded-[12px] px-3 text-left text-[13px] font-medium transition-[color,transform,box-shadow] duration-200 max-sm:h-11",
-                      aktiv ? "text-fg" : "text-fg-2 hover:bg-ink-softer hover:text-fg",
-                      ziel && "scale-[1.03] bg-ink-soft text-ink shadow-[0_0_0_2px_var(--ink)]",
+                      "relative flex h-10 w-full items-center gap-2.5 rounded-md px-3 text-left text-[13px] font-medium transition-colors duration-100 max-sm:h-11",
+                      aktiv ? "font-semibold text-fg" : "text-fg-2 hover:bg-[var(--surface-2)] hover:text-fg",
+                      ziel && "bg-[var(--surface-3)] text-fg shadow-[inset_0_0_0_2px_var(--ink)]",
                     )}
                   >
                     {aktiv && !ziel && (
-                      <motion.span layoutId={`ordner-pill-${akte.id}`} transition={{ type: "spring", stiffness: 520, damping: 38 }} className="absolute inset-0 rounded-[12px] bg-[var(--surface)] shadow-[0_1px_0_0_var(--glass-rim-3)_inset,0_3px_12px_-4px_rgba(20,30,80,0.18),0_0_0_1px_var(--line)]" />
+                      <motion.span layoutId={`ordner-pill-${akte.id}`} transition={BEWEGUNG.standard} className="absolute inset-0 rounded-md bg-[var(--surface-3)]" />
                     )}
-                    <Icon className={cn("relative size-4 shrink-0", aktiv || ziel ? "text-ink" : "text-fg-3")} />
+                    <Icon className={cn("relative size-4 shrink-0", aktiv || ziel ? "text-fg" : "text-fg-4")} />
                     <span className="relative flex-1 truncate">{label}</span>
-                    <span className={cn("num relative rounded-full px-1.5 text-[12px]", aktiv ? "bg-ink-soft text-ink" : "text-fg-3")}>{zaehler[key] ?? 0}</span>
+                    <span className={cn("num relative text-[12px]", aktiv ? "text-fg-2" : "text-fg-4")}>{zaehler[key] ?? 0}</span>
                   </button>
                 </li>
               );
             })}
           </ul>
-          {feinZeiger && <p className="hidden px-3 pb-2 pt-3 text-[12.5px] leading-snug text-fg-3 md:block">Dokumente auf einen Ordner ziehen, um sie zu verschieben. Doppelklick auf einen Namen benennt um.</p>}
+          {feinZeiger && <p className="hidden px-3 pb-2 pt-3 text-[13px] leading-snug text-fg-3 md:block">Dokumente auf einen Ordner ziehen, um sie zu verschieben. Doppelklick auf einen Namen benennt um.</p>}
         </Card>
       </div>
 
@@ -455,7 +457,7 @@ export function TabDokumente({ akte }: { akte: Akte }) {
 
         <AnimatePresence initial={false}>
           {auswahl.size > 0 && (
-            <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6, transition: { duration: 0.12 } }} transition={{ type: "spring", stiffness: 520, damping: 36 }} className="relative z-10 border-b border-[var(--line)] bg-ink-softer max-md:hidden">
+            <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6, transition: { duration: 0.12 } }} transition={BEWEGUNG.standard} className="relative z-10 border-b border-[var(--line)] bg-ink-softer max-md:hidden">
               <div className="flex flex-wrap items-center gap-2 px-4 py-2 text-[13px]">
                 <span className="num font-semibold">{auswahl.size} ausgewählt</span>
                 {/* Zielordner direkt als Knöpfe – ohne Zwischenmenü */}
@@ -470,7 +472,7 @@ export function TabDokumente({ akte }: { akte: Akte }) {
                     </Button>
                   );
                 })}
-                <Button size="sm" variant="ghost" icon={<Trash2 className="size-4" />} onClick={() => void loesche([...auswahl])} className="!text-seal">
+                <Button size="sm" variant="ghost" icon={<Trash2 className="size-4" />} onClick={() => void loesche([...auswahl])} className="!text-[var(--seal-text)]">
                   Löschen
                 </Button>
                 <Button size="sm" variant="ghost" icon={<X className="size-4" />} onClick={() => setAuswahl(new Set())}>
@@ -482,7 +484,7 @@ export function TabDokumente({ akte }: { akte: Akte }) {
         </AnimatePresence>
 
         {sichtbar.length > 0 && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-1 pt-3 text-[12.5px] text-fg-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-1 pt-3 text-[13px] text-fg-3">
             <AuswahlKaestchen
               checked={alleGewaehlt}
               indeterminate={einige}
@@ -500,7 +502,7 @@ export function TabDokumente({ akte }: { akte: Akte }) {
                 </>
               )}
             </span>
-            {feinZeiger && <span className="text-[12.5px] text-fg-3">Tipp: Umschalt-Klick wählt einen Bereich</span>}
+            {feinZeiger && <span className="text-[13px] text-fg-3">Tipp: Umschalt-Klick wählt einen Bereich</span>}
           </div>
         )}
 
@@ -520,7 +522,7 @@ export function TabDokumente({ akte }: { akte: Akte }) {
         ) : (
           <ul className="grid grid-cols-1 gap-0.5 p-2">
             <AnimatePresence initial={false}>
-              {sichtbar.map((d, i) => {
+              {sichtbar.map((d) => {
                 const gewaehlt = auswahl.has(d.id);
                 const benennt = umbenennen === d.id;
                 return (
@@ -528,7 +530,7 @@ export function TabDokumente({ akte }: { akte: Akte }) {
                     key={d.id}
                     layout="position"
                     initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: zieht.includes(d.id) ? 0.45 : 1, y: 0, transition: { delay: Math.min(i, 10) * 0.025, type: "spring", stiffness: 460, damping: 36 } }}
+                    animate={{ opacity: zieht.includes(d.id) ? 0.45 : 1, y: 0, transition: BEWEGUNG.standard }}
                     exit={{ opacity: 0, x: -16, transition: { duration: 0.18 } }}
                   >
                     <div
@@ -540,7 +542,7 @@ export function TabDokumente({ akte }: { akte: Akte }) {
                         oeffne(d.id);
                       }}
                       className={cn(
-                        "group flex cursor-pointer items-center gap-3 rounded-[14px] px-2.5 py-2.5 transition-colors",
+                        "group flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2.5 transition-colors",
                         gewaehlt ? "bg-ink-soft" : "hover:bg-ink-softer",
                         dokId === d.id && !gewaehlt && "bg-ink-softer",
                       )}
@@ -575,11 +577,11 @@ export function TabDokumente({ akte }: { akte: Akte }) {
                             }}
                             onBlur={(e) => benenneUm(d, e.currentTarget.value)}
                             onClick={(e) => e.stopPropagation()}
-                            className="field !h-8 !rounded-[9px] !px-2.5 text-[13.5px] font-medium"
+                            className="field !h-8 !rounded-sm !px-2.5 text-[14px] font-medium"
                           />
                         ) : (
                           <div
-                            className="break-words text-[13.5px] font-medium"
+                            className="break-words text-[14px] font-medium"
                             title="Doppelklick zum Umbenennen"
                             onClick={(e) => {
                               e.stopPropagation();
@@ -594,25 +596,25 @@ export function TabDokumente({ akte }: { akte: Akte }) {
                             <Highlight text={d.name} q={q} />
                           </div>
                         )}
-                        <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12.5px] text-fg-3">
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-fg-3">
                           <span>
                             {DOK_ART_LABEL[d.art]} · {fmtDate(d.createdAt.slice(0, 10))}
                             {d.seiten ? ` · ${d.seiten} ${d.seiten === 1 ? "Seite" : "Seiten"}` : ""} · {fmtKb(d.groesseKb)}
                             {d.version > 1 ? ` · Version ${d.version}` : ""}
                           </span>
                           {d.status && d.status !== "freigegeben" && (
-                            <Chip tone={DOK_STATUS_INFO[d.status].tone} className="!h-5 !px-1.5 !text-[11.5px]">
+                            <Chip tone={DOK_STATUS_INFO[d.status].tone}>
                               {DOK_STATUS_INFO[d.status].label}
                             </Chip>
                           )}
                           {akte.mandantenportal && imPortal(d) && (
-                            <Chip tone="green" icon={<Globe className="size-3" />} className="!h-5 !px-1.5 !text-[11.5px]" title="Für den Mandanten im Portal sichtbar">
+                            <Chip tone="green" icon={<Globe className="size-3" />} title="Für den Mandanten im Portal sichtbar">
                               im Portal
                             </Chip>
                           )}
                         </div>
                         {q.trim() && (
-                          <div className="mt-1 line-clamp-2 text-[12.5px] leading-snug text-fg-2">
+                          <div className="mt-1 line-clamp-2 text-[13px] leading-snug text-fg-2">
                             <Highlight text={ausschnitt(d.inhalt, q)} q={q} />
                           </div>
                         )}
@@ -624,7 +626,7 @@ export function TabDokumente({ akte }: { akte: Akte }) {
                           const herkunft = quelleLabel(d, team);
                           return (
                             <>
-                              <Chip tone={herkunft.ki ? "violet" : d.quelle === "bea" ? "ink" : d.quelle === "generiert" ? "green" : "neutral"} icon={herkunft.ki ? <Sparkles className="size-3" /> : undefined}>
+                              <Chip tone={herkunft.ki ? "outline" : d.quelle === "bea" ? "ink" : "neutral"} icon={herkunft.ki ? <Sparkles className="size-3" aria-hidden /> : undefined}>
                                 {herkunft.text}
                               </Chip>
                               {d.ki?.zusammenfassung && !herkunft.ki && <AiChip />}
@@ -673,11 +675,11 @@ export function TabDokumente({ akte }: { akte: Akte }) {
 
         <AnimatePresence>
           {dateiDrag && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="pointer-events-none absolute inset-2 grid grid-cols-1 place-items-center rounded-[18px] border-2 border-dashed border-[var(--ink)] bg-[color-mix(in_oklab,var(--surface)_85%,transparent)]">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="pointer-events-none absolute inset-2 grid grid-cols-1 place-items-center rounded-lg border-2 border-dashed border-[var(--fg)] bg-[var(--surface-2)]">
               <div className="text-center">
                 <Upload className="mx-auto size-7 text-ink" />
                 <div className="title-md mt-2">Dateien hier ablegen</div>
-                <div className="text-[12.5px] text-fg-3">Sie landen im Ordner „{ordner === "alle" ? "Anlagen" : ordner}“</div>
+                <div className="text-[13px] text-fg-3">Sie landen im Ordner „{ordner === "alle" ? "Anlagen" : ordner}“</div>
               </div>
             </motion.div>
           )}
@@ -693,14 +695,14 @@ export function TabDokumente({ akte }: { akte: Akte }) {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 12 }}
-            transition={{ type: "spring", stiffness: 520, damping: 36 }}
+            transition={BEWEGUNG.standard}
             className="fixed bottom-[calc(88px+env(safe-area-inset-bottom))] left-3 right-3 z-30 md:hidden"
           >
-            <div className="glass-strong tabbar-deckend flex items-center gap-1 rounded-full py-1 pl-4 pr-1" style={{ boxShadow: "var(--glass-shadow)" }} role="toolbar" aria-label="Auswahl bearbeiten">
+            <div className="flex items-center gap-1 rounded-lg border border-[var(--line)] bg-[var(--surface-pop)] py-1 pl-4 pr-1 shadow-pop" role="toolbar" aria-label="Auswahl bearbeiten">
               <span className="num min-w-0 flex-1 truncate text-[13px] font-semibold">{auswahl.size} ausgewählt</span>
               <Menu
                 trigger={({ toggle }) => (
-                  <button type="button" onClick={toggle} className="flex min-h-11 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium text-fg-2 hover:bg-ink-softer">
+                  <button type="button" onClick={toggle} className="flex min-h-11 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium text-fg-2 hover:bg-[var(--surface-pop-hover)]">
                     <FolderInput className="size-4" /> Verschieben
                   </button>
                 )}
@@ -749,17 +751,17 @@ function AuswahlKaestchen({ checked, indeterminate, onChange, label }: { checked
         e.stopPropagation();
         onChange();
       }}
-      className="group/kasten -m-[13px] grid shrink-0 place-items-center rounded-[10px] p-[13px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] sm:-m-[3px] sm:p-[3px]"
+      className="group/kasten -m-[13px] grid shrink-0 place-items-center rounded-md p-[13px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] sm:-m-[3px] sm:p-[3px]"
     >
       <span
         aria-hidden
         className={cn(
-          "grid size-[18px] place-items-center rounded-[6px] border transition-all duration-200",
-          checked || indeterminate ? "border-transparent bg-ink text-white" : "border-[var(--line-strong)] bg-[var(--surface)] group-hover/kasten:border-ink",
+          "grid size-4 place-items-center rounded-sm border transition-colors duration-100",
+          checked || indeterminate ? "border-transparent bg-[var(--ink)] text-[var(--on-ink)]" : "border-[var(--line-strong)] bg-[var(--surface)] group-hover/kasten:border-[var(--fg)]",
         )}
       >
         {checked && <Check className="size-3" strokeWidth={3} />}
-        {!checked && indeterminate && <span className="h-0.5 w-2 rounded bg-white" />}
+        {!checked && indeterminate && <span className="h-0.5 w-2 rounded bg-[var(--on-ink)]" />}
       </span>
     </button>
   );

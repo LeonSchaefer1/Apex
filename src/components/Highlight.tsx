@@ -7,7 +7,7 @@ export function Highlight({ text, q }: { text: string; q: string }) {
     <>
       {highlight(text, q).map((s, i) =>
         s.hit ? (
-          <mark key={i} className="rounded-[4px] bg-[color-mix(in_oklab,var(--amber)_28%,transparent)] px-0.5 text-inherit">
+          <mark key={i} className="rounded-[2px] bg-[var(--selection)] px-0.5 text-inherit">
             {s.text}
           </mark>
         ) : (

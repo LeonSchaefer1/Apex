@@ -15,6 +15,7 @@ import { NachrichtenListe } from "./NachrichtenListe";
 import { Lesebereich } from "./Lesebereich";
 import { Verbindungsstatus } from "./Verbindungsstatus";
 import { analyseSchluessel, ersteOeffnungMerken, kiAnsicht, starteAnalyse, useAnalyse, useAnalyseStand } from "./analyse";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 type Filter = "alle" | "neu" | "bea" | "email" | "ohne";
 
@@ -222,7 +223,7 @@ export default function Posteingang() {
       <div data-listscroll className={cn("min-h-0 flex-1", zweispaltig && "overflow-y-auto")}>
         <NachrichtenListe items={sichtbar} selectedId={selId} onSelect={oeffnen} akten={akten} laufend={laufend} q={q} gefiltert={filter !== "alle" || !!q.trim()} />
       </div>
-      <div className="border-t border-[var(--line)] px-4 py-2.5 text-[12.5px] text-fg-3">
+      <div className="border-t border-[var(--line)] px-4 py-2.5 text-[13px] text-fg-3">
         {eingang.length} Nachrichten · {zaehler.neu} neu · {ausstehend.length} warten auf KI
         <span id="posteingang-tipp" className="mt-0.5 hidden lg:block">
           <span className="kbd">↑</span> <span className="kbd">↓</span> wählen · <span className="kbd">Enter</span> öffnet · <span className="kbd">J</span>/<span className="kbd">K</span> nächste bzw. vorige
@@ -233,21 +234,19 @@ export default function Posteingang() {
 
   const ueberblick = (
     <div className="flex h-full flex-col items-center justify-center px-6 py-14 text-center">
-      <div className="mb-5 grid size-16 place-items-center rounded-[20px] bg-ink-soft text-ink">
-        <MailOpen className="size-7" />
-      </div>
-      <div className="title-lg">Wählen Sie eine Nachricht</div>
-      <p className="mt-1.5 max-w-sm text-[13.5px] text-fg-3">Die KI-Karte zeigt sofort, zu welcher Akte die Nachricht gehört, was drinsteht und welche Frist läuft.</p>
-      <div className="mt-6 grid w-full max-w-md grid-cols-3 gap-2.5">
+      <MailOpen className="mb-3 size-5 text-fg-4" aria-hidden />
+      <div className="title-md">Wählen Sie eine Nachricht</div>
+      <p className="mt-1.5 max-w-sm text-[14px] text-fg-3">Die KI-Karte zeigt sofort, zu welcher Akte die Nachricht gehört, was drinsteht und welche Frist läuft.</p>
+      <div className="mt-6 grid w-full max-w-md grid-cols-3 divide-x divide-[var(--line)] border-y border-[var(--line)]">
         {[
           { icon: <Inbox className="size-4" />, wert: zaehler.neu, text: "neu" },
           { icon: <Sparkles className="size-4" />, wert: ausstehend.length, text: "warten auf KI" },
           { icon: <CalendarClock className="size-4" />, wert: fristenErkannt, text: "Fristen erkannt" },
         ].map((k) => (
-          <div key={k.text} className="rounded-[18px] bg-[var(--ink-softer)] p-3 ring-1 ring-inset ring-[var(--line)]">
-            <div className="flex justify-center text-ink">{k.icon}</div>
-            <div className="num mt-1.5 text-[22px] font-semibold leading-none">{k.wert}</div>
-            <div className="mt-1 text-[12.5px] text-fg-3">{k.text}</div>
+          <div key={k.text} className="px-3 py-3">
+            <div className="flex justify-center text-fg-4" aria-hidden>{k.icon}</div>
+            <div className="num mt-1.5 text-[24px] font-semibold leading-8 tracking-[-0.02em]">{k.wert}</div>
+            <div className="mt-1 text-[13px] text-fg-3">{k.text}</div>
           </div>
         ))}
       </div>
@@ -264,7 +263,7 @@ export default function Posteingang() {
         )}
       </div>
       {!naechsteNeue && !ausstehend.length && (
-        <div className="mt-5 inline-flex items-center gap-1.5 text-[12.5px] text-green">
+        <div className="mt-5 inline-flex items-center gap-1.5 text-[13px] text-green">
           <FolderInput className="size-4" />
           Alles zugeordnet – Posteingang aufgeräumt.
         </div>
@@ -286,7 +285,7 @@ export default function Posteingang() {
   // Smartphone/Tablet: Liste → Vollbild-Detail
   if (!zweispaltig && sel) {
     return (
-      <motion.div key={sel.id} initial={{ opacity: 0, x: 28 }} animate={{ opacity: 1, x: 0 }} transition={{ type: "spring", stiffness: 420, damping: 38 }} className="-mx-1">
+      <motion.div key={sel.id} initial={{ opacity: 0, x: 28 }} animate={{ opacity: 1, x: 0 }} transition={BEWEGUNG.standard} className="-mx-1">
         <Card padded={false}>{lesen}</Card>
       </motion.div>
     );

@@ -22,7 +22,7 @@ import { VorschussDialog } from "./Vorschuss";
 
 export const ART_INFO: Record<BuchungsArt, { label: string; tone: Tone }> = {
   honorar: { label: "Honorar", tone: "ink" },
-  vorschuss: { label: "Vorschuss", tone: "violet" },
+  vorschuss: { label: "Vorschuss", tone: "outline" },
   fremdgeld: { label: "Fremdgeld", tone: "amber" },
   auslage: { label: "Auslage", tone: "neutral" },
   zahlung: { label: "Zahlung", tone: "green" },
@@ -89,7 +89,8 @@ export function TabAktenkonto({ akte }: { akte: Akte }) {
   return (
     <div className="grid grid-cols-1 gap-5">
       {/* Kennzahlen */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      {/* Kennzahlenleiste: eine Fläche, getrennt durch 1-px-Linien (DESIGN-SYSTEM.md 12.14) */}
+      <div className="sheet grid grid-cols-2 overflow-hidden rounded-lg lg:grid-cols-5">
         <Kachel label="Honorar gestellt" wert={summen.honorar} icon={<ReceiptEuro className="size-4" />} />
         <Kachel label="Bezahlt" wert={summen.bezahlt} icon={<Wallet className="size-4" />} tone="green" />
         <Kachel
@@ -118,13 +119,13 @@ export function TabAktenkonto({ akte }: { akte: Akte }) {
       </div>
 
       {summen.fremdOffen > 0 && (
-        <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="flex flex-wrap items-center gap-3 rounded-[22px] bg-seal-soft p-4 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--seal)_25%,transparent)]" role="alert">
-          <span className="grid grid-cols-1 size-10 shrink-0 place-items-center rounded-[12px] bg-[var(--surface)] text-seal">
+        <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="flex flex-wrap items-center gap-3 rounded-md bg-seal-soft p-4" role="alert">
+          <span className="grid grid-cols-1 size-10 shrink-0 place-items-center rounded-md bg-[var(--surface)] text-seal">
             <AlertTriangle className="size-5" />
           </span>
           <div className="min-w-0 flex-1 basis-[260px]">
             <div className="text-[14px] font-semibold text-seal">Fremdgeld unverzüglich weiterleiten</div>
-            <p className="text-[12.5px] leading-snug text-fg-2">
+            <p className="text-[13px] leading-snug text-fg-2">
               {/* Konto, auf dem das Geld eingegangen ist (I4-T08-01) */}
               {fremdKonto === "geschaeft" ? (
                 <>
@@ -172,11 +173,11 @@ export function TabAktenkonto({ akte }: { akte: Akte }) {
                     <Chip tone={ART_INFO[b.art].tone}>{artLabel(b)}</Chip>
                     {fremd && b.art !== "fremdgeld" && <Chip tone="amber">Fremdgeld</Chip>}
                   </div>
-                  <div className="mt-1 break-words text-[13.5px]">
+                  <div className="mt-1 break-words text-[14px]">
                     {b.text}
                     {weiterleitungInfo(b)}
                   </div>
-                  <div className="text-[12.5px] text-fg-3">{fmtDate(b.datum)}</div>
+                  <div className="text-[13px] text-fg-3">{fmtDate(b.datum)}</div>
                   {stornierbar(b) && (
                     <Button size="sm" variant="ghost" icon={<Undo2 className="size-4" />} className="mt-1 !px-2" onClick={() => void weiterleitungStornieren(b)}>
                       Rückgängig (Storno)
@@ -216,7 +217,7 @@ export function TabAktenkonto({ akte }: { akte: Akte }) {
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span className="break-words">
                           {b.text}
-                          {b.weiterleitung && <span className="text-[12.5px] text-fg-3">{weiterleitungInfo(b)}</span>}
+                          {b.weiterleitung && <span className="text-[13px] text-fg-3">{weiterleitungInfo(b)}</span>}
                         </span>
                         {stornierbar(b) && (
                           <Button size="sm" variant="ghost" icon={<Undo2 className="size-4" />} className="!h-7 !px-2" onClick={() => void weiterleitungStornieren(b)}>
@@ -228,13 +229,13 @@ export function TabAktenkonto({ akte }: { akte: Akte }) {
                     <td className="whitespace-nowrap text-right">
                       <Betrag n={b.betrag} />
                     </td>
-                    <td className="num whitespace-nowrap text-right text-fg-2">{fremd ? <span className="text-[12.5px] text-fg-3">getrennt (Treuhand)</span> : eur(saldo)}</td>
+                    <td className="num whitespace-nowrap text-right text-fg-2">{fremd ? <span className="text-[13px] text-fg-3">getrennt (Treuhand)</span> : eur(saldo)}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={3} className="px-3 py-3 text-[12.5px] font-semibold text-fg-2">
+                  <td colSpan={3} className="px-3 py-3 text-[13px] font-semibold text-fg-2">
                     Saldo Honorarkonto
                   </td>
                   <td />
@@ -259,18 +260,19 @@ function Betrag({ n }: { n: number }) {
 }
 
 function Kachel({ label, wert, icon, tone = "ink", sub, className, hervorheben }: { label: string; wert: number; icon: ReactNode; tone?: Tone; sub?: string; className?: string; hervorheben?: boolean }) {
-  const toneCls = { ink: "bg-ink-soft text-ink", seal: "bg-seal-soft text-seal", amber: "bg-amber-soft text-amber", green: "bg-green-soft text-green", violet: "bg-violet-soft text-violet", neutral: "bg-ink-softer text-fg-2", outline: "bg-ink-softer text-fg-2" }[tone];
+  // Symbol ohne Kachel; der Ton färbt nur das Symbol (DESIGN-SYSTEM.md 12.14). Hervorhebung (z. B. Fremdgeld offen): 2 px Balken links.
+  const toneCls = { ink: "text-fg-4", seal: "text-[var(--seal)]", amber: "text-[var(--amber)]", green: "text-[var(--green)]", violet: "text-fg-4", neutral: "text-fg-4", outline: "text-fg-4" }[tone];
   return (
-    <div className={cn("sheet relative min-w-0 rounded-[22px] p-4", hervorheben && "shadow-[0_0_0_1.5px_var(--seal),0_12px_32px_-18px_var(--seal)]", className)}>
+    <div className={cn("relative min-w-0 px-5 py-4 shadow-[-1px_0_0_var(--line),0_-1px_0_var(--line)]", className)}>
       <div className="flex items-center gap-2">
-        <span className={cn("grid size-7 place-items-center rounded-[9px]", toneCls)}>{icon}</span>
+        <span className={cn("shrink-0 [&>svg]:size-3.5", toneCls)} aria-hidden>{icon}</span>
         <span className="truncate text-[12px] font-medium text-fg-3">{label}</span>
       </div>
-      <div className={cn("mt-2.5 text-[21px] font-semibold tracking-[-0.03em]", hervorheben && "text-seal")}>
+      <div className={cn("num mt-2 text-[20px] font-semibold tracking-[-0.02em] text-fg", hervorheben && "text-[var(--seal-text)]")}>
         <AnimatedNumber value={wert} format={eur} />
       </div>
       {sub && (
-        <div className="mt-0.5 truncate text-[12.5px] text-fg-3" title={sub}>
+        <div className="mt-0.5 truncate text-[13px] text-fg-3" title={sub}>
           {sub}
         </div>
       )}
@@ -344,7 +346,7 @@ function Forderungskonto({ akte, buchungen }: { akte: Akte; buchungen: Buchung[]
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 px-5 lg:grid-cols-4">
+      <div className="mx-5 grid grid-cols-2 overflow-hidden rounded-lg border border-[var(--line)] lg:grid-cols-4">
         <Wert label="Hauptforderung" wert={stand.hauptforderung} sub={`ursprünglich ${eur(f.hauptforderung)}`} />
         <Wert
           label="Zinsen offen"
@@ -356,7 +358,7 @@ function Forderungskonto({ akte, buchungen }: { akte: Akte; buchungen: Buchung[]
         <Wert label="Gesamtforderung" wert={stand.gesamt} sub={`bereits gezahlt ${eur(stand.bezahlt)}`} gross />
       </div>
 
-      <div className="mx-5 mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-[14px] bg-ink-softer px-3.5 py-2.5 text-[12.5px] text-fg-2">
+      <div className="mx-5 mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md bg-[var(--surface-2)] px-3.5 py-2.5 text-[13px] text-fg-2">
         <span>
           Schuldner: <span className="font-medium text-fg">{schuldner?.name ?? "–"}</span> {f.verbraucher ? <Chip>Verbraucher</Chip> : <Chip>Unternehmer</Chip>}
         </span>
@@ -394,12 +396,12 @@ function Forderungskonto({ akte, buchungen }: { akte: Akte; buchungen: Buchung[]
                     <div className="text-[12px] text-fg-3">{fmtDate(v.datum)}</div>
                   </div>
                   <div className="text-right">
-                    <span className={cn("num text-[13.5px] font-semibold", v.betrag < 0 && "text-green")}>{eur(v.betrag)}</span>
-                    <div className="num text-[12.5px] text-fg-3">Saldo {eur(v.saldoGesamt)}</div>
+                    <span className={cn("num text-[14px] font-semibold", v.betrag < 0 && "text-green")}>{eur(v.betrag)}</span>
+                    <div className="num text-[13px] text-fg-3">Saldo {eur(v.saldoGesamt)}</div>
                   </div>
                 </div>
                 {v.art === "zahlung" && (
-                  <div className="mt-2 grid grid-cols-3 gap-1.5 rounded-[12px] bg-ink-softer p-2 text-center text-[12.5px]">
+                  <div className="mt-2 grid grid-cols-3 gap-1.5 rounded-md bg-[var(--surface-2)] p-2 text-center text-[13px]">
                     <Verrechnung label="auf Kosten" n={v.aufKosten} />
                     <Verrechnung label="auf Zinsen" n={v.aufZinsen} />
                     <Verrechnung label="auf Hauptford." n={v.aufHaupt} />
@@ -423,7 +425,7 @@ function Forderungskonto({ akte, buchungen }: { akte: Akte; buchungen: Buchung[]
                     Betrag
                   </th>
                   <th colSpan={3} className="!border-b-0 !pb-0 !text-center" style={{ color: "var(--ink)" }}>
-                    <span className="inline-block rounded-full bg-ink-soft px-2.5 py-0.5 text-[12.5px]">Verrechnung nach § 367 BGB</span>
+                    <span className="chip">Verrechnung nach § 367 BGB</span>
                   </th>
                   <th rowSpan={2} className="!text-right !align-bottom" style={{ width: 130 }}>
                     Hauptforderung
@@ -446,7 +448,7 @@ function Forderungskonto({ akte, buchungen }: { akte: Akte; buchungen: Buchung[]
               </thead>
               <tbody>
                 {stand.verlauf.map((v, i) => (
-                  <tr key={i} className={cn(v.art === "zinsen" && "bg-amber-soft/40")}>
+                  <tr key={i} className={cn(v.art === "zinsen" && "bg-[var(--surface-2)]")}>
                     <td className="num whitespace-nowrap text-fg-2">{fmtDate(v.datum)}</td>
                     <td className="w-full max-w-0">
                       <span className="flex min-w-0 items-center gap-2" title={v.text}>
@@ -473,7 +475,7 @@ function Forderungskonto({ akte, buchungen }: { akte: Akte; buchungen: Buchung[]
           <span className="title-md">Zinsperioden</span>
           <span className="text-[12px] text-fg-3">Basiszinssatz nach § 247 BGB (Deutsche Bundesbank) – neuer Abschnitt bei jeder Zahlung und jeder Änderung des Basiszinssatzes.</span>
         </div>
-        <div className="overflow-x-auto rounded-[16px] shadow-[0_0_0_1px_var(--line)]">
+        <div className="overflow-x-auto rounded-lg shadow-[0_0_0_1px_var(--line)]">
           <table className="table min-w-[640px]">
             <thead>
               <tr>
@@ -501,7 +503,7 @@ function Forderungskonto({ akte, buchungen }: { akte: Akte; buchungen: Buchung[]
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={5} className="px-3 py-2.5 text-[12.5px] font-semibold text-fg-2">
+                <td colSpan={5} className="px-3 py-2.5 text-[13px] font-semibold text-fg-2">
                   Zinsen insgesamt (vor Verrechnung)
                 </td>
                 <td className="num px-3 py-2.5 text-right font-semibold">{eur(round2(stand.zinsAbschnitte.reduce((s, z) => s + z.zinsen, 0)))}</td>
@@ -528,13 +530,13 @@ function Verrechnung({ label, n }: { label: string; n?: number }) {
 
 function Wert({ label, wert, sub, gross, titel }: { label: string; wert: number; sub?: string; gross?: boolean; titel?: string }) {
   return (
-    <div className={cn("min-w-0 rounded-[16px] p-3.5", gross ? "bg-ink text-on-ink shadow-[0_10px_24px_-12px_var(--ink)]" : "bg-[var(--surface)] shadow-[0_0_0_1px_var(--line)]")}>
-      <div className={cn("truncate text-[12px] font-medium", gross ? "opacity-80" : "text-fg-3")}>{label}</div>
-      <div className="mt-1 text-[20px] font-semibold tracking-[-0.03em]">
+    <div className={cn("min-w-0 p-3.5 shadow-[-1px_0_0_var(--line),0_-1px_0_var(--line)]", gross ? "bg-[var(--surface-2)] text-fg" : "bg-[var(--surface)]")}>
+      <div className={cn("truncate text-[12px] font-medium", gross ? "text-fg-2" : "text-fg-3")}>{label}</div>
+      <div className="num mt-1 text-[20px] font-semibold tracking-[-0.02em]">
         <AnimatedNumber value={wert} format={eur} />
       </div>
       {sub && (
-        <div className={cn("text-[12.5px] leading-snug", gross ? "opacity-75" : "text-fg-3")} title={titel ?? sub}>
+        <div className={cn("text-[13px] leading-snug", gross ? "text-fg-2" : "text-fg-3")} title={titel ?? sub}>
           {sub}
         </div>
       )}

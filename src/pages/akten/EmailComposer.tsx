@@ -13,6 +13,7 @@ import { KontaktAvatar } from "@/pages/kontakte/kontaktHelfer";
 import { beruehreAkte, useKontaktMap } from "./helfer";
 import { DiktatKnopf } from "./Diktat";
 import { portalSperrgrund, setzePortal } from "./Mandantenportal";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 /** Betreff nach Empfängerrolle: Mandant „Ihre Angelegenheit …“, Gericht/Gegenanwalt/Versicherung mit „Ihr Zeichen/Unser Zeichen“. */
 export function betreffFuer(rolle: string | undefined, akte: Akte): string {
@@ -183,13 +184,13 @@ export function EmailComposer({ akte, open, onClose, onGesendet }: { akte: Akte;
     >
       <div className="grid grid-cols-1 gap-4">
         {beaZiele.length > 0 && (
-          <div className="flex items-center gap-3 rounded-[16px] bg-ink-softer p-3.5 shadow-[inset_0_0_0_1px_var(--line)]">
-            <span className="grid grid-cols-1 size-9 shrink-0 place-items-center rounded-[11px] bg-ink-soft text-ink">
+          <div className="flex items-center gap-3 rounded-md bg-[var(--surface-2)] p-3.5">
+            <span className="grid size-5 shrink-0 place-items-center text-fg-4">
               <ShieldCheck className="size-[18px]" />
             </span>
             <div className="min-w-0 flex-1">
-              <div className="text-[13.5px] font-semibold">Als beA-Nachricht senden</div>
-              <div className="text-[12.5px] text-fg-3">Sicherer Übermittlungsweg an {beaZiele.map((e) => e.rolle).join(" oder ")}</div>
+              <div className="text-[14px] font-semibold">Als beA-Nachricht senden</div>
+              <div className="text-[13px] text-fg-3">Sicherer Übermittlungsweg an {beaZiele.map((e) => e.rolle).join(" oder ")}</div>
             </div>
             <Switch id="mail-bea" checked={bea} onChange={setzeBea} label="Als beA-Nachricht senden" />
           </div>
@@ -209,11 +210,11 @@ export function EmailComposer({ akte, open, onClose, onGesendet }: { akte: Akte;
                   title={ohneAdresse ? "Keine E-Mail-Adresse hinterlegt" : undefined}
                   onClick={() => waehle(k)}
                   className={cn(
-                    "relative inline-flex h-9 items-center gap-2 rounded-full pl-1 pr-3 text-[12.5px] font-medium transition-colors disabled:opacity-40",
+                    "relative inline-flex h-9 items-center gap-2 rounded-md pl-1 pr-3 max-sm:h-11 text-[13px] font-medium transition-colors disabled:opacity-40",
                     aktiv ? "text-fg" : "text-fg-2 shadow-[inset_0_0_0_1px_var(--line-strong)] hover:bg-ink-softer",
                   )}
                 >
-                  {aktiv && <motion.span layoutId="mail-empf" transition={{ type: "spring", stiffness: 520, damping: 38 }} className="absolute inset-0 rounded-full bg-[var(--surface)] shadow-[0_0_0_1.5px_var(--ink)]" />}
+                  {aktiv && <motion.span layoutId="mail-empf" transition={BEWEGUNG.standard} className="absolute inset-0 rounded-md bg-[var(--surface-3)] shadow-[inset_0_0_0_1px_var(--fg)]" />}
                   <KontaktAvatar k={k} size={26} className="relative" />
                   <span className="relative max-w-[220px] truncate" title={k.name}>{k.name}</span>
                   <span className="relative text-[12px] text-fg-3">{rolle}</span>
@@ -258,7 +259,7 @@ export function EmailComposer({ akte, open, onClose, onGesendet }: { akte: Akte;
                 aria-label="Dokument anhängen"
                 value=""
                 onChange={(e) => e.target.value && setAnhaenge((a) => (a.includes(e.target.value) ? a : [...a, e.target.value]))}
-                className="!h-8 !w-auto max-w-[240px] !rounded-full !text-[12.5px]"
+                className="!h-8 !w-auto max-w-[240px]"
               >
                 <option value="">Dokument anhängen …</option>
                 {doks.filter((d) => !anhaenge.includes(d.id)).map((d) => (
@@ -288,18 +289,18 @@ export function EmailComposer({ akte, open, onClose, onGesendet }: { akte: Akte;
                 );
               })}
             </AnimatePresence>
-            {anhaenge.length === 0 && <span className="text-[12.5px] text-fg-3">Keine Anlagen.</span>}
+            {anhaenge.length === 0 && <span className="text-[13px] text-fg-3">Keine Anlagen.</span>}
           </div>
         </div>
 
         {portalMoeglich && (
-          <label className="flex items-start gap-2.5 rounded-[14px] bg-ink-softer px-3.5 py-3 text-[13px] text-fg-2 ring-1 ring-inset ring-[var(--line)]">
+          <label className="flex items-start gap-2.5 rounded-md bg-[var(--surface-2)] px-3.5 py-3 text-[13px] text-fg-2">
             <input type="checkbox" className="mt-0.5 size-4 accent-[var(--ink)]" checked={insPortal} onChange={(e) => setInsPortal(e.target.checked)} />
             <span>
               <span className="inline-flex items-center gap-1.5 font-medium text-fg">
                 <Globe className="size-3.5 text-ink" aria-hidden /> Auch im Mandantenportal bereitstellen
               </span>
-              <span className="block text-[12.5px] text-fg-3">Nachricht und Anlagen erscheinen dann für {gewaehlt?.name} im Portal – Entwürfe nie. Der Vorgang steht im Verlauf.</span>
+              <span className="block text-[13px] text-fg-3">Nachricht und Anlagen erscheinen dann für {gewaehlt?.name} im Portal – Entwürfe nie. Der Vorgang steht im Verlauf.</span>
             </span>
           </label>
         )}

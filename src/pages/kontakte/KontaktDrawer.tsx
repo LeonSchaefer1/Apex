@@ -27,7 +27,7 @@ export function VersicherungsFelder({ value, onChange, idPrefix }: { value: Vers
   const v = { ...LEERE_VERSICHERUNG, ...value };
   const set = (p: Partial<VersicherungsAngaben>) => onChange({ ...v, ...p });
   return (
-    <fieldset className="grid grid-cols-1 gap-3 rounded-[16px] bg-ink-softer p-3.5 shadow-[inset_0_0_0_1px_var(--line)] sm:grid-cols-2">
+    <fieldset className="grid grid-cols-1 gap-3 rounded-md bg-[var(--surface-2)] p-3.5 sm:grid-cols-2">
       <legend className="sr-only">Angaben zur Versicherung</legend>
       <div className="flex items-center gap-2 text-[13px] font-semibold sm:col-span-2">
         <ShieldCheck className="size-4 text-ink" /> Rechtsschutzversicherung – Schadenbearbeitung
@@ -199,7 +199,7 @@ export function KontaktDrawer({ k, akten, konflikt, onClose, onOeffne }: { k?: K
               onClick={() => void loeschen()}
               title={sperre.gesperrt ? sperre.grund : "Kontakt löschen (mit Sicherheitsabfrage)"}
               aria-describedby={sperre.gesperrt ? "kd-loeschsperre" : undefined}
-              className="mr-auto !text-seal"
+              className="mr-auto !text-[var(--seal-text)]"
             >
               Löschen
             </Button>
@@ -221,7 +221,7 @@ export function KontaktDrawer({ k, akten, konflikt, onClose, onOeffne }: { k?: K
               <div>
                 <div className="label">Rollen</div>
                 <RollenWahl value={rollen} onChange={setRollen} />
-                {rollen.length === 0 && <p className="mt-1.5 text-[12.5px] text-seal">Bitte mindestens eine Rolle wählen.</p>}
+                {rollen.length === 0 && <p className="mt-1.5 text-[13px] text-seal">Bitte mindestens eine Rolle wählen.</p>}
               </div>
               {rollen.includes("versicherung") && <VersicherungsFelder idPrefix="kd" value={versicherung} onChange={setVersicherung} />}
               <Field label="Notiz" htmlFor="kd-notiz">
@@ -247,11 +247,11 @@ export function KontaktDrawer({ k, akten, konflikt, onClose, onOeffne }: { k?: K
               </div>
 
               {konflikt ? (
-                <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="rounded-[18px] bg-seal-soft p-4 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--seal)_25%,transparent)]" role="alert">
+                <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="rounded-md bg-seal-soft p-4" role="alert">
                   <div className="flex items-center gap-2 text-[14px] font-semibold text-seal">
                     <AlertTriangle className="size-4" /> Interessenkonflikt prüfen
                   </div>
-                  <p className="mt-1 text-[12.5px] leading-snug text-fg-2">
+                  <p className="mt-1 text-[13px] leading-snug text-fg-2">
                     {kontakt.name} ist in einer Akte Mandant und in einer anderen Gegner. Vertretung widerstreitender Interessen ist nach § 43a Abs. 4 BRAO verboten (Parteiverrat, § 356 StGB) – bitte prüfen und dokumentieren.
                   </p>
                   <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -260,7 +260,7 @@ export function KontaktDrawer({ k, akten, konflikt, onClose, onOeffne }: { k?: K
                   </div>
                 </motion.div>
               ) : (
-                <div className="flex items-start gap-2 rounded-[14px] bg-ink-softer px-3.5 py-2.5 text-[13px] text-fg-2">
+                <div className="flex items-start gap-2 rounded-md bg-[var(--surface-2)] px-3.5 py-2.5 text-[13px] text-fg-2">
                   <Scale className="mt-0.5 size-4 shrink-0 text-fg-3" />
                   <span>
                     <span className="font-medium text-fg">Derzeitige Rollen: </span>
@@ -271,11 +271,11 @@ export function KontaktDrawer({ k, akten, konflikt, onClose, onOeffne }: { k?: K
 
               {gleiche.length > 0 && <DoppelHinweis kontakt={kontakt} gleiche={gleiche} onOeffne={onOeffne} onZusammenfuehren={setZusammen} darf={darfZusammenfuehren(user.rolle)} />}
 
-              <section className="rounded-[16px] p-3.5 shadow-[inset_0_0_0_1px_var(--line)]" aria-labelledby="kd-kollision-titel">
-                <h3 id="kd-kollision-titel" className="text-[13.5px] font-semibold">
+              <section className="rounded-lg p-3.5 shadow-[inset_0_0_0_1px_var(--line)]" aria-labelledby="kd-kollision-titel">
+                <h3 id="kd-kollision-titel" className="text-[14px] font-semibold">
                   Kollisionsprüfung für neues Mandat
                 </h3>
-                <p className="mt-0.5 text-[12.5px] text-fg-3">Prüft, ob {kontakt.name} in einer neuen Sache als Mandant bzw. als Gegner mit einer bestehenden Rolle kollidiert (§ 43a Abs. 4 BRAO).</p>
+                <p className="mt-0.5 text-[13px] text-fg-3">Prüft, ob {kontakt.name} in einer neuen Sache als Mandant bzw. als Gegner mit einer bestehenden Rolle kollidiert (§ 43a Abs. 4 BRAO).</p>
                 <div className="mt-2.5 flex flex-wrap items-center gap-2">
                   <Segmented
                     size="sm"
@@ -298,12 +298,12 @@ export function KontaktDrawer({ k, akten, konflikt, onClose, onOeffne }: { k?: K
                     <motion.p
                       initial={{ opacity: 0, y: 4 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className={cn("mt-2.5 flex items-start gap-2 rounded-[12px] px-3 py-2 text-[13px]", pruefung.konflikt ? "bg-seal-soft font-medium text-seal" : "bg-ink-softer text-fg-2")}
+                      className={cn("mt-2.5 flex items-start gap-2 rounded-md px-3 py-2 text-[13px]", pruefung.konflikt ? "bg-seal-soft font-medium text-seal" : "bg-ink-softer text-fg-2")}
                     >
                       {pruefung.konflikt ? <AlertTriangle className="mt-0.5 size-4 shrink-0" /> : <Check className="mt-0.5 size-4 shrink-0 text-fg-3" />}
                       <span>
                         {pruefung.text}
-                        <span className="block text-[12.5px] font-normal text-fg-3">Ergebnis im Protokoll vermerkt.</span>
+                        <span className="block text-[13px] font-normal text-fg-3">Ergebnis im Protokoll vermerkt.</span>
                       </span>
                     </motion.p>
                   )}
@@ -312,7 +312,7 @@ export function KontaktDrawer({ k, akten, konflikt, onClose, onOeffne }: { k?: K
 
               <section>
                 <h3 className="eyebrow mb-2">Kontaktdaten</h3>
-                <div className="grid grid-cols-1 gap-0.5 rounded-[16px] bg-[var(--surface)] p-1.5 shadow-[0_0_0_1px_var(--line)]">
+                <div className="grid grid-cols-1 gap-0.5 rounded-lg bg-[var(--surface)] p-1.5 shadow-[0_0_0_1px_var(--line)]">
                   <Zeile icon={<AtSign className="size-3.5" />} label="E-Mail" wert={kontakt.email} />
                   <Zeile icon={<Phone className="size-3.5" />} label="Telefon" wert={kontakt.telefon} />
                   <Zeile icon={<MapPin className="size-3.5" />} label="Anschrift" wert={adresse || undefined} />
@@ -323,14 +323,14 @@ export function KontaktDrawer({ k, akten, konflikt, onClose, onOeffne }: { k?: K
                   {kontakt.versicherung?.drebisKennung && <Zeile icon={<ShieldCheck className="size-3.5" />} label="drebis-Kennung" wert={kontakt.versicherung.drebisKennung} mono />}
                 </div>
                 {kontakt.rollen.includes("versicherung") && !kontakt.versicherung && (
-                  <p className="mt-1.5 px-1 text-[12.5px] text-fg-3">Schadenabteilung, Postfach, Ansprechpartner und drebis-Kennung lassen sich über „Bearbeiten“ ergänzen.</p>
+                  <p className="mt-1.5 px-1 text-[13px] text-fg-3">Schadenabteilung, Postfach, Ansprechpartner und drebis-Kennung lassen sich über „Bearbeiten“ ergänzen.</p>
                 )}
               </section>
 
               {kontakt.notiz && (
                 <section>
                   <h3 className="eyebrow mb-2">Notiz</h3>
-                  <p className="flex gap-2 rounded-[14px] bg-amber-soft/50 px-3.5 py-2.5 text-[13px] text-fg-2">
+                  <p className="flex gap-2 rounded-lg bg-amber-soft/50 px-3.5 py-2.5 text-[13px] text-fg-2">
                     <StickyNote className="mt-0.5 size-3.5 shrink-0 text-amber" /> {kontakt.notiz}
                   </p>
                 </section>
@@ -339,22 +339,22 @@ export function KontaktDrawer({ k, akten, konflikt, onClose, onOeffne }: { k?: K
               <section>
                 <h3 className="eyebrow mb-2">Verknüpfte Akten</h3>
                 {rollenInAkten.length === 0 ? (
-                  <p className="rounded-[14px] bg-ink-softer px-3.5 py-3 text-[13px] text-fg-3">Dieser Kontakt ist noch keiner Akte zugeordnet.</p>
+                  <p className="rounded-md bg-[var(--surface-2)] px-3.5 py-3 text-[13px] text-fg-3">Dieser Kontakt ist noch keiner Akte zugeordnet.</p>
                 ) : (
                   <ul className="flex flex-col gap-1">
                     {rollenInAkten.map(({ akte, rolle }, i) => (
                       <motion.li key={akte.id} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: Math.min(i, 10) * 0.03 }}>
-                        <Link to={`/akten/${akte.id}`} className="group flex items-center gap-3 rounded-[14px] px-3 py-2.5 transition-colors hover:bg-ink-softer">
-                          <span className="grid size-9 shrink-0 place-items-center rounded-[11px] bg-ink-soft text-ink">
+                        <Link to={`/akten/${akte.id}`} className="group flex items-center gap-3 rounded-md px-3 py-2.5 transition-colors hover:bg-[var(--surface-2)]">
+                          <span className="grid size-5 shrink-0 place-items-center text-fg-4">
                             <FolderOpen className="size-4" />
                           </span>
                           <span className="min-w-0 flex-1">
                             <span className="flex items-center gap-2">
-                              <span className="mono text-[12.5px] font-semibold text-fg-3">{akte.aktenzeichen}</span>
+                              <span className="mono text-[13px] font-semibold text-fg-3">{akte.aktenzeichen}</span>
                               <Chip tone={rolle === "Mandant" ? "ink" : rolle === "Gegner" || rolle === "Schuldner" ? "outline" : "neutral"}>{rolle}</Chip>
                               {akte.status !== "offen" && <Chip tone={STATUS_INFO[akte.status].tone}>{STATUS_INFO[akte.status].label}</Chip>}
                             </span>
-                            <span className="mt-0.5 block break-words text-[13.5px] font-medium">{akte.titel}</span>
+                            <span className="mt-0.5 block break-words text-[14px] font-medium">{akte.titel}</span>
                           </span>
                           <ChevronRight className="size-4 shrink-0 text-fg-3 transition-transform group-hover:translate-x-0.5 group-hover:text-ink" />
                         </Link>
@@ -368,14 +368,14 @@ export function KontaktDrawer({ k, akten, konflikt, onClose, onOeffne }: { k?: K
                 <h3 id="kd-datenschutz-titel" className="eyebrow mb-2">
                   Datenschutz
                 </h3>
-                <div className="grid grid-cols-1 gap-2 rounded-[16px] bg-[var(--surface)] p-3.5 text-[13px] shadow-[0_0_0_1px_var(--line)]">
+                <div className="grid grid-cols-1 gap-2 rounded-lg bg-[var(--surface)] p-3.5 text-[13px] shadow-[0_0_0_1px_var(--line)]">
                   <div className="flex flex-wrap items-center gap-2">
                     <Button size="sm" variant="secondary" icon={<FileDown className="size-4" />} onClick={auskunftErstellen}>
                       Auskunft erstellen (Art. 15 DSGVO)
                     </Button>
-                    <span className="text-[12.5px] text-fg-3">druckbares HTML und JSON-Export (Art. 20) – wird protokolliert</span>
+                    <span className="text-[13px] text-fg-3">druckbares HTML und JSON-Export (Art. 20) – wird protokolliert</span>
                   </div>
-                  <p id="kd-loeschsperre" className={cn("flex items-start gap-2 text-[12.5px]", sperre.gesperrt ? "text-fg-2" : "text-fg-3")}>
+                  <p id="kd-loeschsperre" className={cn("flex items-start gap-2 text-[13px]", sperre.gesperrt ? "text-fg-2" : "text-fg-3")}>
                     {sperre.gesperrt ? <Lock className="mt-0.5 size-3.5 shrink-0 text-amber" /> : <Trash2 className="mt-0.5 size-3.5 shrink-0" />}
                     <span>{sperre.gesperrt ? <>Löschen gesperrt: {sperre.grund}</> : "Kein Aktenbezug – der Kontakt kann gelöscht werden (mit Sicherheitsabfrage)."}</span>
                   </p>
@@ -405,7 +405,7 @@ export function KontaktDrawer({ k, akten, konflikt, onClose, onOeffne }: { k?: K
 function DoppelHinweis({ kontakt, gleiche, onOeffne, onZusammenfuehren, darf }: { kontakt: Kontakt; gleiche: { kontakt: Kontakt; grund: GleichGrund }[]; onOeffne?: (id: string) => void; onZusammenfuehren: (k: Kontakt) => void; darf: boolean }) {
   const alleAkten = useCol("akten");
   return (
-    <section role="status" aria-labelledby="kd-doppel-titel" className="rounded-[18px] bg-amber-soft p-4 text-[13px]">
+    <section role="status" aria-labelledby="kd-doppel-titel" className="rounded-lg bg-amber-soft p-4 text-[13px]">
       <h3 id="kd-doppel-titel" className="flex items-center gap-2 text-[14px] font-semibold text-fg">
         <Copy className="size-4 shrink-0 text-[var(--amber-text)]" aria-hidden />
         <span className="min-w-0 break-words">
@@ -416,7 +416,7 @@ function DoppelHinweis({ kontakt, gleiche, onOeffne, onZusammenfuehren, darf }: 
       </h3>
       <ul className="mt-2 grid gap-2">
         {gleiche.map(({ kontakt: g, grund }) => (
-          <li key={g.id} className="rounded-[14px] bg-[var(--surface)] p-3 shadow-[0_0_0_1px_var(--line)]">
+          <li key={g.id} className="rounded-lg bg-[var(--surface)] p-3 shadow-[0_0_0_1px_var(--line)]">
             <p className="break-words text-fg-2">
               <span className="font-semibold text-fg">„{g.name}“</span>
               {g.ort ? ` (${g.ort})` : ""} – {GLEICH_GRUND[grund]}, angelegt am {fmtDate(g.createdAt.slice(0, 10))}{aktenVonKontakt(g, alleAkten).length ? `, beteiligt in ${aktenVonKontakt(g, alleAkten).slice(0, 3).map((x) => `${x.akte.aktenzeichen} (${x.rolle})`).join(", ")}` : ""}. Ist das {kontakt.typ === "organisation" ? "dieselbe Firma" : "dieselbe Person"}? Dann zusammenführen – die Kollisionsprüfung berücksichtigt beide Datensätze schon jetzt.
@@ -432,7 +432,7 @@ function DoppelHinweis({ kontakt, gleiche, onOeffne, onZusammenfuehren, darf }: 
                   Zusammenführen …
                 </Button>
               ) : (
-                <span className="self-center text-[12.5px] text-fg-3">Zusammenführen dürfen Partner, Anwälte und die Administration.</span>
+                <span className="self-center text-[13px] text-fg-3">Zusammenführen dürfen Partner, Anwälte und die Administration.</span>
               )}
             </div>
           </li>
@@ -494,7 +494,7 @@ function ZusammenfuehrenDialog({ a, b, onClose, onFertig }: { a: Kontakt; b: Kon
       }
     >
       <div className="grid gap-4 text-[13px]">
-        <dl className="grid gap-x-4 gap-y-2 rounded-[16px] bg-ink-softer p-4 ring-1 ring-inset ring-[var(--line)] sm:grid-cols-[150px_minmax(0,1fr)]">
+        <dl className="grid gap-x-4 gap-y-2 rounded-md bg-[var(--surface-2)] p-4 sm:grid-cols-[150px_minmax(0,1fr)]">
           <dt className="text-fg-3">Bleibt erhalten</dt>
           <dd className="break-words font-semibold text-fg">{zeile(original)}</dd>
           <dt className="text-fg-3">Wird gelöscht</dt>
@@ -510,8 +510,8 @@ function ZusammenfuehrenDialog({ a, b, onClose, onFertig }: { a: Kontakt; b: Kon
           {plan.akten.length ? (
             <ul className="grid gap-1">
               {plan.akten.map((x) => (
-                <li key={x.akte.id} className="flex min-w-0 items-baseline gap-2 rounded-[10px] px-2 py-1">
-                  <span className="mono shrink-0 text-[12.5px] font-semibold text-fg-2">{x.akte.aktenzeichen}</span>
+                <li key={x.akte.id} className="flex min-w-0 items-baseline gap-2 rounded-md px-2 py-1">
+                  <span className="mono shrink-0 text-[13px] font-semibold text-fg-2">{x.akte.aktenzeichen}</span>
                   <span className="min-w-0 flex-1 break-words">{x.akte.titel}</span>
                   <Chip>{x.rollen.join(", ")}</Chip>
                 </li>
@@ -545,7 +545,7 @@ function ZusammenfuehrenDialog({ a, b, onClose, onFertig }: { a: Kontakt; b: Kon
             )}
           </ul>
         </section>
-        <p className="flex items-start gap-2 text-[12.5px] text-fg-3">
+        <p className="flex items-start gap-2 text-[13px] text-fg-3">
           <Scale className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           Der Vorgang steht mit Ihrem Namen im Kanzleiprotokoll und im Verlauf jeder betroffenen Akte.
         </p>
@@ -556,12 +556,12 @@ function ZusammenfuehrenDialog({ a, b, onClose, onFertig }: { a: Kontakt; b: Kon
 
 function KonfliktListe({ titel, akten }: { titel: string; akten: Akte[] }) {
   return (
-    <div className="min-w-0 rounded-[12px] bg-[var(--surface)] p-2.5">
-      <div className="text-[12px] font-semibold uppercase tracking-[0.06em] text-fg-3">{titel}</div>
+    <div className="min-w-0 rounded-md bg-[var(--surface)] p-2.5">
+      <div className="text-[12px] font-medium text-fg-3">{titel}</div>
       <ul className="mt-1 grid grid-cols-1 gap-0.5">
         {akten.map((a) => (
           <li key={a.id} className="min-w-0">
-            <Link to={`/akten/${a.id}`} className="flex min-w-0 items-baseline gap-1.5 text-[12.5px] hover:text-ink">
+            <Link to={`/akten/${a.id}`} className="flex min-w-0 items-baseline gap-1.5 text-[13px] hover:text-ink">
               <span className="mono shrink-0 text-[12px] text-fg-3">{a.aktenzeichen}</span>
               <span className="break-words">{a.titel}</span>
             </Link>
@@ -574,11 +574,11 @@ function KonfliktListe({ titel, akten }: { titel: string; akten: Akte[] }) {
 
 function Zeile({ icon, label, wert, mono }: { icon: ReactNode; label: string; wert?: string; mono?: boolean }) {
   return (
-    <div className="group flex items-center gap-3 rounded-[12px] px-2.5 py-2 transition-colors hover:bg-ink-softer">
+    <div className="group flex items-center gap-3 rounded-md px-2.5 py-2 transition-colors hover:bg-[var(--surface-2)]">
       <span className="text-fg-3">{icon}</span>
       <div className="min-w-0 flex-1">
         <div className="text-[12px] font-medium text-fg-3">{label}</div>
-        <div className={cn("break-words text-[13.5px]", mono && "mono text-[12.5px]", !wert && "text-fg-3")}>{wert ?? "nicht hinterlegt"}</div>
+        <div className={cn("break-words text-[14px]", mono && "mono text-[13px]", !wert && "text-fg-3")}>{wert ?? "nicht hinterlegt"}</div>
       </div>
       {wert && <CopyButton text={wert} was={label} className="opacity-60 transition-opacity group-hover:opacity-100" />}
     </div>
@@ -604,8 +604,8 @@ export function RollenWahl({ value, onChange, labelId, beschreibungId, ungueltig
             aria-describedby={ungueltig ? beschreibungId : undefined}
             onClick={() => onChange(an ? value.filter((x) => x !== r) : [...value, r])}
             className={cn(
-              "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-medium transition-all duration-200",
-              an ? "bg-ink text-on-ink shadow-[0_6px_14px_-8px_var(--ink)]" : "text-fg-2 shadow-[inset_0_0_0_1px_var(--line-strong)] hover:bg-ink-softer",
+              "inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[13px] transition-colors duration-100 max-sm:h-11",
+              an ? "bg-[var(--surface-3)] font-semibold text-fg shadow-[inset_0_0_0_1px_var(--line-strong)]" : "font-medium text-fg-2 shadow-[inset_0_0_0_1px_var(--line-strong)] hover:bg-[var(--surface-2)]",
             )}
           >
             {an && <Check className="size-3" strokeWidth={3} />}

@@ -132,7 +132,7 @@ export function RechnungsangabenAbschnitt() {
           {...rest}
         />
         {fehler[k] && (
-          <div id={`kr-${k}-fehler`} className="mt-1.5 text-[12.5px] leading-snug text-seal">
+          <div id={`kr-${k}-fehler`} className="mt-1.5 text-[13px] leading-snug text-seal">
             {fehler[k]}
           </div>
         )}
@@ -167,7 +167,7 @@ export function RechnungsangabenAbschnitt() {
         }}
       >
         {fehlt.length > 0 && (
-          <div className="flex items-start gap-2 rounded-[12px] bg-amber-soft px-3.5 py-2.5 text-[13px] leading-snug text-fg-2">
+          <div className="flex items-start gap-2 rounded-md bg-amber-soft px-3.5 py-2.5 text-[13px] leading-snug text-fg-2">
             <Info className="mt-0.5 size-4 shrink-0 text-amber" />
             <span className="min-w-0">
               Noch offen: {satz(fehlt.join(" · "))}. Bis dahin zeigen Rechnungen gekennzeichnete Platzhalter.
@@ -195,8 +195,8 @@ export function RechnungsangabenAbschnitt() {
           </div>
           <div className="grid grid-cols-1 gap-3.5 border-t border-[var(--line)] pt-4 md:grid-cols-2">
             <div className="md:col-span-2">
-              <div className="text-[13.5px] font-semibold text-fg">Anderkonto für Fremdgeld</div>
-              <p className="mt-0.5 text-[12.5px] leading-snug text-fg-3">{satz("Optional. Steht nicht auf Rechnungen. Apex setzt diese IBAN als Auftraggeberkonto in die SEPA-Datei, wenn Sie Fremdgeld vom Anderkonto weiterleiten (§ 43a Abs. 7 BRAO, § 4 BORA).")}</p>
+              <div className="text-[14px] font-semibold text-fg">Anderkonto für Fremdgeld</div>
+              <p className="mt-0.5 text-[13px] leading-snug text-fg-3">{satz("Optional. Steht nicht auf Rechnungen. Apex setzt diese IBAN als Auftraggeberkonto in die SEPA-Datei, wenn Sie Fremdgeld vom Anderkonto weiterleiten (§ 43a Abs. 7 BRAO, § 4 BORA).")}</p>
             </div>
             <Field label="IBAN (Anderkonto)" htmlFor="kr-anderIban" className="md:col-span-2" hint={<span id="kr-anderIban-hinweis">Ein eigenes Konto – nicht das Geschäftskonto. Die Prüfziffer wird beim Speichern geprüft.</span>}>
               {feld("anderIban", { autoCapitalize: "characters", inputMode: "text", hinweisId: "kr-anderIban-hinweis", className: "num" })}
@@ -208,13 +208,13 @@ export function RechnungsangabenAbschnitt() {
         </fieldset>
 
         {fehler.allgemein && (
-          <div role="alert" className="rounded-[12px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal">
+          <div role="alert" className="rounded-md bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal">
             {fehler.allgemein}
           </div>
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-4">
-          <span className="flex min-w-0 flex-1 basis-[220px] items-center gap-1.5 text-[12.5px] text-fg-3">
+          <span className="flex min-w-0 flex-1 basis-[220px] items-center gap-1.5 text-[13px] text-fg-3">
             <Info className="size-3.5 shrink-0" />
             {darf ? "Gilt für neue Rechnungen; bereits versandte Rechnungen bleiben unverändert. Jede Änderung steht im Protokoll." : "Die Rechnungsangaben ändern Partner und Administration Ihrer Kanzlei."}
           </span>

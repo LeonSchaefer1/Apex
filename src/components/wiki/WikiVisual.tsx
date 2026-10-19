@@ -3,14 +3,16 @@ import { Check, FileText, Folder, Mail, Search, Sparkles, X, ShieldCheck, Infini
 import { SIMULIERT_STATUS } from "@/lib/betriebsstatus";
 import type { WikiVisual } from "@/content/wiki";
 import { LogoMark } from "@/components/Logo";
+import { ApexOrb } from "@/components/assistant/ApexOrb";
 import { fmtEUR } from "@/core/dates";
 import { berechneRvg } from "@/core/rvg";
 
-const spring = { type: "spring" as const, stiffness: 260, damping: 22 };
+// Erklärende Szenen: kurze Übergänge ohne Feder (DESIGN-SYSTEM.md 10)
+const spring = { duration: 0.22, ease: [0.2, 0, 0, 1] as [number, number, number, number] };
 const loop = { repeat: Infinity, repeatDelay: 1.6 };
 
 function Mini({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <div className={`glass-strong rounded-[14px] px-3 py-2 text-[12px] font-medium text-fg ${className}`}>{children}</div>;
+  return <div className={`rounded-md border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-[12px] font-medium text-fg ${className}`}>{children}</div>;
 }
 
 export function WikiVisualScene({ visual }: { visual: WikiVisual }) {
@@ -61,7 +63,7 @@ function FristScene({ vier }: { vier: boolean }) {
             initial={{ y: 12, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: k * 0.08, ...spring }}
-            className={`grid h-16 w-14 place-items-center rounded-[14px] text-[13px] font-semibold ${k === 1 || k === 2 ? "bg-seal-soft text-seal" : "glass-strong"}`}
+            className={`grid h-16 w-14 place-items-center rounded-lg text-[13px] font-semibold ${k === 1 || k === 2 ? "bg-seal-soft text-seal-text" : "glass-strong"}`}
           >
             <div className="text-center leading-tight">
               <div className="text-[12px] font-medium opacity-70">{t}</div>
@@ -75,7 +77,7 @@ function FristScene({ vier }: { vier: boolean }) {
         initial={false}
       >
         <motion.div
-          className="absolute -top-[9px] grid size-6 place-items-center rounded-full bg-ink text-white shadow-lg"
+          className="absolute -top-[9px] grid size-6 place-items-center rounded-full bg-[var(--ink)] text-[var(--on-ink)]"
           animate={{ left: ["0%", "28%", "28%", "92%"], backgroundColor: ["var(--ink)", "var(--seal)", "var(--seal)", "var(--green)"] }}
           transition={{ duration: 3.2, times: [0, 0.3, 0.55, 1], ease: "easeInOut", ...loop }}
         >
@@ -90,9 +92,9 @@ function FristScene({ vier }: { vier: boolean }) {
       <div className="flex items-center gap-2 text-[12px] text-fg-3">
         {vier ? (
           <>
-            <span className="grid size-6 place-items-center rounded-full bg-ink text-[12.5px] font-bold text-white">JH</span>
+            <span className="grid size-6 place-items-center rounded-full bg-[var(--surface-3)] text-[12px] font-semibold text-fg-2">JH</span>
             <ArrowRight className="size-3.5" />
-            <span className="grid size-6 place-items-center rounded-full bg-[#C2410C] text-[12.5px] font-bold text-white">MB</span>
+            <span className="grid size-6 place-items-center rounded-full bg-[var(--surface-3)] text-[12px] font-semibold text-fg-2">MB</span>
             <span className="chip chip-green"><Check className="size-3" /> kontrolliert</span>
           </>
         ) : (
@@ -113,12 +115,12 @@ function RechnerScene() {
         </Mini>
       </motion.div>
       <motion.div animate={{ x: [0, 6, 0] }} transition={{ duration: 1.2, repeat: Infinity }}>
-        <ArrowRight className="size-5 text-ink" />
+        <ArrowRight className="size-5 text-fg-3" />
       </motion.div>
       <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.5, ...spring }}>
-        <Mini className="ring-2 ring-[var(--ink)]">
+        <Mini className="!border-[var(--ink)]">
           <div className="text-[12px] text-fg-3">Berufungsfrist · § 517 ZPO</div>
-          <div className="num text-[16px] text-ink">Mo, 16.11.2026</div>
+          <div className="num text-[16px] font-semibold text-fg">Mo, 16.11.2026</div>
           <div className="text-[12px] text-fg-3">Vorfrist: Mo, 09.11.</div>
         </Mini>
       </motion.div>
@@ -138,17 +140,17 @@ function PostScene({ eeb }: { eeb: boolean }) {
             transition={{ duration: 2.4, delay: k * 0.7, repeat: Infinity, repeatDelay: 0.6 }}
           >
             <Mini className="flex items-center gap-1.5 !py-1.5">
-              <Mail className="size-3.5 text-ink" /> {k === 0 ? "beA" : "E-Mail"}
+              <Mail className="size-3.5 text-fg-4" /> {k === 0 ? "beA" : "E-Mail"}
             </Mini>
           </motion.div>
         ))}
       </div>
       <div className="flex flex-col items-center gap-2">
-        <motion.div animate={{ scale: [1, 1.06, 1] }} transition={{ duration: 0.7, repeat: Infinity, repeatDelay: 1.7 }} className="grid size-16 place-items-center rounded-[18px] bg-ink-soft text-ink">
+        <motion.div animate={{ opacity: [1, 0.6, 1] }} transition={{ duration: 0.7, repeat: Infinity, repeatDelay: 1.7 }} className="grid size-16 place-items-center rounded-lg border border-[var(--line)] bg-[var(--surface)] text-fg-3">
           <Folder className="size-8" />
         </motion.div>
         <span className="mono text-[12px] font-semibold">Akte 142/26</span>
-        {eeb ? <span className="chip chip-green"><ShieldCheck className="size-3" /> eEB abgegeben</span> : <span className="chip ai-ring !bg-transparent"><span className="ai-text font-semibold">KI: Frist erkannt</span></span>}
+        {eeb ? <span className="chip chip-green"><ShieldCheck className="size-3" /> eEB abgegeben</span> : <span className="chip chip-outline"><Sparkles /> KI: Frist erkannt</span>}
       </div>
     </div>
   );
@@ -157,18 +159,13 @@ function PostScene({ eeb }: { eeb: boolean }) {
 function OrbScene() {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4">
-      <motion.div
-        className="ai-fill size-20 rounded-full"
-        style={{ boxShadow: "0 0 50px -6px var(--ai-2)" }}
-        animate={{ scale: [1, 1.08, 0.98, 1.05, 1], borderRadius: ["50%", "46% 54% 50% 50%", "52% 48% 46% 54%", "50%"] }}
-        transition={{ duration: 3, repeat: Infinity }}
-      />
+      <ApexOrb size={72} zustand="denkt" className="!shadow-none" />
       <div className="flex h-6 items-end gap-1">
         {Array.from({ length: 14 }).map((_, k) => (
-          <motion.span key={k} className="w-1 rounded-full bg-ink" animate={{ height: [4, 8 + ((k * 7) % 18), 4] }} transition={{ duration: 0.8, delay: k * 0.05, repeat: Infinity }} />
+          <motion.span key={k} className="w-1 rounded-full bg-[var(--line-strong)]" animate={{ height: [4, 8 + ((k * 7) % 18), 4] }} transition={{ duration: 0.8, delay: k * 0.05, repeat: Infinity }} />
         ))}
       </div>
-      <Mini className="flex items-center gap-1.5"><Sparkles className="size-3.5 text-violet" /> „Welche Fristen laufen diese Woche ab?“</Mini>
+      <Mini className="flex items-center gap-1.5"><Sparkles className="size-3.5 text-fg-4" /> „Welche Fristen laufen diese Woche ab?“</Mini>
     </div>
   );
 }
@@ -177,7 +174,7 @@ function SucheScene() {
   const text = "kündigung pfandbon";
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 px-6">
-      <div className="glass-strong flex w-full max-w-[320px] items-center gap-2 rounded-full px-3.5 py-2 text-[13px]">
+      <div className="glass-strong flex w-full max-w-[320px] items-center gap-2 rounded-md px-3 py-1.5 text-[13px]">
         <Search className="size-4 text-fg-3" />
         <span className="overflow-hidden whitespace-nowrap">
           {text.split("").map((c, k) => (
@@ -190,7 +187,7 @@ function SucheScene() {
       </div>
       {["BAG 2 AZR 541/09 · „Emmely“", "BAG 2 AZR 133/18 · Videoaufzeichnung", "Akte 142/26 · Weber ./. Kröger"].map((r, k) => (
         <motion.div key={r} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1 + k * 0.15 }} className="w-full max-w-[320px]">
-          <Mini className="flex items-center gap-2"><FileText className="size-3.5 text-ink" />{r}</Mini>
+          <Mini className="flex items-center gap-2"><FileText className="size-3.5 text-fg-4" />{r}</Mini>
         </motion.div>
       ))}
     </div>
@@ -203,17 +200,17 @@ function MotorScene() {
       <div className="relative grid size-28 place-items-center">
         <svg viewBox="0 0 100 100" className="absolute inset-0 -rotate-90">
           <circle cx="50" cy="50" r="42" stroke="var(--line)" strokeWidth="8" fill="none" />
-          <motion.circle cx="50" cy="50" r="42" stroke="var(--green)" strokeWidth="8" fill="none" strokeLinecap="round" strokeDasharray="264" animate={{ strokeDashoffset: [264, 26] }} transition={{ duration: 2.2, ease: [0.16, 1, 0.3, 1], ...loop }} />
+          <motion.circle cx="50" cy="50" r="42" stroke="var(--ink)" strokeWidth="6" fill="none" strokeLinecap="butt" strokeDasharray="264" animate={{ strokeDashoffset: [264, 26] }} transition={{ duration: 2.2, ease: [0.16, 1, 0.3, 1], ...loop }} />
         </svg>
         <div className="text-center">
-          <div className="num text-[20px] font-bold">38 Std.</div>
+          <div className="num text-[20px] font-semibold">38 Std.</div>
           <div className="text-[12px] text-fg-3">Ziel pro Woche</div>
         </div>
       </div>
       <div className="flex flex-col gap-2">
         {["Frist erkannt", "Vollmacht erstellt", "Zahlung gebucht"].map((t, k) => (
           <motion.div key={t} initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 + k * 0.4 }}>
-            <Mini className="flex items-center gap-1.5"><Zap className="size-3.5 text-amber" /> {t}</Mini>
+            <Mini className="flex items-center gap-1.5"><Zap className="size-3.5 text-fg-4" /> {t}</Mini>
           </motion.div>
         ))}
       </div>
@@ -232,8 +229,8 @@ function RvgScene() {
   ]);
   return (
     <div className="flex h-full items-center justify-center">
-      <div className="glass-strong w-[290px] rounded-[16px] p-3 text-[12.5px]">
-        <div className="mb-2 flex items-center gap-1.5 font-semibold"><Receipt className="size-3.5 text-ink" /> RVG · Gegenstandswert 10.000 €</div>
+      <div className="glass-strong w-[290px] rounded-lg p-3 text-[12.5px]">
+        <div className="mb-2 flex items-center gap-1.5 font-semibold"><Receipt className="size-3.5 text-fg-4" /> RVG · Gegenstandswert 10.000 €</div>
         {rows.map((r, k) => (
           <motion.div key={r[0]} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 + k * 0.25 }} className="flex justify-between border-b border-[var(--line)] py-1">
             <span className="text-fg-2">{r[0]}</span>
@@ -242,7 +239,7 @@ function RvgScene() {
         ))}
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.4 }} className="mt-1.5 flex justify-between font-semibold">
           <span>Gesamt inkl. USt.</span>
-          <span className="num text-ink">{fmtEUR(RVG_BEISPIEL.brutto)}</span>
+          <span className="num text-fg">{fmtEUR(RVG_BEISPIEL.brutto)}</span>
         </motion.div>
       </div>
     </div>
@@ -254,14 +251,14 @@ function BankScene() {
     <div className="relative flex h-full items-center justify-center gap-10">
       <motion.div initial={{ x: -10, opacity: 0 }} animate={{ x: 0, opacity: 1 }}>
         <Mini>
-          <div className="flex items-center gap-1.5"><Landmark className="size-3.5 text-ink" /> Eingang 1.539,44 €</div>
+          <div className="flex items-center gap-1.5"><Landmark className="size-3.5 text-fg-4" /> Eingang 1.539,44 €</div>
           <div className="text-[12px] text-fg-3">„RE-2026-0042 AZ 118/26“</div>
         </Mini>
       </motion.div>
       <motion.div className="absolute left-1/2 top-1/2 h-0.5 w-10 -translate-x-1/2 bg-green" initial={{ scaleX: 0 }} animate={{ scaleX: [0, 1, 1] }} transition={{ duration: 1.4, ...loop }} />
       <motion.div initial={{ x: 10, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.3 }}>
         <Mini>
-          <div className="flex items-center gap-1.5"><Receipt className="size-3.5 text-ink" /> RE-2026-0042</div>
+          <div className="flex items-center gap-1.5"><Receipt className="size-3.5 text-fg-4" /> RE-2026-0042</div>
           <motion.div animate={{ opacity: [0, 1] }} transition={{ delay: 1, ...loop, duration: 0.4 }} className="mt-1"><span className="chip chip-green"><Check className="size-3" /> bezahlt · 99 %</span></motion.div>
         </Mini>
       </motion.div>
@@ -277,11 +274,11 @@ function UmzugScene() {
         <div className="relative h-8 w-28 overflow-hidden">
           {[0, 1, 2, 3].map((k) => (
             <motion.div key={k} className="absolute top-1.5" animate={{ x: [-20, 120] }} transition={{ duration: 1.6, delay: k * 0.4, repeat: Infinity, ease: "easeInOut" }}>
-              <FileText className="size-5 text-ink" />
+              <FileText className="size-5 text-fg-3" />
             </motion.div>
           ))}
         </div>
-        <div className="glass-strong grid size-12 place-items-center rounded-[14px]"><LogoMark size={28} /></div>
+        <div className="glass-strong grid size-12 place-items-center rounded-lg text-fg"><LogoMark size={24} /></div>
       </div>
       <div className="bar w-64"><motion.span animate={{ width: ["0%", "100%"] }} transition={{ duration: 3, ...loop }} /></div>
       <div className="text-[12px] text-fg-3">Akten · Kontakte · Fristen · Dokumente</div>
@@ -292,11 +289,11 @@ function UmzugScene() {
 function AkteScene() {
   return (
     <div className="flex h-full items-center justify-center">
-      <div className="glass-strong w-[290px] rounded-[16px] p-2.5">
+      <div className="glass-strong w-[290px] rounded-lg p-2.5">
         {["Kündigungsschreiben.pdf", "Arbeitsvertrag.pdf", "Gesprächsnotiz.docx"].map((d, k) => (
-          <motion.div key={d} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: k * 0.2 }} className="flex items-center gap-2 rounded-[10px] px-2 py-1.5 text-[12px]">
-            <motion.span animate={{ backgroundColor: ["var(--surface)", "var(--ink)"] }} transition={{ delay: 1 + k * 0.3, duration: 0.2 }} className="grid size-4 place-items-center rounded-[5px] ring-1 ring-[var(--line-strong)]">
-              <Check className="size-3 text-white" />
+          <motion.div key={d} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: k * 0.2 }} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px]">
+            <motion.span animate={{ backgroundColor: ["var(--surface)", "var(--ink)"] }} transition={{ delay: 1 + k * 0.3, duration: 0.2 }} className="grid size-4 place-items-center rounded-sm ring-1 ring-[var(--line-strong)]">
+              <Check className="size-3 text-[var(--on-ink)]" />
             </motion.span>
             <FileText className="size-3.5 text-fg-3" />
             {d}
@@ -317,7 +314,7 @@ function StatusScene() {
   const items = [["beA", "verbunden (simuliert)"], ["E-Mail (Microsoft 365)", "verbunden (simuliert)"], ["Bank (CAMT.053)", "verbunden (simuliert)"], ["KI", "bereit"]];
   return (
     <div className="flex h-full items-center justify-center">
-      <div className="glass-strong w-[290px] rounded-[16px] p-3">
+      <div className="glass-strong w-[290px] rounded-lg p-3">
         {items.map((it, k) => (
           <motion.div key={it[0]} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: k * 0.15 }} className="flex items-center justify-between gap-2 py-1.5 text-[12px]">
             <span className="flex items-center gap-2"><span className={`size-2 rounded-full ${it[0] === "KI" ? "bg-green" : "bg-amber"}`} />{it[0]}</span>
@@ -325,7 +322,7 @@ function StatusScene() {
           </motion.div>
         ))}
         <div className="mt-2 border-t border-[var(--line)] pt-2 text-[12px] text-fg-2">{SIMULIERT_STATUS}</div>
-        <div className="mt-1 flex items-center gap-1.5 text-[12.5px] text-fg-2"><InfinityIcon className="size-3.5 text-ink" /> Lifetime-Lizenz aktiv</div>
+        <div className="mt-1 flex items-center gap-1.5 text-[12.5px] text-fg-2"><InfinityIcon className="size-3.5 text-fg-4" /> Lifetime-Lizenz aktiv</div>
       </div>
     </div>
   );
@@ -344,8 +341,8 @@ function StoerungScene({ stufe }: { stufe: 0 | 1 | 2 }) {
   ];
   return (
     <div className="flex h-full items-center justify-center">
-      <div className="glass-strong w-[360px] max-w-full rounded-[16px] p-2">
-        <div className="mb-1 flex items-center gap-2 rounded-[10px] bg-seal-soft px-2.5 py-0.5 text-[12px] font-semibold text-seal">
+      <div className="glass-strong w-[360px] max-w-full rounded-lg p-2">
+        <div className="mb-1 flex items-center gap-2 rounded-md bg-seal-soft px-2.5 py-0.5 text-[12px] font-semibold text-seal-text">
           <AlertTriangle className="size-3.5 shrink-0" /> beA gestört – Beispiel
         </div>
         <ol className="grid gap-0.5">
@@ -358,9 +355,9 @@ function StoerungScene({ stufe }: { stufe: 0 | 1 | 2 }) {
                 initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.1 + k * 0.12 }}
-                className={`flex items-start gap-2 rounded-[10px] px-2 py-0.5 text-[12px] ${aktiv ? "bg-ink-soft py-1 ring-1 ring-[var(--ink)]" : ""}`}
+                className={`flex items-start gap-2 rounded-md px-2 py-0.5 text-[12px] ${aktiv ? "bg-[var(--surface-2)] py-1 shadow-[inset_2px_0_0_var(--ink)]" : ""}`}
               >
-                <span className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-full ${erledigt ? "bg-green-soft text-green" : aktiv ? "bg-ink text-white" : "bg-[var(--ink-softer)] text-fg-2"}`}>
+                <span className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-full ${erledigt ? "text-green" : aktiv ? "bg-[var(--ink)] text-[var(--on-ink)]" : "text-fg-3 shadow-[inset_0_0_0_1px_var(--line-strong)]"}`}>
                   {erledigt ? <Check className="size-3" /> : x.icon}
                 </span>
                 <span className="min-w-0">

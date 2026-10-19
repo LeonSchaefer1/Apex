@@ -7,6 +7,7 @@ import { toast } from "@/store/ui";
 import { useKanzlei } from "@/store/session";
 import { Card, Chip, Segmented } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 interface Version {
   version: string;
@@ -77,7 +78,7 @@ export function GepruefteUpdates() {
                   initial={{ opacity: 0, y: 8 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
-                  transition={{ type: "spring", stiffness: 420, damping: 34, delay: i * 0.05 }}
+                  transition={BEWEGUNG.standard}
                   className="relative flex gap-4 pb-6 last:pb-0"
                 >
                   {i < VERSIONEN.length - 1 && <span className="absolute bottom-0 left-[15px] top-9 w-[2px] rounded-full bg-[var(--line)]" aria-hidden />}
@@ -87,7 +88,7 @@ export function GepruefteUpdates() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="mono text-[15px] font-semibold">Version {v.version}</span>
-                      <span className="text-[12.5px] text-fg-3">{fmtDate(v.datum)}</span>
+                      <span className="text-[13px] text-fg-3">{fmtDate(v.datum)}</span>
                       {aktuell && <Chip tone="ink">Installiert</Chip>}
                     </div>
                     <div className="mt-1.5">
@@ -108,7 +109,7 @@ export function GepruefteUpdates() {
               );
             })}
           </ol>
-          <p className="mt-5 text-[12.5px] text-fg-3">Versionsangaben und Testzahlen sind in dieser Demo Beispielwerte.</p>
+          <p className="mt-5 text-[13px] text-fg-3">Versionsangaben und Testzahlen sind in dieser Demo Beispielwerte.</p>
         </Card>
 
         <div className="flex min-w-0 flex-col gap-4">
@@ -121,14 +122,14 @@ export function GepruefteUpdates() {
                   initial={{ opacity: 0, x: 10 }}
                   whileInView={{ opacity: 1, x: 0 }}
                   viewport={{ once: true }}
-                  transition={{ type: "spring", stiffness: 420, damping: 34, delay: 0.1 + i * 0.07 }}
+                  transition={BEWEGUNG.standard}
                   className="relative flex gap-3 pb-4 last:pb-0"
                 >
                   {i < STUFEN.length - 1 && <span className="absolute bottom-1 left-[15px] top-9 w-[2px] rounded-full bg-[linear-gradient(var(--ink-soft),var(--line))]" aria-hidden />}
-                  <span className={cn("grid size-8 shrink-0 place-items-center rounded-[10px]", i === STUFEN.length - 1 ? "bg-green-soft text-green" : "bg-ink-soft text-ink")}>{s.icon}</span>
+                  <span className={cn("grid size-8 shrink-0 place-items-center rounded-md", i === STUFEN.length - 1 ? "bg-green-soft text-green" : "bg-ink-soft text-ink")}>{s.icon}</span>
                   <span className="min-w-0 pt-0.5">
-                    <span className="block text-[13.5px] font-semibold leading-tight">{s.titel}</span>
-                    <span className="block text-[12.5px] text-fg-3">{s.text}</span>
+                    <span className="block text-[14px] font-semibold leading-tight">{s.titel}</span>
+                    <span className="block text-[13px] text-fg-3">{s.text}</span>
                   </span>
                 </motion.li>
               ))}
@@ -136,12 +137,12 @@ export function GepruefteUpdates() {
           </Card>
           <Card>
             <div className="flex items-start gap-3">
-              <div className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">
+              <div className="grid size-9 shrink-0 place-items-center rounded-md bg-ink-soft text-ink">
                 <CalendarClock className="size-[18px]" />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="title-md">Updates einspielen</div>
-                <p className="mt-0.5 text-[12.5px] text-fg-3">{ZEIT_TEXT[zeitpunkt]}</p>
+                <p className="mt-0.5 text-[13px] text-fg-3">{ZEIT_TEXT[zeitpunkt]}</p>
               </div>
             </div>
             <Segmented<Zeitpunkt>

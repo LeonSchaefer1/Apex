@@ -58,29 +58,26 @@ function SammelBanner() {
   const n = vorschlaege.length;
   const summe = round2(vorschlaege.reduce((s, v) => s + v.summen.brutto, 0));
   return (
-    <Card className="glow mb-5 overflow-hidden !p-0">
-      <div className="pointer-events-none absolute -right-16 -top-24 size-64 rounded-full bg-[var(--ink-soft)] blur-3xl" />
-      <div className="relative flex flex-wrap items-center gap-x-6 gap-y-4 p-5">
-        <div className="flex min-w-0 flex-1 basis-[320px] items-start gap-3.5">
-          <div className="grid size-11 shrink-0 place-items-center rounded-[14px] bg-ink text-white shadow-[0_8px_20px_-8px_var(--ink)]">
-            <Layers className="size-5" />
-          </div>
+    <Card className="mb-6 !p-0">
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-4 px-5 py-4">
+        <div className="flex min-w-0 flex-1 basis-[320px] items-start gap-3">
+          <Layers className="mt-0.5 size-4 shrink-0 text-fg-4" aria-hidden />
           <div className="min-w-0">
             <div className="title-md">{n ? `Sammelabrechnung: ${n} ${n === 1 ? "Akte" : "Akten"} bereit` : "Sammelabrechnung: alles abgerechnet"}</div>
-            <p className="mt-1 text-[13px] leading-relaxed text-fg-3">
+            <p className="mt-0.5 max-w-[72ch] text-[14px] leading-5 text-fg-3">
               Statt jede Akte einzeln abzurechnen, erstellen Sie alle Rechnungen in einem Durchgang – mit RVG-Vorschlag je Verfahrensphase, als PDF, XRechnung oder ZUGFeRD.
             </p>
           </div>
         </div>
         {n > 0 && (
-          <div className="flex flex-wrap items-center gap-5">
+          <div className="flex flex-wrap items-center gap-6">
             <div>
               <div className="eyebrow">Volumen</div>
-              <div className="num text-[17px] font-semibold">{fmtEUR(summe, { cents: false })}</div>
+              <div className="num text-[18px] font-semibold">{fmtEUR(summe, { cents: false })}</div>
             </div>
             <div>
               <div className="eyebrow">Zeitersparnis</div>
-              <div className="num text-[17px] font-semibold text-green">≈ {n * MINUTEN_JE_EINZELRECHNUNG} Min.</div>
+              <div className="num text-[18px] font-semibold">≈ {n * MINUTEN_JE_EINZELRECHNUNG} Min.</div>
             </div>
             <Button variant="secondary" iconRight={<ArrowRight className="size-4" />} onClick={() => setSammel(true)}>
               Akten auswählen
@@ -133,9 +130,9 @@ export function RechnungenTab() {
         size: 150,
         cell: ({ row }) => (
           <div className="min-w-0">
-            <span className="mono text-[12.5px] font-medium">{row.original.nummer}</span>
-            {row.original.stornoZu && <div className="mono truncate text-[12px] text-fg-3">zu {row.original.stornoZu.nummer}</div>}
-            {!row.original.stornoZu && row.original.stornoNummer && <div className="mono truncate text-[12px] text-fg-3">Storno {row.original.stornoNummer}</div>}
+            <span className="mono text-[13px] font-medium">{row.original.nummer}</span>
+            {row.original.stornoZu && <div className="mono truncate text-[12px] text-fg-4">zu {row.original.stornoZu.nummer}</div>}
+            {!row.original.stornoZu && row.original.stornoNummer && <div className="mono truncate text-[12px] text-fg-4">Storno {row.original.stornoNummer}</div>}
           </div>
         ),
       },
@@ -158,7 +155,7 @@ export function RechnungenTab() {
           row.original.stornoZu ? (
             <span className="text-fg-3">–</span>
           ) : (
-            <span className={cn("num", istUeberfaellig(row.original, heute) ? "font-semibold text-seal" : "text-fg-2")}>{fmtDate(row.original.faellig)}</span>
+            <span className={cn("num", istUeberfaellig(row.original, heute) ? "font-medium text-seal-text" : "text-fg-2")}>{fmtDate(row.original.faellig)}</span>
           ),
       },
       {
@@ -168,7 +165,7 @@ export function RechnungenTab() {
         size: 122,
         cell: ({ row }) => (
           <div className="text-right" title={istOffen(row.original) ? `offen: ${fmtEUR(offenerBetrag(row.original))}` : undefined}>
-            <Betrag n={row.original.brutto} className={cn("font-semibold", row.original.status === "storniert" && !row.original.stornoZu && "text-fg-3 line-through")} />
+            <Betrag n={row.original.brutto} className={cn("font-medium", row.original.status === "storniert" && !row.original.stornoZu && "text-fg-3 line-through")} />
           </div>
         ),
       },
@@ -179,7 +176,7 @@ export function RechnungenTab() {
         accessorFn: (r) => (r.stornoZu ? "storno" : r.status),
         cell: ({ row }) =>
           row.original.stornoZu ? (
-            <Chip tone="seal" title={`Stornorechnung zu ${row.original.stornoZu.nummer}`}>
+            <Chip tone="outline" title={`Stornorechnung zu ${row.original.stornoZu.nummer}`}>
               Storno
             </Chip>
           ) : (
@@ -196,19 +193,18 @@ export function RechnungenTab() {
   return (
     <>
       <TabKopf
-        icon={<Receipt className="size-[18px]" />}
         titel="Rechnungen"
         text="Alle Rechnungen mit Status, Fälligkeit und E-Rechnungsformat – Zahlungserinnerungen als Entwurf zur Freigabe, Zahlungseingänge direkt erfassen."
       />
       {/* Sichtbare Sprungmarke wie im RVG-Rechner – vorbei an Sammelabrechnung, Suche und Filtern direkt zur ersten Rechnung */}
-      <nav aria-label="Sprungmarken in den Rechnungen" className="-mt-1 mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-[12.5px] text-fg-3">
+      <nav aria-label="Sprungmarken in den Rechnungen" className="-mt-2 mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-fg-3">
         <span>Springen zu:</span>
-        <button type="button" className="rounded-full px-1.5 py-0.5 font-medium text-ink hover:underline max-sm:min-h-11" onClick={fokusErsteRechnung}>
+        <button type="button" className="link rounded-sm px-0.5 font-medium max-sm:min-h-11" onClick={fokusErsteRechnung}>
           Rechnungsliste
         </button>
       </nav>
       <SammelBanner />
-      <div id="rechnungsliste" tabIndex={-1} aria-label="Rechnungsliste" role="region" className="scroll-mt-24 rounded-[22px] outline-none">
+      <div id="rechnungsliste" tabIndex={-1} aria-label="Rechnungsliste" role="region" className="scroll-mt-24 rounded-lg outline-none">
       <DataTable
         id="rechnungen"
         data={zeilen}
@@ -234,7 +230,7 @@ export function RechnungenTab() {
               }}
             />
             {offenSumme > 0 && (
-              <span className="ml-auto hidden text-[12.5px] text-fg-3 lg:inline">
+              <span className="ml-auto hidden text-[13px] text-fg-3 lg:inline">
                 offen in dieser Ansicht <Betrag n={offenSumme} className="font-semibold text-fg" />
               </span>
             )}
@@ -279,13 +275,13 @@ export function RechnungenTab() {
                 {gemischt ? `${offen.length} als bezahlt markieren` : "Als bezahlt markieren"}
               </Button>
               {keine && (
-                <span id="rechnungen-bulk-grund" className="flex items-center gap-1.5 self-center text-[12.5px] text-fg-2">
+                <span id="rechnungen-bulk-grund" className="flex items-center gap-1.5 self-center text-[13px] text-fg-2">
                   <Info className="size-3.5 shrink-0 text-fg-3" aria-hidden />
                   {grund}
                 </span>
               )}
               {gemischt && (
-                <span id="rechnungen-bulk-hinweis" className="self-center text-[12.5px] text-fg-3">
+                <span id="rechnungen-bulk-hinweis" className="self-center text-[13px] text-fg-3">
                   {offen.length} von {rows.length} ausgewählten sind offen – Entwürfe, bezahlte und stornierte bleiben unberührt.
                 </span>
               )}
@@ -298,24 +294,24 @@ export function RechnungenTab() {
             <div className="flex items-start gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="mono text-[12.5px] font-semibold">{r.nummer}</span>
-                  {r.stornoZu ? <Chip tone="seal">Storno zu {r.stornoZu.nummer}</Chip> : <StatusChip r={r} />}
+                  <span className="mono text-[13px] font-medium">{r.nummer}</span>
+                  {r.stornoZu ? <Chip tone="outline">Storno zu {r.stornoZu.nummer}</Chip> : <StatusChip r={r} />}
                 </div>
-                <div className="mt-1 line-clamp-2 break-words text-[13.5px]">{a?.titel}</div>
-                <div className={cn("mt-0.5 truncate text-[12.5px]", istUeberfaellig(r, heute) ? "text-seal" : "text-fg-3")}>
+                <div className="mt-1 line-clamp-2 break-words text-[14px]">{a?.titel}</div>
+                <div className={cn("mt-0.5 truncate text-[13px]", istUeberfaellig(r, heute) ? "text-seal-text" : "text-fg-3")}>
                   {kontakte.get(r.empfaengerId)?.name} · {r.stornoZu ? `storniert am ${fmtDate(r.datum)}` : `fällig ${fmtDate(r.faellig)}`}
                 </div>
               </div>
               <div className="shrink-0 text-right">
                 <Betrag n={r.brutto} className="text-[14px] font-semibold" />
-                <div className="mt-1 text-[12px] text-fg-3">{r.format}</div>
+                <div className="mt-1 text-[12px] text-fg-4">{r.format}</div>
               </div>
             </div>
           );
         }}
         empty={
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            <Empty icon={<Receipt className="size-6" />} title="Keine Rechnungen in dieser Ansicht" text="Ändern Sie den Filter oder erstellen Sie Rechnungen über die Sammelabrechnung." />
+            <Empty icon={<Receipt />} title="Keine Rechnungen in dieser Ansicht" text="Ändern Sie den Filter oder erstellen Sie Rechnungen über die Sammelabrechnung." />
           </motion.div>
         }
       />

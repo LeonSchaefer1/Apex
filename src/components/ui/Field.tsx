@@ -11,7 +11,7 @@ export function Field({ label, hint, children, className, htmlFor }: { label?: R
         </label>
       )}
       {children}
-      {hint && <div className="mt-1.5 text-[12px] text-fg-3">{hint}</div>}
+      {hint && <div className="mt-1.5 text-[13px] leading-[18px] text-fg-4">{hint}</div>}
     </div>
   );
 }
@@ -48,13 +48,13 @@ type SearchFieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "o
 export function SearchField({ value, onChange, placeholder = "Suchen …", className, leerenFokussierbar = true, ...rest }: SearchFieldProps) {
   return (
     <div className={cn("relative", className)}>
-      <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-fg-4" aria-hidden />
+      <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-fg-4" aria-hidden />
       <input
         {...rest}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="field !h-10 !rounded-full !pl-10 !pr-9"
+        className="field !pl-8 !pr-9"
       />
       {value && (
         <button
@@ -62,7 +62,7 @@ export function SearchField({ value, onChange, placeholder = "Suchen …", class
           tabIndex={leerenFokussierbar ? undefined : -1}
           aria-label="Suche leeren"
           onClick={() => onChange("")}
-          className="absolute right-2.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-full text-fg-3 hover:bg-ink-softer"
+          className="absolute right-1 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-sm text-fg-3 hover:bg-surface-2 hover:text-fg max-sm:size-10"
         >
           <X className="size-3.5" />
         </button>

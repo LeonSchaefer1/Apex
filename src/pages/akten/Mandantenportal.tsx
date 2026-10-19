@@ -169,9 +169,9 @@ function FreigabeDialog({ akte, open, onClose, onBestaetigen, onVorschau }: { ak
         </>
       }
     >
-      <div className="grid gap-3 text-[13.5px] leading-relaxed text-fg-2">
-        <div className="rounded-[14px] bg-ink-softer p-3.5">
-          <div className="text-[12.5px] font-semibold text-fg-3">Empfängeradresse der Zugangs-E-Mail</div>
+      <div className="grid gap-3 text-[14px] leading-relaxed text-fg-2">
+        <div className="rounded-md bg-[var(--surface-2)] p-3.5">
+          <div className="text-[13px] font-semibold text-fg-3">Empfängeradresse der Zugangs-E-Mail</div>
           {mandant?.email ? (
             <div className="mt-0.5 flex items-center gap-2 break-all font-medium text-fg">
               <Mail className="size-4 shrink-0 text-ink" /> {mandant.email}
@@ -202,12 +202,12 @@ function FreigabeDialog({ akte, open, onClose, onBestaetigen, onVorschau }: { ak
             </li>
             <li>Upload von Unterlagen</li>
           </ul>
-          <div className="mt-2 flex items-start gap-2 text-[12.5px] text-fg-3">
+          <div className="mt-2 flex items-start gap-2 text-[13px] text-fg-3">
             <Lock className="mt-0.5 size-3.5 shrink-0" />
             <span>Nicht sichtbar: Entwürfe, nicht bereitgestellte Dokumente, interne Notizen, Fristen und Vorfristen, Aktenkonto und Rechnungen, KI-Analysen.</span>
           </div>
         </div>
-        <p className="text-[12.5px] text-fg-3">
+        <p className="text-[13px] text-fg-3">
           Nach dem Freischalten erhält {mandant?.name ?? "der Mandant"} eine Zugangs-E-Mail mit einem Link zum Festlegen des Passworts. Im Prototyp wird die E-Mail nicht versendet. Freischalten und Sperren stehen im Verlauf der Akte.
         </p>
       </div>
@@ -243,18 +243,18 @@ function PortalVorschau({ akte, open, onClose }: { akte: Akte; open: boolean; on
       }
     >
       {/* fokussierbar, damit die Vorschau auch per Tastatur scrollbar ist */}
-      <div tabIndex={0} aria-label={`Portalvorschau für ${mandant?.name ?? "den Mandanten"}`} className="rounded-[20px] p-4 ring-1 ring-inset ring-[var(--line)] focus-visible:outline-2 focus-visible:outline-[var(--ink)] sm:p-5">
+      <div tabIndex={0} aria-label={`Portalvorschau für ${mandant?.name ?? "den Mandanten"}`} className="rounded-lg p-4 ring-1 ring-inset ring-[var(--line)] focus-visible:outline-2 focus-visible:outline-[var(--ink)] sm:p-5">
         <div className="flex flex-wrap items-center gap-2">
           <Chip tone="ink" icon={<ShieldCheck className="size-3" />}>
             {tenant.name} · Mandantenportal
           </Chip>
-          <span className="text-[12.5px] text-fg-3">Ihr Zeichen bei uns: {akte.aktenzeichen}</span>
+          <span className="text-[13px] text-fg-3">Ihr Zeichen bei uns: {akte.aktenzeichen}</span>
         </div>
         <h3 className="title-lg mt-3 break-words">Ihre Angelegenheit {akte.titel}</h3>
         <div className="mt-1 text-[13px] text-fg-2">Ihre Ansprechperson: {ra?.name ?? "Ihre Kanzlei"}</div>
 
         <div className="mt-4">
-          <div className="text-[12.5px] font-semibold text-fg-3">Stand der Sache</div>
+          <div className="text-[13px] font-semibold text-fg-3">Stand der Sache</div>
           <div className="mt-1 text-[14px] font-semibold">{akte.phase}</div>
           <div className="mt-2 flex gap-1" role="img" aria-label={`Schritt ${idx + 1} von ${PHASEN.length}: ${akte.phase}`}>
             {PHASEN.map((p, i) => (
@@ -265,33 +265,33 @@ function PortalVorschau({ akte, open, onClose }: { akte: Akte; open: boolean; on
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <section>
-            <div className="flex items-center gap-1.5 text-[12.5px] font-semibold text-fg-3">
+            <div className="flex items-center gap-1.5 text-[13px] font-semibold text-fg-3">
               <FileText className="size-3.5" /> Dokumente ({doks.length})
             </div>
             {doks.length ? (
               <ul className="mt-2 grid gap-1.5">
                 {doks.slice(0, 8).map((d) => (
-                  <li key={d.id} className="rounded-[12px] bg-ink-softer px-3 py-2 text-[13px]">
+                  <li key={d.id} className="rounded-md bg-[var(--surface-2)] px-3 py-2 text-[13px]">
                     <div className="break-words font-medium">{d.name}</div>
-                    <div className="text-[12.5px] text-fg-3">{fmtDate(d.createdAt.slice(0, 10))}</div>
+                    <div className="text-[13px] text-fg-3">{fmtDate(d.createdAt.slice(0, 10))}</div>
                   </li>
                 ))}
-                {doks.length > 8 && <li className="text-[12.5px] text-fg-3">und {doks.length - 8} weitere</li>}
+                {doks.length > 8 && <li className="text-[13px] text-fg-3">und {doks.length - 8} weitere</li>}
               </ul>
             ) : (
-              <p className="mt-2 text-[12.5px] text-fg-3">Noch keine Dokumente bereitgestellt.</p>
+              <p className="mt-2 text-[13px] text-fg-3">Noch keine Dokumente bereitgestellt.</p>
             )}
           </section>
           <section>
-            <div className="flex items-center gap-1.5 text-[12.5px] font-semibold text-fg-3">
+            <div className="flex items-center gap-1.5 text-[13px] font-semibold text-fg-3">
               <CalendarDays className="size-3.5" /> Termine ({termine.length})
             </div>
             {termine.length ? (
               <ul className="mt-2 grid gap-1.5">
                 {termine.map((t) => (
-                  <li key={t.id} className="rounded-[12px] bg-ink-softer px-3 py-2 text-[13px]">
+                  <li key={t.id} className="rounded-md bg-[var(--surface-2)] px-3 py-2 text-[13px]">
                     <div className="font-medium">{t.titel}</div>
-                    <div className="text-[12.5px] text-fg-3">
+                    <div className="text-[13px] text-fg-3">
                       {fmtDateWd(t.datum)}
                       {t.uhrzeit ? `, ${t.uhrzeit} Uhr` : ""}
                       {t.ort ? ` · ${t.ort}` : ""}
@@ -300,13 +300,13 @@ function PortalVorschau({ akte, open, onClose }: { akte: Akte; open: boolean; on
                 ))}
               </ul>
             ) : (
-              <p className="mt-2 text-[12.5px] text-fg-3">Zurzeit keine Termine.</p>
+              <p className="mt-2 text-[13px] text-fg-3">Zurzeit keine Termine.</p>
             )}
           </section>
         </div>
       </div>
       {/* Kanzleiansicht – nicht Teil dessen, was der Mandant sieht */}
-      <div className="mt-3 rounded-[14px] bg-ink-softer px-3.5 py-2.5 text-[12.5px] leading-relaxed text-fg-2">
+      <div className="mt-3 rounded-md bg-[var(--surface-2)] px-3.5 py-2.5 text-[13px] leading-relaxed text-fg-2">
         <div className="flex items-start gap-2 font-medium text-fg">
           <Lock className="mt-0.5 size-3.5 shrink-0" /> {nichtImPortalText(verborgen)}
         </div>

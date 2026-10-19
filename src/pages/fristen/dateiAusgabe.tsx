@@ -139,24 +139,24 @@ export function DateiDialog({ datei: einzel, dateien, onClose, titel }: { datei?
       {liste.length > 1 && (
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <Segmented size="sm" value={String(idx)} onChange={(v) => setIdx(Number(v))} options={liste.map((d, i) => ({ value: String(i), label: d.label ?? d.name }))} />
-          <span className="break-all text-[12.5px] text-fg-3">{datei?.name}</span>
+          <span className="break-all text-[13px] text-fg-3">{datei?.name}</span>
         </div>
       )}
       {embed && (
-        <p className="mb-3 rounded-[12px] bg-amber-soft px-3 py-2 text-[12.5px] text-fg-2">
+        <p className="mb-3 rounded-md bg-amber-soft px-3 py-2 text-[13px] text-fg-2">
           In dieser eingebetteten Ansicht sperrt der Browser Downloads möglicherweise – dann den Inhalt kopieren und als Datei „{datei?.name}“ speichern.
         </p>
       )}
       {datei?.mime === "text/html" ? (
         <>
           {/* gerenderte Vorschau, abgeschottet (sandbox ohne Skripte) – papierweiß wie der Ausdruck */}
-          <iframe title={`Vorschau ${datei.name}`} sandbox="" srcDoc={datei.inhalt} className="h-[52vh] w-full rounded-[14px] bg-white ring-1 ring-[var(--line)]" />
+          <iframe title={`Vorschau ${datei.name}`} sandbox="" srcDoc={datei.inhalt} className="h-[52vh] w-full rounded-lg bg-white ring-1 ring-[var(--line)]" />
           <pre ref={preRef} className="sr-only" aria-hidden>
             {datei.inhalt}
           </pre>
         </>
       ) : (
-        <pre ref={preRef} tabIndex={0} aria-label={`Inhalt von ${datei?.name ?? "Datei"}`} className="mono max-h-[52vh] overflow-auto whitespace-pre-wrap break-words rounded-[14px] bg-ink-softer p-3 text-[12px] leading-relaxed text-fg-2">
+        <pre ref={preRef} tabIndex={0} aria-label={`Inhalt von ${datei?.name ?? "Datei"}`} className="mono max-h-[52vh] overflow-auto whitespace-pre-wrap break-words rounded-md bg-[var(--surface-2)] p-3 text-[12px] leading-relaxed text-fg-2">
           {datei?.inhalt}
         </pre>
       )}

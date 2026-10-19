@@ -65,23 +65,34 @@ export default function Cockpit() {
         }
       />
 
-      <div className="grid gap-4">
+      {/* Ruhige Reihenfolge nach Priorität: Hinweise → Briefing → Aktionen → heute fällig und Posteingang → Termine und Akten →
+          Nebeninformationen (KI-Empfehlung, 38h-Motor, Finanzen) ohne Karten. Schmal einspaltig in genau dieser Reihenfolge. */}
+      <div className="grid gap-8">
         {/* Pausierte Fristautomatik: Hinweis mit Zeitpunkt und Person über allem anderen (I3-T10-01) */}
         <FristAutomatikHinweis />
         {/* Offene Fristen eines deaktivierten Zugangs: Hinweis, bis die Verantwortung übertragen ist (I5-T23-01) */}
         <VerwaisteFristenHinweis />
-        <Briefing saetze={d.briefing} warnungen={d.warnungen} erstellt={erstellt} />
-        <Schnellaktionen />
+        <div className="grid gap-5">
+          <Briefing saetze={d.briefing} warnungen={d.warnungen} erstellt={erstellt} />
+          <Schnellaktionen />
+        </div>
 
-        <div className="grid grid-cols-1 gap-4 @2xl:grid-cols-2 @4xl:grid-cols-12">
-          <FristenKarte d={d} i={0} className="@2xl:col-span-2 @4xl:order-1 @4xl:col-span-7" />
-          <PosteingangKarte d={d} i={1} className="@2xl:col-span-2 @4xl:order-2 @4xl:col-span-5" />
-          <KiKarte d={d} i={2} className={fin ? "@4xl:order-3 @4xl:col-span-4" : "@4xl:order-3 @4xl:col-span-6"} />
-          <MotorKarte d={d} i={3} className={fin ? "@4xl:order-4 @4xl:col-span-4" : "@4xl:order-4 @4xl:col-span-6"} />
-          <TermineKarte d={d} i={4} className={fin ? "@4xl:order-6 @4xl:col-span-5" : "@2xl:col-span-2 @4xl:order-6 @4xl:col-span-5"} />
-          {/* Auszubildende sehen keine Abrechnung und kein Fremdgeld – die Termine-Karte nimmt dann die ganze Zeile ein. */}
-          {fin && <FinanzenKarte d={d} i={5} className="@4xl:order-5 @4xl:col-span-4" />}
-          <AktenKarte d={d} i={6} className="@2xl:col-span-2 @4xl:order-7 @4xl:col-span-7" />
+        <div className="grid grid-cols-1 gap-8 @3xl:grid-cols-12 @3xl:gap-6">
+          <div className="contents @3xl:col-span-7 @3xl:flex @3xl:flex-col @3xl:gap-8">
+            <FristenKarte d={d} className="order-1" />
+            <AktenKarte d={d} className="order-4" />
+          </div>
+          <div className="contents @3xl:col-span-5 @3xl:flex @3xl:flex-col @3xl:gap-8">
+            <PosteingangKarte d={d} className="order-2" />
+            <TermineKarte d={d} className="order-3" />
+          </div>
+        </div>
+
+        {/* Auszubildende sehen keine Abrechnung und kein Fremdgeld – dann zwei Spalten. */}
+        <div className={fin ? "grid grid-cols-1 gap-8 @3xl:grid-cols-2 @5xl:grid-cols-3 @5xl:gap-6" : "grid grid-cols-1 gap-8 @3xl:grid-cols-2 @5xl:gap-6"}>
+          <KiKarte d={d} />
+          <MotorKarte d={d} />
+          {fin && <FinanzenKarte d={d} />}
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import {
   Sparkles, Scale, CheckCircle2, XCircle, AlertTriangle, ListChecks, FileText, Library, RotateCcw, Copy, Save, Square, BookOpen, Loader2, ChevronRight, FolderOpen, Gavel, Info,
 } from "lucide-react";
@@ -15,7 +15,8 @@ import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
 import { OHNE_BELEG, RANG_HINWEIS, SCHAETZWERT_HINWEIS, STUFE_WORT, faktorenAus, stufeWort, type Faktor, type FaktorQuelle } from "@/core/einschaetzung";
 import type { Akte } from "@/core/types";
 import { EntscheidungDrawer } from "@/pages/falldb/EntscheidungDrawer";
-import { Button, Card, Chip, PapierSchalter, confirmDialog } from "@/components/ui";
+import { AiChip, Button, Card, Chip, PapierSchalter, confirmDialog } from "@/components/ui";
+import { ApexOrb } from "@/components/assistant/ApexOrb";
 import { cn } from "@/lib/cn";
 import { kopiereText } from "@/lib/zwischenablage";
 
@@ -232,25 +233,24 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
   // ── Startzustand ──
   if (!ergebnis && !laeuft) {
     return (
-      <Card className="ai-ring ai-glow overflow-hidden !p-0">
-        <div className="grid gap-6 p-6 md:grid-cols-[1fr_auto] md:items-center md:p-8">
+      <Card className="overflow-hidden !p-0">
+        <div className="grid gap-6 p-5 md:grid-cols-[1fr_auto] md:items-center md:p-6">
           <div>
             <div className="mb-2 flex items-center gap-2">
-              <Sparkles className="size-4 text-violet" />
-              <span className="ai-text text-[12px] font-semibold uppercase tracking-[0.08em]">KI-Fallanalyse</span>
+              <AiChip>KI-Fallanalyse</AiChip>
             </div>
             <h3 className="title-lg">In 30 Sekunden zur fundierten Einschätzung</h3>
-            <p className="mt-2 max-w-[60ch] text-[13.5px] leading-relaxed text-fg-3">
+            <p className="mt-1.5 max-w-[60ch] text-[14px] leading-5 text-fg-3">
               Die KI liest Sachverhalt, Dokumente und Notizen der Akte <span className="mono text-fg-2">{akte.aktenzeichen}</span>, sucht passende Entscheidungen in der Fall-Datenbank und liefert eine Einschätzung der Erfolgsaussicht, Argumente mit Quellen, Risiken, nächste Schritte und einen Schriftsatz-Entwurf.
             </p>
-            {fehler && <div className="mt-3 rounded-[12px] bg-seal-soft px-3 py-2 text-[12.5px] text-seal">{fehler}</div>}
-            {akte.kiAnalyse && <div className="mt-3 text-[12.5px] text-fg-3">Letzte Analyse {relTime(akte.kiAnalyse.erstelltAm)} · Einschätzung: {stufeWort(akte.kiAnalyse.stufe, akte.kiAnalyse.prozent)}</div>}
+            {fehler && <div className="mt-3 rounded-md bg-seal-soft px-3 py-2 text-[13px] text-seal-text">{fehler}</div>}
+            {akte.kiAnalyse && <div className="mt-3 text-[13px] text-fg-4">Letzte Analyse {relTime(akte.kiAnalyse.erstelltAm)} · Einschätzung: {stufeWort(akte.kiAnalyse.stufe, akte.kiAnalyse.prozent)}</div>}
           </div>
           <div className="flex flex-col items-start gap-2 md:items-end">
-            <Button variant="ai" size="lg" icon={<Sparkles className="size-4" />} onClick={start}>
+            <Button variant="primary" size="lg" icon={<Sparkles className="size-4" />} onClick={start}>
               Fallanalyse starten
             </Button>
-            <span className="text-[12.5px] text-fg-3">{ai.quelle === "demo" ? DEMO_KI_NAME : `Live mit Claude${ai.modell ? ` · ${ai.modell}` : ""}`}</span>
+            <span className="text-[12px] text-fg-4">{ai.quelle === "demo" ? DEMO_KI_NAME : `Live mit Claude${ai.modell ? ` · ${ai.modell}` : ""}`}</span>
           </div>
         </div>
       </Card>
@@ -260,15 +260,15 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
   // ── Analyse läuft ──
   if (laeuft) {
     return (
-      <Card className="ai-ring ai-glow overflow-hidden">
-        <div className="grid gap-8 md:grid-cols-[220px_1fr] md:items-center">
+      <Card className="overflow-hidden">
+        <div className="grid gap-8 md:grid-cols-[160px_1fr] md:items-center">
           <div className="grid place-items-center py-2">
             <AnalyseOrb />
           </div>
           <div>
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
-                <div className="ai-text text-[12px] font-semibold uppercase tracking-[0.08em]">Analyse läuft</div>
+                <div className="text-[12px] font-medium leading-4 text-fg-3">Analyse läuft</div>
                 <div className="title-md mt-1">{akte.titel}</div>
               </div>
               <Button size="sm" variant="ghost" icon={<Square className="size-3.5" />} onClick={() => ctl.current?.abort()}>
@@ -277,16 +277,16 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
             </div>
             <ol className="grid gap-2.5">
               {ANALYSE_PHASEN.map((p, i) => (
-                <motion.li key={p} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.06 }} className="flex items-center gap-3 text-[13.5px]">
-                  <span className={cn("grid size-6 shrink-0 place-items-center rounded-full transition-colors duration-500", i < phase ? "bg-green text-[var(--on-green)]" : i === phase ? "ai-fill text-white" : "bg-[var(--line)] text-fg-4")}>
-                    {i < phase ? <CheckCircle2 className="size-4" /> : i === phase ? <Loader2 className="size-3.5 animate-spin" /> : <span className="text-[12px] font-semibold">{i + 1}</span>}
+                <motion.li key={p} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.16 }} className="flex items-center gap-3 text-[14px]">
+                  <span className={cn("grid size-6 shrink-0 place-items-center rounded-full transition-colors duration-200", i < phase ? "text-green" : i === phase ? "text-fg" : "text-fg-4 shadow-[inset_0_0_0_1px_var(--line-strong)]")}>
+                    {i < phase ? <CheckCircle2 className="size-4" /> : i === phase ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <span className="num text-[12px] font-medium">{i + 1}</span>}
                   </span>
                   <span className={cn(i <= phase ? "text-fg" : "text-fg-4", i === phase && "font-medium")}>{p}</span>
                 </motion.li>
               ))}
             </ol>
             {stream && (
-              <div className="mt-4 max-h-24 overflow-hidden rounded-[12px] bg-[var(--ink-softer)] p-3 font-mono text-[12px] leading-snug text-fg-3 [mask-image:linear-gradient(transparent,#000_40%)]">
+              <div className="mt-4 max-h-24 overflow-hidden rounded-md bg-[var(--surface-2)] p-3 font-mono text-[12px] leading-snug text-fg-3">
                 {stream.slice(-600)}
               </div>
             )}
@@ -308,7 +308,8 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
     if (q.art === "entscheidung" && q.id) setDrawerId(q.id);
     else if (q.art === "dokument" && q.id) oeffneDok(q.id);
   };
-  const stagger = (i: number) => ({ initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 }, transition: { delay: 0.05 + i * 0.06, type: "spring" as const, stiffness: 300, damping: 30 } });
+  // Einblenden ohne Staffelung und ohne Versatz (DESIGN-SYSTEM.md 10)
+  const stagger = (_i: number) => ({ initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.16 } });
 
   return (
     <div className="@container grid min-w-0 gap-4 [&>*]:min-w-0">
@@ -316,21 +317,21 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
           (Einschätzung | Zusammenfassung | Neu analysieren), darunter einspaltig – Einschätzung und „Neu analysieren“ in der
           Kopfzeile, die Zusammenfassung in voller Breite darunter (iPad quer, I3-T06-02). */}
       <motion.div {...stagger(0)}>
-        <Card className="ai-ring overflow-hidden">
+        <Card className="overflow-hidden">
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-6 gap-y-5 [grid-template-areas:'stufe_knopf'_'text_text'] @min-[1100px]:grid-cols-[auto_minmax(0,1fr)_auto] @min-[1100px]:items-center @min-[1100px]:[grid-template-areas:'stufe_text_knopf']">
             <div className="min-w-0 [grid-area:stufe] [&>div]:!mx-0 [&>div]:!items-start [&>div]:!text-left @min-[1100px]:[&>div]:!mx-auto @min-[1100px]:[&>div]:!items-center @min-[1100px]:[&>div]:!text-center">
               <StufenAnzeige wort={STUFE_WORT[r.erfolgsaussicht.stufe]} ton={ton} />
             </div>
             <div className="min-w-0 [grid-area:text]">
               <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                <span className="ai-text text-[12.5px] font-semibold uppercase tracking-[0.06em]">KI-Fallanalyse</span>
+                <AiChip>KI-Fallanalyse</AiChip>
                 <Chip tone="outline">{r.quelle === "demo" ? "Demo-KI" : "Claude live"}</Chip>
-                <span className="text-[12.5px] text-fg-3">
+                <span className="text-[13px] text-fg-4">
                   {relTime(r.erstelltAm)} · in {(r.dauerMs / 1000).toFixed(1).replace(".", ",")} s
                 </span>
               </div>
-              <p className="text-[14px] leading-relaxed text-fg-2">{r.zusammenfassung}</p>
-              <p className="mt-2 text-[13px] leading-relaxed text-fg-2">
+              <p className="text-[15px] leading-6 text-fg-2">{r.zusammenfassung}</p>
+              <p className="mt-2 text-[14px] leading-5 text-fg-2">
                 <strong className="text-fg">Begründung:</strong> {r.erfolgsaussicht.begruendung}
               </p>
             </div>
@@ -354,7 +355,7 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
               <ol className="grid gap-2">
                 {r.rechtsfragen.map((q, i) => (
                   <li key={i} className="flex gap-3 text-[13.5px] leading-snug text-fg-2">
-                    <span className="num mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-ink-soft text-[12px] font-semibold text-ink">{i + 1}</span>
+                    <span className="num mt-px w-4 shrink-0 text-right text-[13px] font-medium text-fg-4">{i + 1}.</span>
                     {q}
                   </li>
                 ))}
@@ -398,13 +399,13 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
               <SectionTitle icon={<Library className="size-4" />} title="Präzedenzfälle aus der Fall-Datenbank" />
               <div className="grid gap-2.5">
                 {r.praezedenzfaelle.map((p) => (
-                  <button key={p.id} type="button" onClick={() => setDrawerId(p.id)} aria-haspopup="dialog" className="group min-w-0 rounded-[14px] p-3 text-left ring-1 ring-[var(--line)] transition-all hover:bg-ink-softer hover:ring-[var(--ink-soft)]">
+                  <button key={p.id} type="button" onClick={() => setDrawerId(p.id)} aria-haspopup="dialog" className="group min-w-0 rounded-md border border-[var(--line)] p-3 text-left transition-colors duration-100 hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)]">
                     <div className="flex items-center gap-2">
-                      <span className="mono text-[12.5px] font-semibold text-ink">
+                      <span className="mono text-[13px] font-medium text-fg">
                         {p.gericht} {p.az}
                       </span>
-                      <span className="min-w-0 flex-1 text-[12.5px] font-medium leading-snug">{p.titel}</span>
-                      <ChevronRight className="ml-auto size-4 shrink-0 text-fg-4 transition-transform group-hover:translate-x-0.5" />
+                      <span className="min-w-0 flex-1 text-[13px] font-medium leading-snug">{p.titel}</span>
+                      <ChevronRight className="ml-auto size-4 shrink-0 text-fg-4" />
                     </div>
                     <div className="mt-1.5 flex items-center gap-2">
                       <div className="bar h-1 flex-1">
@@ -426,14 +427,14 @@ export function FallanalysePanel({ akteId, kompakt, autoStart, onAutoStart }: { 
               <ol className="relative grid gap-3 border-l border-[var(--line)] pl-5">
                 {r.naechsteSchritte.map((s, i) => (
                   <li key={i} className="relative">
-                    <span className="absolute -left-[27px] top-0.5 grid size-[14px] place-items-center rounded-full bg-[var(--surface)] ring-2 ring-[var(--ink)]" />
-                    <div className="text-[13.5px] font-semibold">{s.titel}</div>
+                    <span className="absolute -left-[25px] top-1.5 size-[9px] rounded-full border border-[var(--line-strong)] bg-[var(--surface)]" />
+                    <div className="text-[14px] font-medium">{s.titel}</div>
                     <div className="text-[12.5px] leading-snug text-fg-3">{s.detail}</div>
                   </li>
                 ))}
               </ol>
               {r.risiken.length > 0 && (
-                <div className="mt-4 rounded-[14px] bg-amber-soft p-3">
+                <div className="mt-4 rounded-md bg-amber-soft p-3">
                   {r.risiken.map((x, i) => (
                     <div key={i} className="flex gap-2 text-[12.5px] leading-snug text-fg-2">
                       <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber" />
@@ -493,12 +494,12 @@ function StufenAnzeige({ wort, ton }: { wort: string; ton: keyof typeof TON_FARB
   return (
     <div className="mx-auto flex w-[190px] flex-col items-center text-center">
       <div className="text-[12.5px] font-medium text-fg-3">Einschätzung der Erfolgsaussicht</div>
-      <div className="mt-1 text-[24px] font-bold leading-tight tracking-[-0.03em]" style={{ color: TON_FARBE[ton] }}>
+      <div className="mt-1 text-[24px] font-semibold leading-tight tracking-[-0.02em] text-fg">
         {wort}
       </div>
       <div className="mt-2.5 flex w-full gap-1" aria-hidden>
         {stufen.map((s, i) => (
-          <span key={s} className="h-1.5 flex-1 rounded-full" style={{ background: i <= idx ? TON_FARBE[ton] : "var(--line)" }} />
+          <span key={s} className="h-1 flex-1 rounded-full" style={{ background: i <= idx ? TON_FARBE[ton] : "var(--line)" }} />
         ))}
       </div>
       <div className="mt-1.5 flex w-full justify-between text-[12px] text-fg-3" aria-hidden>
@@ -516,7 +517,7 @@ const QUELLE_ICON = { entscheidung: <Gavel className="size-3" />, norm: <Scale c
 function Belege({ f, onQuelle }: { f: Faktor; onQuelle: (q: FaktorQuelle) => void }) {
   if (!f.quellen.length)
     return (
-      <span className="ml-1.5 inline-flex translate-y-[-1px] items-center rounded-full bg-amber-soft px-2 py-px align-middle text-[12px] font-medium text-amber">
+      <span className="ml-1.5 inline-flex translate-y-[-1px] items-center rounded-sm bg-amber-soft px-1.5 py-px align-middle text-[12px] font-medium text-amber-text">
         {OHNE_BELEG}
       </span>
     );
@@ -524,7 +525,7 @@ function Belege({ f, onQuelle }: { f: Faktor; onQuelle: (q: FaktorQuelle) => voi
     <span className="mt-1 flex flex-wrap gap-1">
       {f.quellen.map((q) =>
         q.art === "norm" ? (
-          <span key={q.label} className="mono inline-flex items-center gap-1 rounded-full bg-ink-softer px-2 py-px text-[12px] text-fg-2">
+          <span key={q.label} className="mono inline-flex items-center gap-1 rounded-sm bg-[var(--surface-2)] px-1.5 py-px text-[12px] text-fg-2">
             {QUELLE_ICON.norm} {q.label}
           </span>
         ) : (
@@ -532,7 +533,7 @@ function Belege({ f, onQuelle }: { f: Faktor; onQuelle: (q: FaktorQuelle) => voi
             key={`${q.art}-${q.id}`}
             type="button"
             onClick={() => onQuelle(q)}
-            className="inline-flex max-w-full items-center gap-1 truncate rounded-full bg-ink-soft px-2 py-px text-[12px] font-medium text-ink hover:underline"
+            className="inline-flex max-w-full items-center gap-1 truncate rounded-sm px-1.5 py-px text-[12px] font-medium text-fg-2 shadow-[inset_0_0_0_1px_var(--line-strong)] hover:bg-[var(--surface-2)] hover:text-fg"
             title={q.art === "entscheidung" ? "Entscheidung aus der Fall-Datenbank öffnen" : "Dokument der E-Akte öffnen"}
           >
             {QUELLE_ICON[q.art]} <span className="truncate">{q.label}</span>
@@ -546,16 +547,16 @@ function Belege({ f, onQuelle }: { f: Faktor; onQuelle: (q: FaktorQuelle) => voi
 /** Aufklappbereich: Schätzwert (nicht als Wahrscheinlichkeit) und Tabelle Faktor – Rang – Quelle (I4-T06-02: Rang statt Gewicht). */
 function Herleitung({ prozent, faktoren, onQuelle }: { prozent: number; faktoren: Faktor[]; onQuelle: (q: FaktorQuelle) => void }) {
   return (
-    <details className="group mt-5 rounded-[16px] bg-[var(--ink-softer)] px-4 py-3 open:pb-4">
-      <summary className="flex cursor-pointer list-none items-center gap-2 text-[13.5px] font-semibold text-fg [&::-webkit-details-marker]:hidden">
-        <Info className="size-4 text-ink" />
+    <details className="group mt-5 rounded-md border border-[var(--line)] px-4 py-3 open:pb-4">
+      <summary className="flex cursor-pointer list-none items-center gap-2 text-[14px] font-medium text-fg [&::-webkit-details-marker]:hidden">
+        <Info className="size-4 text-fg-4" />
         Wie entsteht die Einschätzung?
         <ChevronRight className="ml-auto size-4 text-fg-3 transition-transform group-open:rotate-90" />
       </summary>
       <p className="mt-2.5 text-[13px] leading-relaxed text-fg-2">
         <span className="font-semibold text-fg">{prozent} %</span> – {SCHAETZWERT_HINWEIS}. Die Zahl fasst zusammen, wie die KI die Faktoren unten gewichtet; sie ist keine statistische Prognose. Maßgeblich ist Ihre anwaltliche Würdigung.
       </p>
-      <div className="mt-3 overflow-x-auto rounded-[12px] bg-[var(--surface)] ring-1 ring-[var(--line)]">
+      <div className="mt-3 overflow-x-auto rounded-md bg-[var(--surface)] ring-1 ring-[var(--line)]">
         <table className="w-full min-w-[520px] text-left text-[12.5px]">
           <caption className="sr-only">Faktoren der Einschätzung mit Rang und Quelle</caption>
           <thead className="text-fg-3">
@@ -598,34 +599,13 @@ function Herleitung({ prozent, faktoren, onQuelle }: { prozent: number; faktoren
 function SectionTitle({ icon, title, tone = "ink", className }: { icon: React.ReactNode; title: string; tone?: "ink" | "green" | "seal"; className?: string }) {
   return (
     <div className={cn("mb-3 flex items-center gap-2", className)}>
-      <span className={cn("grid size-7 place-items-center rounded-[9px]", tone === "green" ? "bg-green-soft text-green" : tone === "seal" ? "bg-seal-soft text-seal" : "bg-ink-soft text-ink")}>{icon}</span>
+      <span className={cn("shrink-0 [&>svg]:size-4", tone === "green" ? "text-green" : tone === "seal" ? "text-seal" : "text-fg-4")} aria-hidden>{icon}</span>
       <span className="title-md">{title}</span>
     </div>
   );
 }
 
+/** Ruhige Analyse-Anzeige: Assistent-Knopf (Bildmarke), dessen Punkt beim Nachdenken ruhig blendet – kein Farbverlauf. */
 function AnalyseOrb() {
-  return (
-    <div className="relative size-[150px]">
-      <motion.div
-        className="absolute inset-0 rounded-full opacity-60 blur-2xl"
-        style={{ background: "conic-gradient(from 0deg, var(--ai-1), var(--ai-2), var(--ai-3), var(--ai-4), var(--ai-1))" }}
-        animate={{ rotate: 360 }}
-        transition={{ duration: 6, repeat: Infinity, ease: "linear" }}
-      />
-      <motion.div
-        className="absolute inset-4 rounded-full"
-        style={{ background: "conic-gradient(from 90deg, var(--ai-1), var(--ai-2), var(--ai-3), var(--ai-4), var(--ai-1))" }}
-        animate={{ rotate: -360, borderRadius: ["50%", "46% 54% 52% 48%", "52% 48% 46% 54%", "50%"] }}
-        transition={{ rotate: { duration: 9, repeat: Infinity, ease: "linear" }, borderRadius: { duration: 3, repeat: Infinity } }}
-      />
-      <div className="absolute inset-7 grid place-items-center rounded-full bg-[var(--glass-strong)] backdrop-blur-xl">
-        <AnimatePresence mode="wait">
-          <motion.div key="s" initial={{ scale: 0.8 }} animate={{ scale: [1, 1.12, 1] }} transition={{ duration: 1.6, repeat: Infinity }}>
-            <Sparkles className="size-8 text-violet" />
-          </motion.div>
-        </AnimatePresence>
-      </div>
-    </div>
-  );
+  return <ApexOrb size={96} zustand="denkt" className="!shadow-none" />;
 }

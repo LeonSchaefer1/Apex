@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { Command } from "cmdk";
 import { AnimatePresence, motion } from "motion/react";
-import { FolderOpen, FileText, User, CalendarClock, CalendarPlus, Inbox, Keyboard, Library, Sparkles, Plus, Calculator, CornerDownLeft, Zap, Landmark, Percent, Receipt, Scale, Timer, UsersRound, Palette, X, Building2, Infinity as InfinityIcon, KeyRound, FileStack } from "lucide-react";
+import { FolderOpen, FileText, User, CalendarClock, CalendarPlus, Inbox, Keyboard, Library, Sparkles, Search, Plus, Calculator, CornerDownLeft, Zap, Landmark, Percent, Receipt, Scale, Timer, UsersRound, Palette, X, Building2, Infinity as InfinityIcon, KeyRound, FileStack } from "lucide-react";
 import { toast, useUI } from "@/store/ui";
 import { useData } from "@/store/data";
 import { useSession } from "@/store/session";
@@ -18,6 +18,7 @@ import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
 import { fmtDate, fmtEUR, today } from "@/core/dates";
 import { Highlight } from "@/components/Highlight";
 import { istReineAnsicht, obersterDialog, fokussierbareIn } from "@/components/ui/Modal";
+import { BEWEGUNG } from "@/lib/bewegung";
 import type { Akte, Rechnung } from "@/core/types";
 
 /** Status einer Rechnung in der Suche – wie der Status-Chip der Rechnungsliste. */
@@ -54,7 +55,7 @@ function schnellaktionen(akten: Akte[]): Ziel[] {
       ? { to: `/ki?akte=${encodeURIComponent(zuletzt.id)}&start=1`, label: "KI-Fallanalyse starten", sub: `Zuletzt bearbeitet: ${zuletzt.aktenzeichen} · ${zuletzt.titel}`, icon: <Sparkles />, stichworte: "Erfolgsaussicht Präzedenzfälle Analyse" }
       : { to: "/ki", label: "Apex KI öffnen – Fallanalyse", sub: "Akte wählen – Erfolgsaussicht, Präzedenzfälle, nächste Schritte", icon: <Sparkles />, stichworte: "Erfolgsaussicht Präzedenzfälle Analyse" },
     { to: "/automatisierung", label: "38h-Motor öffnen", sub: "Automatiken, Protokoll und gesparte Zeit der letzten 7 Tage", icon: <Zap />, stichworte: "Automatisierung Automatiken" },
-    { to: "#assistent", aktion: "assistent", label: "Apex Assistent öffnen", sub: "Fragen, suchen, Wiedervorlagen vorschlagen – per Text oder Sprache", icon: <Sparkles className="text-violet" />, stichworte: "Assistent Kugel Sprache KI fragen" },
+    { to: "#assistent", aktion: "assistent", label: "Apex Assistent öffnen", sub: "Fragen, suchen, Wiedervorlagen vorschlagen – per Text oder Sprache", icon: <Sparkles />, stichworte: "Assistent Kugel Sprache KI fragen" },
     { to: "#kuerzel", aktion: "kuerzel", label: "Tastaturkürzel", sub: "Alle Kürzel auf einen Blick", icon: <Keyboard />, kuerzel: "?", stichworte: "Shortcuts Tasten Kürzel" },
   ];
 }
@@ -308,37 +309,35 @@ export function CommandPalette() {
     <AnimatePresence>
       {paletteOffen && (
         <div className="fixed inset-0 z-[90] flex items-start justify-center px-3 pt-[max(10vh,env(safe-area-inset-top))]">
-          <motion.div className="absolute inset-0 bg-[var(--scrim)] backdrop-blur-[2px]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setPalette(false)} />
+          <motion.div className="absolute inset-0 bg-[var(--scrim)]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={BEWEGUNG.standard} onClick={() => setPalette(false)} />
           <motion.div
-            initial={{ opacity: 0, y: -12, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -8, scale: 0.98 }}
-            transition={{ type: "spring", stiffness: 520, damping: 36 }}
-            className="glass-strong relative w-full max-w-[680px] overflow-hidden rounded-[26px]"
-            style={{ boxShadow: "var(--glass-shadow-lg)" }}
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0, transition: BEWEGUNG.dialog }}
+            exit={{ opacity: 0, y: -8, transition: { duration: 0.12, ease: [0.2, 0, 0, 1] } }}
+            className="relative w-full max-w-[640px] overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--surface-pop)] shadow-modal"
           >
             <Command shouldFilter={false} label="Globale Suche" className="flex max-h-[min(70vh,620px)] flex-col">
-              <div className="flex items-center gap-3 border-b border-[var(--line)] px-5">
-                <Sparkles className="size-[18px] shrink-0 text-ink" />
+              <div className="flex items-center gap-3 border-b border-[var(--line)] pl-4 pr-3">
+                <Search className="size-4 shrink-0 text-fg-4" aria-hidden />
                 <Command.Input
                   ref={eingabe}
                   autoFocus
                   value={q}
                   onValueChange={setQ}
                   placeholder="Suchen oder fragen – z. B. „Kündigung Weber“ oder „142/26“"
-                  className="h-14 flex-1 bg-transparent text-[15.5px] outline-none placeholder:text-fg-4"
+                  className="h-14 min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-fg-4 max-sm:text-[16px]"
                 />
                 {res && (
-                  <span className="num shrink-0 text-[12.5px] text-fg-3">
+                  <span className="num shrink-0 text-[12px] text-fg-4">
                     {res.total} Treffer<span className="hidden sm:inline"> · {res.ms < 1 ? "<1" : Math.round(res.ms)} ms</span>
                   </span>
                 )}
-                <button type="button" onClick={() => setPalette(false)} className="-mr-2 grid h-8 shrink-0 place-items-center rounded-full px-1.5 text-fg-3 transition-colors hover:bg-ink-softer hover:text-fg" aria-label="Suche schließen" title="Schließen (Esc)">
+                <button type="button" onClick={() => setPalette(false)} className="grid h-8 shrink-0 place-items-center rounded-md px-1.5 text-fg-3 transition-colors duration-100 hover:bg-[var(--surface-pop-hover)] hover:text-fg max-sm:size-11" aria-label="Suche schließen" title="Schließen (Esc)">
                   <span className="kbd hidden sm:inline-flex">Esc</span>
                   <X className="size-[18px] sm:hidden" />
                 </button>
               </div>
-              <Command.List className="min-h-0 flex-1 overflow-y-auto p-2 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pb-1.5 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:text-[12.5px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.06em] [&_[cmdk-group-heading]]:text-fg-3">
+              <Command.List className="min-h-0 flex-1 overflow-y-auto p-1.5 [&_[cmdk-group-heading]]:px-2.5 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:text-[12px] [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:leading-4 [&_[cmdk-group-heading]]:text-fg-4">
                 {!res && (
                   <>
                     <Command.Group heading="Schnellaktionen">
@@ -425,7 +424,7 @@ export function CommandPalette() {
                 {res && (
                   <Command.Group heading="Apex Assistent">
                     <Item
-                      icon={<Sparkles className="text-violet" />}
+                      icon={<Sparkles />}
                       onSelect={() => {
                         setPalette(false);
                         oeffneAssistent(q);
@@ -436,7 +435,7 @@ export function CommandPalette() {
                   </Command.Group>
                 )}
               </Command.List>
-              <div className="flex items-center gap-4 border-t border-[var(--line)] px-5 py-2.5 text-[12.5px] text-fg-3">
+              <div className="flex items-center gap-4 border-t border-[var(--line)] px-4 py-2.5 text-[12px] text-fg-4">
                 {/* Tastaturhinweise nur dort, wo es eine Tastatur gibt */}
                 <span className="hidden items-center gap-1.5 sm:flex"><span className="kbd">↑</span><span className="kbd">↓</span> auswählen</span>
                 <span className="hidden items-center gap-1.5 sm:flex"><span className="kbd"><CornerDownLeft className="size-3" /></span> öffnen</span>
@@ -454,14 +453,14 @@ function Item({ icon, title, sub, meta, kuerzel, onSelect }: { icon: React.React
   return (
     <Command.Item
       onSelect={onSelect}
-      className="flex cursor-pointer items-center gap-3 rounded-[14px] px-3 py-2.5 data-[selected=true]:bg-ink-soft"
+      className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-2.5 py-2 data-[selected=true]:bg-[var(--surface-pop-hover)]"
     >
-      <span className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-[var(--ink-softer)] text-fg-2 [&>svg]:size-4">{icon}</span>
+      <span className="shrink-0 text-fg-4 [&>svg]:size-4" aria-hidden>{icon}</span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13.5px] font-medium">{title}</span>
-        {sub && <span className="block truncate text-[12.5px] text-fg-3">{sub}</span>}
+        <span className="block truncate text-[14px] font-medium leading-5 text-fg">{title}</span>
+        {sub && <span className="block truncate text-[13px] leading-[18px] text-fg-3">{sub}</span>}
       </span>
-      {meta && <span className="hidden max-w-[180px] shrink-0 truncate text-[12.5px] text-fg-3 sm:block">{meta}</span>}
+      {meta && <span className="hidden max-w-[180px] shrink-0 truncate text-[12px] text-fg-4 sm:block">{meta}</span>}
       {kuerzel && (
         <span className="hidden shrink-0 items-center gap-1 sm:inline-flex">
           <span className="sr-only">Tastaturkürzel</span>

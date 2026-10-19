@@ -153,7 +153,7 @@ export function VersichererAuswahl({
           id={listId}
           role="listbox"
           aria-label="Versicherer"
-          className="mt-1.5 max-h-56 overflow-y-auto rounded-[16px] bg-ink-softer p-1 shadow-[inset_0_0_0_1px_var(--line)]"
+          className="mt-1.5 max-h-56 overflow-y-auto rounded-lg bg-[var(--surface)] p-1 shadow-[inset_0_0_0_1px_var(--line)]"
         >
           {(["rsv", "weitere"] as const).map((g) => {
             const inGruppe = treffer.map((o, i) => ({ o, i })).filter((x) => x.o.gruppe === g);
@@ -173,7 +173,7 @@ export function VersichererAuswahl({
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => waehle(o)}
                       title={o.rsvAkten.length > 2 || o.gegnerAkten.length > 2 ? [o.rsvAkten.length ? `RSV in ${o.rsvAkten.join(", ")}` : "", o.gegnerAkten.length ? `Gegnerin in ${o.gegnerAkten.join(", ")}` : ""].filter(Boolean).join(" · ") : undefined}
-                      className={cn("flex min-h-11 cursor-pointer items-center gap-2.5 rounded-[12px] px-2.5 py-2 text-[13.5px]", i === aktiv ? "bg-[var(--surface)] text-fg shadow-[inset_0_0_0_1.5px_var(--ink)]" : "hover:bg-[var(--surface)]")}
+                      className={cn("flex min-h-11 cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-[14px]", i === aktiv ? "bg-[var(--surface)] text-fg shadow-[inset_0_0_0_1.5px_var(--ink)]" : "hover:bg-[var(--surface)]")}
                     >
                       {o.kontakt ? <ShieldCheck className="size-4 shrink-0 text-ink" aria-hidden /> : <ShieldPlus className="size-4 shrink-0 text-fg-3" aria-hidden />}
                       <span className="min-w-0 flex-1">
@@ -199,7 +199,7 @@ export function VersichererAuswahl({
         {hinweis}
       </p>
       {warnung && (
-        <div role="alert" className="mt-2 grid gap-2 rounded-[14px] bg-seal-soft p-3 text-[12.5px] leading-relaxed text-seal">
+        <div role="alert" className="mt-2 grid gap-2 rounded-lg bg-seal-soft p-3 text-[13px] leading-relaxed text-seal">
           <div id={`${id}-warnung`} className="flex gap-2">
             <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
             <span>

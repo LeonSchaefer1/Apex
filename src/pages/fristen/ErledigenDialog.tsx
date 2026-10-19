@@ -164,8 +164,8 @@ export function ErledigenDialog({ f, user, open, onClose, modus = "erledigen", o
                   if (a === "bea" && nachrichtId) uebernimmZeit(beaNachrichten.find((n) => n.id === nachrichtId)?.eingang);
                 }}
                 className={cn(
-                  "min-h-11 rounded-[14px] px-3 py-2 text-left text-[13px] font-medium ring-1 ring-inset transition-colors",
-                  art === a ? (a === "gestrichen" ? "bg-seal-soft text-seal ring-transparent" : "bg-ink-soft text-ink ring-transparent") : "text-fg-2 ring-[var(--line)] hover:bg-ink-softer",
+                  "min-h-11 rounded-md px-3 py-2 text-left text-[13px] ring-1 ring-inset transition-colors duration-100",
+                  art === a ? (a === "gestrichen" ? "bg-seal-soft font-semibold text-[var(--seal-text)] ring-[var(--seal)]" : "bg-[var(--surface-3)] font-semibold text-fg ring-[var(--fg)]") : "font-medium text-fg-2 ring-[var(--line-strong)] hover:bg-[var(--surface-2)]",
                 )}
               >
                 {a === "gestrichen" ? "gestrichen/gegenstandslos, weil …" : NACHWEIS_ART[a]}
@@ -196,7 +196,7 @@ export function ErledigenDialog({ f, user, open, onClose, modus = "erledigen", o
               </Select>
             </Field>
           ) : (
-            <p className="flex items-start gap-2 rounded-[12px] bg-ink-softer px-3 py-2 text-[12.5px] text-fg-2">
+            <p className="flex items-start gap-2 rounded-md bg-[var(--surface-2)] px-3 py-2 text-[13px] text-fg-2">
               <Landmark className="mt-0.5 size-3.5 shrink-0" /> In dieser Akte gibt es keine ausgehende beA-Nachricht der letzten Tage. Bitte Versandzeit und Sendung angeben.
             </p>
           )}
@@ -219,7 +219,7 @@ export function ErledigenDialog({ f, user, open, onClose, modus = "erledigen", o
             <Input id="nachweis-datum" type="date" aria-label="Versanddatum" required aria-required="true" max={heute} value={versandDatum} disabled={mitNachricht} onChange={(e) => setVersandDatum(e.target.value)} />
             <Input id="nachweis-zeit" type="time" aria-label="Versanduhrzeit" required aria-required="true" value={versandZeit} disabled={mitNachricht} onChange={(e) => setVersandZeit(e.target.value)} />
           </div>
-          <p className="mt-1 text-[12.5px] text-fg-3">
+          <p className="mt-1 text-[13px] text-fg-3">
             {mitNachricht ? "Aus dem Zeitstempel der beA-Nachricht." : "Wann ging die Sendung tatsächlich hinaus?"} Protokolliert wird zusätzlich der Zeitpunkt dieses Eintrags ({zweistellig(new Date().getHours())}:{zweistellig(new Date().getMinutes())} Uhr).
           </p>
         </fieldset>
@@ -256,7 +256,7 @@ export function ErledigenDialog({ f, user, open, onClose, modus = "erledigen", o
             </Field>
           )}
           {keinAusgang && (
-            <div className="flex items-start gap-2 rounded-[12px] bg-ink-softer px-3 py-2.5 text-[13px] text-fg-2" role="status">
+            <div className="flex items-start gap-2 rounded-md bg-[var(--surface-2)] px-3 py-2.5 text-[13px] text-fg-2" role="status">
               <Banknote className="mt-0.5 size-4 shrink-0" />
               <span>
                 <span className="font-semibold text-fg">Noch keine Überweisung gebucht – die Frist bleibt offen.</span> Erst eine Weiterleitung oder ein Ausgang dieser Akte weist die Zahlung nach.{" "}
@@ -280,7 +280,7 @@ export function ErledigenDialog({ f, user, open, onClose, modus = "erledigen", o
                 </Select>
               </Field>
               {quelle && quelleFremd && (
-                <div className="rounded-[14px] bg-seal-soft px-3.5 py-3 text-[12.5px] leading-relaxed text-fg-2" role="alert">
+                <div className="rounded-lg bg-seal-soft px-3.5 py-3 text-[13px] leading-relaxed text-fg-2" role="alert">
                   <div className="flex items-center gap-1.5 font-semibold text-seal">
                     <AlertTriangle className="size-4 shrink-0" /> {fremdHinweis(quelle, aktenzeichen)}
                   </div>
@@ -320,7 +320,7 @@ export function ErledigenDialog({ f, user, open, onClose, modus = "erledigen", o
             )
           )}
           {quelle && betragAbweichend && quellen.erwartet !== undefined && (
-            <p className="flex items-start gap-2 rounded-[12px] bg-amber-soft px-3 py-2 text-[12.5px] text-fg-2" role="status">
+            <p className="flex items-start gap-2 rounded-md bg-amber-soft px-3 py-2 text-[13px] text-fg-2" role="status">
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber" />
               <span>
                 Betrag weicht ab: Nachweis {fmtEUR(-quelle.betrag)}, {/fremdgeld/i.test(f.titel) ? "Fremdgeld" : "Fristbetrag"} {fmtEUR(quellen.erwartet)} – bitte prüfen (Teilzahlung?).
@@ -341,7 +341,7 @@ export function ErledigenDialog({ f, user, open, onClose, modus = "erledigen", o
       )}
 
       {kontrolleOffen && (
-        <div className="mt-4 rounded-[14px] bg-amber-soft px-3.5 py-3 text-[12.5px] leading-relaxed text-fg-2">
+        <div className="mt-4 rounded-lg bg-amber-soft px-3.5 py-3 text-[13px] leading-relaxed text-fg-2">
           <div className="flex items-center gap-1.5 font-semibold text-amber">
             <AlertTriangle className="size-4" /> Vier-Augen-Kontrolle steht noch aus
           </div>
@@ -352,11 +352,11 @@ export function ErledigenDialog({ f, user, open, onClose, modus = "erledigen", o
         </div>
       )}
       {fehlt && (
-        <p className="mt-3 flex items-start gap-1.5 text-[12.5px] text-fg-3" role="status">
+        <p className="mt-3 flex items-start gap-1.5 text-[13px] text-fg-3" role="status">
           <Send className="mt-0.5 size-3.5 shrink-0" /> {fehlt}
         </p>
       )}
-      <p className="mt-3 text-[12.5px] text-fg-3">Nachweis bzw. Grund, Versandzeit, Person und Zeitpunkt des Eintrags stehen im Verlauf der Akte und in der Ausgangskontrolle.</p>
+      <p className="mt-3 text-[13px] text-fg-3">Nachweis bzw. Grund, Versandzeit, Person und Zeitpunkt des Eintrags stehen im Verlauf der Akte und in der Ausgangskontrolle.</p>
     </Modal>
   );
 }

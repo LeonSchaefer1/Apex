@@ -1,7 +1,7 @@
 import { Link } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { CalendarClock, CalendarDays, Check, CheckCircle2, FolderOpen, Gavel, Inbox, Landmark, Mail, MapPin, ShieldAlert, Sparkles, ArrowRight, UserCheck } from "lucide-react";
-import { Avatar, Chip } from "@/components/ui";
+import { CalendarClock, Check, CircleCheck, Landmark, Mail, MapPin, Sparkles, ArrowRight, TriangleAlert, UserCheck } from "lucide-react";
+import { Avatar, Chip, type Tone } from "@/components/ui";
 import { toast } from "@/store/ui";
 import { useData } from "@/store/data";
 import { addDays, diffDays, fmtDateShort, monatName, fromISO, nowLocal, relTime, wochentagName } from "@/core/dates";
@@ -9,26 +9,24 @@ import { fristArtZu } from "@/core/fristen";
 import { istKritisch } from "@/core/fristenLage";
 import type { Frist, Nachricht } from "@/core/types";
 import { cn } from "@/lib/cn";
+import { BEWEGUNG } from "@/lib/bewegung";
 import { letzteAbfrageText, letzteAbfrageUhrzeit } from "@/lib/betriebsstatus";
 import { foermlicherName } from "@/lib/rollen";
-import { BentoKarte, KartenKopf, MehrLink, Streifen } from "./Basis";
+import { Abschnitt, GruppenKopf, KRITISCH_BALKEN, ListenKarte, MehrLink } from "./Basis";
 import { TYP_LABEL, tagLabel, type CockpitDaten } from "./daten";
 
 function anzahl(n: number, eins: string, viele: string) {
   return `${n} ${n === 1 ? eins : viele}`;
 }
 
-const TYP_TON = { notfrist: "seal", frist: "amber", vorfrist: "ink", wiedervorlage: "neutral", termin: "violet" } as const;
+/** Typ-Chip: Rot nur für kritische Fristen, Bernstein für Fristen (bald fällig), alles andere neutral (DESIGN-SYSTEM.md 12.6). */
+const TYP_TON: Record<Frist["typ"], Tone> = { notfrist: "seal", frist: "amber", vorfrist: "neutral", wiedervorlage: "neutral", termin: "neutral" };
 
-function streifenTon(f: Frist, heute: string): "seal" | "amber" | "ink" | "neutral" {
-  if (f.datum < heute || istKritisch(f)) return "seal";
-  if (f.typ === "frist") return f.datum === heute ? "seal" : "amber";
-  if (f.typ === "vorfrist") return "ink";
-  return "neutral";
-}
+/** Zeile in einer Cockpit-Liste: Polster 12/16 px, Hover Fläche 2. */
+const ZEILE = "group flex min-w-0 gap-3 px-4 py-3 transition-colors duration-100 hover:bg-[var(--surface-2)] focus-visible:outline-offset-[-2px]";
 
 // ───────────────────────── Fristen ─────────────────────────
-export function FristenKarte({ d, i, className }: { d: CockpitDaten; i: number; className?: string }) {
+export function FristenKarte({ d, className }: { d: CockpitDaten; className?: string }) {
   const MAX = 7;
   const sichtbar = d.bisWerktag.slice(0, MAX);
   const rest = d.bisWerktag.length - sichtbar.length;
@@ -46,7 +44,7 @@ export function FristenKarte({ d, i, className }: { d: CockpitDaten; i: number; 
     g.items.push(f);
   }
   const bisLabel = d.wochenende ? `bis ${wochentagName(d.bisTag)}` : "bis morgen";
-  // Freitags (oder vor Feiertagen) reicht die Karte bis zum nächsten Werktag – der Titel sagt das.
+  // Freitags (oder vor Feiertagen) reicht die Liste bis zum nächsten Werktag – der Titel sagt das.
   const titel = d.wochenende ? `Heute & ${wochentagName(d.bisTag)} fällig` : "Heute & morgen fällig";
   // Kopfzeile mit derselben Zählweise wie Briefing, Navigation und Fristenkalender: Fristen, Wiedervorlagen und Vorfristen getrennt
   const nF = d.lage.faellig.length;
@@ -58,53 +56,42 @@ export function FristenKarte({ d, i, className }: { d: CockpitDaten; i: number; 
   const naechsteWoche = addDays(d.heute, 7);
 
   return (
-    <BentoKarte i={i} label={d.wochenende ? `Heute und bis ${wochentagName(d.bisTag)} fällig` : "Heute und morgen fällig"} className={className}>
-      <KartenKopf
-        icon={<CalendarClock />}
-        ton={d.ueberfaellig > 0 || d.bisWerktag.some(istKritisch) ? "seal" : "ink"}
-        titel={titel}
-        unter={
-          d.bisWerktag.length === 0 ? (
-            `Nichts offen ${bisLabel}`
-          ) : (
-            <>
-              {heuteText}
-              <span className="hidden @md:inline"> · {anzahl(d.bisWerktag.length, "Eintrag", "Einträge")} {bisLabel}</span>
-            </>
-          )
-        }
-        mehr={{ to: "/fristen", label: "Alle Fristen" }}
-      />
-
-      {d.vertretungVorab.length > 0 && (
-        // Vertretung vor dem ersten Abwesenheitstag (I4-T18-04, § 53 BRAO): Bernstein, Symbol und Text
-        <div className="relative z-[1] mb-3 grid gap-1.5">
+    <Abschnitt
+      label={d.wochenende ? `Heute und bis ${wochentagName(d.bisTag)} fällig` : "Heute und morgen fällig"}
+      className={className}
+      titel={titel}
+      unter={
+        d.bisWerktag.length === 0 ? (
+          `Nichts offen ${bisLabel}`
+        ) : (
+          <>
+            {heuteText}
+            <span className="hidden @md:inline"> · {anzahl(d.bisWerktag.length, "Eintrag", "Einträge")} {bisLabel}</span>
+          </>
+        )
+      }
+      mehr={{ to: "/fristen", label: "Alle Fristen" }}
+    >
+      {(d.vertretungVorab.length > 0 || d.vertretung.length > 0) && (
+        <div className="mb-3 grid gap-2">
           {d.vertretungVorab.map((v) => (
-            <div key={v.person.id} className="flex items-start gap-2.5 rounded-[14px] bg-amber-soft px-3 py-2 text-[13px] leading-snug text-fg-2" role="note">
-              <CalendarClock className="mt-0.5 size-4 shrink-0 text-amber" aria-hidden />
+            // Vertretung vor dem ersten Abwesenheitstag (I4-T18-04, § 53 BRAO): Warnhinweis mit Symbol und Text
+            <div key={v.person.id} className="banner banner-amber" role="note">
+              <CalendarClock aria-hidden />
               <span className="min-w-0">
-                <span className="font-semibold text-fg">Vertretung vorab: </span>
+                <span className="font-medium text-[var(--amber-text)]">Vertretung vorab: </span>
                 {v.text}
-                <Link to="/fristen?vertretung=vorab" className="ml-1.5 inline-flex min-h-6 items-center gap-0.5 whitespace-nowrap font-semibold text-[var(--amber-text)] underline decoration-[color-mix(in_oklab,var(--amber)_45%,transparent)] underline-offset-2 hover:decoration-[var(--amber)]">
+                <Link to="/fristen?vertretung=vorab" className="link ml-1.5 inline-flex min-h-6 items-center gap-0.5 whitespace-nowrap font-medium">
                   Fristen ansehen <ArrowRight className="size-3.5" aria-hidden />
                 </Link>
               </span>
             </div>
           ))}
-        </div>
-      )}
-
-      {d.vertretung.length > 0 && (
-        <div className="relative z-[1] mb-3 grid gap-1.5">
           {d.vertretung.map((v) => (
-            <Link
-              key={v.person.id}
-              to="/fristen?nur=meine"
-              className="flex items-center gap-2.5 rounded-[14px] bg-violet-soft px-3 py-2 text-[13px] text-fg-2 transition-colors hover:bg-[color-mix(in_oklab,var(--violet)_16%,transparent)]"
-            >
-              <UserCheck className="size-4 shrink-0 text-violet" />
+            <Link key={v.person.id} to="/fristen?nur=meine" className="banner transition-colors duration-100 hover:border-[var(--line-strong)]">
+              <UserCheck aria-hidden />
               <span className="min-w-0">
-                <span className="font-semibold text-fg">Sie vertreten heute {v.person.name}</span> – {anzahl(v.fristen, "Frist", "Fristen")}
+                <span className="font-medium text-fg">Sie vertreten heute {v.person.name}</span> – {anzahl(v.fristen, "Frist", "Fristen")}
                 {v.weitere > 0 && `, dazu ${anzahl(v.weitere, "Wiedervorlage oder Vorfrist", "Wiedervorlagen und Vorfristen")}`} bis <span className="whitespace-nowrap">{wochentagName(v.bis, true)}, {fmtDateShort(v.bis)}</span>
                 {v.bisAbwesenheitsende ? <span className="text-fg-3"> (Ende der Abwesenheit)</span> : <span className="text-fg-3"> (nächste 7 Tage)</span>}
               </span>
@@ -113,47 +100,47 @@ export function FristenKarte({ d, i, className }: { d: CockpitDaten; i: number; 
         </div>
       )}
 
-      <TermineHeute d={d} />
+      <ListenKarte>
+        <TermineHeute d={d} />
 
-      {spotlight.length > 0 && (
-        <div className="relative z-[1] mb-3 grid gap-2">
-          {spotlight.map((f) => (
-            <NotfristSpot key={f.id} f={f} d={d} />
-          ))}
-        </div>
-      )}
+        {spotlight.length > 0 && (
+          <ul className="divide-y divide-[var(--line)] border-t border-[var(--line)]">
+            {spotlight.map((f) => (
+              <NotfristSpot key={f.id} f={f} d={d} />
+            ))}
+          </ul>
+        )}
 
-      {d.bisWerktag.length === 0 ? (
-        <div className="relative z-[1] -mx-1 flex-1">
-          <div className="mx-1 flex items-center gap-3 rounded-[16px] bg-green-soft px-4 py-3">
-            <CheckCircle2 className="size-6 shrink-0 text-green" />
-            <div className="min-w-0">
-              <div className="text-[14px] font-semibold">Alles im Griff</div>
-              <p className="text-[12.5px] text-fg-3">Bis {wochentagName(d.bisTag)} ist nichts offen. Vorfristen setzt der 38h-Motor automatisch.</p>
-            </div>
-          </div>
-          {d.woche.filter((f) => f.datum > d.bisTag).length > 0 && (
-            <>
-              <div className="eyebrow px-2 pb-1 pt-3.5">
-                Als Nächstes · bis {wochentagName(naechsteWoche, true)}, {fmtDateShort(naechsteWoche)}
+        {d.bisWerktag.length === 0 ? (
+          <div className="border-t border-[var(--line)]">
+            <div className="flex items-start gap-3 px-4 py-3">
+              <CircleCheck className="mt-0.5 size-4 shrink-0 text-[var(--green)]" aria-hidden />
+              <div className="min-w-0">
+                <div className="text-[14px] font-medium">Alles im Griff</div>
+                <p className="text-[13px] text-fg-3">Bis {wochentagName(d.bisTag)} ist nichts offen. Vorfristen setzt der 38h-Motor automatisch.</p>
               </div>
-              <ul className="flex min-w-0 flex-col gap-0.5">
-                {d.woche
-                  .filter((f) => f.datum > d.bisTag)
-                  .slice(0, 6)
-                  .map((f) => (
-                    <FristZeile key={f.id} f={f} d={d} mitDatum />
-                  ))}
-              </ul>
-            </>
-          )}
-        </div>
-      ) : (
-        <div className="relative z-[1] -mx-1 flex-1">
-          {gruppen.map((g) => (
-            <div key={g.key} className="mb-1.5 last:mb-0">
-              <div className={cn("eyebrow px-2 pb-1 pt-1.5", g.key === "ueber" && "!text-seal")}>{g.label}</div>
-              <ul className="flex min-w-0 flex-col gap-0.5">
+            </div>
+            {d.woche.filter((f) => f.datum > d.bisTag).length > 0 && (
+              <>
+                <GruppenKopf className="border-t border-[var(--line)]">
+                  Als Nächstes · bis {wochentagName(naechsteWoche, true)}, {fmtDateShort(naechsteWoche)}
+                </GruppenKopf>
+                <ul className="flex min-w-0 flex-col divide-y divide-[var(--line)]">
+                  {d.woche
+                    .filter((f) => f.datum > d.bisTag)
+                    .slice(0, 6)
+                    .map((f) => (
+                      <FristZeile key={f.id} f={f} d={d} mitDatum />
+                    ))}
+                </ul>
+              </>
+            )}
+          </div>
+        ) : (
+          gruppen.map((g) => (
+            <div key={g.key} className="border-t border-[var(--line)]">
+              <GruppenKopf className={cn(g.key === "ueber" && "!text-[var(--seal-text)]")}>{g.label}</GruppenKopf>
+              <ul className="flex min-w-0 flex-col divide-y divide-[var(--line)]">
                 <AnimatePresence initial={false}>
                   {g.items.map((f) => (
                     <FristZeile key={f.id} f={f} d={d} />
@@ -161,15 +148,17 @@ export function FristenKarte({ d, i, className }: { d: CockpitDaten; i: number; 
                 </AnimatePresence>
               </ul>
             </div>
-          ))}
-          {rest > 0 && (
-            <MehrLink to="/fristen" className="mt-1 ml-1">
+          ))
+        )}
+        {rest > 0 && (
+          <div className="border-t border-[var(--line)] px-4 py-2">
+            <MehrLink to="/fristen">
               {rest} weitere bis {wochentagName(d.bisTag)}
             </MehrLink>
-          )}
-        </div>
-      )}
-    </BentoKarte>
+          </div>
+        )}
+      </ListenKarte>
+    </Abschnitt>
   );
 }
 
@@ -180,41 +169,33 @@ function NotfristSpot({ f, d }: { f: Frist; d: CockpitDaten }) {
   const vergangen = f.ereignisDatum ? Math.min(gesamt, Math.max(0, diffDays(f.ereignisDatum, d.heute))) : 0;
   const art = fristArtZu(f);
   return (
-    <Link
-      to={`/akten/${f.akteId}?tab=fristen`}
-      className="group relative block overflow-hidden rounded-[16px] bg-seal-soft p-3.5 transition-transform duration-300 ease-[var(--spring)] hover:-translate-y-0.5"
-      style={{ boxShadow: "inset 0 0 0 1px color-mix(in oklab, var(--seal) 22%, transparent)" }}
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        <Chip tone="seal" icon={<ShieldAlert className="size-3" />} title={art?.kurz}>
-          {f.typ === "notfrist" ? "Notfrist" : "Nicht verlängerbar"}
-        </Chip>
-        <span className="text-[12.5px] font-semibold text-seal">
-          {tage === 0 ? "heute" : `noch ${tage} ${tage === 1 ? "Tag" : "Tage"}`} · {wochentagName(f.datum, true)}, {fmtDateShort(f.datum)}
-        </span>
-        <ArrowRight className="ml-auto size-4 text-seal opacity-60 transition-transform group-hover:translate-x-0.5" />
-      </div>
-      <div className="mt-1.5 text-[14px] font-semibold leading-snug">{f.titel}</div>
-      <div className="mt-0.5 truncate text-[12.5px] text-fg-3">
-        {a && <span className="mono font-medium text-fg-2">{a.aktenzeichen}</span>} {a?.titel}
-        {f.grundlage && <> · {f.grundlage}</>}
-      </div>
-      {gesamt > 0 && (
-        <div className="mt-2.5 flex items-center gap-2.5">
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[color-mix(in_oklab,var(--seal)_14%,transparent)]">
-            <motion.div
-              className="h-full rounded-full bg-seal"
-              initial={{ width: 0 }}
-              animate={{ width: `${(vergangen / gesamt) * 100}%` }}
-              transition={{ duration: 1.1, ease: [0.16, 1, 0.3, 1], delay: 0.35 }}
-            />
-          </div>
-          <span className="num shrink-0 text-[12.5px] text-fg-3">
-            Tag {vergangen} von {gesamt}
+    <li className={KRITISCH_BALKEN}>
+      <Link to={`/akten/${f.akteId}?tab=fristen`} className={cn(ZEILE, "flex-col gap-1")}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Chip tone="seal" voll={tage <= 1} title={art?.kurz}>
+            {f.typ === "notfrist" ? "Notfrist" : "Nicht verlängerbar"}
+          </Chip>
+          <span className="text-[13px] font-medium text-[var(--seal-text)]">
+            {tage === 0 ? "heute" : `noch ${tage} ${tage === 1 ? "Tag" : "Tage"}`} · {wochentagName(f.datum, true)}, {fmtDateShort(f.datum)}
           </span>
         </div>
-      )}
-    </Link>
+        <div className="text-[14px] font-medium leading-5 text-fg">{f.titel}</div>
+        <div className="truncate text-[13px] text-fg-3">
+          {a && <span className="mono text-fg-2">{a.aktenzeichen}</span>} {a?.titel}
+          {f.grundlage && <> · {f.grundlage}</>}
+        </div>
+        {gesamt > 0 && (
+          <div className="mt-1 flex items-center gap-3">
+            <div className="bar flex-1" aria-hidden>
+              <span className="!bg-[var(--seal)]" style={{ width: `${(vergangen / gesamt) * 100}%` }} />
+            </div>
+            <span className="num shrink-0 text-[13px] text-fg-3">
+              Tag {vergangen} von {gesamt}
+            </span>
+          </div>
+        )}
+      </Link>
+    </li>
   );
 }
 
@@ -243,33 +224,27 @@ function FristZeile({ f, d, mitDatum }: { f: Frist; d: CockpitDaten; mitDatum?: 
       layout
       initial={{ opacity: 0, height: 0 }}
       animate={{ opacity: 1, height: "auto" }}
-      exit={{ opacity: 0, height: 0, transition: { duration: 0.22 } }}
-      transition={{ type: "spring", stiffness: 480, damping: 38 }}
-      className="relative overflow-hidden"
+      exit={{ opacity: 0, height: 0, transition: BEWEGUNG.standard }}
+      transition={BEWEGUNG.standard}
+      className={cn("relative overflow-hidden", notfrist && KRITISCH_BALKEN)}
     >
-      <div
-        className={cn(
-          "group relative flex items-center gap-3 rounded-[14px] py-2 pl-4 pr-1.5 transition-colors hover:bg-ink-softer",
-          notfrist && "bg-seal-soft hover:bg-seal-soft",
-        )}
-      >
-        <Streifen ton={streifenTon(f, d.heute)} />
-        <Link to={`/akten/${f.akteId}?tab=fristen`} className="min-w-0 flex-1">
-          <div className={cn("truncate text-[13.5px] font-semibold leading-snug group-hover:text-ink max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:break-words", notfrist && "text-seal group-hover:text-seal")}>
+      <div className="group flex items-center gap-3 py-2.5 pl-4 pr-3 transition-colors duration-100 hover:bg-[var(--surface-2)]">
+        <Link to={`/akten/${f.akteId}?tab=fristen`} className="min-w-0 flex-1 rounded-sm">
+          <div className="truncate text-[14px] font-medium leading-5 text-fg max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:break-words">
             {f.titel}
             {f.uhrzeit && <span className="num ml-1.5 font-normal text-fg-3">{f.uhrzeit} Uhr</span>}
           </div>
-          <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[12.5px] text-fg-3">
-            <Chip tone={notfrist ? "seal" : TYP_TON[f.typ]} className="!h-[22px] !px-2 !text-[12.5px]" title={art?.kurz}>
+          <div className="mt-1 flex min-w-0 items-center gap-2 text-[13px] text-fg-3">
+            <Chip tone={notfrist ? "seal" : TYP_TON[f.typ]} title={art?.kurz}>
               {TYP_LABEL[f.typ]}
             </Chip>
-            {(f.datum < d.heute || mitDatum) && <span className={cn("shrink-0 font-semibold", f.datum < d.heute ? "text-seal" : "text-fg-2")}>{tagLabel(f.datum, d.heute)}</span>}
+            {(f.datum < d.heute || mitDatum) && <span className={cn("shrink-0 font-medium", f.datum < d.heute ? "text-[var(--seal-text)]" : "text-fg-2")}>{tagLabel(f.datum, d.heute)}</span>}
             {vertretenFuer && (
-              <Chip tone="violet" className="!h-[22px] shrink-0 !px-2 !text-[12.5px]" title={`Vertretung nach § 53 BRAO – ${vertretenFuer.name} ist abwesend`}>
+              <Chip tone="outline" className="shrink-0" title={`Vertretung nach § 53 BRAO – ${vertretenFuer.name} ist abwesend`}>
                 Vertretung für {foermlicherName(vertretenFuer).replace(/^Herr /, "Herrn ")}
               </Chip>
             )}
-            {a && <span className="mono shrink-0 font-medium text-fg-2">{a.aktenzeichen}</span>}
+            {a && <span className="mono shrink-0 text-fg-2">{a.aktenzeichen}</span>}
             <span className="truncate">{a?.titel}</span>
           </div>
         </Link>
@@ -280,40 +255,39 @@ function FristZeile({ f, d, mitDatum }: { f: Frist; d: CockpitDaten; mitDatum?: 
             onClick={erledigen}
             aria-label={`${f.titel} als erledigt markieren`}
             title="Als erledigt markieren"
-            className="grid size-8 shrink-0 place-items-center rounded-full text-fg-4 ring-1 ring-[var(--line-strong)] transition-all duration-300 ease-[var(--spring)] hover:bg-green-soft hover:text-green hover:ring-[var(--green)] active:scale-90"
+            className="grid size-8 shrink-0 place-items-center rounded-md text-fg-3 shadow-[inset_0_0_0_1px_var(--line-strong)] transition-colors duration-100 hover:bg-[var(--surface-3)] hover:text-fg max-sm:size-11"
           >
             <Check className="size-4" />
           </button>
         ) : (
-          <span className="size-8 shrink-0" aria-hidden />
+          <span className="size-8 shrink-0 max-sm:size-11" aria-hidden />
         )}
       </div>
     </motion.li>
   );
 }
 
-/** „Termine heute“ – direkt neben den heute fälligen Fristen: Uhrzeit, Ort, Akte, Link (Quelle: Fristen mit typ 'termin'). */
+/** „Termine heute“ – direkt über den heute fälligen Fristen: Uhrzeit, Ort, Akte, Link (Quelle: Fristen mit typ 'termin'). */
 function TermineHeute({ d }: { d: CockpitDaten }) {
   return (
-    <div className="relative z-[1] mb-3 rounded-[16px] bg-[var(--ink-softer)] px-3 py-2">
-      <div className="flex items-center gap-2 text-[12.5px] font-semibold text-fg-2">
-        <Gavel className="size-3.5 text-violet" />
+    <div className="pb-2">
+      <GruppenKopf>
         Termine heute
-        {d.termineHeute.length > 0 && <span className="num font-normal text-fg-3">· {d.termineHeute.length}</span>}
-      </div>
+        {d.termineHeute.length > 0 && <span className="num font-normal text-fg-4"> · {d.termineHeute.length}</span>}
+      </GruppenKopf>
       {d.termineHeute.length === 0 ? (
-        <p className="mt-0.5 text-[13px] text-fg-3">Heute keine Termine.</p>
+        <p className="px-4 text-[13px] text-fg-3">Heute keine Termine.</p>
       ) : (
-        <ul className="mt-1 grid gap-0.5">
+        <ul className="grid">
           {d.termineHeute.map((t) => {
             const a = d.akten.get(t.akteId);
             return (
               <li key={t.id}>
-                <Link to={`/akten/${t.akteId}?tab=fristen`} className="group flex min-w-0 items-baseline gap-2 rounded-[10px] px-1 py-1 text-[13px] hover:bg-ink-soft">
-                  <span className="num shrink-0 font-semibold text-violet">{t.uhrzeit ? `${t.uhrzeit} Uhr` : "ganztägig"}</span>
-                  <span className="min-w-0 truncate font-medium group-hover:text-ink max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:break-words">{t.titel}</span>
-                  {t.ort && <span className="hidden min-w-0 truncate text-fg-3 @md:inline">· {t.ort}</span>}
-                  {a && <span className="mono ml-auto shrink-0 text-[12.5px] text-fg-3">{a.aktenzeichen}</span>}
+                <Link to={`/akten/${t.akteId}?tab=fristen`} className="group flex min-w-0 items-baseline gap-3 px-4 py-1.5 text-[14px] transition-colors duration-100 hover:bg-[var(--surface-2)] focus-visible:outline-offset-[-2px]">
+                  <span className="num w-[72px] shrink-0 font-medium text-fg">{t.uhrzeit ? `${t.uhrzeit} Uhr` : "ganztägig"}</span>
+                  <span className="min-w-0 truncate font-medium max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:break-words">{t.titel}</span>
+                  {t.ort && <span className="hidden min-w-0 truncate text-[13px] text-fg-3 @md:inline">· {t.ort}</span>}
+                  {a && <span className="mono ml-auto shrink-0 text-[13px] text-fg-3">{a.aktenzeichen}</span>}
                 </Link>
               </li>
             );
@@ -326,22 +300,22 @@ function TermineHeute({ d }: { d: CockpitDaten }) {
 
 // ───────────────────────── Betriebsstatus ─────────────────────────
 /**
- * „beA ✓ · E-Mail ✓ · letzte Abfrage …“ – führt zum Systemstatus. In der Posteingang-Karte relativ („vor 1 Min.“),
- * im Briefing am Smartphone mit Uhrzeit („01:20 Uhr“), immer mit der Kennzeichnung „simuliert“.
+ * „beA ✓ · E-Mail ✓ · letzte Abfrage …“ – führt zum Systemstatus. Im Posteingang relativ („vor 1 Min.“), im Briefing am
+ * Smartphone mit Uhrzeit („01:20 Uhr“), immer mit der Kennzeichnung „simuliert“.
  */
 export function StatusZeile({ className, uhrzeit = false }: { className?: string; uhrzeit?: boolean }) {
   return (
     <Link
       to="/hilfe#status"
-      className={cn("inline-flex min-h-[32px] flex-wrap items-center gap-x-2 gap-y-0.5 self-start rounded-full bg-[var(--ink-softer)] px-3 py-1 text-[12.5px] text-fg-2 transition-colors hover:bg-ink-soft", className)}
+      className={cn("inline-flex min-h-8 flex-wrap items-center gap-x-2 gap-y-0.5 self-start rounded-sm text-[13px] text-fg-3 transition-colors duration-100 hover:text-fg max-sm:min-h-11", className)}
       title="Systemstatus öffnen – beA, E-Mail und Bank sind im Prototyp simuliert"
     >
-      <span className="inline-flex items-center gap-1 font-semibold">
-        <span className="size-2 rounded-full bg-[var(--green)]" aria-hidden /> beA <Check className="size-3.5 text-green" aria-label="verbunden" />
+      <span className="inline-flex items-center gap-1 font-medium text-fg-2">
+        beA <Check className="size-3.5 text-[var(--green)]" aria-label="verbunden" />
       </span>
       <span aria-hidden>·</span>
-      <span className="inline-flex items-center gap-1 font-semibold">
-        E-Mail <Check className="size-3.5 text-green" aria-label="verbunden" />
+      <span className="inline-flex items-center gap-1 font-medium text-fg-2">
+        E-Mail <Check className="size-3.5 text-[var(--green)]" aria-label="verbunden" />
       </span>
       <span aria-hidden>·</span>
       <span>{uhrzeit ? `letzte Abfrage ${letzteAbfrageUhrzeit()}` : letzteAbfrageText()} (simuliert)</span>
@@ -350,36 +324,38 @@ export function StatusZeile({ className, uhrzeit = false }: { className?: string
 }
 
 // ───────────────────────── Posteingang ─────────────────────────
-export function PosteingangKarte({ d, i, className }: { d: CockpitDaten; i: number; className?: string }) {
+export function PosteingangKarte({ d, className }: { d: CockpitDaten; className?: string }) {
   const items = d.posteingang.slice(0, 4);
   return (
-    <BentoKarte i={i} label="Neue Nachrichten im Posteingang" className={className}>
-      <KartenKopf
-        icon={<Inbox />}
-        titel="Posteingang"
-        unter={d.posteingang.length ? `${d.posteingang.length} neu · ${d.wartetAufKi} ${d.wartetAufKi === 1 ? "wartet" : "warten"} auf KI-Analyse` : "beA und E-Mail in einem Postfach"}
-        mehr={{ to: "/posteingang", label: "Zum Posteingang" }}
-      />
-      <StatusZeile className="relative z-[1] -mt-1 mb-2.5" />
-      {items.length === 0 ? (
-        <div className="relative z-[1] flex flex-1 flex-col items-center justify-center rounded-[18px] bg-ink-softer px-6 py-10 text-center">
-          <Inbox className="size-8 text-ink" />
-          <div className="mt-3 title-md">Posteingang aufgeräumt</div>
-          <p className="mt-1 max-w-[32ch] text-[13px] text-fg-3">Neue beA-Nachrichten und E-Mails ordnet die KI automatisch den Akten zu.</p>
-        </div>
-      ) : (
-        <ul className="relative z-[1] -mx-1 flex min-w-0 flex-col gap-1">
-          {items.map((n) => (
-            <PostZeile key={n.id} n={n} d={d} />
-          ))}
-        </ul>
-      )}
-      {d.posteingang.length > items.length && (
-        <MehrLink to="/posteingang" className="relative z-[1] mt-2 self-start">
-          {d.posteingang.length - items.length} weitere neue Nachrichten
-        </MehrLink>
-      )}
-    </BentoKarte>
+    <Abschnitt
+      label="Neue Nachrichten im Posteingang"
+      className={className}
+      titel="Posteingang"
+      unter={d.posteingang.length ? `${d.posteingang.length} neu · ${d.wartetAufKi} ${d.wartetAufKi === 1 ? "wartet" : "warten"} auf KI-Analyse` : "beA und E-Mail in einem Postfach"}
+      mehr={{ to: "/posteingang", label: "Zum Posteingang" }}
+    >
+      <StatusZeile className="-mt-2 mb-1" />
+      <ListenKarte>
+        {items.length === 0 ? (
+          <div className="flex flex-1 flex-col items-center justify-center px-6 py-10 text-center">
+            <Mail className="size-5 text-fg-4" aria-hidden />
+            <div className="mt-3 title-md">Posteingang aufgeräumt</div>
+            <p className="mt-1 max-w-[36ch] text-[13px] text-fg-3">Neue beA-Nachrichten und E-Mails ordnet die KI automatisch den Akten zu.</p>
+          </div>
+        ) : (
+          <ul className="flex min-w-0 flex-col divide-y divide-[var(--line)]">
+            {items.map((n) => (
+              <PostZeile key={n.id} n={n} d={d} />
+            ))}
+          </ul>
+        )}
+        {d.posteingang.length > items.length && (
+          <div className="border-t border-[var(--line)] px-4 py-2">
+            <MehrLink to="/posteingang">{d.posteingang.length - items.length} weitere neue Nachrichten</MehrLink>
+          </div>
+        )}
+      </ListenKarte>
+    </Abschnitt>
   );
 }
 
@@ -389,43 +365,34 @@ function PostZeile({ n, d }: { n: Nachricht; d: CockpitDaten }) {
   const fertig = n.kiStatus === "analysiert" || n.kiStatus === "uebernommen";
   return (
     <li className="min-w-0">
-      <Link to={`/posteingang?id=${encodeURIComponent(n.id)}`} className="group flex gap-3 rounded-[16px] p-2.5 transition-colors hover:bg-ink-softer">
-        <span
-          className={cn("mt-0.5 grid size-9 shrink-0 place-items-center rounded-[11px]", n.kanal === "bea" ? "bg-ink-soft text-ink" : "bg-[var(--ink-softer)] text-fg-2")}
-          title={n.kanal === "bea" ? "beA-Nachricht" : "E-Mail"}
-        >
-          {n.kanal === "bea" ? <Landmark className="size-4" /> : <Mail className="size-4" />}
+      <Link to={`/posteingang?id=${encodeURIComponent(n.id)}`} className={ZEILE}>
+        <span className="mt-0.5 shrink-0 text-fg-4" title={n.kanal === "bea" ? "beA-Nachricht" : "E-Mail"}>
+          {n.kanal === "bea" ? <Landmark className="size-4" aria-label="beA-Nachricht" /> : <Mail className="size-4" aria-label="E-Mail" />}
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2">
-            <span className="truncate text-[13.5px] font-semibold max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:break-words">{n.von}</span>
-            <span className="ml-auto shrink-0 text-[12.5px] text-fg-3">{relTime(n.eingang)}</span>
+            <span className="truncate text-[14px] font-medium text-fg max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:break-words">{n.von}</span>
+            <span className="ml-auto shrink-0 text-[13px] text-fg-4">{relTime(n.eingang)}</span>
           </span>
           <span className="mt-0.5 block truncate text-[13px] text-fg-2 max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:break-words">{n.betreff}</span>
           {fertig && n.ki ? (
-            <span className="mt-1.5 block rounded-[12px] bg-violet-soft px-2.5 py-2 text-[12.5px] leading-snug text-fg-2">
+            <span className="mt-1 flex items-start gap-1.5 text-[13px] leading-[18px] text-fg-3">
+              <Sparkles className="mt-0.5 size-3 shrink-0" aria-hidden />
               <span className="line-clamp-2">
-                <span className="ai-text mr-1 font-semibold">KI:</span>
+                <span className="mr-1 font-medium text-fg-2">KI:</span>
                 {n.ki.zusammenfassung}
               </span>
             </span>
           ) : (
-            <span className="mt-1.5 flex items-center gap-2 text-[12.5px] text-fg-3">
-              <span className="shimmer h-1.5 w-16 rounded-full" aria-hidden />
-              Wartet auf KI-Analyse
-            </span>
+            <span className="mt-1 block text-[13px] text-fg-4">Wartet auf KI-Analyse</span>
           )}
-          <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            {n.kanal === "bea" && <Chip tone="ink" className="!h-[22px] !px-2 !text-[12.5px]">beA</Chip>}
-            {n.eebErforderlich && !n.eebAbgegeben && <Chip tone="amber" className="!h-[22px] !px-2 !text-[12.5px]">eEB offen</Chip>}
-            {n.ki?.frist && <Chip tone="seal" className="!h-[22px] !px-2 !text-[12.5px]">Frist erkannt</Chip>}
-            {a ? (
-              <span className="mono text-[12.5px] font-medium text-fg-3">{a.aktenzeichen}</span>
-            ) : (
-              <Chip tone="outline" className="!h-[22px] !px-2 !text-[12.5px]">noch keiner Akte zugeordnet</Chip>
-            )}
-            <span className={cn("ml-auto inline-flex items-center gap-1 text-[12.5px] font-semibold transition-transform duration-300 ease-[var(--spring)] group-hover:translate-x-0.5", fertig ? "text-violet" : "text-ink")}>
-              <Sparkles className="size-3.5" />
+          <span className="mt-2 flex flex-wrap items-center gap-1.5">
+            {n.kanal === "bea" && <Chip>beA</Chip>}
+            {n.eebErforderlich && !n.eebAbgegeben && <Chip tone="amber">eEB offen</Chip>}
+            {n.ki?.frist && <Chip tone="seal">Frist erkannt</Chip>}
+            {a ? <span className="mono text-[13px] text-fg-3">{a.aktenzeichen}</span> : <Chip tone="outline">noch keiner Akte zugeordnet</Chip>}
+            <span className="ml-auto inline-flex items-center gap-1 text-[13px] font-medium text-fg-2 group-hover:text-fg">
+              <Sparkles className="size-3.5" aria-hidden />
               {fertig ? "KI-Analyse ansehen" : "Analysieren lassen"}
             </span>
           </span>
@@ -436,131 +403,136 @@ function PostZeile({ n, d }: { n: Nachricht; d: CockpitDaten }) {
 }
 
 // ───────────────────────── Termine ─────────────────────────
-export function TermineKarte({ d, i, className }: { d: CockpitDaten; i: number; className?: string }) {
-  const maxLast = Math.max(1, ...d.wochenTage.map((t) => t.fristen + t.termine));
+export function TermineKarte({ d, className }: { d: CockpitDaten; className?: string }) {
   return (
-    <BentoKarte i={i} label="Termine und Wochenblick" className={className}>
-      <KartenKopf icon={<CalendarDays />} ton="violet" titel="Termine" unter="Wochenblick und nächste Gerichts- und Ortstermine" mehr={{ to: "/fristen", label: "Kalender" }} />
-      <div className="relative z-[1] mb-3 grid grid-cols-5 gap-1.5">
-        {d.wochenTage.map((t) => {
-          const ist = t.datum === d.heute;
-          const last = t.fristen + t.termine;
-          return (
-            <Link
-              key={t.datum}
-              to={`/fristen?datum=${t.datum}`}
-              title={`${wochentagName(t.datum)}: ${anzahl(t.fristen, "Frist", "Fristen")}, ${anzahl(t.termine, "Termin", "Termine")}${t.wiedervorlagen ? ` · dazu ${anzahl(t.wiedervorlagen, "Wiedervorlage", "Wiedervorlagen")}` : ""}`}
-              className={cn(
-                "group relative flex flex-col items-center rounded-[14px] px-1 pb-2 pt-1.5 transition-colors",
-                ist ? "bg-ink text-[var(--on-ink)] shadow-[0_8px_20px_-10px_var(--ink)]" : "bg-[var(--ink-softer)] hover:bg-ink-soft",
-              )}
-            >
-              <span className={cn("text-[12.5px] font-semibold uppercase tracking-wide", ist ? "opacity-80" : "text-fg-3")}>{wochentagName(t.datum, true)}</span>
-              <span className="num text-[17px] font-semibold leading-tight">{fromISO(t.datum).getUTCDate()}</span>
-              <span className="mt-1 flex h-[14px] w-full items-end justify-center gap-[3px] px-2">
-                <span
-                  className={cn("w-full max-w-[22px] rounded-full", ist ? "bg-white/70" : t.kritisch ? "bg-seal" : "bg-ink/60")}
-                  style={{ height: `${Math.max(3, (last / maxLast) * 14)}px`, opacity: last ? 1 : 0.25 }}
-                />
-              </span>
-              <span className={cn("num mt-1 text-[12.5px]", ist ? "opacity-85" : "text-fg-3")}>{last || "–"}</span>
-            </Link>
-          );
-        })}
-      </div>
-      {d.termine.length === 0 ? (
-        <p className="relative z-[1] rounded-[14px] bg-[var(--ink-softer)] px-4 py-5 text-center text-[13px] text-fg-3">Keine Termine geplant. Ladungen aus dem beA trägt die KI automatisch ein.</p>
-      ) : (
-        <ul className="relative z-[1] -mx-1 flex min-w-0 flex-col gap-0.5">
-          {d.termine.map((t) => {
-            const a = d.akten.get(t.akteId);
-            const dt = fromISO(t.datum);
+    <Abschnitt label="Termine und Wochenblick" className={className} titel="Termine" unter="Wochenblick und nächste Gerichts- und Ortstermine" mehr={{ to: "/fristen", label: "Kalender" }}>
+      <ListenKarte>
+        <div className="grid grid-cols-5 divide-x divide-[var(--line)] border-b border-[var(--line)]">
+          {d.wochenTage.map((t) => {
+            const ist = t.datum === d.heute;
+            const last = t.fristen + t.termine;
             return (
-              <li key={t.id}>
-                <Link to={`/akten/${t.akteId}?tab=fristen`} className="group flex items-center gap-3 rounded-[14px] p-2 transition-colors hover:bg-ink-softer">
-                  <span className="grid w-11 shrink-0 place-items-center rounded-[12px] bg-violet-soft py-1 text-violet">
-                    <span className="text-[12.5px] font-semibold uppercase leading-none tracking-wide">{monatName(dt.getUTCMonth(), true).replace(".", "")}</span>
-                    <span className="num text-[18px] font-semibold leading-tight">{dt.getUTCDate()}</span>
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13.5px] font-semibold group-hover:text-ink max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:break-words">{t.titel}</span>
-                    <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[12.5px] text-fg-3">
-                      <span className="shrink-0 font-medium text-fg-2">
-                        {tagLabel(t.datum, d.heute)}
-                        {t.uhrzeit && `, ${t.uhrzeit} Uhr`}
+              <Link
+                key={t.datum}
+                to={`/fristen?datum=${t.datum}`}
+                aria-current={ist ? "date" : undefined}
+                title={`${wochentagName(t.datum)}: ${anzahl(t.fristen, "Frist", "Fristen")}, ${anzahl(t.termine, "Termin", "Termine")}${t.wiedervorlagen ? ` · dazu ${anzahl(t.wiedervorlagen, "Wiedervorlage", "Wiedervorlagen")}` : ""}${t.kritisch ? " · kritische Frist" : ""}`}
+                className={cn(
+                  "flex min-h-11 flex-col items-center px-1 py-2 transition-colors duration-100 focus-visible:outline-offset-[-2px]",
+                  ist ? "bg-[var(--surface-3)] shadow-[inset_0_2px_0_var(--ink)]" : "hover:bg-[var(--surface-2)]",
+                )}
+              >
+                <span className={cn("text-[12px] leading-4", ist ? "font-semibold text-fg" : "font-medium text-fg-3")}>{wochentagName(t.datum, true)}</span>
+                <span className="num text-[15px] font-semibold leading-6 text-fg">{fromISO(t.datum).getUTCDate()}</span>
+                <span className="num inline-flex items-center gap-1 text-[12px] leading-4 text-fg-3">
+                  {t.kritisch && <TriangleAlert className="size-3 text-[var(--seal)]" aria-hidden />}
+                  {last || "–"}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+        {d.termine.length === 0 ? (
+          <p className="px-4 py-5 text-center text-[13px] text-fg-3">Keine Termine geplant. Ladungen aus dem beA trägt die KI automatisch ein.</p>
+        ) : (
+          <ul className="flex min-w-0 flex-col divide-y divide-[var(--line)]">
+            {d.termine.map((t) => {
+              const a = d.akten.get(t.akteId);
+              const dt = fromISO(t.datum);
+              return (
+                <li key={t.id}>
+                  <Link to={`/akten/${t.akteId}?tab=fristen`} className={cn(ZEILE, "items-start gap-4")}>
+                    <span className="w-9 shrink-0 text-center">
+                      <span className="block text-[12px] leading-4 text-fg-3">{monatName(dt.getUTCMonth(), true)}</span>
+                      <span className="num block text-[18px] font-semibold leading-6 text-fg">{dt.getUTCDate()}</span>
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[14px] font-medium text-fg max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:break-words">{t.titel}</span>
+                      <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[13px] text-fg-3">
+                        <span className="shrink-0 text-fg-2">
+                          {tagLabel(t.datum, d.heute)}
+                          {t.uhrzeit && `, ${t.uhrzeit} Uhr`}
+                        </span>
+                        {t.ort && (
+                          <span className="flex min-w-0 items-center gap-1 truncate">
+                            <MapPin className="size-3 shrink-0" aria-hidden />
+                            <span className="truncate">{t.ort}</span>
+                          </span>
+                        )}
                       </span>
-                      {t.ort && (
-                        <span className="flex min-w-0 items-center gap-1 truncate">
-                          <MapPin className="size-3 shrink-0" />
-                          <span className="truncate">{t.ort}</span>
+                      {a && (
+                        <span className="mt-0.5 block truncate text-[13px] text-fg-3">
+                          <span className="mono">{a.aktenzeichen}</span> · {a.titel}
                         </span>
                       )}
                     </span>
-                    {a && (
-                      <span className="mt-0.5 block truncate text-[12.5px] text-fg-3">
-                        <span className="mono">{a.aktenzeichen}</span> · {a.titel}
-                      </span>
-                    )}
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {d.termine.length > 0 && d.termine.length < 3 && (
-        <p className="relative z-[1] mt-auto flex items-start gap-2 pt-3 text-[12.5px] leading-snug text-fg-3">
-          <Sparkles className="mt-0.5 size-3.5 shrink-0 text-violet" />
-          Ladungen aus dem beA erkennt die KI automatisch und trägt sie mit Ort und Uhrzeit hier ein.
-        </p>
-      )}
-    </BentoKarte>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {d.termine.length > 0 && d.termine.length < 3 && (
+          <p className="mt-auto flex items-start gap-2 border-t border-[var(--line)] px-4 py-3 text-[13px] leading-[18px] text-fg-3">
+            <Sparkles className="mt-0.5 size-3 shrink-0" aria-hidden />
+            Ladungen aus dem beA erkennt die KI automatisch und trägt sie mit Ort und Uhrzeit hier ein.
+          </p>
+        )}
+      </ListenKarte>
+    </Abschnitt>
   );
 }
 
 // ───────────────────────── Akten mit Handlungsbedarf ─────────────────────────
-export function AktenKarte({ d, i, className }: { d: CockpitDaten; i: number; className?: string }) {
+const GRUND_TON: Record<string, Tone> = { seal: "seal", amber: "amber", ink: "ink", violet: "outline", neutral: "neutral" };
+
+export function AktenKarte({ d, className }: { d: CockpitDaten; className?: string }) {
   const items = d.handlungsbedarf.slice(0, 5);
   return (
-    <BentoKarte i={i} label="Akten mit Handlungsbedarf" className={className}>
-      <KartenKopf
-        icon={<FolderOpen />}
-        titel="Akten mit Handlungsbedarf"
-        unter={`${anzahl(d.aktenMitFrist, "Akte", "Akten")} mit Frist ≤ 7 Tage${d.aktenNurPrio ? ` · dazu ${d.aktenNurPrio} mit hoher Priorität` : ""}`}
-        mehr={{ to: "/akten?frist=frist7", label: "In Akten ansehen" }}
-      />
-      {items.length === 0 ? (
-        <p className="relative z-[1] rounded-[14px] bg-green-soft px-4 py-6 text-center text-[13px] text-fg-2">Keine Akte braucht gerade Ihre Aufmerksamkeit.</p>
-      ) : (
-        <ul className="relative z-[1] -mx-1 flex min-w-0 flex-col gap-0.5">
-          {items.map(({ akte, gruende }) => {
-            const b = d.team.get(akte.bearbeiterId);
-            return (
-              <li key={akte.id} className="min-w-0">
-                <Link to={`/akten/${akte.id}`} className="group flex items-center gap-3 rounded-[14px] p-2 transition-colors hover:bg-ink-softer">
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-baseline gap-2">
-                      <span className="mono shrink-0 text-[12.5px] font-semibold text-ink">{akte.aktenzeichen}</span>
-                      <span className="truncate text-[13.5px] font-semibold group-hover:text-ink max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:break-words">{akte.titel}</span>
-                    </span>
-                    <span className="mt-1 flex flex-wrap items-center gap-1.5">
-                      {gruende.map((g) => (
-                        <Chip key={g.text} tone={g.ton} dot={g.ton === "seal"} className="!h-[22px] !px-2 !text-[12.5px]">
-                          {g.text}
-                        </Chip>
-                      ))}
-                      <span className="truncate text-[12.5px] text-fg-3">
-                        {akte.sachgebiet} · {akte.phase}
+    <Abschnitt
+      label="Akten mit Handlungsbedarf"
+      className={className}
+      titel="Akten mit Handlungsbedarf"
+      unter={`${anzahl(d.aktenMitFrist, "Akte", "Akten")} mit Frist ≤ 7 Tage${d.aktenNurPrio ? ` · dazu ${d.aktenNurPrio} mit hoher Priorität` : ""}`}
+      mehr={{ to: "/akten?frist=frist7", label: "In Akten ansehen" }}
+    >
+      <ListenKarte>
+        {items.length === 0 ? (
+          <p className="flex items-center justify-center gap-2 px-4 py-6 text-center text-[13px] text-fg-3">
+            <CircleCheck className="size-4 shrink-0 text-[var(--green)]" aria-hidden />
+            Keine Akte braucht gerade Ihre Aufmerksamkeit.
+          </p>
+        ) : (
+          <ul className="flex min-w-0 flex-col divide-y divide-[var(--line)]">
+            {items.map(({ akte, gruende }) => {
+              const b = d.team.get(akte.bearbeiterId);
+              return (
+                <li key={akte.id} className="min-w-0">
+                  <Link to={`/akten/${akte.id}`} className={cn(ZEILE, "items-center")}>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-baseline gap-2">
+                        <span className="mono shrink-0 text-[13px] text-fg-2">{akte.aktenzeichen}</span>
+                        <span className="truncate text-[14px] font-medium text-fg max-[359px]:overflow-visible max-[359px]:whitespace-normal max-[359px]:break-words">{akte.titel}</span>
+                      </span>
+                      <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                        {gruende.map((g) => (
+                          <Chip key={g.text} tone={GRUND_TON[g.ton] ?? "neutral"}>
+                            {g.text}
+                          </Chip>
+                        ))}
+                        <span className="truncate text-[13px] text-fg-3">
+                          {akte.sachgebiet} · {akte.phase}
+                        </span>
                       </span>
                     </span>
-                  </span>
-                  {b && <Avatar initialen={b.initialen} farbe={b.farbe} size={26} title={`Bearbeitung: ${b.name}`} />}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </BentoKarte>
+                    {b && <Avatar initialen={b.initialen} farbe={b.farbe} size={24} title={`Bearbeitung: ${b.name}`} />}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </ListenKarte>
+    </Abschnitt>
   );
 }

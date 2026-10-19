@@ -1,19 +1,22 @@
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, type ReactNode } from "react";
 import { AnimatePresence, motion, useInView } from "motion/react";
-import { CalendarClock, Check, FolderOpen, Inbox, Landmark, LayoutDashboard, Search, ShieldCheck, Sparkles, Zap } from "lucide-react";
+import { CalendarClock, FolderOpen, Inbox, LayoutDashboard, Search, Sparkles, Zap } from "lucide-react";
 import { AiChip, Chip } from "@/components/ui";
-import { AppIcon } from "@/components/Logo";
+import { LogoMark } from "@/components/Logo";
 import { berechneNachRegel } from "@/core/fristen";
 import { ENTSCHEIDUNGEN } from "@/core/rechtsprechung";
 import { addDays, fmtDateShort, fmtDateWd, today, wochentagName } from "@/core/dates";
 import { STUFE_WORT } from "@/core/einschaetzung";
+import { BEWEGUNG } from "@/lib/bewegung";
 import { cn } from "@/lib/cn";
 import { useTakt } from "./basis";
 
 /**
- * Vorschau im Hero: ein Miniatur-Fenster der echten App.
+ * Produktfenster im Einstieg (DESIGN-SYSTEM.md 14.2): flach – Fläche, 1-px-Linie, Radius 12, kein Schatten, Fenster-Punkte in
+ * Linie stark. Innen gliedern Linien statt Karten, wie in der App.
  * Ablauf (je Takt): beA-Zustellung trifft ein → KI erkennt die Frist → der Fristenrechner rechnet mit Rechenweg →
- * Frist übernommen → KI-Fallanalyse nennt die Einschätzung in Worten (nie „0 %“). Im Ruhezustand ist der Endzustand sichtbar.
+ * Frist übernommen → KI-Fallanalyse nennt die Einschätzung in Worten (nie „0 %“). Im Ruhezustand ist der Endzustand sichtbar;
+ * bei reduzierter Bewegung bleibt er stehen.
  */
 const SCHRITTE = 17;
 const TAKT = 950;
@@ -42,6 +45,14 @@ const kurz = (z: string) =>
     .replace("Ende am Tag mit derselben Zahl – ", "")
     .replace(", auf Werktag gelegt", "");
 
+const NAV = [
+  { k: "cockpit", i: <LayoutDashboard className="size-4" /> },
+  { k: "akten", i: <FolderOpen className="size-4" /> },
+  { k: "post", i: <Inbox className="size-4" /> },
+  { k: "frist", i: <CalendarClock className="size-4" /> },
+  { k: "ki", i: <Sparkles className="size-4" /> },
+];
+
 export function LivePreview() {
   const ref = useRef<HTMLDivElement>(null);
   const sichtbar = useInView(ref, { amount: 0.3 });
@@ -56,213 +67,172 @@ export function LivePreview() {
   const bereich = s < 3 ? "post" : s < 10 ? "frist" : "ki";
 
   return (
-    <div ref={ref} className="relative mx-auto w-full max-w-[620px]">
-      {/* Licht hinter dem Fenster */}
-      <div aria-hidden className="pointer-events-none absolute -inset-6 rounded-[48px] opacity-70 blur-2xl" style={{ background: "radial-gradient(60% 55% at 70% 30%, var(--aura-1), transparent 70%), radial-gradient(50% 50% at 20% 85%, var(--aura-4), transparent 70%)" }} />
-
-      <div className="glass-strong relative overflow-hidden rounded-[26px] sm:rounded-[30px]" style={{ boxShadow: "var(--glass-shadow-lg)" }}>
+    <div ref={ref} className="relative w-full max-w-[640px] xl:ml-auto">
+      <div className="overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--surface)]">
         {/* Titelleiste */}
-        <div className="relative z-[2] flex h-11 items-center gap-3 border-b border-[var(--line)] px-4">
+        <div className="flex h-10 items-center gap-3 border-b border-[var(--line)] px-4">
           <div className="flex gap-1.5" aria-hidden>
-            <span className="size-2.5 rounded-full bg-seal opacity-70" />
-            <span className="size-2.5 rounded-full bg-amber opacity-70" />
-            <span className="size-2.5 rounded-full bg-green opacity-70" />
+            <span className="size-2.5 rounded-full bg-[var(--line-strong)]" />
+            <span className="size-2.5 rounded-full bg-[var(--line-strong)]" />
+            <span className="size-2.5 rounded-full bg-[var(--line-strong)]" />
           </div>
-          <div className="mx-auto hidden h-6 min-w-0 max-w-[260px] flex-1 items-center gap-1.5 rounded-full bg-[var(--ink-softer)] px-3 text-[12px] text-fg-3 shadow-[inset_0_0_0_1px_var(--line)] sm:flex">
+          <div className="mx-auto hidden h-6 min-w-0 max-w-[260px] flex-1 items-center gap-1.5 rounded-md bg-[var(--surface-2)] px-2.5 text-[12px] text-fg-4 sm:flex" aria-hidden>
             <Search className="size-3 shrink-0" />
             <span className="truncate">Akten, Fristen, Urteile durchsuchen …</span>
           </div>
-          <span className="ml-auto inline-flex items-center gap-1.5 text-[12px] font-semibold text-fg-3 sm:ml-0">
-            <span className="relative inline-flex size-1.5 rounded-full bg-[var(--green)]" aria-hidden />
-            Vorschau mit Beispieldaten
-          </span>
+          <span className="ml-auto text-[12px] font-medium text-fg-3 sm:ml-0">Vorschau mit Beispieldaten</span>
         </div>
 
-        <div className="relative z-[2] grid grid-cols-[44px_1fr] sm:grid-cols-[52px_1fr]">
-          {/* Mini-Seitenleiste */}
-          <nav aria-hidden className="flex flex-col items-center gap-1.5 border-r border-[var(--line)] py-3">
-            <AppIcon size={26} className="mb-2" />
-            {[
-              { k: "cockpit", i: <LayoutDashboard className="size-4" /> },
-              { k: "akten", i: <FolderOpen className="size-4" /> },
-              { k: "post", i: <Inbox className="size-4" /> },
-              { k: "frist", i: <CalendarClock className="size-4" /> },
-              { k: "ki", i: <Sparkles className="size-4" /> },
-            ].map((x) => (
-              <span key={x.k} className={cn("relative grid size-8 place-items-center rounded-[10px] transition-colors duration-300", bereich === x.k ? "text-ink" : "text-fg-4")}>
-                {bereich === x.k && (
-                  <motion.span layoutId="lp-nav" className="absolute inset-0 rounded-[10px] bg-[var(--surface)] shadow-[0_2px_8px_-2px_rgba(20,30,80,0.18),0_0_0_1px_var(--line)]" transition={{ type: "spring", stiffness: 480, damping: 36 }} />
-                )}
-                <span className="relative">{x.i}</span>
+        <div className="grid grid-cols-[44px_minmax(0,1fr)] bg-[var(--bg)] sm:grid-cols-[48px_minmax(0,1fr)]">
+          {/* Mini-Seitenleiste wie in der App: Grund, Linie rechts, Auswahl auf Fläche 3 */}
+          <nav aria-hidden className="flex flex-col items-center gap-1 border-r border-[var(--line)] py-3">
+            <LogoMark size={18} className="mb-3 text-fg" />
+            {NAV.map((x) => (
+              <span key={x.k} className={cn("grid size-8 place-items-center rounded-md transition-colors duration-150", bereich === x.k ? "bg-[var(--surface-3)] text-fg" : "text-fg-4")}>
+                {x.i}
               </span>
             ))}
           </nav>
 
-          {/* Inhalt */}
-          <div className="grid min-w-0 gap-2.5 p-2.5 sm:grid-cols-[1fr_1.12fr] sm:gap-3 sm:p-3">
-            <div className="grid min-w-0 content-start gap-2.5 sm:gap-3">
+          {/* Inhalt: zwei Spalten, getrennt durch Linien – keine Karten im Fenster */}
+          <div className="grid min-w-0 bg-[var(--surface)] sm:grid-cols-[minmax(0,1fr)_minmax(0,1.12fr)]">
+            <div className="grid min-w-0 content-start divide-y divide-[var(--line)] border-b border-[var(--line)] sm:border-b-0 sm:border-r">
               {/* Posteingang */}
-              <Kachel aktiv={bereich === "post"}>
-                <div className="flex items-center gap-2">
-                  <span className="grid size-7 shrink-0 place-items-center rounded-[9px] bg-ink-soft text-ink">
-                    <Landmark className="size-3.5" />
-                  </span>
+              <Bereich titel="Posteingang · beA">
+                <div className="flex items-start gap-2">
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[12.5px] font-semibold">Landgericht Berlin II</div>
-                    <div className="truncate text-[12px] text-fg-3">beA · {wochentagName(f.ereignis, true)}, {fmtDateShort(f.ereignis)}</div>
+                    <div className="truncate text-[13px] font-semibold text-fg">Landgericht Berlin II</div>
+                    <div className="truncate text-[12px] text-fg-3">
+                      beA · {wochentagName(f.ereignis, true)}, {fmtDateShort(f.ereignis)}
+                    </div>
                   </div>
-                  <Chip tone="amber" className="!h-[21px] !px-1.5 !text-[12px]">
-                    eEB
-                  </Chip>
+                  <Chip className="!h-5 !px-1.5">eEB</Chip>
                 </div>
-                <div className="mt-2 text-[12.5px] leading-snug text-fg-2">Zustellung Urteil · Neumann ./. Arslan Autohaus GmbH</div>
-                <div className="mt-2 h-[22px]">
+                <div className="mt-2 text-[12px] leading-[18px] text-fg-2">Zustellung Urteil · Neumann ./. Arslan Autohaus GmbH</div>
+                <div className="mt-2.5 h-[22px]">
                   <AnimatePresence mode="wait" initial={false}>
                     {post === "neu" && (
-                      <motion.div key="neu" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}>
-                        <Chip tone="ink" className="!h-[21px] !text-[12px]">
-                          Neu eingegangen
-                        </Chip>
-                      </motion.div>
+                      <Wechsel k="neu">
+                        <Chip tone="ink">Neu eingegangen</Chip>
+                      </Wechsel>
                     )}
                     {post === "liest" && (
-                      <motion.div key="liest" className="flex items-center gap-2 text-[12px] font-medium text-violet" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}>
-                        <span className="shimmer h-1.5 w-12 rounded-full" />
+                      <Wechsel k="liest" className="flex h-[22px] items-center gap-1.5 text-[12px] font-medium text-fg-3">
+                        <Sparkles className="size-3" aria-hidden />
                         KI liest das Urteil …
-                      </motion.div>
+                      </Wechsel>
                     )}
                     {post === "erkannt" && (
-                      <motion.div key="erkannt" className="flex flex-wrap items-center gap-1.5" initial={{ opacity: 0, scale: 0.92 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: "spring", stiffness: 500, damping: 30 }}>
-                        <Chip tone="seal" className="!h-[21px] !text-[12px]" dot>
-                          Frist erkannt
-                        </Chip>
+                      <Wechsel k="erkannt" className="flex flex-wrap items-center gap-1.5">
+                        <Chip tone="ink">Frist erkannt</Chip>
                         <span className="mono text-[12px] text-fg-3">→ Akte 118/26</span>
-                      </motion.div>
+                      </Wechsel>
                     )}
                   </AnimatePresence>
                 </div>
-              </Kachel>
+              </Bereich>
 
               {/* KI-Fallanalyse */}
-              <Kachel aktiv={bereich === "ki"} ai>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[12.5px] font-semibold">KI-Fallanalyse</span>
-                  <AiChip className="!h-[21px] !text-[12px]">KI</AiChip>
-                </div>
-                <div className="mt-1 truncate text-[12px] text-fg-3">
+              <Bereich titel="KI-Fallanalyse" rechts={<AiChip className="!h-5">KI</AiChip>}>
+                <div className="truncate text-[12px] text-fg-3">
                   <span className="mono">142/26</span> · Kündigungsschutz Weber
                 </div>
-                <div className="mt-2 min-h-[58px]">
-                  <div className="text-[12px] font-medium text-fg-3">Einschätzung der Erfolgsaussicht</div>
+                <div className="mt-2.5 min-h-[58px]">
+                  <div className="text-[12px] text-fg-4">Einschätzung der Erfolgsaussicht</div>
                   <AnimatePresence mode="wait" initial={false}>
                     {analyseFertig ? (
-                      <motion.div key="fertig" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ type: "spring", stiffness: 420, damping: 32 }}>
-                        <div className="text-[17px] font-semibold leading-tight tracking-[-0.02em] text-green">{STUFE_WORT.hoch} (Beispiel)</div>
-                        <div className="mt-0.5 text-[12px] leading-snug text-fg-2">14 Jahre ohne Abmahnung, Bagatellwert – Abmahnung hätte genügt.</div>
-                      </motion.div>
+                      <Wechsel k="fertig">
+                        <div className="text-[16px] font-semibold leading-6 tracking-[-0.01em] text-fg">{STUFE_WORT.hoch} (Beispiel)</div>
+                        <div className="text-[12px] leading-[18px] text-fg-2">14 Jahre ohne Abmahnung, Bagatellwert – Abmahnung hätte genügt.</div>
+                      </Wechsel>
                     ) : (
-                      <motion.div key="laeuft" className="mt-1 flex items-center gap-2 text-[12.5px] font-medium text-violet" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                        <span className="shimmer h-1.5 w-12 rounded-full" aria-hidden />
+                      <Wechsel k="laeuft" className="mt-1 flex items-center gap-1.5 text-[12px] font-medium text-fg-3">
+                        <Sparkles className="size-3" aria-hidden />
                         Analyse läuft …
-                      </motion.div>
+                      </Wechsel>
                     )}
                   </AnimatePresence>
                 </div>
-                <ul className="mt-2 grid grid-cols-1 gap-1">
+                <ul className="mt-2.5 grid grid-cols-1 gap-1">
                   {praezedenz.map((e, k) => (
-                    <motion.li
-                      key={e.id}
-                      animate={{ opacity: s >= 11 + k * 0.5 || s === SCHRITTE - 1 ? 1 : 0.65, x: s >= 11 + k * 0.5 || s === SCHRITTE - 1 ? 0 : -4 }}
-                      transition={{ type: "spring", stiffness: 420, damping: 32 }}
-                      className="flex min-w-0 items-center gap-1.5 text-[12px]"
-                    >
-                      <span className="shrink-0 rounded-[5px] bg-violet-soft px-1 font-semibold text-violet">{e.gericht}</span>
+                    <motion.li key={e.id} animate={{ opacity: s >= 11 + k * 0.5 || s === SCHRITTE - 1 ? 1 : 0.55 }} transition={BEWEGUNG.standard} className="flex min-w-0 items-baseline gap-2 text-[12px]">
+                      <span className="w-8 shrink-0 font-medium text-fg-2">{e.gericht}</span>
                       <span className="mono shrink-0 text-fg-2">{e.az}</span>
                       <span className="truncate text-fg-3">{e.titel.replace(/[„“]/g, "")}</span>
                     </motion.li>
                   ))}
                 </ul>
-              </Kachel>
+              </Bereich>
             </div>
 
             {/* Frist mit Rechenweg */}
-            <Kachel aktiv={bereich === "frist"} className="flex flex-col">
+            <Bereich titel="Fristenrechner" className="flex flex-col">
               <div className="flex items-start gap-2">
-                <span className="grid size-7 shrink-0 place-items-center rounded-[9px] bg-seal-soft text-seal">
-                  <CalendarClock className="size-3.5" />
-                </span>
                 <div className="min-w-0 flex-1">
-                  <div className="text-[12.5px] font-semibold leading-tight">{f.regel.titel}</div>
+                  <div className="text-[13px] font-semibold leading-[18px] text-fg">{f.regel.titel}</div>
                   <div className="text-[12px] text-fg-3">{f.regel.grundlage} · Akte 118/26</div>
                 </div>
-                <Chip tone="seal" className="!h-[21px] !px-1.5 !text-[12px]">
+                <Chip tone="seal" className="!h-5 !px-1.5">
                   Notfrist
                 </Chip>
               </div>
-              <div className="mt-2.5 rounded-[12px] bg-[var(--ink-softer)] p-2.5">
-                <div className="eyebrow mb-1.5">Rechenweg</div>
-                <ol className="grid grid-cols-1 gap-1">
-                  {f.rechenweg.map((z, k) => (
-                    // Rechenweg von Anfang an in voller Deckkraft lesbar – der Ablauf markiert nur den aktuellen Schritt
-                    <motion.li
-                      key={k}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ duration: 0.25, delay: Math.min(k, 6) * 0.03 }}
-                      className={cn(
-                        "flex gap-1.5 rounded-[6px] text-[12px] leading-snug transition-colors duration-300",
-                        k === f.rechenweg.length - 2 ? "font-semibold text-fg" : "text-fg-2",
-                        k === zeilen - 1 && "bg-[var(--surface)]",
-                      )}
-                    >
-                      <span className={cn("num mt-px grid size-4 shrink-0 place-items-center rounded-full text-[10px] font-bold transition-colors duration-300", k < zeilen ? "bg-ink text-white" : "bg-ink-soft text-ink")}>{k + 1}</span>
-                      <span className="min-w-0">{kurz(z)}</span>
-                    </motion.li>
-                  ))}
-                </ol>
-              </div>
-              <div className="mt-auto pt-2.5">
-                <div className="flex items-end justify-between gap-2">
+              <div className="mt-3 text-[12px] text-fg-4">Rechenweg</div>
+              <ol className="mt-1.5 grid grid-cols-1 gap-px">
+                {f.rechenweg.map((z, k) => (
+                  // Rechenweg von Anfang an in voller Deckkraft lesbar – der Ablauf markiert nur den aktuellen Schritt (Balken links)
+                  <li
+                    key={k}
+                    className={cn(
+                      "flex gap-2 rounded-sm py-0.5 pl-1.5 pr-1 text-[12px] leading-[17px] transition-[background-color,box-shadow] duration-150",
+                      k === f.rechenweg.length - 2 ? "font-semibold text-fg" : "text-fg-2",
+                      k === zeilen - 1 && "bg-[var(--surface-2)] shadow-[inset_2px_0_0_var(--ink)]",
+                    )}
+                  >
+                    <span className="num w-3 shrink-0 text-right text-fg-4">{k + 1}</span>
+                    <span className="min-w-0">{kurz(z)}</span>
+                  </li>
+                ))}
+              </ol>
+              <div className="mt-auto pt-3">
+                <div className="flex items-end justify-between gap-2 border-t border-[var(--line)] pt-3">
                   <div>
-                    <div className="text-[12px] font-medium text-fg-3">Fristende</div>
-                    <div className="text-[15px] font-semibold tracking-[-0.02em] text-seal">{fmtDateWd(f.ende)}</div>
+                    <div className="text-[12px] text-fg-3">Fristende</div>
+                    <div className="text-[15px] font-semibold tracking-[-0.01em] text-fg">{fmtDateWd(f.ende)}</div>
                   </div>
                   <AnimatePresence mode="wait" initial={false}>
                     {uebernommen ? (
-                      <motion.span key="ok" initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.8, opacity: 0 }} transition={{ type: "spring", stiffness: 520, damping: 26 }} className="inline-flex h-7 items-center gap-1 rounded-full bg-green-soft px-2.5 text-[12px] font-semibold text-green">
-                        <Check className="size-3.5" /> Übernommen
-                      </motion.span>
+                      <Wechsel k="ok">
+                        <Chip tone="green">Übernommen</Chip>
+                      </Wechsel>
                     ) : (
-                      <motion.span key="btn" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="btn btn-primary btn-sm !h-7 !px-2.5 !text-[12px]">
+                      <Wechsel k="btn" className="inline-flex h-7 items-center rounded-md bg-[var(--ink)] px-2.5 text-[12px] font-medium text-[var(--on-ink)]">
                         Frist übernehmen
-                      </motion.span>
+                      </Wechsel>
                     )}
                   </AnimatePresence>
                 </div>
-                <div className="mt-2 flex items-center gap-1.5 text-[12px] text-fg-3">
-                  <ShieldCheck className="size-3 text-green" />
+                <div className="mt-2.5 flex items-center gap-1.5 text-[12px] text-fg-4">
+                  <Sparkles className="size-3 shrink-0" aria-hidden />
                   KI erkennt · Rechenkern berechnet · Vier-Augen-Kontrolle
                 </div>
               </div>
-            </Kachel>
+            </Bereich>
           </div>
         </div>
       </div>
 
-      {/* Apex Island: Zeitersparnis */}
+      {/* Apex Island: Zeitersparnis – helles Feld mit Linie, „+6 Min.“ in Text 3 */}
       <AnimatePresence>
         {uebernommen && s < SCHRITTE - 1 && (
           <motion.div
-            initial={{ opacity: 0, y: 10, scale: 0.7 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -6, scale: 0.85 }}
-            transition={{ type: "spring", stiffness: 480, damping: 30 }}
-            className="absolute -bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-[#090b14] py-1.5 pl-1.5 pr-3.5 text-[12.5px] font-medium text-white shadow-[0_12px_30px_-10px_rgba(0,0,0,0.6)] ring-1 ring-white/10"
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={BEWEGUNG.standard}
+            className="absolute -bottom-4 left-1/2 z-10 flex h-8 -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-lg border border-[var(--line)] bg-[var(--surface-pop)] px-3 text-[12px] font-medium text-fg shadow-[var(--shadow-pop)] sm:text-[13px]"
           >
-            <span className="grid size-5 place-items-center rounded-full bg-white/10">
-              <Zap className="size-3 text-[#ffd166]" fill="#ffd166" />
-            </span>
-            Frist eingetragen, Vorfrist gesetzt <span className="text-[#7ee2b8]">· +6 Min.</span>
+            <Zap className="size-3.5 text-fg-3" aria-hidden />
+            Frist eingetragen, Vorfrist gesetzt <span className="font-normal text-fg-3">· +6 Min.</span>
           </motion.div>
         )}
       </AnimatePresence>
@@ -270,19 +240,23 @@ export function LivePreview() {
   );
 }
 
-function Kachel({ children, aktiv, ai, className }: { children: React.ReactNode; aktiv: boolean; ai?: boolean; className?: string }) {
+/** Bereich im Produktfenster: kleine Überschrift wie ein Paneltitel, Polster 16 px, keine eigene Fläche. */
+function Bereich({ titel, rechts, children, className }: { titel: string; rechts?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <motion.div
-      animate={{ scale: aktiv ? 1 : 0.985 }}
-      transition={{ type: "spring", stiffness: 420, damping: 32 }}
-      className={cn(
-        "relative min-w-0 rounded-[16px] border p-2.5 transition-[box-shadow,border-color,background-color] duration-500 sm:p-3",
-        aktiv ? "border-transparent bg-[var(--surface)] shadow-[0_10px_28px_-14px_rgba(20,30,80,0.35)]" : "border-[var(--line)] bg-[color-mix(in_oklab,var(--surface)_70%,transparent)]",
-        aktiv && ai && "ai-ring",
-        aktiv && !ai && "ring-2 ring-[var(--ink-soft)]",
-        className,
-      )}
-    >
+    <div className={cn("min-w-0 p-3.5 sm:p-4", className)}>
+      <div className="mb-2.5 flex h-5 items-center justify-between gap-2">
+        <span className="text-[12px] font-medium text-fg-3">{titel}</span>
+        {rechts}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** Kurzes Überblenden zwischen zwei Zuständen (160 ms, ohne Versatz-Feder). */
+function Wechsel({ k, children, className }: { k: string; children: ReactNode; className?: string }) {
+  return (
+    <motion.div key={k} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={BEWEGUNG.standard} className={className}>
       {children}
     </motion.div>
   );

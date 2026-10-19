@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="Apex">
+  <title>Apex</title>
+  <style>g{fill:#0A0A0A;color:#0A0A0A}@media (prefers-color-scheme:dark){g{fill:#FFFFFF;color:#FFFFFF}}</style>
+  <g>
+  <path fill="none" stroke="currentColor" stroke-width="2" d="M11 2H7a2 2 0 0 0 0 4h2a2 2 0 0 1 0 4H7a2 2 0 0 1 0-4M9 10a2 2 0 0 1 0 4H5"/>
+  </g>
+</svg>

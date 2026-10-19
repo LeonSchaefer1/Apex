@@ -18,6 +18,7 @@ import {
   istAbgebrochen, ladeLaufMarke, protokolliereAbbruch, ladeStand, laufAusErgebnis, markiereRueckgaengig, setzeLaufMarke, sortiereLaeufe, speichereLauf, speichereStand, uebernehmeAlteLaeufe,
   type LaufMarke, type UmzugLauf,
 } from "./laeufe";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 /** Lauf, der gerade in diesem Fenster ausgeführt wird (auch wenn die Seite zwischendurch verlassen wurde). */
 let laufImFenster: string | null = null;
@@ -319,7 +320,7 @@ export default function Umzug() {
         <Card padded={false} className="min-w-0">
           <Stepper schritt={schritt} />
           {wiederhergestellt && schritt > 0 && schritt < 4 && (
-            <div role="status" className="mx-5 mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[14px] bg-[var(--ink-softer)] px-3.5 py-2.5 text-[12.5px] text-fg-2 ring-1 ring-inset ring-[var(--line)] md:mx-7">
+            <div role="status" className="mx-5 mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-[var(--ink-softer)] px-3.5 py-2.5 text-[13px] text-fg-2 ring-1 ring-inset ring-[var(--line)] md:mx-7">
               <Info className="size-4 shrink-0 text-ink" />
               <span className="min-w-0 flex-1">
                 Zwischenstand vom {fmtDate(wiederhergestellt.slice(0, 10))}, {fmtTime(wiederhergestellt)} Uhr wiederhergestellt – Datei, Zuordnung und Entscheidungen sind übernommen.
@@ -337,7 +338,7 @@ export default function Umzug() {
                 initial={{ opacity: 0, x: richtung * 28 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: richtung * -20 }}
-                transition={{ type: "spring", stiffness: 460, damping: 36 }}
+                transition={BEWEGUNG.standard}
               >
                 {schritt === 0 && (
                   <SchrittQuelle
@@ -408,7 +409,7 @@ export default function Umzug() {
                 Zurück
               </Button>
               <div className="flex min-w-0 items-center gap-3">
-                {!kannWeiter && <span className="hidden truncate text-[12.5px] text-fg-3 sm:inline">{["Bitte ein Altsystem wählen", "Bitte eine Datei laden", "Bitte die Zuordnung prüfen"][schritt]}</span>}
+                {!kannWeiter && <span className="hidden truncate text-[13px] text-fg-3 sm:inline">{["Bitte ein Altsystem wählen", "Bitte eine Datei laden", "Bitte die Zuordnung prüfen"][schritt]}</span>}
                 <Button variant="primary" iconRight={<ArrowRight className="size-4" />} disabled={!kannWeiter} onClick={() => geheZu(schritt + 1)}>
                   <span className="sm:hidden">Weiter</span>
                   <span className="hidden sm:inline">{weiterText}</span>
@@ -430,7 +431,7 @@ export default function Umzug() {
           <Card>
             <button
               type="button"
-              className="-m-1 flex w-[calc(100%+0.5rem)] items-center justify-between gap-3 rounded-[12px] p-1 text-left"
+              className="-m-1 flex w-[calc(100%+0.5rem)] items-center justify-between gap-3 rounded-md p-1 text-left"
               aria-expanded={wasZiehtUm}
               aria-controls="umzug-was-zieht-um"
               onClick={() => setWasZiehtUm((v) => !v)}
@@ -440,7 +441,7 @@ export default function Umzug() {
             </button>
             {/* Kurzfassung vollständig – auch, was nicht aus dieser Datei kommt (I3-T11-02) */}
             {!wasZiehtUm && (
-              <p className="mt-1 text-[12.5px] leading-snug text-fg-3">
+              <p className="mt-1 text-[13px] leading-snug text-fg-3">
                 Akten, Kontakte, Fristen, Wiedervorlagen und Datenblatt je Akte. Nicht aus dieser Datei: Dokumente, Aktenkonten/offene Posten, Benutzer – gemeinsam mit {ap.name}. Nicht übernommen: FiBu und Zugangsdaten.
               </p>
             )}
@@ -464,7 +465,7 @@ export default function Umzug() {
             </ul>
             <div className="mt-4 border-t border-[var(--line)] pt-3">
               <div className="eyebrow mb-2">Gemeinsam mit {ap.name}</div>
-              <ul className="grid grid-cols-1 gap-2 text-[12.5px] text-fg-2">
+              <ul className="grid grid-cols-1 gap-2 text-[13px] text-fg-2">
                 {["Dokumente der E-Akte im Volltext", "Aktenkonten, offene Posten und Fremdgeld", "Benutzer und Rechte", "beA-Postfach und E-Mail-Konten"].map((t) => (
                   <li key={t} className="flex gap-2.5">
                     <Clock className="mt-0.5 size-3.5 shrink-0 text-fg-3" />
@@ -472,11 +473,11 @@ export default function Umzug() {
                   </li>
                 ))}
               </ul>
-              <p className="mt-1.5 text-[12.5px] text-fg-3">Umfang laut Angebot.</p>
+              <p className="mt-1.5 text-[13px] text-fg-3">Umfang laut Angebot.</p>
             </div>
             <div className="mt-4 border-t border-[var(--line)] pt-3">
               <div className="eyebrow mb-2">Kommt nicht mit</div>
-              <ul className="grid grid-cols-1 gap-2 text-[12.5px] text-fg-2">
+              <ul className="grid grid-cols-1 gap-2 text-[13px] text-fg-2">
                 {["Finanzbuchhaltung (FiBu) – bleibt beim Steuerberater bzw. im Altsystem", "Passwörter und Zugangsdaten des Altsystems", "Programmeinstellungen und Textbausteine des Altsystems"].map((t) => (
                   <li key={t} className="flex gap-2.5">
                     <Minus className="mt-0.5 size-3.5 shrink-0 text-fg-3" />
@@ -500,7 +501,7 @@ export default function Umzug() {
                   <span className="num grid size-6 shrink-0 place-items-center rounded-full bg-ink-soft text-[12px] font-semibold text-ink">{i + 1}</span>
                   <span className="min-w-0">
                     <span className="block font-semibold">{t}</span>
-                    <span className="block text-[12.5px] text-fg-3">{x}</span>
+                    <span className="block text-[13px] text-fg-3">{x}</span>
                   </span>
                 </li>
               ))}
@@ -508,17 +509,17 @@ export default function Umzug() {
             <Button size="sm" variant="secondary" icon={<CalendarClock className="size-4" />} className="mt-3" onClick={terminAnfragen}>
               Termin mit {ap.name} vereinbaren
             </Button>
-            <p className="mt-1.5 text-[12.5px] text-fg-3">Rückruf zur Terminabstimmung</p>
+            <p className="mt-1.5 text-[13px] text-fg-3">Rückruf zur Terminabstimmung</p>
           </Card>
 
           <Card className="bg-[radial-gradient(120%_120%_at_0%_0%,var(--green-soft),transparent_60%)]">
             <div className="flex items-start gap-3">
-              <div className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-green-soft text-green">
+              <div className="grid size-9 shrink-0 place-items-center rounded-md bg-green-soft text-green">
                 <RefreshCw className="size-[18px]" />
               </div>
               <div className="min-w-0">
                 <div className="title-md">Ihr Altsystem läuft parallel weiter, bis Sie umschalten</div>
-                <p className="mt-1.5 text-[12.5px] leading-relaxed text-fg-3">Im Altsystem wird nichts verändert oder gelöscht. Testen Sie den Umzug so oft Sie möchten – jeder Lauf lässt sich im Umzugsprotokoll rückgängig machen – auch nach dem Neuladen.</p>
+                <p className="mt-1.5 text-[13px] leading-relaxed text-fg-3">Im Altsystem wird nichts verändert oder gelöscht. Testen Sie den Umzug so oft Sie möchten – jeder Lauf lässt sich im Umzugsprotokoll rückgängig machen – auch nach dem Neuladen.</p>
               </div>
             </div>
             <div className="mt-3 flex items-center gap-1.5 text-[12px] text-fg-3">
@@ -530,7 +531,7 @@ export default function Umzug() {
             <div className="flex items-start gap-3">
               <Avatar initialen={ap.initialen} size={40} />
               <div className="min-w-0 flex-1">
-                <div className="break-words text-[13.5px] font-semibold">{ap.name}</div>
+                <div className="break-words text-[14px] font-semibold">{ap.name}</div>
                 {/* Untertitel umbrechen statt kürzen (I4-T11-01) */}
                 <div className="break-words text-[12px] text-fg-3">begleitet Ihren Umzug persönlich</div>
                 <div className="mt-1.5">
@@ -547,7 +548,7 @@ export default function Umzug() {
                 </div>
               </div>
             </div>
-            <div className="mt-3 flex items-center gap-2.5 rounded-[12px] bg-[var(--ink-softer)] px-3 py-2 text-[12.5px]">
+            <div className="mt-3 flex items-center gap-2.5 rounded-md bg-[var(--ink-softer)] px-3 py-2 text-[13px]">
               <Phone className="size-3.5 shrink-0 text-ink" />
               <span className="min-w-0">
                 {/* antippbar am Telefon, Markieren/Kopieren bleibt (I3-T12-01) */}
@@ -583,22 +584,22 @@ function Umzugsprotokoll({ laeufe, onRueckgaengig, team, laufendeId }: { laeufe:
           const laeuftNoch = l.id === laufendeId;
           const von = abgebrochen ? undefined : team.find((u) => u.id === (l.rueckgaengig?.von ?? l.userId))?.name;
           return (
-            <li key={l.id} className={cn("rounded-[14px] px-3 py-2.5 ring-1 ring-[var(--line)]", l.rueckgaengig && "opacity-75")}>
+            <li key={l.id} className={cn("rounded-lg px-3 py-2.5 ring-1 ring-[var(--line)]", l.rueckgaengig && "opacity-75")}>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <span className="num text-[12.5px] font-semibold">
+                <span className="num text-[13px] font-semibold">
                   {fmtDate(l.datum.slice(0, 10))}, {fmtTime(l.datum)} Uhr
                 </span>
                 {abgebrochen ? <Chip tone="amber">abgebrochen – nichts übernommen</Chip> : l.rueckgaengig ? <Chip>rückgängig gemacht</Chip> : laeuftNoch ? <Chip tone="ink" dot>läuft …</Chip> : <Chip tone="ink">aktiv</Chip>}
               </div>
-              <div className="mt-0.5 break-words text-[12.5px] text-fg-2">
+              <div className="mt-0.5 break-words text-[13px] text-fg-2">
                 {l.system} · {l.datei}
               </div>
               {abgebrochen ? (
-                <div className="mt-0.5 text-[12.5px] text-fg-3">
+                <div className="mt-0.5 text-[13px] text-fg-3">
                   Die Übernahme wurde unterbrochen (Fenster geschlossen oder neu geladen) und am {fmtDate(l.rueckgaengig!.am.slice(0, 10))}, {fmtTime(l.rueckgaengig!.am)} Uhr vollständig zurückgenommen.
                 </div>
               ) : (
-                <div className="mt-0.5 text-[12.5px] text-fg-3">
+                <div className="mt-0.5 text-[13px] text-fg-3">
                   {z.aktenNeu} {z.aktenNeu === 1 ? "Akte" : "Akten"} neu{z.archiviert ? ` (${z.archiviert} abgeschlossen)` : ""}
                   {z.aktenAktualisiert ? `, ${z.aktenAktualisiert} aktualisiert` : ""}, {z.kontakteNeu} {z.kontakteNeu === 1 ? "Kontakt" : "Kontakte"}, {protokollFristen(l)}
                   {z.zusammengefuehrt ? `, ${z.zusammengefuehrt} ${z.zusammengefuehrt === 1 ? "Dublette" : "Dubletten"} zusammengeführt` : ""}
@@ -606,7 +607,7 @@ function Umzugsprotokoll({ laeufe, onRueckgaengig, team, laufendeId }: { laeufe:
                 </div>
               )}
               {abgebrochen || laeuftNoch ? null : l.rueckgaengig ? (
-                <div className="mt-0.5 text-[12.5px] text-fg-3">
+                <div className="mt-0.5 text-[13px] text-fg-3">
                   rückgängig am {fmtDate(l.rueckgaengig.am.slice(0, 10))}
                   {von ? ` von ${von}` : ""}
                 </div>
@@ -630,19 +631,19 @@ function Stepper({ schritt }: { schritt: number }) {
       {/* Smartphone: kompakt */}
       <div className="md:hidden">
         <div className="flex items-baseline justify-between gap-3">
-          <span className="text-[13.5px] font-semibold">{SCHRITTE[schritt].titel}</span>
+          <span className="text-[14px] font-semibold">{SCHRITTE[schritt].titel}</span>
           <span className="num text-[12px] text-fg-3">
             Schritt {schritt + 1} von {SCHRITTE.length}
           </span>
         </div>
         <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-[var(--line)]">
-          <motion.div className="h-full rounded-full bg-ink" animate={{ width: `${((schritt + 1) / SCHRITTE.length) * 100}%` }} transition={{ type: "spring", stiffness: 260, damping: 30 }} />
+          <motion.div className="h-full rounded-full bg-ink" animate={{ width: `${((schritt + 1) / SCHRITTE.length) * 100}%` }} transition={BEWEGUNG.standard} />
         </div>
       </div>
       {/* Desktop */}
       <div className="relative hidden md:block">
         <div className="absolute left-[10%] right-[10%] top-[15px] h-[2px] rounded-full bg-[var(--line-strong)]" aria-hidden>
-          <motion.div className="h-full rounded-full bg-ink" initial={false} animate={{ width: `${anteil * 100}%` }} transition={{ type: "spring", stiffness: 220, damping: 30 }} />
+          <motion.div className="h-full rounded-full bg-ink" initial={false} animate={{ width: `${anteil * 100}%` }} transition={BEWEGUNG.standard} />
         </div>
         <ol className="relative grid grid-cols-5">
         {SCHRITTE.map((s, i) => {
@@ -653,9 +654,9 @@ function Stepper({ schritt }: { schritt: number }) {
               <motion.span
                 initial={false}
                 animate={{ scale: aktiv ? 1.08 : 1 }}
-                transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                transition={BEWEGUNG.standard}
                 className={cn(
-                  "num grid size-8 place-items-center rounded-full text-[12.5px] font-semibold transition-colors duration-300",
+                  "num grid size-8 place-items-center rounded-full text-[13px] font-semibold transition-colors duration-300",
                   fertig && "bg-ink text-[var(--on-ink)]",
                   aktiv && "bg-[var(--surface)] text-ink shadow-[0_0_0_2px_var(--ink),0_0_0_6px_var(--ink-soft)]",
                   !fertig && !aktiv && "bg-[var(--surface)] text-fg-3 shadow-[0_0_0_1px_var(--line-strong)]",
@@ -663,7 +664,7 @@ function Stepper({ schritt }: { schritt: number }) {
               >
                 {fertig ? <Check className="size-3.5" strokeWidth={3} /> : i + 1}
               </motion.span>
-              <span className={cn("text-[12.5px] font-medium leading-tight", aktiv ? "text-fg" : fertig ? "text-fg-2" : "text-fg-3")}>{s.kurz}</span>
+              <span className={cn("text-[13px] font-medium leading-tight", aktiv ? "text-fg" : fertig ? "text-fg-2" : "text-fg-3")}>{s.kurz}</span>
             </li>
           );
         })}

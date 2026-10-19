@@ -11,3 +11,4 @@ data/*.db*
 research/
 screenshots/
 dist-artifact
+scripts/usability/axe/

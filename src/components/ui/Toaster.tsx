@@ -1,17 +1,19 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { CheckCircle2, AlertTriangle, Info, XCircle, Sparkles, X } from "lucide-react";
+import { CircleCheck, TriangleAlert, Info, CircleAlert, Sparkles, X } from "lucide-react";
 import { useToasts, useUI } from "@/store/ui";
 import { cn } from "@/lib/cn";
 import { useIsMobile } from "@/lib/useMedia";
 import { useObersterDialog, type OffenerDialog } from "./Modal";
+import { BEWEGUNG } from "@/lib/bewegung";
 
+/** Symbol je Ton (DESIGN-SYSTEM.md 12.9) – formcodiert, Farbe nur als dritte Bestätigung. */
 const ICON = {
-  info: <Info className="size-[18px] text-ink" />,
-  erfolg: <CheckCircle2 className="size-[18px] text-green" />,
-  warnung: <AlertTriangle className="size-[18px] text-amber" />,
-  fehler: <XCircle className="size-[18px] text-seal" />,
-  ki: <Sparkles className="size-[18px] text-violet" />,
+  info: <Info className="size-4 text-fg-3" />,
+  erfolg: <CircleCheck className="size-4 text-green" />,
+  warnung: <TriangleAlert className="size-4 text-amber" />,
+  fehler: <CircleAlert className="size-4 text-seal" />,
+  ki: <Sparkles className="size-4 text-fg-3" />,
 };
 
 /** Lage der Meldungen, solange ein Dialog offen ist – nie über Dialogkopf, Titel, Inhalt, Fuß oder Schließen (I4-T03-03). */
@@ -26,7 +28,7 @@ interface DialogLage {
   groesse?: "voll" | "kompakt" | "mini";
 }
 
-const KOPFLEISTE = 80;
+const KOPFLEISTE = 64;
 const MELDUNG_HOEHE = 72;
 const KOMPAKT_HOEHE = 44;
 const MINI_HOEHE = 28;
@@ -168,7 +170,7 @@ function useDialogLage(hoehe: number): DialogLage | null {
 }
 
 /**
- * Meldungen als Kapseln unten rechts über dem Freiraum der Assistent-Kugel; am Telefon oben unter der Kopfleiste in voller Breite
+ * Meldungen als schwebende Flächen unten rechts über dem Freiraum der Assistent-Kugel; am Telefon oben unter der Kopfleiste in voller Breite
  * (nicht über Schnellaktions- und Tab-Leiste, I4-T14-01). So verdecken sie weder Suchfeld noch Seitentitel. Ist ein Dialog offen,
  * weichen sie aus – über, unter oder neben den Dialog, nie über Kopf, Titel, Inhalt, Fuß oder Schließen (I4-T03-03); bereits
  * sichtbare Meldungen wandern mit. Meldungen nehmen nie den Fokus; × schließt nur die Meldung, Escape weiter den Dialog.
@@ -231,7 +233,7 @@ export function Toaster() {
   const lage: DialogLage | null =
     dialogLage ??
     (telefon
-      ? { stil: { top: "calc(max(12px, env(safe-area-inset-top)) + 64px)", left: RAND, right: RAND }, oben: true, ausrichtung: "voll", maxBreite: 0 }
+      ? { stil: { top: "calc(env(safe-area-inset-top) + 64px)", left: RAND, right: RAND }, oben: true, ausrichtung: "voll", maxBreite: 0 }
       : ausgewichen
         ? { stil: { top: KOPFLEISTE, right: RECHTS }, oben: true, ausrichtung: "rechts", maxBreite: MAX_BREITE }
         : null);
@@ -263,14 +265,14 @@ export function Toaster() {
         {toasts.map((t) => (
           <motion.div
             key={t.id}
-            layout
-            initial={{ opacity: 0, y: lage?.oben ? -24 : 24, scale: 0.8, borderRadius: 999 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: lage?.oben ? -16 : 16, scale: 0.85, transition: { duration: 0.2 } }}
-            transition={{ type: "spring", stiffness: 500, damping: 34 }}
+            layout="position"
+            initial={{ opacity: 0, y: lage?.oben ? -8 : 8 }}
+            animate={{ opacity: 1, y: 0, transition: { duration: 0.18, ease: [0.2, 0, 0, 1] } }}
+            exit={{ opacity: 0, y: lage?.oben ? -8 : 8, transition: { duration: 0.12, ease: [0.2, 0, 0, 1] } }}
+            transition={BEWEGUNG.standard}
             className={cn(
-              "pointer-events-auto flex w-full items-center bg-[#0b0e18]/95 text-white shadow-[0_18px_50px_-12px_rgba(0,0,0,0.55)] ring-1 ring-white/10 backdrop-blur-xl",
-              klein === "mini" ? "gap-2 rounded-full py-0.5 pl-2.5 pr-1 [&_svg]:!size-3.5" : klein === "kompakt" ? "gap-2.5 rounded-[16px] px-3 py-2" : "gap-3 rounded-[22px] px-4 py-3",
+              "pointer-events-auto flex w-full items-center border border-[var(--line)] bg-[var(--surface-pop)] text-fg shadow-pop",
+              klein === "mini" ? "gap-2 rounded-md py-0.5 pl-2.5 pr-1 [&_svg]:!size-3.5" : klein === "kompakt" ? "gap-2.5 rounded-lg px-3 py-2" : "gap-3 rounded-lg py-3 pl-3.5 pr-2",
               lage?.ausrichtung !== "voll" && "sm:w-auto",
             )}
             style={{ maxWidth: lage ? (lage.ausrichtung === "voll" ? undefined : `min(92vw, ${lage.maxBreite}px)`) : "min(92vw, 420px)" }}
@@ -282,10 +284,10 @@ export function Toaster() {
               if (!e.currentTarget.contains(e.relatedTarget as Node | null)) weiter(t.id);
             }}
           >
-            <div className="shrink-0 [&>svg]:size-[18px]">{t.icon ?? ICON[t.ton ?? "info"]}</div>
+            <div className="shrink-0 self-start pt-0.5 [&>svg]:size-4" aria-hidden>{t.icon ?? ICON[t.ton ?? "info"]}</div>
             <div className="min-w-0 flex-1">
-              <div className={cn("font-semibold leading-tight", klein === "mini" ? "truncate text-[12.5px]" : "text-[13.5px]")}>{t.titel}</div>
-              {t.text && <div className={cn("mt-0.5 text-[13px] leading-snug text-white/80", klein && "sr-only")}>{t.text}</div>}
+              <div className={cn("font-medium text-fg", klein === "mini" ? "truncate text-[12px] leading-4" : "text-[14px] leading-5")}>{t.titel}</div>
+              {t.text && <div className={cn("mt-0.5 text-[13px] leading-[18px] text-fg-3", klein && "sr-only")}>{t.text}</div>}
             </div>
             {t.aktion && (
               <button
@@ -295,12 +297,12 @@ export function Toaster() {
                   t.aktion!.onClick();
                   dismiss(t.id);
                 }}
-                className={cn("shrink-0 rounded-full bg-white/14 font-semibold hover:bg-white/22", klein === "mini" ? "px-2 py-0.5 text-[12px]" : "px-3 py-1.5 text-[13px]")}
+                className={cn("btn btn-ghost btn-sm shrink-0", klein === "mini" && "!h-6 !px-2 !text-[12px]")}
               >
                 {t.aktion.label}
               </button>
             )}
-            <button type="button" onClick={() => dismiss(t.id)} className={cn("-mr-1 grid shrink-0 place-items-center rounded-full text-white/70 hover:bg-white/10 hover:text-white", klein === "mini" ? "size-6" : "size-7")} aria-label="Meldung schließen">
+            <button type="button" onClick={() => dismiss(t.id)} className={cn("grid shrink-0 place-items-center rounded-sm text-fg-3 transition-colors duration-100 hover:bg-[var(--surface-pop-hover)] hover:text-fg", klein === "mini" ? "size-6" : "size-6 max-sm:size-11")} aria-label="Meldung schließen" title="Meldung schließen">
               <X className="size-3.5" />
             </button>
           </motion.div>

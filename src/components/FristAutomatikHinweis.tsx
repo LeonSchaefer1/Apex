@@ -28,9 +28,9 @@ export function FristAutomatikHinweis({ className }: { className?: string }) {
     <section
       role="status"
       aria-label="Fristautomatik pausiert"
-      className={cn("flex flex-col gap-2 rounded-[18px] border border-amber/35 bg-amber-soft px-4 py-3 sm:flex-row sm:items-start sm:gap-3", className)}
+      className={cn("flex flex-col gap-2 rounded-md bg-amber-soft px-3.5 py-2.5 sm:flex-row sm:items-start sm:gap-2.5", className)}
     >
-      <PauseCircle className="mt-0.5 size-5 shrink-0 text-amber" aria-hidden />
+      <PauseCircle className="mt-0.5 size-4 shrink-0 text-amber" aria-hidden />
       <div className="min-w-0 flex-1 space-y-1 text-[14px] leading-snug text-fg-2">
         {pausiert.map((a) => {
           const seit = pausiertSeitText(a, team);
@@ -44,7 +44,7 @@ export function FristAutomatikHinweis({ className }: { className?: string }) {
       {darf ? (
         <Link
           to="/automatisierung"
-          className="inline-flex min-h-[44px] shrink-0 items-center gap-1.5 self-start rounded-[12px] px-2 text-[14px] font-semibold text-ink underline decoration-[var(--ink-soft)] decoration-2 underline-offset-[3px] hover:decoration-ink sm:min-h-0 sm:py-1"
+          className="link inline-flex min-h-[44px] shrink-0 items-center gap-1.5 self-start rounded-sm px-1 text-[14px] font-medium sm:min-h-0 sm:py-0.5"
         >
           Im 38h-Motor einschalten
           <ArrowRight className="size-4" aria-hidden />

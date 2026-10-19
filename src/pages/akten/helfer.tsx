@@ -140,22 +140,26 @@ export function schlagwortAnzeige(s: string): string {
 }
 
 /** Ampel einer Frist als Chip-Ton und Klartext. */
-export function dringlichkeit(datum: string): { tone: Tone; label: string; stufe: ReturnType<typeof fristDringlichkeit> } {
+/**
+ * Zeitliche Ampel einer Frist. Rot (seal) nur für überfällige Einträge und für kritische Fristen (Notfrist oder nicht verlängerbar)
+ * in den nächsten zwei Tagen – übrige Fristen zeigen „bald“ in Bernstein (UI-Leitfaden 1.4, DESIGN-SYSTEM.md 4.1).
+ */
+export function dringlichkeit(datum: string, kritisch = false): { tone: Tone; label: string; stufe: ReturnType<typeof fristDringlichkeit> } {
   const heute = today();
   const stufe = fristDringlichkeit(datum, heute);
   if (stufe === "ueberfaellig") {
     const n = -diffDays(heute, datum);
     return { tone: "seal", label: n === 1 ? "seit gestern überfällig" : `seit ${n} Tagen überfällig`, stufe };
   }
-  if (stufe === "kritisch") return { tone: "seal", label: relDays(datum, heute), stufe };
+  if (stufe === "kritisch") return { tone: kritisch ? "seal" : "amber", label: relDays(datum, heute), stufe };
   if (stufe === "bald") return { tone: "amber", label: relDays(datum, heute), stufe };
   return { tone: "neutral", label: relDays(datum, heute), stufe };
 }
 
-export function FristChip({ datum, className }: { datum: string; className?: string }) {
-  const d = dringlichkeit(datum);
+export function FristChip({ datum, kritisch, className }: { datum: string; kritisch?: boolean; className?: string }) {
+  const d = dringlichkeit(datum, kritisch);
   return (
-    <Chip tone={d.tone} dot={d.stufe !== "normal"} className={className}>
+    <Chip tone={d.tone} className={className}>
       {d.label}
     </Chip>
   );

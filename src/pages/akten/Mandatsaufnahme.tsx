@@ -3,7 +3,7 @@
 // bei Kündigungen Klagefrist (§ 4 S. 1 KSchG) und Gegenstandswert-Vorschlag (§ 42 Abs. 2 S. 1 GKG).
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { AlertTriangle, ArrowLeft, ArrowRight, Ban, CalendarClock, Check, CheckCircle2, FilePlus2, FolderOpen, FolderPlus, History, Inbox, Info, ShieldCheck, Sparkles, UserCheck, Zap } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, Ban, CalendarClock, Check, CheckCircle2, FilePlus2, FolderOpen, FolderPlus, History, Inbox, Info, ShieldCheck, UserCheck, Zap } from "lucide-react";
 import { Link } from "react-router";
 import type { Akte, Dokument, Frist, Kontakt, Nachricht, Sachgebiet } from "@/core/types";
 import { fmtDate, fmtDateWd, fmtEUR, fmtTime, nowLocal, today, uid } from "@/core/dates";
@@ -21,6 +21,7 @@ import { ueberText } from "@/pages/kontakte/auskunft";
 import { SACHGEBIETE, naechstesAktenzeichen, useTeam } from "./helfer";
 import { deckungsanfrageDokument, deckungsanfrageProtokollieren, deckungsWiedervorlage, rsvAusEingabe, versichererSichern, versichererWarnung } from "./rsv";
 import { VersichererAuswahl } from "./VersichererAuswahl";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 const SCHRITTE = ["Mandant", "Sache", "Rechtsschutz", "Zusammenfassung"] as const;
 
@@ -859,8 +860,8 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
       ) : (
         <>
           {quelle && (
-            <div className="mb-4 flex items-center gap-3 rounded-[16px] bg-violet-soft px-3.5 py-2.5 text-[12.5px]">
-              <Inbox className="size-4 shrink-0 text-violet" />
+            <div className="banner mb-4 !text-[13px]">
+              <Inbox aria-hidden />
               <span className="min-w-0 flex-1 break-words text-fg-2">
                 Übernommen aus dem Posteingang: <span className="font-semibold text-fg">{quelle.von}</span> – „{quelle.betreff}“
               </span>
@@ -877,9 +878,9 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                 initial="rein"
                 animate="da"
                 exit="raus"
-                transition={{ type: "spring", stiffness: 460, damping: 38 }}
+                transition={BEWEGUNG.standard}
               >
-                <h3 id={`ma-schritt-titel-${schritt}`} tabIndex={-1} className="mb-3 rounded-[8px] text-[13px] font-semibold text-fg-2 outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]">
+                <h3 id={`ma-schritt-titel-${schritt}`} tabIndex={-1} className="mb-3 rounded-sm text-[13px] font-semibold text-fg-2 outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]">
                   Schritt {schritt + 1} von 4: {SCHRITTE[schritt]}
                 </h3>
                 {schritt === 0 && (
@@ -897,7 +898,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                       <>
                         <KontaktAuswahl id="ma-mandant" value={mandantId} onSelect={(k) => setMandantId(k.id)} bevorzugt={["mandant"]} nurRollen={["mandant"]} hoehe={260} />
                         {mandant && mandantGleiche.length > 0 && (
-                          <p role="status" className="flex items-start gap-2 rounded-[14px] bg-amber-soft px-3.5 py-2.5 text-[12.5px] text-fg-2">
+                          <p role="status" className="flex items-start gap-2 rounded-lg bg-amber-soft px-3.5 py-2.5 text-[13px] text-fg-2">
                             <Info className="mt-0.5 size-3.5 shrink-0 text-[var(--amber-text)]" aria-hidden />
                             <span>
                               <span className="font-semibold text-fg">Möglicher Doppel-Datensatz: </span>
@@ -909,7 +910,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                     ) : (
                       <>
                         {dublette && (
-                          <div className="flex flex-wrap items-start gap-3 rounded-[16px] bg-amber-soft p-3.5 text-[13px]" role="status">
+                          <div className="flex flex-wrap items-start gap-3 rounded-lg bg-amber-soft p-3.5 text-[13px]" role="status">
                             <KontaktAvatar k={dublette.kontakt} size={32} />
                             <div className="min-w-[180px] flex-1">
                               <div className="font-semibold text-fg">Kontakt besteht bereits</div>
@@ -982,7 +983,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                       </Field>
                     </div>
                     {arbeitsrecht && (
-                      <div className="grid grid-cols-1 gap-3 rounded-[16px] bg-ink-softer p-3.5 shadow-[inset_0_0_0_1px_var(--line)]">
+                      <div className="grid grid-cols-1 gap-3 rounded-md bg-[var(--surface-2)] p-3.5">
                         <div className="flex items-center gap-2 text-[13px] font-semibold">
                           <CalendarClock className="size-4 text-ink" /> Kündigung? Klagefrist und Gegenstandswert
                         </div>
@@ -1021,21 +1022,21 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
 
                 {schritt === 2 && (
                   <div className="grid grid-cols-1 gap-4">
-                    <div className="flex items-center gap-3 rounded-[16px] bg-ink-softer p-4 shadow-[inset_0_0_0_1px_var(--line)]">
+                    <div className="flex items-center gap-3 rounded-md bg-[var(--surface-2)] p-4">
                       <label htmlFor="ma-rsv" className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
-                        <span className="grid grid-cols-1 size-10 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">
+                        <span className="grid size-5 shrink-0 place-items-center text-fg-4">
                           <ShieldCheck className="size-5" />
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block text-[14px] font-semibold">Mandant ist rechtsschutzversichert</span>
-                          <span className="block text-[12.5px] text-fg-3">Apex erstellt dann automatisch die Deckungsanfrage und setzt eine Wiedervorlage in 7 Tagen.</span>
+                          <span className="block text-[13px] text-fg-3">Apex erstellt dann automatisch die Deckungsanfrage und setzt eine Wiedervorlage in 7 Tagen.</span>
                         </span>
                       </label>
                       <Switch id="ma-rsv" checked={rsv.aktiv} onChange={(v) => setRsv({ ...rsv, aktiv: v })} label="Mandant ist rechtsschutzversichert" />
                     </div>
                     <AnimatePresence initial={false}>
                       {rsv.aktiv && (
-                        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ type: "spring", stiffness: 420, damping: 38 }} className="overflow-hidden">
+                        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={BEWEGUNG.standard} className="overflow-hidden">
                           <div className="grid grid-cols-1 gap-3 p-0.5 sm:grid-cols-2">
                             <Field label="Versicherung *" htmlFor="ma-vers" className="sm:col-span-2">
                               <VersichererAuswahl
@@ -1072,10 +1073,10 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
 
                 {schritt === 3 && (
                   <div className="grid grid-cols-1 gap-4">
-                    <div className="rounded-[18px] bg-[var(--surface)] p-4 shadow-[0_0_0_1px_var(--line)]">
+                    <div className="rounded-lg bg-[var(--surface)] p-4 shadow-[0_0_0_1px_var(--line)]">
                       <div className="flex flex-wrap items-center gap-2">
                         {/* Bei Ablehnung entsteht keine Akte – also auch kein Aktenzeichen (I3-T04-02) */}
-                        {abgelehnt ? <Chip tone="seal">Abgelehnt – keine Akte</Chip> : <span className="mono rounded-[8px] bg-ink-soft px-2 py-0.5 text-[13px] font-semibold text-ink">{az}</span>}
+                        {abgelehnt ? <Chip tone="seal">Abgelehnt – keine Akte</Chip> : <span className="mono rounded-sm bg-ink-soft px-2 py-0.5 text-[13px] font-semibold text-ink">{az}</span>}
                         <Chip>{sache.sachgebiet}</Chip>
                         {sache.prioritaet === "hoch" && <Chip tone="seal">Hohe Priorität</Chip>}
                       </div>
@@ -1103,7 +1104,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                       </dl>
                     </div>
                     {!abgelehnt && arbeitsrecht && (klagefrist || wertVorschlag > 0) && (
-                      <div className="rounded-[18px] bg-[var(--surface)] p-4 shadow-[0_0_0_1px_var(--line)]">
+                      <div className="rounded-lg bg-[var(--surface)] p-4 shadow-[0_0_0_1px_var(--line)]">
                         <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold">
                           <CalendarClock className="size-4 text-ink" /> Kündigungsschutz
                         </div>
@@ -1119,7 +1120,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                       fehler={zeigeFehler && !!fehler[3]}
                     />
                     {abgelehnt ? (
-                      <div role="status" className="flex items-start gap-2.5 rounded-[18px] bg-ink-softer p-4 text-[13px] leading-snug text-fg-2 shadow-[inset_0_0_0_1px_var(--line)]">
+                      <div role="status" className="flex items-start gap-2.5 rounded-md bg-[var(--surface-2)] p-4 text-[13px] leading-snug text-fg-2">
                         <Info className="mt-0.5 size-4 shrink-0 text-ink" aria-hidden />
                         <span>
                           <span className="block font-semibold text-fg">Bei Ablehnung: keine Akte, kein Portal, Vermerk im Protokoll</span>
@@ -1128,10 +1129,10 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                       </div>
                     ) : (
                     <>
-                    <div className="flex items-center gap-3 rounded-[16px] p-1">
+                    <div className="flex items-center gap-3 rounded-lg p-1">
                       <label htmlFor="ma-portal" className={cn("min-w-0 flex-1", mandantEmail && "cursor-pointer")}>
-                        <span className="block text-[13.5px] font-semibold">Mandantenportal freischalten</span>
-                        <span className="block text-[12.5px] text-fg-3">
+                        <span className="block text-[14px] font-semibold">Mandantenportal freischalten</span>
+                        <span className="block text-[13px] text-fg-3">
                           {mandantEmail
                             ? `Zugangs-E-Mail an ${mandantEmail} – der Mandant sieht den Stand seiner Sache und kann Unterlagen sicher hochladen.${treffer.length && portalWahl === null ? " Wegen der Kollisionstreffer zunächst aus." : ""}`
                             : "Keine E-Mail-Adresse des Mandanten erfasst – ohne Adresse kein Portalzugang. Sie können das Portal später in der Akte freischalten."}
@@ -1139,7 +1140,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                       </label>
                       <Switch id="ma-portal" checked={portal} disabled={!mandantEmail} onChange={setPortalWahl} label="Mandantenportal freischalten" />
                     </div>
-                    <div className="rounded-[18px] bg-ink-softer p-4 shadow-[inset_0_0_0_1px_var(--line)]">
+                    <div className="rounded-md bg-[var(--surface-2)] p-4">
                       <div className="mb-2.5 flex items-center gap-2 text-[13px] font-semibold">
                         <Zap className="size-4 text-ink" /> Das erledigt Apex automatisch
                       </div>
@@ -1152,7 +1153,7 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                         ))}
                       </ul>
                     </div>
-                    <p className="flex items-start gap-2 px-1 text-[12.5px] leading-snug text-fg-3">
+                    <p className="flex items-start gap-2 px-1 text-[13px] leading-snug text-fg-3">
                       <Info className="mt-0.5 size-3.5 shrink-0" />
                       <span>
                         Vor Übernahme des Mandats: Hinweis auf die Abrechnung nach dem Gegenstandswert (§ 49b Abs. 5 BRAO)
@@ -1175,8 +1176,8 @@ export function Mandatsaufnahme({ open, onClose, onErstellt, nachrichtId }: { op
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 6 }}
-                transition={{ type: "spring", stiffness: 460, damping: 36 }}
-                className="mt-3 flex items-start gap-2.5 rounded-[14px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal"
+                transition={BEWEGUNG.standard}
+                className="mt-3 flex items-start gap-2.5 rounded-lg bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal"
               >
                 <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                 <span className="min-w-0 flex-1 font-medium">{fehler[schritt]}</span>
@@ -1218,7 +1219,7 @@ function EntwurfFrage({ e, kontakte }: { e: Entwurf; kontakte: Kontakt[] }) {
   const titel = e.sache.titelManuell ? e.sache.titel : "";
   return (
     <div className="grid grid-cols-1 gap-3 py-2">
-      <div className="flex items-start gap-3 rounded-[18px] bg-ink-softer p-4 text-[13.5px] shadow-[inset_0_0_0_1px_var(--line)]">
+      <div className="flex items-start gap-3 rounded-md bg-[var(--surface-2)] p-4 text-[14px]">
         <History className="mt-0.5 size-5 shrink-0 text-ink" />
         <div className="min-w-0 flex-1">
           <div className="font-semibold text-fg">Nicht abgeschlossene Mandatsaufnahme</div>
@@ -1242,7 +1243,7 @@ function EntwurfFrage({ e, kontakte }: { e: Entwurf; kontakte: Kontakt[] }) {
           </dl>
         </div>
       </div>
-      <p className="px-1 text-[12.5px] text-fg-3">Der Entwurf liegt nur in diesem Browser – höchstens 24 Stunden, bis die Akte angelegt ist. „Neu beginnen“ verwirft ihn.</p>
+      <p className="px-1 text-[13px] text-fg-3">Der Entwurf liegt nur in diesem Browser – höchstens 24 Stunden, bis die Akte angelegt ist. „Neu beginnen“ verwirft ihn.</p>
     </div>
   );
 }
@@ -1278,13 +1279,13 @@ function KschgVorschau({
             <span className="text-fg-3">· Vorfrist {fmtDateWd(klagefrist.vorfrist)}</span>
           </div>
           {mitRechenweg && (
-            <ol className="mt-1.5 list-decimal space-y-0.5 pl-5 text-[12.5px] leading-relaxed text-fg-2">
+            <ol className="mt-1.5 list-decimal space-y-0.5 pl-5 text-[13px] leading-relaxed text-fg-2">
               {klagefrist.rechenweg.map((r) => (
                 <li key={r}>{r}</li>
               ))}
             </ol>
           )}
-          <p className="mt-1 text-[12.5px] text-fg-3">Wird bei der Anlage mit Vorfrist eingetragen – zur Vier-Augen-Kontrolle. Feiertage: Kanzleisitz; den Gerichtsort bei Klageerhebung prüfen.</p>
+          <p className="mt-1 text-[13px] text-fg-3">Wird bei der Anlage mit Vorfrist eingetragen – zur Vier-Augen-Kontrolle. Feiertage: Kanzleisitz; den Gerichtsort bei Klageerhebung prüfen.</p>
         </div>
       )}
       {wertVorschlag > 0 && (
@@ -1293,7 +1294,7 @@ function KschgVorschau({
           <span className="num font-semibold text-fg">
             3 × {fmtEUR(entgelt)} = {fmtEUR(wertVorschlag)}
           </span>
-          <span className="text-[12.5px] text-fg-3">(§ 42 Abs. 2 S. 1 GKG)</span>
+          <span className="text-[13px] text-fg-3">(§ 42 Abs. 2 S. 1 GKG)</span>
           {uebernommen ? (
             <span id={uebernommenId} tabIndex={uebernommenId ? -1 : undefined} className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]">
               <Chip tone="green" icon={<Check className="size-3" />}>
@@ -1329,13 +1330,13 @@ function KollisionsEntscheidung({
 }) {
   if (!treffer.length)
     return (
-      <p className="flex items-start gap-2 px-1 text-[12.5px] text-fg-3">
+      <p className="flex items-start gap-2 px-1 text-[13px] text-fg-3">
         <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-green" />
         <span>Kollisionsprüfung: keine Treffer im Aktenbestand – {GEPRUEFT_TEXT}. Das Ergebnis wird als Aktennotiz „Kollisionsprüfung“ dokumentiert.</span>
       </p>
     );
   return (
-    <section className={cn("rounded-[18px] bg-seal-soft p-4 text-[13px]", fehler && "ring-2 ring-[var(--seal)]")} aria-labelledby="ma-kollision-titel">
+    <section className={cn("rounded-lg bg-seal-soft p-4 text-[13px]", fehler && "ring-2 ring-[var(--seal)]")} aria-labelledby="ma-kollision-titel">
       <div id="ma-kollision-titel" className="flex items-center gap-2 font-semibold text-seal">
         <AlertTriangle className="size-4 shrink-0" /> Kollisionsprüfung: {treffer.length} Treffer – Entscheidung erforderlich
       </div>
@@ -1360,14 +1361,14 @@ function KollisionsEntscheidung({
             aria-checked={entscheidung === wert}
             onClick={() => onEntscheidung(wert)}
             className={cn(
-              "min-h-11 rounded-[14px] px-3.5 py-2.5 text-left ring-1 ring-inset transition-colors",
+              "min-h-11 rounded-lg px-3.5 py-2.5 text-left ring-1 ring-inset transition-colors",
               entscheidung === wert ? "bg-[var(--surface)] text-fg ring-2 ring-[var(--ink)]" : "bg-[var(--surface)]/60 text-fg-2 ring-[var(--line)] hover:bg-[var(--surface)]",
             )}
           >
-            <span className="flex items-center gap-2 text-[13.5px] font-semibold">
+            <span className="flex items-center gap-2 text-[14px] font-semibold">
               {wert === "uebernommen" ? <UserCheck className="size-4" /> : <Ban className="size-4" />} {label}
             </span>
-            <span className="mt-0.5 block text-[12.5px] text-fg-3">{sub}</span>
+            <span className="mt-0.5 block text-[13px] text-fg-3">{sub}</span>
           </button>
         ))}
       </div>
@@ -1387,13 +1388,13 @@ function KollisionsEntscheidung({
 }
 
 function PflichtHinweis({ className }: { className?: string }) {
-  return <p className={cn("px-1 text-[12.5px] text-fg-3", className)}>* Pflichtfeld</p>;
+  return <p className={cn("px-1 text-[13px] text-fg-3", className)}>* Pflichtfeld</p>;
 }
 
 function BereitsZugeordnet({ nachricht, akte, onOeffnen }: { nachricht: Nachricht; akte?: Akte; onOeffnen: () => void }) {
   return (
     <div className="grid grid-cols-1 gap-4 py-2">
-      <div className="flex items-start gap-3 rounded-[18px] bg-amber-soft p-4 text-[13.5px]" role="status">
+      <div className="flex items-start gap-3 rounded-lg bg-amber-soft p-4 text-[14px]" role="status">
         <Info className="mt-0.5 size-5 shrink-0 text-amber" />
         <div className="min-w-0 flex-1">
           <div className="font-semibold text-fg">Diese Anfrage ist bereits einer Akte zugeordnet</div>
@@ -1406,13 +1407,13 @@ function BereitsZugeordnet({ nachricht, akte, onOeffnen }: { nachricht: Nachrich
         <Link
           to={`/akten/${akte.id}`}
           onClick={onOeffnen}
-          className="group flex min-w-0 items-center gap-3 rounded-[18px] bg-[var(--surface)] p-4 shadow-[0_0_0_1px_var(--line)] transition-colors hover:bg-ink-softer"
+          className="group flex min-w-0 items-center gap-3 rounded-md bg-[var(--surface)] p-4 shadow-[0_0_0_1px_var(--line)] transition-colors hover:bg-[var(--surface-2)]"
         >
-          <span className="grid size-10 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">
+          <span className="grid size-5 shrink-0 place-items-center text-fg-4">
             <FolderOpen className="size-5" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="mono block text-[12.5px] font-semibold text-ink">{akte.aktenzeichen}</span>
+            <span className="mono block text-[13px] font-semibold text-ink">{akte.aktenzeichen}</span>
             <span className="block truncate text-[14px] font-semibold">{akte.titel}</span>
           </span>
           <ArrowRight className="size-4 shrink-0 text-fg-3 transition-transform group-hover:translate-x-0.5 group-hover:text-ink" />
@@ -1438,7 +1439,7 @@ function KonfliktHinweis({ treffer }: { treffer: string[] }) {
   return (
     <AnimatePresence initial={false}>
       {treffer.length > 0 && (
-        <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="mt-3 flex gap-3 rounded-[16px] bg-seal-soft p-3.5 text-[13px] text-seal" role="alert">
+        <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="mt-3 flex gap-3 rounded-lg bg-seal-soft p-3.5 text-[13px] text-seal" role="alert">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           <div className="min-w-0">
             <div className="font-semibold">Möglicher Interessenkonflikt (§ 43a Abs. 4 BRAO) – {treffer.length} Treffer</div>
@@ -1449,7 +1450,7 @@ function KonfliktHinweis({ treffer }: { treffer: string[] }) {
                 </li>
               ))}
             </ul>
-            <div className="mt-1 text-[12.5px] text-fg-2">Sie entscheiden in der Zusammenfassung: Mandat mit Begründung übernehmen oder ablehnen.</div>
+            <div className="mt-1 text-[13px] text-fg-2">Sie entscheiden in der Zusammenfassung: Mandat mit Begründung übernehmen oder ablehnen.</div>
           </div>
         </motion.div>
       )}
@@ -1470,17 +1471,17 @@ function Schrittleiste({ schritt, gueltig, onGehe }: { schritt: number; gueltig:
               type="button"
               disabled={!erreichbar}
               onClick={() => onGehe(i)}
-              className={cn("relative flex h-9 w-full items-center justify-center gap-1.5 rounded-full text-[12.5px] font-medium transition-colors", aktiv ? "text-fg" : fertig ? "text-fg-2 hover:text-fg" : "text-fg-3")}
+              className={cn("relative flex h-9 w-full items-center justify-center gap-1.5 rounded-md text-[13px] transition-colors duration-100", aktiv ? "font-semibold text-fg" : fertig ? "font-medium text-fg-2 hover:text-fg" : "font-medium text-fg-3")}
               aria-current={aktiv ? "step" : undefined}
             >
               {aktiv && (
                 <motion.span
                   layoutId="ma-schritt"
-                  transition={{ type: "spring", stiffness: 520, damping: 38 }}
-                  className="absolute inset-0 rounded-full bg-[var(--glass-strong)] shadow-[0_1px_0_0_var(--glass-rim-3)_inset,0_2px_10px_-2px_rgba(20,30,80,0.18),0_0_0_1px_var(--line)]"
+                  transition={BEWEGUNG.standard}
+                  className="absolute inset-0 rounded-md bg-[var(--surface-3)]"
                 />
               )}
-              <span className={cn("relative grid size-5 place-items-center rounded-full text-[10.5px] font-semibold", fertig ? "bg-green text-surface" : aktiv ? "bg-ink text-on-ink" : "bg-[var(--line-strong)] text-fg-2")}>
+              <span className={cn("relative grid size-5 place-items-center rounded-full text-[12px] font-semibold", fertig ? "bg-[var(--green)] text-[var(--on-green)]" : aktiv ? "bg-[var(--ink)] text-[var(--on-ink)]" : "bg-[var(--surface)] text-fg-3 shadow-[inset_0_0_0_1px_var(--line-strong)]")}>
                 {fertig ? <Check className="size-3" strokeWidth={3} /> : i + 1}
               </span>
               <span className="relative hidden sm:inline">{s}</span>
@@ -1496,34 +1497,27 @@ function ErfolgsAnsicht({ erfolg }: { erfolg: { akte: Akte; schritte: { text: st
   return (
     <div className="grid grid-cols-1 gap-5 pb-2 pt-4">
       <div className="flex flex-col items-center text-center">
-        <motion.div
-          initial={{ scale: 0.4, opacity: 0, rotate: -20 }}
-          animate={{ scale: 1, opacity: 1, rotate: 0 }}
-          transition={{ type: "spring", stiffness: 380, damping: 20 }}
-          className="ai-ring ai-glow grid grid-cols-1 size-16 place-items-center rounded-[22px] bg-[var(--surface)]"
-        >
-          <Sparkles className="size-7 text-violet" />
-        </motion.div>
+        <CheckCircle2 className="size-6 text-[var(--green)]" aria-hidden />
         <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="mt-4">
-          <div className="mono text-[13px] font-semibold text-ink">{erfolg.akte.aktenzeichen}</div>
+          <div className="mono text-[13px] font-medium text-fg-2">{erfolg.akte.aktenzeichen}</div>
           <div className="title-lg mt-0.5">{erfolg.akte.titel}</div>
         </motion.div>
       </div>
       <ul className="grid grid-cols-1 gap-1.5">
-        {erfolg.schritte.map((s, i) => (
+        {erfolg.schritte.map((s) => (
           <motion.li
             key={s.text}
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.3 + i * 0.16, type: "spring", stiffness: 460, damping: 34 }}
-            className="flex items-center gap-3 rounded-[14px] bg-[var(--surface)] px-3.5 py-2.5 shadow-[0_0_0_1px_var(--line)]"
+            transition={BEWEGUNG.standard}
+            className="flex items-center gap-3 rounded-lg bg-[var(--surface)] px-3.5 py-2.5 shadow-[0_0_0_1px_var(--line)]"
           >
-            <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.42 + i * 0.16, type: "spring", stiffness: 600, damping: 22 }} className="grid grid-cols-1 size-6 shrink-0 place-items-center rounded-full bg-green text-surface">
+            <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={BEWEGUNG.standard} className="grid grid-cols-1 size-6 shrink-0 place-items-center rounded-full bg-green text-surface">
               <Check className="size-3.5" strokeWidth={3} />
             </motion.span>
             <span className="min-w-0 flex-1">
-              <span className="block break-words text-[13.5px] font-medium">{s.text}</span>
-              {s.sub && <span className="block break-words text-[12.5px] text-fg-3">{s.sub}</span>}
+              <span className="block break-words text-[14px] font-medium">{s.text}</span>
+              {s.sub && <span className="block break-words text-[13px] text-fg-3">{s.sub}</span>}
             </span>
           </motion.li>
         ))}
@@ -1538,7 +1532,7 @@ function ErfolgsAnsicht({ erfolg }: { erfolg: { akte: Akte; schritte: { text: st
         <div className="mx-auto h-1.5 w-40 overflow-hidden rounded-full bg-[var(--line)]" aria-hidden>
           <motion.span className="block h-full rounded-full bg-ink" initial={{ width: "0%" }} animate={{ width: "100%" }} transition={{ duration: 5.2, ease: "linear" }} />
         </div>
-        <div className="text-center text-[12.5px] text-fg-3">Die Akte öffnet sich gleich automatisch.</div>
+        <div className="text-center text-[13px] text-fg-3">Die Akte öffnet sich gleich automatisch.</div>
       </motion.div>
     </div>
   );

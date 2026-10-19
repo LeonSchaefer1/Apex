@@ -1,7 +1,7 @@
 // Reiter „Zinsrechner“: freier Verzugszinsrechner (§ 288 BGB) für die schnelle Gegenprüfung – Betrag, Zeitraum, 5 PP, 9 PP
 // oder fester Satz. Gleicher Rechenkern wie das Forderungskonto (src/core/zinsen.ts), Abschnitte je Basiszinswechsel, act/365.
 import { useMemo, useRef, useState } from "react";
-import { AlertTriangle, Copy, Info, Percent } from "lucide-react";
+import { AlertTriangle, Copy, Info } from "lucide-react";
 import { Button, Card, CardHeader, Field, Input, Segmented } from "@/components/ui";
 import { diffDays, fmtDate, fmtEUR, round2 } from "@/core/dates";
 import { basiszinsAm, verzugszinsen, type ZinsAbschnitt } from "@/core/zinsen";
@@ -54,7 +54,7 @@ export function ZinsrechnerTab() {
   });
   const fehlerText = (k: keyof typeof feldFehler) =>
     feldFehler[k] ? (
-      <p id={`zr-${k}-fehler`} className="mt-1.5 flex items-start gap-1.5 text-[12.5px] font-medium text-seal">
+      <p id={`zr-${k}-fehler`} className="mt-1.5 flex items-start gap-1.5 text-[13px] font-medium text-seal-text">
         <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
         {feldFehler[k]}
       </p>
@@ -85,13 +85,12 @@ export function ZinsrechnerTab() {
   return (
     <>
       <Kopf
-        icon={<Percent className="size-[18px]" />}
         titel="Zinsrechner"
         text="Verzugszinsen frei berechnen – für die schnelle Gegenprüfung einer Aufstellung, ohne Forderungssache. Gleicher Rechenkern wie das Forderungskonto."
       />
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
         <Card>
-          <CardHeader icon={<Percent className="size-4" />} title="Eingaben" subtitle="Zeitraum: Beginn und Ende jeweils einschließlich – Tageszählung act/365." />
+          <CardHeader title="Eingaben" subtitle="Zeitraum: Beginn und Ende jeweils einschließlich – Tageszählung act/365." />
           <div className="grid gap-3.5">
             {beispiel && <BeispielHinweis />}
             <Field label="Betrag (€)" htmlFor="zr-betrag">
@@ -126,7 +125,7 @@ export function ZinsrechnerTab() {
                 {fehlerText("fest")}
               </Field>
             )}
-            <p className="flex items-start gap-2 rounded-[12px] bg-ink-softer px-3 py-2 text-[12.5px] text-fg-2">
+            <p className="flex items-start gap-2 text-[13px] leading-[18px] text-fg-3">
               <Info className="mt-0.5 size-3.5 shrink-0" />
               <span>
                 {art === "5" && "§ 288 Abs. 1 BGB: 5 Prozentpunkte über dem Basiszinssatz – wenn ein Verbraucher beteiligt ist."}
@@ -141,7 +140,7 @@ export function ZinsrechnerTab() {
 
         <Card padded={false} className="overflow-hidden">
           <div className="flex flex-wrap items-start gap-3 p-5 pb-3">
-            <CardHeader className="!mb-0 min-w-0 flex-1 basis-[220px]" icon={<Percent className="size-4" />} title="Ergebnis" subtitle={`${SATZ_LABEL[art]} · neuer Abschnitt bei jedem Basiszinswechsel · act/365`} />
+            <CardHeader className="!mb-0 min-w-0 flex-1 basis-[220px]" title="Ergebnis" subtitle={`${SATZ_LABEL[art]} · neuer Abschnitt bei jedem Basiszinswechsel · act/365`} />
             <Button size="sm" variant="secondary" icon={<Copy className="size-4" />} disabled={!abschnitte.length} onClick={() => void kopieren()}>
               Ergebnis kopieren
             </Button>
@@ -190,7 +189,7 @@ export function ZinsrechnerTab() {
             </table>
           </div>
           {abschnitte.length > 0 && (
-            <p className="border-t border-[var(--line)] px-5 py-3 text-[12.5px] text-fg-3">
+            <p className="border-t border-[var(--line)] px-5 py-3 text-[13px] text-fg-3">
               Rechenweg je Abschnitt: Kapital × Zinssatz × Tage ÷ 365 – z. B. {fmtEUR(abschnitte[0].kapital)} × {fmtProzent(abschnitte[0].zinssatz)} × {abschnitte[0].tage} ÷ 365 = {fmtEUR(abschnitte[0].zinsen)}.
             </p>
           )}
@@ -203,8 +202,8 @@ export function ZinsrechnerTab() {
 /** „Beispielwerte – bitte überschreiben“: Startwerte des Rechners sind kein Ergebnis aus einer Akte (I4-T09-02). */
 export function BeispielHinweis({ id = "beispiel-hinweis" }: { id?: string }) {
   return (
-    <p id={id} className="flex items-start gap-2 rounded-[12px] bg-amber-soft px-3 py-2 text-[12.5px] font-medium text-fg">
-      <Info className="mt-0.5 size-3.5 shrink-0 text-[var(--amber-text)]" aria-hidden />
+    <p id={id} className="banner">
+      <Info aria-hidden />
       <span>Beispielwerte – bitte überschreiben. Das Ergebnis gilt erst für Ihre eigenen Angaben.</span>
     </p>
   );

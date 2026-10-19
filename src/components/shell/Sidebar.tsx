@@ -6,16 +6,17 @@ import { beschreibungFuer, navFor, navFuer } from "@/app/nav";
 import { useUI } from "@/store/ui";
 import { useKanzlei } from "@/store/session";
 import { cn } from "@/lib/cn";
-import { AppIcon, Wordmark } from "@/components/Logo";
+import { LogoMark, Wordmark } from "@/components/Logo";
+import { BEWEGUNG } from "@/lib/bewegung";
 import { useMedia } from "@/lib/useMedia";
 import { fmtDate } from "@/core/dates";
 import { useBadges } from "./useBadges";
 
 const GRUPPEN = ["Arbeiten", "Intelligenz", "Kanzlei", "Service"] as const;
 
-/** Breite der beschrifteten schmalen Leiste (Tablet, eingeklappt) bzw. der vollen Leiste. */
-const BREITE_SCHMAL = 88;
-const BREITE_VOLL = 252;
+/** Breite der beschrifteten schmalen Leiste (Tablet, eingeklappt) bzw. der vollen Leiste (DESIGN-SYSTEM.md 12.10: 232 px). */
+const BREITE_SCHMAL = 76;
+const BREITE_VOLL = 232;
 
 /**
  * Dichtestufen der Leiste, gemessen an der verfügbaren Höhe (auch bei 112 % und 125 % Schrift, die per `zoom` skaliert –
@@ -109,16 +110,17 @@ export function Sidebar() {
   return (
     <motion.aside
       animate={{ width: kompakt ? BREITE_SCHMAL : BREITE_VOLL }}
-      transition={{ type: "spring", stiffness: 380, damping: 38 }}
-      className="glass relative z-30 m-3 mr-0 hidden shrink-0 flex-col rounded-[28px] md:flex"
+      transition={BEWEGUNG.dialog}
+      className="relative z-30 hidden h-full shrink-0 flex-col border-r border-[var(--line)] bg-[var(--bg)] md:flex"
       style={{ width: kompakt ? BREITE_SCHMAL : BREITE_VOLL }}
     >
-      <div className={cn("flex items-center gap-2.5 px-4 pb-2 pt-4", kompakt && "justify-center px-0", (dicht || schmalDicht) && "pb-1 pt-3")}>
-        <AppIcon size={kompakt || dicht ? 30 : 34} />
+      {/* Kopf 56 px – bündig mit der Kopfleiste: Bildmarke + „Apex“, darunter der Kanzleiname */}
+      <div className={cn("flex h-14 shrink-0 items-center gap-2.5 px-5", kompakt && "justify-center px-0")}>
+        <LogoMark size={20} className="text-fg" />
         {!kompakt && (
           <div className="min-w-0 flex-1 leading-tight">
-            <Wordmark size={16} />
-            <div className="truncate text-[12.5px] text-fg-3" title={tenant.name}>
+            <Wordmark size={15} className="block" />
+            <div className="truncate text-[12px] leading-4 text-fg-4" title={tenant.name}>
               {tenant.kurzname}
             </div>
           </div>
@@ -128,22 +130,27 @@ export function Sidebar() {
       <div className="relative min-h-0 flex-1">
         <nav
           ref={verlauf.ref}
-          className={cn("no-scrollbar h-full overflow-y-auto pb-2", kompakt ? "px-2" : "px-2.5", dicht || schmalDicht ? "mt-0" : "mt-2")}
+          className={cn("no-scrollbar h-full overflow-y-auto pb-2", kompakt ? "px-2" : "px-3", dicht || schmalDicht ? "pt-0" : "pt-1")}
           style={{ maskImage: verlauf.maske, WebkitMaskImage: verlauf.maske }}
           aria-label="Hauptnavigation"
         >
           <div>
             {GRUPPEN.map((g) => (
-              <div key={g} className={dicht ? "mb-1" : "mb-2"}>
+              <div key={g} className={dicht ? "mb-0.5" : "mb-1"}>
                 {!kompakt && !ohneTitel && g !== "Arbeiten" && (
-                  <div className={cn("eyebrow px-3 pb-1 !text-[12px]", dicht ? "pt-2" : "pt-3")}>{g === "Service" ? "" : g}</div>
+                  g === "Service" ? (
+                    <div className={dicht ? "h-3" : "h-5"} aria-hidden />
+                  ) : (
+                    <div className={cn("px-2.5 pb-1 text-[12px] font-medium leading-4 text-fg-4", dicht ? "pt-3" : "pt-6")}>{g}</div>
+                  )
                 )}
-                {(kompakt || ohneTitel) && g !== "Arbeiten" && <div className={cn("mx-auto h-px w-8 bg-[var(--line)]", schmalDicht || ohneTitel ? "my-1" : "my-2")} />}
+                {(kompakt || ohneTitel) && g !== "Arbeiten" && <div className={cn("mx-auto h-px bg-[var(--line)]", kompakt ? "w-8" : "mx-2.5", schmalDicht || ohneTitel ? "my-1" : "my-2")} />}
                 {nav.filter((n) => n.gruppe === g).map((n) => {
                   const isActive = active === n.to;
                   const badge = badges[n.to];
                   // Zugänglicher Name aus Bereich und Bedeutung des Zählers („Posteingang, 6 neu“) statt nur der Zahl
                   const name = badge?.anzahl ? `${n.label}, ${badge.bedeutung}` : n.label;
+                  const kritisch = badge?.ton === "seal";
                   return (
                     <NavLink
                       key={n.to}
@@ -151,35 +158,31 @@ export function Sidebar() {
                       aria-label={name}
                       title={kompakt ? `${name} – ${beschreibungFuer(n, tenant.ansprechpartner)}` : beschreibungFuer(n, tenant.ansprechpartner)}
                       className={cn(
-                        "group relative flex rounded-[14px] font-medium transition-colors",
+                        "group relative flex rounded-md transition-colors duration-100",
                         kompakt
-                          ? cn("w-full flex-col items-center justify-center gap-[3px] px-0.5", schmalDicht ? "min-h-[46px] py-1" : "min-h-[52px] py-1.5")
-                          : cn("items-center gap-3 px-3 text-[13.5px]", sehrDicht ? "h-8" : dicht ? "h-9" : "h-10"),
-                        isActive ? "text-fg" : "text-fg-2 hover:text-fg",
+                          ? cn("w-full flex-col items-center justify-center gap-1 px-0.5", schmalDicht ? "min-h-[46px] py-1" : "min-h-[52px] py-1.5")
+                          : cn("items-center gap-2.5 px-2.5 text-[14px] leading-5", sehrDicht ? "h-7" : dicht ? "h-[30px]" : "h-8"),
+                        isActive ? "font-semibold text-fg" : "font-medium text-fg-3 hover:bg-[var(--surface-2)] hover:text-fg",
                       )}
                     >
                       {isActive && (
-                        <motion.span
-                          layoutId="nav-pill"
-                          transition={{ type: "spring", stiffness: 500, damping: 38 }}
-                          className="absolute inset-0 -z-10 rounded-[14px] bg-[var(--glass-strong)] shadow-[0_1px_0_0_var(--glass-rim-3)_inset,0_4px_14px_-4px_rgba(20,30,80,0.18),0_0_0_1px_var(--line)]"
-                        />
+                        <motion.span layoutId="nav-pill" transition={BEWEGUNG.standard} className="absolute inset-0 -z-10 rounded-md bg-[var(--surface-3)]" />
                       )}
-                      <span aria-hidden className={cn("relative transition-transform duration-300 ease-[var(--spring)] group-hover:scale-110", isActive ? "text-ink" : "text-fg-3 group-hover:text-fg-2")}>
-                        <n.icon className="size-[18px]" strokeWidth={isActive ? 2.2 : 1.9} />
+                      <span aria-hidden className={cn("relative", isActive ? "text-fg" : "text-fg-4 group-hover:text-fg")}>
+                        <n.icon className="size-4" />
                         {kompakt && badge?.anzahl ? (
-                          <span className={cn("absolute -right-2.5 -top-1.5 grid h-[18px] min-w-[18px] place-items-center rounded-full px-1 text-[11.5px] font-bold leading-none text-white", badge.ton === "seal" ? "bg-seal" : "bg-ink")}>{badge.anzahl}</span>
+                          <span className={cn("num absolute -right-3 -top-1.5 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[12px] font-semibold leading-none", kritisch ? "bg-[var(--seal)] text-[var(--on-seal)]" : "bg-[var(--fg)] text-[var(--bg)]")}>{badge.anzahl}</span>
                         ) : null}
                       </span>
                       {kompakt ? (
-                        <span aria-hidden className={cn("max-w-full truncate text-[11.5px] leading-[1.15]", isActive ? "font-semibold text-fg" : "text-fg-2")}>
+                        <span aria-hidden className={cn("max-w-full truncate text-[12px] leading-4", isActive ? "font-semibold text-fg" : "font-medium text-fg-3")}>
                           {n.kurz ?? n.label}
                         </span>
                       ) : (
                         <span aria-hidden className="flex-1 truncate">{n.label}</span>
                       )}
                       {!kompakt && badge?.anzahl ? (
-                        <span aria-hidden className={cn("num grid h-5 min-w-5 place-items-center rounded-full px-1.5 text-[12px] font-semibold", badge.ton === "seal" ? "bg-seal text-white" : badge.ton === "ai" ? "ai-fill text-white" : "bg-ink-soft text-ink")}>
+                        <span aria-hidden className={cn("num text-[12px] leading-4", kritisch ? "font-semibold text-seal-text" : "font-medium text-fg-4")}>
                           {badge.anzahl}
                         </span>
                       ) : null}
@@ -193,34 +196,34 @@ export function Sidebar() {
         {/* Scrollt die Leiste trotz aller Verdichtung, zeigt ein Pfeil unten: Hier geht es weiter. */}
         {verlauf.unten && (
           <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center">
-            <span className="grid size-6 place-items-center rounded-full bg-[var(--glass-strong)] text-fg-3 shadow-[0_2px_8px_-2px_rgba(20,30,80,0.25)]">
+            <span className="grid size-6 place-items-center rounded-full border border-[var(--line)] bg-[var(--surface)] text-fg-3">
               <ChevronDown className="size-4" />
             </span>
           </span>
         )}
       </div>
 
-      <div className={cn("px-3 pb-3", kompakt && "px-2", (dicht || schmalDicht) && "pb-2")}>
+      <div className={cn("shrink-0 px-3 pb-3", kompakt && "px-2", (dicht || schmalDicht) && "pb-2")}>
         {lizenz !== "aus" && (
           <NavLink
             to={darfLizenz ? "/einstellungen?tab=lizenz" : "/einstellungen?tab=team"}
-            className={cn("mb-2 block rounded-[16px] bg-ink-softer text-[12.5px] leading-snug transition-colors hover:bg-ink-soft", lizenz === "voll" ? "p-3" : "px-3 py-2")}
+            className={cn("mb-1 block border-t border-[var(--line)] px-2.5 text-[12px] leading-4 text-fg-4 transition-colors duration-100 hover:text-fg-2", lizenz === "voll" ? "pb-2 pt-3" : "pb-1.5 pt-2")}
           >
             {tenant.status === "test" ? (
               <>
-                <div className="flex items-center gap-1.5 font-semibold text-fg">
-                  <CalendarClock className="size-4 shrink-0 text-amber" />
+                <div className="flex items-center gap-1.5 font-medium text-fg-2">
+                  <CalendarClock className="size-3.5 shrink-0 text-amber" />
                   <span className="truncate">{tenant.testBis ? `Testzugang bis ${fmtDate(tenant.testBis)}` : "Testzugang"}</span>
                 </div>
-                {lizenz === "voll" && <div className="mt-0.5 text-fg-3">{tenant.lizenz.arbeitsplaetze} Arbeitsplätze · alle Funktionen frei</div>}
+                {lizenz === "voll" && <div className="mt-0.5">{tenant.lizenz.arbeitsplaetze} Arbeitsplätze · alle Funktionen frei</div>}
               </>
             ) : (
               <>
-                <div className="flex items-center gap-1.5 font-semibold text-fg">
-                  <InfinityIcon className="size-4 shrink-0 text-ink" />
-                  <span className="truncate">Lifetime-Lizenz{lizenz === "zeile" ? <span className="font-normal text-fg-3"> · {tenant.lizenz.arbeitsplaetze} Plätze</span> : null}</span>
+                <div className="flex items-center gap-1.5 font-medium text-fg-2">
+                  <InfinityIcon className="size-3.5 shrink-0 text-fg-4" />
+                  <span className="truncate">Lifetime-Lizenz{lizenz === "zeile" ? <span className="font-normal text-fg-4"> · {tenant.lizenz.arbeitsplaetze} Plätze</span> : null}</span>
                 </div>
-                {lizenz === "voll" && <div className="mt-0.5 text-fg-3">{tenant.lizenz.arbeitsplaetze} Arbeitsplätze · keine Monatsgebühren</div>}
+                {lizenz === "voll" && <div className="mt-0.5">{tenant.lizenz.arbeitsplaetze} Arbeitsplätze · keine Monatsgebühren</div>}
               </>
             )}
           </NavLink>
@@ -231,13 +234,13 @@ export function Sidebar() {
             onClick={toggleSidebar}
             className={cn(
               kompakt
-                ? "icon-btn w-full !rounded-[12px]"
-                : cn("flex w-full items-center gap-2 rounded-[12px] px-3 text-[12.5px] font-medium text-fg-2 transition-colors hover:bg-ink-softer hover:text-fg", dicht ? "h-8" : "h-9"),
+                ? "icon-btn w-full"
+                : cn("flex w-full items-center gap-2.5 rounded-md px-2.5 text-[13px] font-medium text-fg-3 transition-colors duration-100 hover:bg-[var(--surface-2)] hover:text-fg", dicht ? "h-7" : "h-8"),
             )}
             aria-label={kompakt ? "Seitenleiste ausklappen" : "Seitenleiste einklappen"}
             title={kompakt ? "Seitenleiste ausklappen" : undefined}
           >
-            {kompakt ? <PanelLeftOpen className="size-[18px]" /> : <PanelLeftClose className="size-[18px]" />}
+            {kompakt ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4 text-fg-4" />}
             {!kompakt && "Einklappen"}
           </button>
         )}

@@ -44,7 +44,7 @@ function AusgangsZeile({ f, akte, team, user, heute }: { f: Frist; akte?: Akte; 
           <span className="text-[14px] font-semibold">{f.titel}</span>
           {f.status === "offen" && f.datum < heute && <Chip tone="seal">überfällig seit {fmtDate(f.datum)}</Chip>}
         </div>
-        <div className="mt-1 text-[12.5px] text-fg-3">
+        <div className="mt-1 text-[13px] text-fg-3">
           {akte ? (
             <>
               <span className="mono font-medium text-fg-2">{akte.aktenzeichen}</span> {akte.titel}
@@ -56,7 +56,7 @@ function AusgangsZeile({ f, akte, team, user, heute }: { f: Frist; akte?: Akte; 
         </div>
         <div className="mt-1.5">
           {status === "offen" ? (
-            <span className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-seal">
+            <span className="inline-flex items-center gap-1 text-[13px] font-semibold text-seal">
               <XCircle className="size-3.5" /> offen – noch kein Versandnachweis
             </span>
           ) : (
@@ -99,7 +99,7 @@ export function Ausgangskontrolle({ fristen, akten, team, user, heute }: { frist
         <div className="flex flex-wrap items-center gap-3">
           <div className="min-w-0 flex-1 basis-[260px]">
             <h2 className="title-md">Ausgangskontrolle · {fmtDateWd(tag)}</h2>
-            <p className="mt-0.5 text-[12.5px] text-fg-3">Jede fällige Notfrist und Frist: versandt mit Nachweis oder offen. „Erledigt“ geht nur mit Nachweis oder Grund.</p>
+            <p className="mt-0.5 text-[13px] text-fg-3">Jede fällige Notfrist und Frist: versandt mit Nachweis oder offen. „Erledigt“ geht nur mit Nachweis oder Grund.</p>
           </div>
           <Segmented
             size="sm"
@@ -237,7 +237,7 @@ export function Druckansicht({ open, onClose, fristen, akten, team, heute }: { o
         }
       >
         <style>{css}</style>
-        <div className="overflow-x-auto rounded-[12px] ring-1 ring-[var(--line)]">{blatt}</div>
+        <div className="overflow-x-auto rounded-md ring-1 ring-[var(--line)]">{blatt}</div>
       </Modal>
       {open && createPortal(<div id="apex-druck">{blatt}</div>, document.body)}
     </>

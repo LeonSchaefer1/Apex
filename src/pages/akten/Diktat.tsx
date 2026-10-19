@@ -60,15 +60,15 @@ export function DiktatKnopf({ onText, label = "Diktieren", className }: { onText
         aria-label={aktiv ? "Diktat beenden" : label}
         title={aktiv ? "Diktat beenden" : `${label} (Spracheingabe, Deutsch)`}
         className={cn(
-          "inline-flex h-9 min-w-[36px] shrink-0 items-center justify-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-medium transition-colors max-sm:h-11 max-sm:min-w-11",
-          aktiv ? "bg-seal-soft text-seal" : "text-fg-2 shadow-[inset_0_0_0_1px_var(--line)] hover:bg-ink-softer hover:text-fg",
+          "inline-flex h-9 min-w-[36px] shrink-0 items-center justify-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium transition-colors max-sm:h-11 max-sm:min-w-11",
+          aktiv ? "bg-seal-soft text-[var(--seal-text)]" : "text-fg-2 shadow-[inset_0_0_0_1px_var(--line-strong)] hover:bg-[var(--surface-2)] hover:text-fg",
         )}
       >
         {aktiv ? <MicOff className="size-4" /> : <Mic className="size-4" />}
         <span className="hidden sm:inline">{aktiv ? "Beenden" : label}</span>
       </button>
       {aktiv && (
-        <span className="min-w-0 truncate text-[12.5px] italic text-fg-3" aria-live="polite">
+        <span className="min-w-0 truncate text-[13px] italic text-fg-3" aria-live="polite">
           {zwischen || "Ich höre zu …"}
         </span>
       )}

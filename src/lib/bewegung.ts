@@ -13,3 +13,13 @@ export function bewegungReduzierenAnwenden(): void {
   setzen();
   m.addEventListener?.("change", setzen);
 }
+
+/**
+ * Gemeinsamer Bewegungssatz (DESIGN-SYSTEM.md 10) statt Federn: kurze Übergänge ohne Überschwingen.
+ * schnell = Hover/Drücken/Farbe, standard = Menü/Popover/Indikator, dialog = Dialog/Drawer.
+ */
+export const BEWEGUNG = {
+  schnell: { duration: 0.1, ease: [0.2, 0, 0, 1] },
+  standard: { duration: 0.16, ease: [0.2, 0, 0, 1] },
+  dialog: { duration: 0.22, ease: [0.2, 0, 0, 1] },
+} as const;

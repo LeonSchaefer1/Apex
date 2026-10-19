@@ -1,9 +1,10 @@
 // Abrechnung: RVG-Rechner, Sammelabrechnung, Forderungskonto und automatischer Bankabgleich.
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect } from "react";
 import { useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { Calculator, Landmark, LayoutGrid, Layers, Percent, Receipt, Scale, Timer } from "lucide-react";
-import { Button, PageHeader, Segmented, type SegOption } from "@/components/ui";
+import { Layers } from "lucide-react";
+import { Button, PageHeader, type SegOption } from "@/components/ui";
+import { Reiter } from "@/pages/einstellungen/Reiter";
 import { useCol } from "@/store/data";
 import { BankabgleichTab } from "./Bankabgleich";
 import { ForderungskontoTab } from "./Forderungskonto";
@@ -64,33 +65,27 @@ export default function Abrechnung() {
     }
   };
 
-  // Aktiven Reiter auf schmalen Bildschirmen in den sichtbaren Bereich holen
-  const leiste = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = leiste.current?.querySelector<HTMLElement>("[aria-selected=true]");
-    const box = el?.parentElement;
-    if (el && box && box.scrollWidth > box.clientWidth) box.scrollTo({ left: el.offsetLeft - box.clientWidth / 2 + el.offsetWidth / 2, behavior: "smooth" });
-  }, [tab]);
-
   // Dialoge beim Verlassen der Seite schließen
   useEffect(() => () => useAbrechnungUI.setState({ rechnungId: null, sammelOffen: false }), []);
 
   const tabs: SegOption<TabKey>[] = [
-    { value: "uebersicht", label: "Übersicht", icon: <LayoutGrid className="size-3.5" /> },
-    { value: "rechnungen", label: "Rechnungen", icon: <Receipt className="size-3.5" /> },
-    { value: "rvg", label: "RVG-Rechner", icon: <Calculator className="size-3.5" /> },
-    { value: "bank", label: "Bankabgleich", icon: <Landmark className="size-3.5" />, count: offeneUmsaetze || undefined },
-    { value: "forderung", label: "Forderungskonto", icon: <Scale className="size-3.5" /> },
-    { value: "zinsen", label: "Zinsrechner", icon: <Percent className="size-3.5" /> },
+    { value: "uebersicht", label: "Übersicht" },
+    { value: "rechnungen", label: "Rechnungen" },
+    { value: "rvg", label: "RVG-Rechner" },
+    { value: "bank", label: "Bankabgleich", count: offeneUmsaetze || undefined },
+    { value: "forderung", label: "Forderungskonto" },
+    { value: "zinsen", label: "Zinsrechner" },
     {
       value: "zeit",
       label: (
         <span className="inline-flex items-center gap-1.5">
           Zeiterfassung
-          {timerStart && <span className="size-1.5 animate-pulse rounded-full bg-seal" title="Stoppuhr läuft" />}
+          {/* Stoppuhr läuft: ruhender Punkt in Text 1, mit Namen für Screenreader – kein Puls */}
+          {timerStart && (
+            <span className="size-1.5 rounded-full bg-[var(--fg)]" title="Stoppuhr läuft" role="img" aria-label="Stoppuhr läuft" />
+          )}
         </span>
       ),
-      icon: <Timer className="size-3.5" />,
     },
   ];
 
@@ -102,7 +97,7 @@ export default function Abrechnung() {
         <button
           type="button"
           onClick={fokusErsteRechnung}
-          className="sr-only rounded-full bg-[var(--surface)] px-4 py-2 text-[14px] font-semibold text-ink shadow-[var(--glass-shadow)] ring-2 ring-[var(--focus)] focus:not-sr-only focus:mb-3 focus:inline-flex focus:min-h-11 focus:items-center focus:px-4 focus:py-2"
+          className="sr-only rounded-md bg-[var(--surface)] px-4 py-2 text-[14px] font-medium text-fg ring-2 ring-[var(--focus)] focus:not-sr-only focus:mb-3 focus:inline-flex focus:min-h-11 focus:items-center focus:px-4 focus:py-2"
         >
           Zur Rechnungsliste springen
         </button>
@@ -118,17 +113,15 @@ export default function Abrechnung() {
         }
       />
 
-      <div ref={leiste} className="mb-6">
-        <Segmented options={tabs} value={tab} onChange={(t) => setTab(t)} className="max-w-full" />
-      </div>
+      <Reiter options={tabs} value={tab} onChange={(t) => setTab(t)} label="Bereiche der Abrechnung" className="mb-8" />
 
       <AnimatePresence mode="wait" initial={false}>
         <motion.section
           key={tab}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -6 }}
-          transition={{ type: "spring", stiffness: 420, damping: 36 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.12, ease: "linear" }}
           aria-label={TAB_LABEL[tab]}
         >
           {tab === "uebersicht" && <UebersichtTab onTab={setTab} />}

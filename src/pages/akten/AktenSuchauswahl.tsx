@@ -177,11 +177,11 @@ export function AktenSuchauswahl({
         ↑/↓ wählt, Enter übernimmt{q.trim() ? " – ohne Auswahl den ersten Treffer" : ""}, Escape {q || markiert >= 0 || !onEscape ? "leert die Suche" : "schließt die Auswahl"}.
       </p>
       {optionen.length === 0 ? (
-        <div role="status" className="rounded-[16px] bg-ink-softer px-4 py-6 text-center text-[13px] text-fg-3 shadow-[inset_0_0_0_1px_var(--line)]">
+        <div role="status" className="rounded-md bg-[var(--surface-2)] px-4 py-6 text-center text-[13px] text-fg-3">
           Keine Akte gefunden – Aktenzeichen, Namen oder Gerichtsaktenzeichen prüfen.
         </div>
       ) : (
-        <div id={listId} role="listbox" aria-label="Akten" tabIndex={-1} className="overflow-y-auto rounded-[16px] bg-ink-softer p-1 shadow-[inset_0_0_0_1px_var(--line)] outline-none" style={{ maxHeight: hoehe }}>
+        <div id={listId} role="listbox" aria-label="Akten" tabIndex={-1} className="overflow-y-auto rounded-lg bg-[var(--surface)] p-1 shadow-[inset_0_0_0_1px_var(--line)] outline-none" style={{ maxHeight: hoehe }}>
           {optionen.map((o, i) => {
             const a = o.akte;
             const zeigeGruppe = !q.trim() && o.gruppe !== letzteGruppe;
@@ -192,7 +192,7 @@ export function AktenSuchauswahl({
               <div key={a.id} role="presentation">
                 {zeigeGruppe && (
                   <div aria-hidden className="eyebrow flex items-center gap-1.5 px-2.5 pb-1 pt-2">
-                    {o.gruppe === "ki" ? <Sparkles className="size-3 text-violet" /> : o.gruppe === "zuletzt" ? <History className="size-3" /> : null}
+                    {o.gruppe === "ki" ? <Sparkles className="size-3" aria-hidden /> : o.gruppe === "zuletzt" ? <History className="size-3" /> : null}
                     {GRUPPE[o.gruppe]}
                   </div>
                 )}
@@ -207,13 +207,13 @@ export function AktenSuchauswahl({
                     document.getElementById(id)?.focus();
                   }}
                   className={cn(
-                    "flex min-h-11 cursor-pointer items-start gap-2.5 rounded-[12px] px-2.5 py-2 text-left",
+                    "flex min-h-11 cursor-pointer items-start gap-2.5 rounded-md px-2.5 py-2 text-left",
                     istGewaehlt ? "bg-[var(--surface)] shadow-[0_0_0_1.5px_var(--ink)]" : "hover:bg-[var(--surface)]",
                     istMarkiert && !istGewaehlt && "bg-[var(--surface)] shadow-[inset_0_0_0_1.5px_var(--line-strong)]",
                     istMarkiert && istGewaehlt && "outline outline-2 outline-offset-1 outline-[var(--ink)]",
                   )}
                 >
-                  <span className="mono w-[58px] shrink-0 pt-px text-[12.5px] font-semibold text-ink">
+                  <span className="mono w-[58px] shrink-0 pt-px text-[13px] font-semibold text-ink">
                     <Highlight text={a.aktenzeichen} q={q} />
                   </span>
                   <span className="min-w-0 flex-1">
@@ -228,7 +228,7 @@ export function AktenSuchauswahl({
                     {/* Ohne Suche steht der Vorschlag unter der Überschrift „KI-Vorschlag“; in den Treffern als Chip unter dem Titel
                         (nicht als eigene Spalte – sonst bleibt bei 360 px kaum Platz für den Aktentitel) */}
                     {q.trim() && a.id === vorschlagId && (
-                      <Chip tone="violet" icon={<Sparkles className="size-3" aria-hidden />} className="mt-1 !h-5 !px-1.5 !text-[11px]">
+                      <Chip tone="outline" icon={<Sparkles className="size-3" aria-hidden />} className="mt-1">
                         KI-Vorschlag
                       </Chip>
                     )}

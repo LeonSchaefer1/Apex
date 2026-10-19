@@ -8,6 +8,7 @@ import { useUI } from "@/store/ui";
 import { Button, Card, Chip, Empty, Modal, SearchField, Segmented } from "@/components/ui";
 import { Highlight } from "@/components/Highlight";
 import { WikiPlayer } from "@/components/wiki/WikiPlayer";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 type Kat = WikiArtikel["kategorie"];
 const KAT_ICON: Record<Kat, React.ReactNode> = {
@@ -69,14 +70,14 @@ export function WikiBibliothek() {
       <button
         type="button"
         onClick={() => zeigeHilfe("hilfe")}
-        className="mb-4 flex w-full items-center gap-3 rounded-[18px] bg-[var(--ink-softer)] px-4 py-3 text-left ring-1 ring-[var(--line)] transition-colors hover:bg-[var(--ink-soft)]"
+        className="mb-4 flex w-full items-center gap-3 rounded-lg bg-[var(--ink-softer)] px-4 py-3 text-left ring-1 ring-[var(--line)] transition-colors hover:bg-[var(--ink-soft)]"
       >
         <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[var(--surface)] text-ink shadow-[0_0_0_1px_var(--line)]">
           <CircleHelp className="size-[18px]" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-[13.5px] font-semibold">Schnellhilfe überall: das ?-Symbol neben jedem Seitentitel</span>
-          <span className="block text-[12.5px] text-fg-3">Es öffnet genau die Anleitung zur Ansicht, in der Sie gerade arbeiten – ohne die Seite zu verlassen. Probieren Sie es hier aus.</span>
+          <span className="block text-[14px] font-semibold">Schnellhilfe überall: das ?-Symbol neben jedem Seitentitel</span>
+          <span className="block text-[13px] text-fg-3">Es öffnet genau die Anleitung zur Ansicht, in der Sie gerade arbeiten – ohne die Seite zu verlassen. Probieren Sie es hier aus.</span>
         </span>
       </button>
 
@@ -96,7 +97,7 @@ export function WikiBibliothek() {
       ) : (
         <motion.div layout className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <AnimatePresence initial={false} mode="popLayout">
-            {treffer.map((w, i) => (
+            {treffer.map((w) => (
               <motion.button
                 key={w.key}
                 type="button"
@@ -104,23 +105,23 @@ export function WikiBibliothek() {
                 initial={{ opacity: 0, scale: 0.97 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.97 }}
-                transition={{ type: "spring", stiffness: 460, damping: 36, delay: Math.min(i, 10) * 0.025 }}
+                transition={BEWEGUNG.standard}
                 onClick={() => setOffen(w)}
-                className="sheet group relative flex min-w-0 flex-col gap-2.5 rounded-[20px] p-4 text-left transition-[transform,box-shadow] duration-300 ease-[var(--spring)] hover:-translate-y-0.5 hover:shadow-glass"
+                className="sheet group relative flex min-w-0 flex-col gap-2.5 rounded-lg p-4 text-left transition-[transform,box-shadow] duration-300 ease-[var(--spring)]"
               >
                 <div className="flex items-start gap-3">
-                  <span className="grid size-9 shrink-0 place-items-center rounded-[11px] bg-ink-soft text-ink">{KAT_ICON[w.kategorie]}</span>
+                  <span className="grid size-9 shrink-0 place-items-center rounded-md bg-ink-soft text-ink">{KAT_ICON[w.kategorie]}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-[14px] font-semibold leading-snug">
                       <Highlight text={w.titel} q={q} />
                     </span>
-                    <span className="block text-[12.5px] text-fg-3">{w.kategorie}</span>
+                    <span className="block text-[13px] text-fg-3">{w.kategorie}</span>
                   </span>
                   <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[var(--ink-softer)] text-ink transition-all duration-300 ease-[var(--spring)] group-hover:scale-110 group-hover:bg-ink group-hover:text-[var(--on-ink)]">
                     <Play className="ml-0.5 size-3.5" fill="currentColor" />
                   </span>
                 </div>
-                <p className="line-clamp-2 text-[12.5px] leading-relaxed text-fg-3">
+                <p className="line-clamp-2 text-[13px] leading-relaxed text-fg-3">
                   <Highlight text={w.kurz} q={q} />
                 </p>
                 <div className="mt-auto flex flex-wrap gap-1.5">

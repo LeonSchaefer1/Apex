@@ -6,6 +6,7 @@ import { BUNDESLAENDER, bundeslandName, feiertage } from "@/core/feiertage";
 import type { Bundesland } from "@/core/types";
 import { Card, Chip, IconButton, Select } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 /** Feiertage des Jahres je Bundesland – Grundlage für die Verschiebung nach § 222 Abs. 2 ZPO. */
 export function FeiertageInfo({ land: start }: { land: Bundesland }) {
@@ -19,14 +20,14 @@ export function FeiertageInfo({ land: start }: { land: Bundesland }) {
   return (
     <Card padded={false} className="overflow-hidden">
       <button type="button" onClick={() => setOffen((o) => !o)} aria-expanded={offen} className="flex w-full items-center gap-3 p-4 text-left sm:p-5">
-        <span className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">
+        <span className="grid size-5 shrink-0 place-items-center text-fg-4">
           <CalendarOff className="size-[18px]" />
         </span>
         <span className="min-w-0 flex-1">
           <span className="title-md block">
             Feiertage {jahr} · {bundeslandName(land)}
           </span>
-          <span className="block text-[12.5px] text-fg-3">
+          <span className="block text-[13px] text-fg-3">
             {liste.length} Feiertage{regional ? `, davon ${regional} nur regional` : ""} – maßgeblich sind die Feiertage am Gerichtsort, nicht am Kanzleisitz (§ 222 Abs. 2 ZPO)
           </span>
         </span>
@@ -55,7 +56,7 @@ export function FeiertageInfo({ land: start }: { land: Bundesland }) {
                 </Select>
               </div>
               <ul className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
-                {liste.map((f, i) => {
+                {liste.map((f) => {
                   const wd = fromISO(f.datum).getUTCDay();
                   const vorbei = f.datum < heute;
                   return (
@@ -63,10 +64,10 @@ export function FeiertageInfo({ land: start }: { land: Bundesland }) {
                       key={f.datum + f.name}
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ type: "spring", stiffness: 460, damping: 36, delay: Math.min(i, 12) * 0.025 }}
-                      className={cn("flex items-center gap-3 rounded-[14px] px-3 py-2.5 ring-1 ring-inset ring-[var(--line)]", f.teilweise ? "bg-amber-soft" : "bg-[var(--ink-softer)]", vorbei && "opacity-55")}
+                      transition={BEWEGUNG.standard}
+                      className={cn("flex items-center gap-3 rounded-lg px-3 py-2.5 ring-1 ring-inset ring-[var(--line)]", f.teilweise ? "bg-amber-soft" : "bg-[var(--ink-softer)]", vorbei && "opacity-55")}
                     >
-                      <span className="num w-[92px] shrink-0 text-[12.5px] font-medium text-fg-2">{fmtDateWd(f.datum)}</span>
+                      <span className="num w-[92px] shrink-0 text-[13px] font-medium text-fg-2">{fmtDateWd(f.datum)}</span>
                       <span className="min-w-0 flex-1 text-[13px] font-medium leading-snug">{f.name.replace(/ \(regional\)$/, "")}</span>
                       {f.teilweise ? (
                         <Chip tone="amber" title="Nur in Teilen des Landes Feiertag – Apex verlängert Fristen hier vorsorglich nicht">
@@ -81,7 +82,7 @@ export function FeiertageInfo({ land: start }: { land: Bundesland }) {
                   );
                 })}
               </ul>
-              <div className="mt-4 flex gap-2.5 rounded-[14px] bg-amber-soft p-3.5 text-[12.5px] leading-relaxed text-fg-2">
+              <div className="mt-4 flex gap-2.5 rounded-lg bg-amber-soft p-3.5 text-[13px] leading-relaxed text-fg-2">
                 <Info className="mt-0.5 size-4 shrink-0 text-amber" />
                 <span>
                   <strong className="font-semibold text-fg">Gerichtsort statt Kanzleisitz.</strong> Ein Feiertag nur am Kanzleisitz (z. B. Allerheiligen in Nordrhein-Westfalen bei einem Gericht in Hessen) verlängert die Frist nicht – der Fristenrechner weist im Rechenweg darauf hin.{" "}

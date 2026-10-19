@@ -8,7 +8,7 @@ import type { Akte } from "@/core/types";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
-import { Button, Card, Empty, Field, Modal, Segmented, Textarea } from "@/components/ui";
+import { Button, Card, Empty, Field, Modal, Textarea, type SegOption } from "@/components/ui";
 import { FallanalysePanel } from "@/components/ki/FallanalysePanel";
 import { AkteKopf } from "./AkteKopf";
 import { TabUebersicht } from "./TabUebersicht";
@@ -24,6 +24,8 @@ import { DiktatKnopf } from "./Diktat";
 import { merkeAkteGeoeffnet } from "./AktenSuchauswahl";
 import { darfAbrechnung } from "@/lib/backend";
 import { useMedia } from "@/lib/useMedia";
+import { BEWEGUNG } from "@/lib/bewegung";
+import { cn } from "@/lib/cn";
 
 const TABS = ["uebersicht", "dokumente", "fristen", "beteiligte", "aktenkonto", "verlauf", "ki"] as const;
 type TabKey = (typeof TABS)[number];
@@ -179,15 +181,14 @@ export default function AkteDetail() {
                 <AnimatePresence>
                   {kompakt && (
                     <motion.div
-                      initial={{ opacity: 0, y: -8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -8 }}
-                      transition={{ type: "spring", stiffness: 460, damping: 36 }}
-                      className="glass-strong glass-deckend pointer-events-auto absolute inset-x-0 top-0 hidden items-center gap-3 rounded-full py-1.5 pl-4 pr-1.5 md:flex"
-                      style={{ boxShadow: "var(--glass-shadow)" }}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={BEWEGUNG.standard}
+                      className="pointer-events-auto absolute inset-x-0 top-0 hidden items-center gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface-pop)] py-1.5 pl-4 pr-1.5 shadow-pop md:flex"
                     >
-                      <span className="mono shrink-0 text-[13.5px] font-semibold">{akte.aktenzeichen}</span>
-                      <span className="line-clamp-1 min-w-0 flex-1 text-[13.5px] font-medium text-fg-2" title={akte.titel}>
+                      <span className="mono shrink-0 text-[14px] font-medium">{akte.aktenzeichen}</span>
+                      <span className="line-clamp-1 min-w-0 flex-1 text-[14px] font-medium text-fg-2" title={akte.titel}>
                         {akte.titel}
                       </span>
                       <Button size="sm" variant="ghost" icon={<Mail className="size-4" />} onClick={() => setEmailOffen(true)}>
@@ -211,22 +212,20 @@ export default function AkteDetail() {
           ebene,
         )}
       <div className="-mb-1 flex items-center gap-2">
-        <Link to={`/akten${listenKontext.suche}`} className="inline-flex h-8 items-center gap-1 rounded-full pl-1.5 pr-3 text-[13px] font-medium text-fg-3 transition-colors hover:bg-ink-softer hover:text-fg max-sm:h-11">
+        <Link to={`/akten${listenKontext.suche}`} className="link-leise -ml-1 h-8 rounded-md pl-1 pr-2 max-sm:h-11">
           <ChevronLeft className="size-4" /> Alle Akten
         </Link>
       </div>
 
-      <motion.div ref={kopfRef} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", stiffness: 380, damping: 34 }}>
+      <motion.div ref={kopfRef} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={BEWEGUNG.standard}>
         <AkteKopf akte={akte} onEmail={() => setEmailOffen(true)} onFrist={() => setFristOffen("regel")} onKi={() => zuTabs("ki")} onNotiz={() => setNotizOffen(true)} onWiedervorlage={() => setFristOffen("frei")} />
       </motion.div>
 
       <div ref={tabsRef} className="grid grid-cols-1 gap-4">
         <div className="flex min-w-0 items-center gap-3">
-          <Segmented<TabKey>
+          <Reiter<TabKey>
             value={tab}
             onChange={(t) => zuTabs(t)}
-            className="max-w-full"
-            mobilGross
             options={[
               { value: "uebersicht", label: "Übersicht" },
               { value: "dokumente", label: "Dokumente", count: zahlen.doks },
@@ -234,14 +233,14 @@ export default function AkteDetail() {
               { value: "beteiligte", label: "Beteiligte" },
               ...(ohneAktenkonto ? [] : [{ value: "aktenkonto" as const, label: akte.forderung ? "Aktenkonto & Forderung" : "Aktenkonto" }]),
               { value: "verlauf", label: "Verlauf" },
-              { value: "ki", label: <span className={tab === "ki" ? "ai-text font-semibold" : undefined}>KI-Fallanalyse</span>, icon: <Sparkles className={tab === "ki" ? "size-3.5 text-violet" : "size-3.5"} /> },
+              { value: "ki", label: "KI-Fallanalyse", icon: <Sparkles className="size-3.5" aria-hidden /> },
             ]}
           />
         </div>
-        <p className="-mt-1 px-1 text-[12.5px] text-fg-3">{tab === "dokumente" && !feinZeiger ? TAB_ERKLAERUNG_TOUCH : TAB_ERKLAERUNG[tab]}</p>
+        <p className="-mt-1 px-1 text-[13px] text-fg-3">{tab === "dokumente" && !feinZeiger ? TAB_ERKLAERUNG_TOUCH : TAB_ERKLAERUNG[tab]}</p>
 
         <AnimatePresence mode="wait" initial={false}>
-          <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }} className="min-w-0">
+          <motion.div key={tab} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={BEWEGUNG.schnell} className="min-w-0">
             {tab === "uebersicht" && <TabUebersicht akte={akte} onTab={(t) => zuTabs(t)} onDok={(d) => zuTabs("dokumente", { dok: d })} onFrist={() => setFristOffen("regel")} />}
             {tab === "dokumente" && <TabDokumente akte={akte} />}
             {tab === "fristen" && <TabFristen akte={akte} onNeu={(m) => setFristOffen(m ?? "regel")} />}
@@ -267,13 +266,12 @@ export default function AkteDetail() {
                 key="akte-aktionsleiste"
                 role="group"
                 aria-label={`Schnellaktionen ${akte.aktenzeichen}`}
-                initial={{ opacity: 0, y: 16 }}
+                initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 16 }}
-                transition={{ type: "spring", stiffness: 480, damping: 36 }}
+                exit={{ opacity: 0, y: 8 }}
+                transition={BEWEGUNG.standard}
                 data-akte-aktionsleiste
-                className="glass-strong tabbar-deckend fixed bottom-[calc(var(--tabbar-h)+env(safe-area-inset-bottom)+12px)] left-3 right-[84px] z-30 flex items-center gap-1 rounded-full p-1 sm:hidden"
-                style={{ boxShadow: "var(--glass-shadow-lg)" }}
+                className="fixed bottom-[calc(var(--tabbar-h)+env(safe-area-inset-bottom)+12px)] left-3 right-3 z-30 flex items-center gap-1 rounded-lg border border-[var(--line)] bg-[var(--surface-pop)] p-1 shadow-pop sm:hidden"
               >
                 <AktionsKnopf icon={<StickyNote className="size-4" />} onClick={() => setNotizOffen(true)}>
                   Notiz
@@ -303,9 +301,9 @@ function AktionsKnopf({ icon, onClick, children }: { icon: ReactNode; onClick: (
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex min-h-11 min-w-0 flex-auto items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-2 text-[13px] font-medium text-fg transition-colors hover:bg-ink-softer active:bg-ink-soft"
+      className="inline-flex min-h-11 min-w-0 flex-auto items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 text-[13px] font-medium text-fg transition-colors duration-100 hover:bg-[var(--surface-pop-hover)] active:bg-[var(--surface-3)]"
     >
-      <span className="shrink-0 text-ink">{icon}</span>
+      <span className="shrink-0 text-fg-3">{icon}</span>
       <span className="min-w-0 truncate">{children}</span>
     </button>
   );
@@ -364,5 +362,37 @@ function NotizDialog({ akte, open, onClose }: { akte: Akte; open: boolean; onClo
         <DiktatKnopf onText={(t) => setText((v) => (v.trim() ? `${v.trim()} ${t}` : t))} />
       </div>
     </Modal>
+  );
+}
+
+/**
+ * Reiter für Unterseiten (DESIGN-SYSTEM.md 12.5): Textreiter 14/500 Text 3, Linie unter der ganzen Reihe, aktiv Text 1 / 600 mit
+ * 2 px Unterstrich im Akzent (gleitet in 150 ms). Am Telefon waagerecht scrollbar, Trefferfläche 44 px.
+ */
+function Reiter<T extends string>({ options, value, onChange }: { options: SegOption<T>[]; value: T; onChange: (v: T) => void }) {
+  return (
+    <div role="tablist" className="no-scrollbar -mx-4 flex min-w-0 flex-1 gap-5 overflow-x-auto border-b border-[var(--line)] px-4 sm:mx-0 sm:px-0">
+      {options.map((o) => {
+        const aktiv = o.value === value;
+        return (
+          <button
+            key={o.value}
+            role="tab"
+            type="button"
+            aria-selected={aktiv}
+            onClick={() => onChange(o.value)}
+            className={cn(
+              "relative inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap text-[14px] transition-colors duration-100 focus-visible:outline-offset-[-2px] max-sm:h-11",
+              aktiv ? "font-semibold text-fg" : "font-medium text-fg-3 hover:text-fg",
+            )}
+          >
+            {o.icon}
+            {o.label}
+            {o.count !== undefined && <span className={cn("num text-[12px] font-medium", aktiv ? "text-fg-2" : "text-fg-4")}>{o.count}</span>}
+            {aktiv && <motion.span layoutId="akte-reiter" className="absolute inset-x-0 -bottom-px h-0.5 bg-[var(--ink)]" transition={BEWEGUNG.standard} aria-hidden />}
+          </button>
+        );
+      })}
+    </div>
   );
 }

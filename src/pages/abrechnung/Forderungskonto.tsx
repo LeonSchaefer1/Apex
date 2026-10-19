@@ -1,8 +1,8 @@
 // Reiter „Forderungskonto“: Zinsen nach § 288 BGB taggenau, Teilzahlungen nach § 367 BGB verrechnet.
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Banknote, CalendarDays, Copy, FileSignature, FolderInput, Lock, Percent, PiggyBank, Plus, Scale, Wallet } from "lucide-react";
-import { AnimatedNumber, Button, Card, CardHeader, Chip, Drawer, Empty, Field, Input, Modal, PapierSchalter, Segmented, Select, Stat, Switch, confirmDialog } from "@/components/ui";
+import { Banknote, CalendarDays, Copy, FileSignature, FolderInput, Lock, Plus, Scale } from "lucide-react";
+import { AnimatedNumber, Button, Card, CardHeader, Chip, Drawer, Empty, Field, Input, Modal, PapierSchalter, Segmented, Select, Stat, StatLeiste, Switch, confirmDialog } from "@/components/ui";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
@@ -16,6 +16,7 @@ import { kopiereText } from "@/lib/zwischenablage";
 import { fmtEURkompakt, fmtProzent, parseBetrag, zinsAbschnittGrund } from "./lib";
 import { niceTicks } from "./UmsatzChart";
 import { Anschrift, Briefkopf, TabKopf, useLookups, useMeasure } from "./ui";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 const EUR = (n: number) => fmtEUR(n);
 
@@ -31,7 +32,8 @@ function vorgaengeFuer(akte: Akte, buchungen: Buchung[], opts: { pauschale40: bo
   return v;
 }
 
-const FARBE = { haupt: "var(--ink)", zinsen: "var(--amber)", kosten: "var(--violet)" };
+/** Diagrammfarben (DESIGN-SYSTEM.md 12.15): ein Akzent plus Neutrals – Hauptforderung Akzent, Zinsen Text 3, Kosten Linie stark. */
+const FARBE = { haupt: "var(--chart-1)", zinsen: "var(--fg-3)", kosten: "var(--chart-2)" };
 
 /** Ist die 40-€-Verzugspauschale (§ 288 Abs. 5 BGB) im Titel mit tituliert? Nur dann gehört sie in die Vollstreckung. */
 export const pauschaleTituliert = (titel?: string) => !!titel && /288 Abs\. ?5|verzugspauschale|(^|[^\d.,])40(,00)? ?€/i.test(titel);
@@ -71,32 +73,25 @@ function Balken({ teile, hoehe = 14 }: { teile: { key: string; label: string; we
   return (
     <div>
       <div
-        className="flex w-full gap-[2px] overflow-hidden rounded-full bg-[var(--line)]"
+        className="flex w-full gap-[2px] overflow-hidden rounded-sm bg-[var(--line)]"
         style={{ height: hoehe }}
         role="img"
         aria-label={teile.map((t) => `${t.label} ${fmtEUR(t.wert)}`).join(", ")}
       >
         {summe > 0 &&
-          teile.map((t, i) =>
+          teile.map((t) =>
             t.wert > 0 ? (
-              <motion.div
-                key={t.key}
-                className="h-full first:rounded-l-full last:rounded-r-full"
-                style={{ background: t.farbe }}
-                initial={{ width: 0 }}
-                animate={{ width: `${(t.wert / summe) * 100}%` }}
-                transition={{ type: "spring", stiffness: 160, damping: 26, delay: 0.1 + i * 0.08 }}
-              />
+              <div key={t.key} className="h-full transition-[width] duration-200" style={{ background: t.farbe, width: `${(t.wert / summe) * 100}%` }} />
             ) : null,
           )}
       </div>
       <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
         {teile.map((t) => (
-          <div key={t.key} className="flex items-center gap-2 whitespace-nowrap text-[12.5px]">
-            <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: t.farbe }} />
+          <div key={t.key} className="flex items-center gap-2 whitespace-nowrap text-[13px]">
+            <span className="size-2.5 shrink-0 rounded-sm" style={{ background: t.farbe }} />
             <span className="text-fg-3">{t.label}</span>
-            <span className="num font-semibold">{fmtEUR(t.wert)}</span>
-            {summe > 0 && <span className="num text-[12.5px] text-fg-3">{(t.wert / summe) * 100 < 1 && t.wert > 0 ? "< 1 %" : `${Math.round((t.wert / summe) * 100)} %`}</span>}
+            <span className="num font-medium">{fmtEUR(t.wert)}</span>
+            {summe > 0 && <span className="num text-[13px] text-fg-4">{(t.wert / summe) * 100 < 1 && t.wert > 0 ? "< 1 %" : `${Math.round((t.wert / summe) * 100)} %`}</span>}
           </div>
         ))}
       </div>
@@ -127,7 +122,6 @@ function SaldoChart({ stand, start, ende }: { stand: ForderungsStand; start: str
   const x = (d: string) => m.l + (Math.min(tage, Math.max(0, diffDays(start, d))) / tage) * iw;
   const y = (v: number) => m.t + ih * (1 - v / oben);
   const linie = pts.map((p, i) => `${i ? "L" : "M"}${x(p.d).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
-  const flaeche = pts.length ? `${linie} L${x(pts[pts.length - 1].d).toFixed(1)},${y(0)} L${x(pts[0].d).toFixed(1)},${y(0)} Z` : "";
   const monate: string[] = [];
   for (let d = `${start.slice(0, 7)}-01`; d <= ende; ) {
     const [yy, mm] = d.split("-").map(Number);
@@ -141,63 +135,37 @@ function SaldoChart({ stand, start, ende }: { stand: ForderungsStand; start: str
     <div ref={ref} className="relative w-full select-none" style={{ height: h }}>
       {w > 0 && pts.length > 0 && (
         <svg width={w} height={h} role="img" aria-label={`Verlauf der Gesamtforderung von ${fmtDate(start)} bis ${fmtDate(ende)}: zuletzt ${fmtEUR(pts[pts.length - 1].v)}`}>
-          <defs>
-            <linearGradient id="fk-saldo" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="var(--ink)" stopOpacity="0.22" />
-              <stop offset="1" stopColor="var(--ink)" stopOpacity="0" />
-            </linearGradient>
-          </defs>
           {ticks.map((t) => (
             <g key={t}>
-              <line x1={m.l} x2={w - m.r} y1={y(t)} y2={y(t)} stroke={t === 0 ? "var(--line-strong)" : "var(--line)"} strokeDasharray={t === 0 ? undefined : "2 4"} />
-              <text x={m.l - 10} y={y(t)} dy="0.32em" textAnchor="end" fontSize={11} fill="var(--fg-3)" className="num">
+              <line x1={m.l} x2={w - m.r} y1={y(t)} y2={y(t)} stroke={t === 0 ? "var(--line-strong)" : "var(--chart-grid)"} />
+              <text x={m.l - 10} y={y(t)} dy="0.32em" textAnchor="end" fontSize={12} fill="var(--fg-4)" className="num">
                 {fmtEURkompakt(t)}
               </text>
             </g>
           ))}
           {monate.map((d) => (
-            <text key={d} x={x(d)} y={h - 6} textAnchor="middle" fontSize={11} fill="var(--fg-3)">
+            <text key={d} x={x(d)} y={h - 6} textAnchor="middle" fontSize={12} fill="var(--fg-4)">
               {monatName(Number(d.slice(5, 7)) - 1, true)}
             </text>
           ))}
-          <motion.path d={flaeche} fill="url(#fk-saldo)" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3, duration: 0.6 }} />
-          <motion.path
-            d={linie}
-            fill="none"
-            stroke="var(--ink)"
-            strokeWidth={2}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-            initial={{ pathLength: 0 }}
-            animate={{ pathLength: 1 }}
-            transition={{ duration: 1.1, ease: [0.16, 1, 0.3, 1] }}
-          />
+          {/* Linie 1,5 px im Akzent, keine Fläche und kein Verlauf darunter */}
+          <path d={linie} fill="none" stroke="var(--chart-1)" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
           {marker.map((p) => {
             const ende = p.art === "ende";
-            const farbe = p.art === "zahlung" ? "var(--green)" : p.art === "kosten" ? "var(--violet)" : "var(--ink)";
+            const farbe = p.art === "zahlung" ? "var(--surface)" : p.art === "kosten" ? "var(--chart-2)" : "var(--chart-1)";
             return (
               <g key={p.i} onPointerEnter={() => setHover(p.i)} onPointerLeave={() => setHover(null)}>
                 <circle cx={x(p.d)} cy={y(p.v)} r={12} fill="transparent" />
-                <motion.circle
-                  cx={x(p.d)}
-                  cy={y(p.v)}
-                  r={ende ? 4.5 : 3.5}
-                  fill={farbe}
-                  stroke="var(--surface)"
-                  strokeWidth={2}
-                  initial={{ scale: 0 }}
-                  animate={{ scale: hover === p.i ? 1.4 : 1 }}
-                  transition={{ type: "spring", stiffness: 500, damping: 22, delay: hover === null ? 0.9 : 0 }}
-                  style={{ transformBox: "fill-box", transformOrigin: "center" }}
-                />
+                {/* Zahlung: hohler Punkt, Kosten: grauer Punkt, Stand: Akzentpunkt – Form statt Farbe */}
+                <circle cx={x(p.d)} cy={y(p.v)} r={hover === p.i ? 4.5 : ende ? 3.5 : 3} fill={farbe} stroke={p.art === "zahlung" ? "var(--chart-1)" : "var(--surface)"} strokeWidth={p.art === "zahlung" ? 1.5 : 2} />
                 {ende && (
                   <text
                     x={x(p.d) - 8}
                     y={y(p.v) - 10}
                     textAnchor="end"
-                    fontSize={11.5}
-                    fontWeight={650}
-                    fill="var(--fg)"
+                    fontSize={12}
+                    fontWeight={500}
+                    fill="var(--fg-2)"
                     stroke="var(--surface)"
                     strokeWidth={4}
                     paintOrder="stroke"
@@ -216,19 +184,19 @@ function SaldoChart({ stand, start, ende }: { stand: ForderungsStand; start: str
         {aktiv && (
           <motion.div
             key={aktiv.i}
-            initial={{ opacity: 0, y: 4, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ type: "spring", stiffness: 520, damping: 34 }}
-            className="glass-strong pointer-events-none absolute z-10 min-w-[160px] rounded-[14px] px-3 py-2 text-[12px]"
+            transition={BEWEGUNG.standard}
+            className="pointer-events-none absolute z-10 min-w-[160px] rounded-sm border border-[var(--line)] bg-[var(--surface-pop)] px-2.5 py-1.5 text-[12px] leading-4 shadow-pop"
             style={{ left: Math.min(Math.max(x(aktiv.d), 90), w - 90), top: Math.max(4, y(aktiv.v) - 14), translateX: "-50%", translateY: "-100%" }}
           >
-            <div className="font-semibold">{aktiv.art === "ende" ? "Stand am Stichtag" : aktiv.text}</div>
+            <div className="font-medium text-fg">{aktiv.art === "ende" ? "Stand am Stichtag" : aktiv.text}</div>
             <div className="text-fg-3">
               {fmtDateShort(aktiv.d)}
               {aktiv.betrag !== undefined && aktiv.art !== "ende" && <span className="num"> · {fmtEUR(aktiv.betrag)}</span>}
             </div>
-            <div className="num mt-0.5 font-semibold">Saldo {fmtEUR(aktiv.v)}</div>
+            <div className="num mt-0.5 font-medium text-fg">Saldo {fmtEUR(aktiv.v)}</div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -348,7 +316,7 @@ export function ForderungskontoTab() {
         }
       />
 
-      <Card className="mb-4">
+      <Card className="mb-8">
         <div className="grid gap-4 md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)_minmax(0,1.2fr)] md:items-end">
           <Field label="Forderungssache" htmlFor="fk-akte">
             <Select id="fk-akte" value={akte.id} onChange={(e) => setAkteId(e.target.value)}>
@@ -361,18 +329,18 @@ export function ForderungskontoTab() {
           </Field>
           <Field label="Stichtag" htmlFor="fk-stichtag">
             <div className="relative">
-              <CalendarDays className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-fg-3" />
-              <Input id="fk-stichtag" type="date" value={stichtag} min={f.faelligAb} onChange={(e) => setStichtag(e.target.value)} className="!pl-10" />
+              <CalendarDays className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-4" aria-hidden />
+              <Input id="fk-stichtag" type="date" value={stichtag} min={f.faelligAb} onChange={(e) => setStichtag(e.target.value)} className="!pl-9" />
             </div>
           </Field>
           <Field label={titelGilt ? "Zinssatz (tituliert)" : "Verbraucher beteiligt? (§ 288 BGB)"}>
             {titelGilt ? (
-              <div className="rounded-[14px] bg-ink-softer px-3 py-2 text-[13px]">
+              <div className="rounded-md bg-[var(--surface-2)] px-3 py-2 text-[13px]">
                 <div className="flex items-start gap-2">
-                  <Lock className="mt-0.5 size-4 shrink-0 text-ink" aria-hidden />
+                  <Lock className="mt-0.5 size-4 shrink-0 text-fg-4" aria-hidden />
                   <span className="min-w-0 flex-1 font-medium">laut Titel: {f.verbraucher ? "5" : "9"} Prozentpunkte über dem Basiszins</span>
                 </div>
-                <button type="button" onClick={() => void abweichenStarten()} className="ml-6 mt-0.5 text-[12.5px] font-medium text-ink hover:underline">
+                <button type="button" onClick={() => void abweichenStarten()} className="link ml-6 mt-0.5 rounded-sm text-[13px] font-medium">
                   abweichend rechnen …
                 </button>
               </div>
@@ -389,7 +357,7 @@ export function ForderungskontoTab() {
             )}
           </Field>
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[12.5px] text-fg-3">
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px] text-fg-3">
           <span>
             Schuldner <span className="font-medium text-fg-2">{schuldner?.name ?? "–"}</span>
           </span>
@@ -400,21 +368,21 @@ export function ForderungskontoTab() {
           {!tituliert && verbraucherWahl !== null && verbraucherWahl !== f.verbraucher && <Chip tone="amber">Vergleichsrechnung – laut Akte {f.verbraucher ? "mit" : "ohne"} Verbraucherbeteiligung</Chip>}
         </div>
         {tituliert && abweichen && (
-          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[14px] bg-seal-soft px-3.5 py-2.5 text-[12.5px]" role="alert">
-            <span className="min-w-0 flex-1 basis-[260px] font-medium text-seal">Über den Titel hinaus – nicht vollstreckbar. Vergleichsrechnung; die Forderungsaufstellung zur Zwangsvollstreckung rechnet mit dem Titel.</span>
+          <div className="banner banner-seal mt-3 flex-wrap items-center" role="alert">
+            <span className="min-w-0 flex-1 basis-[260px] font-medium text-seal-text">Über den Titel hinaus – nicht vollstreckbar. Vergleichsrechnung; die Forderungsaufstellung zur Zwangsvollstreckung rechnet mit dem Titel.</span>
             <Button size="sm" variant="secondary" icon={<Lock className="size-4" />} onClick={() => setAbweichen(false)}>
               Zurück zum Titel
             </Button>
           </div>
         )}
-        <p className="mt-2 text-[12.5px] leading-snug text-fg-3">
+        <p className="mt-2 text-[13px] leading-[18px] text-fg-4">
           9 Prozentpunkte nur für Entgeltforderungen aus Rechtsgeschäften, an denen kein Verbraucher beteiligt ist – weder als Gläubiger noch als Schuldner (§ 288 Abs. 2 BGB); sonst 5
           Prozentpunkte (§ 288 Abs. 1 BGB).
         </p>
         {mahnkosten && (
-          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[14px] bg-violet-soft px-3.5 py-2.5 text-[12.5px]">
+          <div className="banner mt-3 flex-wrap items-center">
             <span className="min-w-0 flex-1 basis-[260px] text-fg-2">
-              <span className="font-semibold text-fg">Kosten des Mahnverfahrens fehlen:</span> Die Rechtsanwaltskosten (Nr. 3305, 3308, 7002 VV RVG
+              <span className="font-medium text-fg">Kosten des Mahnverfahrens fehlen:</span> Die Rechtsanwaltskosten (Nr. 3305, 3308, 7002 VV RVG
               {mahnkosten.ust ? " zzgl. USt." : ", ohne USt. – Gläubiger vorsteuerabzugsberechtigt"}) sind im Vollstreckungsbescheid tituliert –{" "}
               <span className="num font-semibold text-fg">{fmtEUR(mahnkosten.betrag)}</span>.
             </span>
@@ -425,39 +393,20 @@ export function ForderungskontoTab() {
         )}
       </Card>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5 [&>*:last-child]:col-span-2 lg:[&>*:last-child]:col-span-1">
-        <Stat
-          label="Hauptforderung"
-          icon={<Wallet className="size-4" />}
-          tone="ink"
-          value={<AnimatedNumber value={stand.hauptforderung} format={EUR} className="text-[19px] sm:text-[24px]" />}
-          sub={`ursprünglich ${fmtEUR(f.hauptforderung)}`}
-        />
-        <Stat
-          label="Zinsen"
-          icon={<Percent className="size-4" />}
-          tone="amber"
-          value={<AnimatedNumber value={stand.zinsen} format={EUR} className="text-[19px] sm:text-[24px]" />}
-          sub={`${fmtProzent(satz)} p. a. am Stichtag`}
-        />
-        <Stat label="Kosten" icon={<Banknote className="size-4" />} tone="violet" value={<AnimatedNumber value={stand.kosten} format={EUR} className="text-[19px] sm:text-[24px]" />} sub="offen" />
-        <Stat
-          label="Gesamtforderung"
-          icon={<Scale className="size-4" />}
-          tone="seal"
-          value={<AnimatedNumber value={stand.gesamt} format={EUR} className="text-[19px] sm:text-[24px]" />}
-          sub={`Stand ${fmtDate(stich)}`}
-        />
+      {/* Kennzahlenleiste: fünf Werte gleichrangig in einer Karte – ohne farbige Symbole */}
+      <StatLeiste spalten={5}>
+        <Stat label="Hauptforderung" value={<AnimatedNumber value={stand.hauptforderung} format={EUR} className="text-[20px] sm:text-[24px]" />} sub={`ursprünglich ${fmtEUR(f.hauptforderung)}`} />
+        <Stat label="Zinsen" value={<AnimatedNumber value={stand.zinsen} format={EUR} className="text-[20px] sm:text-[24px]" />} sub={`${fmtProzent(satz)} p. a. am Stichtag`} />
+        <Stat label="Kosten" value={<AnimatedNumber value={stand.kosten} format={EUR} className="text-[20px] sm:text-[24px]" />} sub="offen" />
+        <Stat label="Gesamtforderung" value={<AnimatedNumber value={stand.gesamt} format={EUR} className="text-[20px] sm:text-[24px]" />} sub={`Stand ${fmtDate(stich)}`} />
         <Stat
           label="Bereits gezahlt"
-          icon={<PiggyBank className="size-4" />}
-          tone="green"
-          value={<AnimatedNumber value={stand.bezahlt} format={EUR} className="text-[19px] sm:text-[24px]" />}
+          value={<AnimatedNumber value={stand.bezahlt} format={EUR} className="text-[20px] sm:text-[24px]" />}
           sub={ueberzahlung > 0 ? `davon ${fmtEUR(ueberzahlung)} Überzahlung` : `${stand.verlauf.filter((v) => v.art === "zahlung").length} Zahlungen`}
         />
-      </div>
+      </StatLeiste>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-3">
+      <div className="mt-8 grid gap-8 xl:grid-cols-3">
         <Card className="flex flex-col xl:col-span-2">
           <CardHeader title="Zusammensetzung der Gesamtforderung" subtitle="Maßstabsgetreu: Anteil von Hauptforderung, Zinsen und Kosten am offenen Betrag." />
           <Balken
@@ -469,9 +418,9 @@ export function ForderungskontoTab() {
           />
           <div className="mt-6 border-t border-[var(--line)] pt-4">
             <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-              <div className="text-[13px] font-semibold">Verrechnung der Zahlungen (§ 367 Abs. 1 BGB)</div>
-              <div className="text-[12px] text-fg-3">
-                gezahlt <span className="num font-semibold text-fg-2">{fmtEUR(stand.bezahlt)}</span>
+              <div className="title-md">Verrechnung der Zahlungen (§ 367 Abs. 1 BGB)</div>
+              <div className="text-[13px] text-fg-3">
+                gezahlt <span className="num font-medium text-fg-2">{fmtEUR(stand.bezahlt)}</span>
               </div>
             </div>
             {stand.bezahlt > 0 ? (
@@ -484,48 +433,49 @@ export function ForderungskontoTab() {
                 ]}
               />
             ) : (
-              <p className="text-[12.5px] text-fg-3">Noch keine Zahlungen eingegangen.</p>
+              <p className="text-[13px] text-fg-3">Noch keine Zahlungen eingegangen.</p>
             )}
             {ueberzahlung > 0 && (
-              <p className="mt-3 rounded-[12px] bg-amber-soft px-3 py-2 text-[12.5px] text-fg-2" role="status">
-                <span className="font-semibold text-amber">Überzahlung {fmtEUR(ueberzahlung)}:</span> Die Zahlungen übersteigen die Forderung. Der Mehrbetrag ist an den Schuldner
+              <p className="banner banner-amber mt-3" role="status">
+                <span>
+                <span className="font-medium text-amber-text">Überzahlung {fmtEUR(ueberzahlung)}:</span> Die Zahlungen übersteigen die Forderung. Der Mehrbetrag ist an den Schuldner
                 zu erstatten; die Forderung ist ausgeglichen.
+                </span>
               </p>
             )}
           </div>
           <div className="mt-6 border-t border-[var(--line)] pt-4">
             <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
-              <div className="text-[13px] font-semibold">Verlauf der Gesamtforderung</div>
-              <div className="flex items-center gap-3 text-[12.5px] text-fg-3">
+              <div className="title-md">Verlauf der Gesamtforderung</div>
+              <div className="flex items-center gap-3 text-[13px] text-fg-3">
                 <span className="flex items-center gap-1.5">
-                  <span className="size-2 rounded-full bg-green" /> Zahlung
+                  <span className="size-2 rounded-full border-[1.5px] border-[var(--chart-1)]" aria-hidden /> Zahlung
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="size-2 rounded-full bg-violet" /> Kosten
+                  <span className="size-2 rounded-full bg-[var(--chart-2)]" aria-hidden /> Kosten
                 </span>
               </div>
             </div>
             <SaldoChart stand={stand} start={f.faelligAb} ende={stich} />
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-[var(--line)] pt-4 sm:grid-cols-4">
             {[
               { k: "Verzugstage", v: fmtNum(Math.max(0, diffDays(f.faelligAb, stich) + 1)), s: `seit ${fmtDate(f.faelligAb)}` },
               { k: "Zinsen aufgelaufen", v: fmtEUR(zinsGesamt), s: `davon getilgt ${fmtEUR(round2(getilgt.zinsen))}` },
               { k: "Tageszins aktuell", v: fmtEUR(round2((stand.hauptforderung * satz) / 36500)), s: `aus ${fmtEUR(stand.hauptforderung)}` },
               { k: "Getilgt gesamt", v: `${f.hauptforderung > 0 ? Math.round((getilgt.haupt / f.hauptforderung) * 100) : 0} %`, s: "der Hauptforderung" },
             ].map((x) => (
-              <div key={x.k} className="rounded-[16px] bg-[var(--ink-softer)] px-3.5 py-3">
-                <div className="text-[12.5px] text-fg-3">{x.k}</div>
-                <div className="num mt-0.5 text-[16px] font-semibold tracking-[-0.01em]">{x.v}</div>
-                <div className="truncate text-[12.5px] text-fg-3">{x.s}</div>
+              <div key={x.k} className="min-w-0">
+                <dt className="text-[13px] text-fg-3">{x.k}</dt>
+                <dd className="num mt-0.5 text-[15px] font-semibold">{x.v}</dd>
+                <dd className="truncate text-[13px] text-fg-4">{x.s}</dd>
               </div>
             ))}
-          </div>
+          </dl>
         </Card>
 
         <Card>
           <CardHeader
-            icon={<Percent className="size-4" />}
             title="Zinssatz"
             subtitle={
               verbraucher
@@ -533,27 +483,28 @@ export function ForderungskontoTab() {
                 : "§ 288 Abs. 2 BGB: 9 Prozentpunkte über dem Basiszinssatz – Entgeltforderung, kein Verbraucher beteiligt."
             }
           />
-          <div className="flex flex-wrap items-center gap-1.5 text-[13px]">
-            <span className="rounded-[10px] bg-ink-softer px-2.5 py-1.5">
+          {/* Rechenweg als Zeile: Basiszinssatz + Aufschlag = Zinssatz – ohne Kacheln, das Ergebnis betont über Gewicht */}
+          <div className="flex flex-wrap items-end gap-x-3 gap-y-2 text-[13px]">
+            <span>
               <span className="block text-[12px] text-fg-3">Basiszinssatz</span>
-              <span className="num font-semibold">{fmtProzent(basis)}</span>
+              <span className="num text-[15px] font-medium">{fmtProzent(basis)}</span>
             </span>
-            <span className="text-fg-3">+</span>
-            <span className="rounded-[10px] bg-ink-softer px-2.5 py-1.5">
+            <span className="pb-0.5 text-fg-4">+</span>
+            <span>
               <span className="block text-[12px] text-fg-3">Aufschlag</span>
               <AnimatePresence mode="popLayout" initial={false}>
-                <motion.span key={aufschlag} initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} className="num block font-semibold">
+                <motion.span key={aufschlag} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={BEWEGUNG.schnell} className="num block text-[15px] font-medium">
                   {aufschlag} PP
                 </motion.span>
               </AnimatePresence>
             </span>
-            <span className="text-fg-3">=</span>
-            <span className="rounded-[10px] bg-ink px-2.5 py-1.5 text-white">
-              <span className="block text-[12px] opacity-80">Zinssatz p. a.</span>
-              <span className="num font-semibold">{fmtProzent(satz)}</span>
+            <span className="pb-0.5 text-fg-4">=</span>
+            <span>
+              <span className="block text-[12px] text-fg-3">Zinssatz p. a.</span>
+              <span className="num text-[20px] font-semibold leading-6">{fmtProzent(satz)}</span>
             </span>
           </div>
-          <div className={cn("mt-3 rounded-[12px] px-3 py-2 text-[12px]", zinsDelta > 0 ? "bg-amber-soft text-amber" : "bg-ink-softer text-fg-2")}>
+          <div className="mt-4 border-t border-[var(--line)] pt-3 text-[13px] leading-[18px] text-fg-2">
             Zinsen bis zum Stichtag insgesamt <span className="num font-semibold">{fmtEUR(zinsGesamt)}</span> – {verbraucher ? "ohne" : "mit"} Verbraucherbeteiligung{" "}
             <span className="num font-semibold">{fmtEUR(zinsGesamtGegen)}</span> ({zinsDelta >= 0 ? "+" : "−"}
             {fmtEUR(Math.abs(zinsDelta))}).
@@ -561,10 +512,10 @@ export function ForderungskontoTab() {
           {!verbraucher && (
             <div className="mt-3 flex items-start gap-3">
               <div className="min-w-0 flex-1">
-                <label htmlFor="fk-40" className="text-[13px] font-medium">
+                <label htmlFor="fk-40" className="text-[14px] font-medium">
                   40-€-Verzugspauschale
                 </label>
-                <p className="text-[12.5px] leading-snug text-fg-3">
+                <p className="text-[13px] leading-snug text-fg-3">
                   {titelGilt
                     ? pauschaleTituliert(f.titel)
                       ? "Laut Titel tituliert (§ 288 Abs. 5 BGB)."
@@ -584,10 +535,10 @@ export function ForderungskontoTab() {
                 .map((b) => {
                   const ist = b.ab === aktuellePeriode;
                   return (
-                    <li key={b.ab} className={cn("flex items-center justify-between rounded-[10px] px-2.5 py-1.5 text-[12.5px]", ist ? "bg-ink-soft font-semibold text-ink" : "text-fg-2")}>
+                    <li key={b.ab} className={cn("flex items-center justify-between rounded-sm px-2.5 py-1.5 text-[13px]", ist ? "bg-[var(--surface-3)] font-semibold text-fg shadow-[inset_2px_0_0_var(--ink)]" : "text-fg-2")}>
                       <span className="num">ab {fmtDate(b.ab)}</span>
                       <span className="flex items-center gap-2">
-                        {ist && <span className="text-[12.5px] font-medium">am Stichtag</span>}
+                        {ist && <span className="text-[13px] font-medium">am Stichtag</span>}
                         <span className="num">{fmtProzent(b.satz)}</span>
                       </span>
                     </li>
@@ -598,7 +549,7 @@ export function ForderungskontoTab() {
         </Card>
       </div>
 
-      <Card className="mt-4" padded={false}>
+      <Card className="mt-8" padded={false}>
         <div className="px-5 pt-5">
           <CardHeader title="Verlauf" subtitle="Jede Zahlung wird nach § 367 Abs. 1 BGB zuerst auf die Kosten, dann auf die Zinsen und zuletzt auf die Hauptforderung angerechnet." className="!mb-3" />
         </div>
@@ -607,10 +558,10 @@ export function ForderungskontoTab() {
             {stand.verlauf.map((v, i) => (
               <li key={i} className="px-5 py-3">
                 <div className="flex items-baseline justify-between gap-3">
-                  <span className="min-w-0 truncate text-[13.5px] font-medium">{v.text}</span>
-                  <span className={cn("num shrink-0 text-[13.5px] font-semibold", v.art === "zahlung" && "text-green")}>{fmtEUR(v.betrag)}</span>
+                  <span className="min-w-0 truncate text-[14px] font-medium">{v.text}</span>
+                  <span className="num shrink-0 text-[14px] font-medium">{fmtEUR(v.betrag)}</span>
                 </div>
-                <div className="mt-0.5 flex flex-wrap gap-x-3 text-[12px] text-fg-3">
+                <div className="mt-0.5 flex flex-wrap gap-x-3 text-[13px] text-fg-3">
                   <span className="num">{fmtDate(v.datum)}</span>
                   {v.art === "zahlung" && (
                     <span className="num">
@@ -638,23 +589,24 @@ export function ForderungskontoTab() {
               </thead>
               <tbody>
                 {stand.verlauf.map((v, i) => (
-                  <motion.tr key={i} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: Math.min(i, 10) * 0.03 }}>
+                  <tr key={i}>
                     <td className="num !pl-5 text-fg-2">{fmtDate(v.datum)}</td>
                     <td>
                       <span className="flex items-center gap-2">
                         <span
                           className="size-2 shrink-0 rounded-full"
-                          style={{ background: v.art === "zahlung" ? "var(--green)" : v.art === "kosten" ? FARBE.kosten : v.art === "zinsen" ? FARBE.zinsen : FARBE.haupt }}
+                          style={v.art === "zahlung" ? { border: "1.5px solid var(--chart-1)" } : { background: v.art === "kosten" ? FARBE.kosten : v.art === "zinsen" ? FARBE.zinsen : FARBE.haupt }}
+                          aria-hidden
                         />
                         {v.text}
                       </span>
                     </td>
-                    <td className={cn("num text-right font-medium", v.art === "zahlung" && "text-green")}>{fmtEUR(v.betrag)}</td>
+                    <td className="num text-right font-medium">{fmtEUR(v.betrag)}</td>
                     <td className="num text-right text-fg-3">{v.aufKosten !== undefined ? fmtEUR(v.aufKosten) : ""}</td>
                     <td className="num text-right text-fg-3">{v.aufZinsen !== undefined ? fmtEUR(v.aufZinsen) : ""}</td>
                     <td className="num text-right text-fg-3">{v.aufHaupt !== undefined ? fmtEUR(v.aufHaupt) : ""}</td>
                     <td className="num !pr-5 text-right font-semibold">{fmtEUR(v.saldoGesamt)}</td>
-                  </motion.tr>
+                  </tr>
                 ))}
               </tbody>
             </table>
@@ -662,7 +614,7 @@ export function ForderungskontoTab() {
         )}
       </Card>
 
-      <Card className="mt-4" padded={false}>
+      <Card className="mt-8" padded={false}>
         <div className="px-5 pt-5">
           <CardHeader
             title="Zinsabschnitte"
@@ -675,7 +627,7 @@ export function ForderungskontoTab() {
         ) : mobil ? (
           <ul className="divide-y divide-[var(--line)] border-t border-[var(--line)]">
             {stand.zinsAbschnitte.map((z, i) => (
-              <li key={i} className="flex items-baseline justify-between gap-3 px-5 py-2.5 text-[12.5px]">
+              <li key={i} className="flex items-baseline justify-between gap-3 px-5 py-2.5 text-[13px]">
                 <span className="min-w-0">
                   <span className="num block text-fg-2">
                     {fmtDate(z.von)} – {fmtDate(z.bis)} · {z.tage} T. · {fmtProzent(z.zinssatz)}
@@ -708,7 +660,7 @@ export function ForderungskontoTab() {
                     <td className="num text-right">{z.tage}</td>
                     <td className="num text-right">{fmtEUR(z.kapital)}</td>
                     <td className="num text-right">{fmtProzent(z.zinssatz)}</td>
-                    <td className="text-[12.5px] text-fg-3">{zinsAbschnittGrund(z, stand.zinsAbschnitte[i - 1], stand.verlauf)}</td>
+                    <td className="text-[13px] text-fg-3">{zinsAbschnittGrund(z, stand.zinsAbschnitte[i - 1], stand.verlauf)}</td>
                     <td className="num !pr-5 text-right font-semibold">{fmtEUR(z.zinsen)}</td>
                   </tr>
                 ))}
@@ -826,18 +778,18 @@ function TeilzahlungModal({
         <Field label="Buchungstext" htmlFor="tz-text">
           <Input id="tz-text" value={text} onChange={(e) => setText(e.target.value)} />
         </Field>
-        <div className="rounded-[16px] bg-ink-softer p-3.5">
-          <div className="text-[12px] font-semibold text-fg-2">Verrechnung nach § 367 Abs. 1 BGB</div>
+        <div className="border-t border-[var(--line)] pt-4">
+          <div className="text-[13px] font-medium text-fg-2">Verrechnung nach § 367 Abs. 1 BGB</div>
           {zeile ? (
-            <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+            <div className="mt-2 grid grid-cols-3 divide-x divide-[var(--line)] text-center">
               {[
                 { k: "Kosten", v: zeile.aufKosten ?? 0, c: FARBE.kosten },
                 { k: "Zinsen", v: zeile.aufZinsen ?? 0, c: FARBE.zinsen },
                 { k: "Hauptforderung", v: zeile.aufHaupt ?? 0, c: FARBE.haupt },
               ].map((x) => (
-                <div key={x.k} className="rounded-[12px] bg-[var(--surface)] px-2 py-2">
-                  <div className="flex items-center justify-center gap-1.5 text-[12.5px] text-fg-3">
-                    <span className="size-2 rounded-[2px]" style={{ background: x.c }} />
+                <div key={x.k} className="px-2 py-1">
+                  <div className="flex items-center justify-center gap-1.5 text-[13px] text-fg-3">
+                    <span className="size-2 rounded-[2px]" style={{ background: x.c }} aria-hidden />
                     {x.k}
                   </div>
                   <div className="num mt-0.5 text-[13px] font-semibold">{fmtEUR(x.v)}</div>
@@ -845,11 +797,11 @@ function TeilzahlungModal({
               ))}
             </div>
           ) : (
-            <p className="mt-1 text-[12px] text-fg-3">Betrag eingeben, um die Verrechnung zu sehen.</p>
+            <p className="mt-1 text-[13px] text-fg-3">Betrag eingeben, um die Verrechnung zu sehen.</p>
           )}
           {mehr > 0.004 && (
-            <div className="mt-2.5 rounded-[12px] bg-amber-soft px-3 py-2 text-[12px] text-fg-2" role="alert">
-              <span className="font-semibold text-amber">Überzahlung {fmtEUR(mehr)}:</span> Der Betrag übersteigt die Restforderung am {fmtDate(datum)} ({fmtEUR(verrechenbar)}). Der
+            <div className="mt-3 rounded-md bg-[var(--amber-soft)] px-3 py-2 text-[13px] text-fg-2" role="alert">
+              <span className="font-medium text-amber-text">Überzahlung {fmtEUR(mehr)}:</span> Der Betrag übersteigt die Restforderung am {fmtDate(datum)} ({fmtEUR(verrechenbar)}). Der
               Mehrbetrag wäre an den Schuldner zu erstatten.
               <div className="mt-2">
                 <Button size="sm" variant="secondary" onClick={() => setBetrag(fmtNum(verrechenbar, 2))}>
@@ -858,7 +810,7 @@ function TeilzahlungModal({
               </div>
             </div>
           )}
-          <p className="mt-2 text-[12.5px] text-fg-3">Zahlungen des Schuldners sind Fremdgeld und werden im Aktenkonto entsprechend gekennzeichnet.</p>
+          <p className="mt-2 text-[13px] text-fg-4">Zahlungen des Schuldners sind Fremdgeld und werden im Aktenkonto entsprechend gekennzeichnet.</p>
         </div>
       </div>
     </Modal>
@@ -984,9 +936,9 @@ function Forderungsaufstellung({
       }
     >
       {mahnkosten !== undefined && onMahnkosten && (
-        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[16px] bg-violet-soft px-4 py-3 text-[12.5px] text-fg-2">
+        <div className="banner mb-4 flex-wrap items-center">
           <span className="min-w-0 flex-1 basis-[240px]">
-            <span className="font-semibold text-fg">Rechtsanwaltskosten des Mahnverfahrens fehlen</span> ({fmtEUR(mahnkosten)}, Nr. 3305, 3308, 7002 VV RVG) – im Vollstreckungsbescheid tituliert.
+            <span className="font-medium text-fg">Rechtsanwaltskosten des Mahnverfahrens fehlen</span> ({fmtEUR(mahnkosten)}, Nr. 3305, 3308, 7002 VV RVG) – im Vollstreckungsbescheid tituliert.
           </span>
           <Button size="sm" variant="secondary" icon={<Plus className="size-4" />} onClick={onMahnkosten}>
             Übernehmen
@@ -997,23 +949,25 @@ function Forderungsaufstellung({
       <div className="mb-3 flex justify-end empty:hidden">
         <PapierSchalter />
       </div>
+      {/* Papier liegt auf der Vorschau-Bühne (DESIGN-SYSTEM.md 12.18) */}
+      <div className="buehne -mx-1 p-2 sm:mx-0 sm:p-6">
       <div id="forderungsaufstellung-text" className="paper px-5 py-6 sm:px-10 sm:py-9">
         <Briefkopf tenant={tenant} absenderZeile={false} />
-        <div className="mt-6 text-[19px] font-semibold tracking-[-0.02em]">Forderungsaufstellung</div>
+        <div className="mt-6 text-[18px] font-semibold tracking-[-0.02em]">Forderungsaufstellung</div>
         <div className="mt-0.5 text-[12px] opacity-65">zum Antrag auf Zwangsvollstreckung · Stand {fmtDateLong(stichtag)}</div>
 
         <div className="mt-5 grid gap-5 sm:grid-cols-2">
           <div>
-            <div className="mb-1 text-[12.5px] font-semibold uppercase tracking-[0.08em] opacity-55">Gläubiger</div>
+            <div className="mb-1 text-[13px] font-semibold opacity-55">Gläubiger</div>
             <Anschrift k={mandant} />
-            <div className="mt-1 text-[12.5px] opacity-65">vertreten durch {tenant.name}</div>
+            <div className="mt-1 text-[13px] opacity-65">vertreten durch {tenant.name}</div>
           </div>
           <div>
-            <div className="mb-1 text-[12.5px] font-semibold uppercase tracking-[0.08em] opacity-55">Schuldner</div>
+            <div className="mb-1 text-[13px] font-semibold opacity-55">Schuldner</div>
             <Anschrift k={schuldner} />
           </div>
         </div>
-        <div className="mt-4 grid gap-x-6 gap-y-0.5 text-[12.5px] sm:grid-cols-2">
+        <div className="mt-4 grid gap-x-6 gap-y-0.5 text-[13px] sm:grid-cols-2">
           <div>
             <span className="opacity-55">Vollstreckungstitel: </span>
             <span className="font-medium">{f.titel ?? "– (noch nicht tituliert)"}</span>
@@ -1030,9 +984,9 @@ function Forderungsaufstellung({
           </div>
         </div>
 
-        <table className="mt-6 w-full border-collapse text-[12.5px]">
+        <table className="mt-6 w-full border-collapse text-[13px]">
           <thead>
-            <tr className="border-b border-black/15 text-left text-[12.5px] uppercase tracking-[0.06em] opacity-60">
+            <tr className="border-b border-black/15 text-left text-[13px] opacity-60">
               <th className="py-2 pr-3 font-semibold">Position</th>
               <th className="py-2 text-right font-semibold">Betrag</th>
             </tr>
@@ -1062,7 +1016,7 @@ function Forderungsaufstellung({
           </tbody>
         </table>
 
-        <div className="ml-auto mt-4 w-full max-w-[320px] text-[12.5px]">
+        <div className="ml-auto mt-4 w-full max-w-[320px] text-[13px]">
           <div className="flex justify-between py-0.5 opacity-75">
             <span>Resthauptforderung</span>
             <span className="num">{fmtEUR(stand.hauptforderung)}</span>
@@ -1096,12 +1050,12 @@ function Forderungsaufstellung({
           ) : (
             <p>Die Forderung ist zum Stichtag vollständig ausgeglichen{ueberzahlung > 0 ? "; der überzahlte Betrag wird an den Schuldner erstattet" : ""}.</p>
           )}
-          <p className="text-[12.5px] opacity-60">
+          <p className="text-[13px] opacity-60">
             Zahlungen wurden gemäß § 367 Abs. 1 BGB zunächst auf die Kosten, dann auf die Zinsen und zuletzt auf die Hauptforderung angerechnet. Zinsberechnung taggenau (act/365).
           </p>
         </div>
 
-        <div className="mt-10 grid grid-cols-2 gap-6 text-[12.5px]">
+        <div className="mt-10 grid grid-cols-2 gap-6 text-[13px]">
           <div>
             {ort}, {fmtDate(today())}
           </div>
@@ -1111,6 +1065,7 @@ function Forderungsaufstellung({
             <div className="opacity-55">{bearbeiter?.titel?.split(" · ")[0] ?? "Rechtsanwalt"}</div>
           </div>
         </div>
+      </div>
       </div>
     </Drawer>
   );

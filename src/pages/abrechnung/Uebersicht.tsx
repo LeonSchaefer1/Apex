@@ -2,8 +2,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { AlertTriangle, ArrowRight, BellRing, CheckCircle2, Clock, HandCoins, Info, Landmark, Layers, ShieldCheck, Timer, TrendingUp, Wallet, Zap } from "lucide-react";
-import { AnimatedNumber, Button, Card, CardHeader, Chip, Stat, Switch } from "@/components/ui";
+import { AlertTriangle, ArrowRight, BellRing, CheckCircle2, Clock, Info, Landmark, Layers, Zap } from "lucide-react";
+import { AnimatedNumber, Button, Card, CardHeader, Chip, Stat, StatLeiste, Switch } from "@/components/ui";
 import { useCol, useData } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { hatBeispieldaten } from "@/lib/backend";
@@ -18,6 +18,7 @@ import { useSammelKandidaten } from "./Sammelabrechnung";
 import { useAbrechnungUI } from "./store";
 import { UmsatzChart, type MonatsWert } from "./UmsatzChart";
 import { useLookups } from "./ui";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 const EUR0 = (n: number) => fmtEUR(n, { cents: false });
 /** „1 Rechnung“ / „2 Rechnungen“ – Singular und Plural (I4-T08-03) */
@@ -55,12 +56,13 @@ export function useFremdgeld() {
   }, [buchungen, transaktionen, akten, kontakte]);
 }
 
+/** Altersstufen: noch nicht fällig neutral, überfällige Beträge in Siegelrot – die Bedeutung steht zusätzlich als Beschriftung da. */
 const ALTER = [
-  { key: "nf", label: "noch nicht fällig", bis: 0, farbe: "var(--ink)", op: 0.45 },
-  { key: "30", label: "1–30 Tage", bis: 30, farbe: "var(--amber)", op: 1 },
-  { key: "60", label: "31–60 Tage", bis: 60, farbe: "var(--seal)", op: 0.55 },
-  { key: "90", label: "61–90 Tage", bis: 90, farbe: "var(--seal)", op: 0.78 },
-  { key: "x", label: "über 90 Tage", bis: Number.POSITIVE_INFINITY, farbe: "var(--seal)", op: 1 },
+  { key: "nf", label: "noch nicht fällig", bis: 0, farbe: "var(--chart-2)" },
+  { key: "30", label: "1–30 Tage", bis: 30, farbe: "var(--seal)" },
+  { key: "60", label: "31–60 Tage", bis: 60, farbe: "var(--seal)" },
+  { key: "90", label: "61–90 Tage", bis: 90, farbe: "var(--seal)" },
+  { key: "x", label: "über 90 Tage", bis: Number.POSITIVE_INFINITY, farbe: "var(--seal)" },
 ];
 
 /** Offene Posten nach Tagen seit Fälligkeit – maßstabsgetreue Balken, älteste Rechnungen zum Nachfassen. */
@@ -87,7 +89,6 @@ function OffenePosten() {
   return (
     <Card>
       <CardHeader
-        icon={<Clock className="size-4" />}
         title="Offene Posten nach Fälligkeit"
         subtitle="Offene Beträge nach Tagen seit Fälligkeit – je älter, desto dringender die Erinnerung."
         action={
@@ -108,21 +109,15 @@ function OffenePosten() {
         }
       />
       <ul className="grid grid-cols-1 gap-2.5">
-        {stufen.map((x, i) => (
-          <li key={x.key} className="grid grid-cols-[112px_minmax(0,1fr)_auto] items-center gap-3 text-[12.5px] sm:grid-cols-[132px_minmax(0,1fr)_150px]">
+        {stufen.map((x) => (
+          <li key={x.key} className="grid grid-cols-[112px_minmax(0,1fr)_auto] items-center gap-3 text-[13px] sm:grid-cols-[132px_minmax(0,1fr)_150px]">
             <span className="truncate text-fg-3">{x.label}</span>
-            <div className="h-2.5 overflow-hidden rounded-full bg-[var(--line)]">
-              <motion.div
-                className="h-full rounded-full"
-                style={{ background: x.farbe, opacity: x.op }}
-                initial={{ width: 0 }}
-                animate={{ width: `${(x.summe / max) * 100}%` }}
-                transition={{ type: "spring", stiffness: 170, damping: 26, delay: 0.1 + i * 0.06 }}
-              />
+            <div className="h-1.5 overflow-hidden rounded-full bg-[var(--line)]">
+              <div className="h-full rounded-full transition-[width] duration-200" style={{ background: x.farbe, width: `${(x.summe / max) * 100}%` }} />
             </div>
             <span className="text-right">
-              <span className="num font-semibold">{EUR0(x.summe)}</span>
-              <span className="num ml-1.5 text-[12.5px] text-fg-3">{x.anzahl}×</span>
+              <span className="num font-medium">{EUR0(x.summe)}</span>
+              <span className="num ml-1.5 text-[13px] text-fg-4">{x.anzahl}×</span>
             </span>
           </li>
         ))}
@@ -130,14 +125,14 @@ function OffenePosten() {
       {aelteste.length > 0 && (
         <div className="mt-5 border-t border-[var(--line)] pt-3">
           <div className="eyebrow mb-1.5">Am längsten überfällig</div>
-          <ul className="-mx-2 grid grid-cols-1">
+          <ul className="-mx-2 grid grid-cols-1 divide-y divide-[var(--line)]">
             {aelteste.map((r) => (
               <li key={r.id}>
-                <button type="button" onClick={() => oeffne(r.id)} className="flex w-full items-center gap-3 rounded-[12px] px-2 py-2 text-left transition-colors hover:bg-ink-softer">
-                  <span className="mono w-[104px] shrink-0 text-[12px] font-medium">{r.nummer}</span>
-                  <span className="min-w-0 flex-1 truncate text-[13px]">{akten.get(r.akteId)?.titel}</span>
-                  <span className="hidden shrink-0 text-[12px] text-seal sm:inline">seit {diffDays(r.faellig, heute)} Tagen</span>
-                  <span className="num w-[86px] shrink-0 text-right text-[13px] font-semibold">{fmtEUR(offenerBetrag(r))}</span>
+                <button type="button" onClick={() => oeffne(r.id)} className="flex w-full items-center gap-3 rounded-sm px-2 py-2.5 text-left transition-colors duration-100 hover:bg-[var(--surface-2)]">
+                  <span className="mono w-[112px] shrink-0 text-[13px]">{r.nummer}</span>
+                  <span className="min-w-0 flex-1 truncate text-[14px]">{akten.get(r.akteId)?.titel}</span>
+                  <span className="hidden shrink-0 text-[13px] text-seal-text sm:inline">seit {diffDays(r.faellig, heute)} Tagen</span>
+                  <span className="num w-[90px] shrink-0 text-right text-[14px] font-medium">{fmtEUR(offenerBetrag(r))}</span>
                 </button>
               </li>
             ))}
@@ -228,24 +223,24 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
   const aufgaben = [
     {
       key: "sammel",
-      icon: <Layers className="size-[18px]" />,
-      tone: "bg-ink-soft text-ink",
+      icon: <Layers />,
+      signal: false,
       titel: vorschlaege.length ? `${vorschlaege.length} Akten abrechenbar` : "Alles abgerechnet",
       text: vorschlaege.length ? `≈ ${EUR0(sammelSumme)} Honorar – in einem Durchgang abrechnen` : "Keine offenen Gebühren",
       onClick: () => setSammel(true),
     },
     {
       key: "bank",
-      icon: <Landmark className="size-[18px]" />,
-      tone: "bg-violet-soft text-violet",
+      icon: <Landmark />,
+      signal: false,
       titel: offeneUmsaetze ? `${anzahl(offeneUmsaetze, "Kontoumsatz", "Kontoumsätze")} offen` : "Konto abgeglichen",
       text: offeneUmsaetze ? "Automatisch Rechnungen zuordnen" : "Alle Umsätze sind zugeordnet",
       onClick: () => onTab("bank"),
     },
     {
       key: "ueber",
-      icon: <BellRing className="size-[18px]" />,
-      tone: kpi.ueberN ? "bg-seal-soft text-seal" : "bg-green-soft text-green",
+      icon: kpi.ueberN ? <AlertTriangle /> : <BellRing />,
+      signal: kpi.ueberN > 0,
       titel: kpi.ueberN ? `${anzahl(kpi.ueberN, "Rechnung", "Rechnungen")} überfällig` : "Nichts überfällig",
       text: kpi.ueberN ? `${EUR0(kpi.ueber)} offen – Zahlungserinnerung senden` : "Alle Fälligkeiten im grünen Bereich",
       onClick: () => onTab("rechnungen", { filter: "ueberfaellig" }),
@@ -253,27 +248,15 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-4">
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <Stat
-          label="Umsatz letzte 30 Tage"
-          tone="green"
-          icon={<TrendingUp className="size-4" />}
-          value={<KpiWert n={kpi.umsatz} />}
-          sub={`netto · ${kpi.umsatzN} ${kpi.umsatzN === 1 ? "Rechnung" : "Rechnungen"}`}
-        />
-        <Stat
-          label="Offene Forderungen"
-          tone="ink"
-          icon={<Wallet className="size-4" />}
-          value={<KpiWert n={kpi.offen} />}
-          sub={`${anzahl(kpi.offenN, "Rechnung", "Rechnungen")} offen`}
-          onClick={() => onTab("rechnungen", { filter: "offen" })}
-        />
+    <div className="grid grid-cols-1 gap-8">
+      {/* Kennzahlenleiste: vier Werte in einer Karte; Farbe nur am Symbol und nur bei Bedeutung (überfällig, Fremdgeld offen) */}
+      <StatLeiste spalten={4}>
+        <Stat label="Umsatz letzte 30 Tage" value={<KpiWert n={kpi.umsatz} />} sub={`netto · ${kpi.umsatzN} ${kpi.umsatzN === 1 ? "Rechnung" : "Rechnungen"}`} />
+        <Stat label="Offene Forderungen" value={<KpiWert n={kpi.offen} />} sub={`${anzahl(kpi.offenN, "Rechnung", "Rechnungen")} offen`} onClick={() => onTab("rechnungen", { filter: "offen" })} />
         <Stat
           label="Überfällig"
           tone="seal"
-          icon={<AlertTriangle className="size-4" />}
+          icon={kpi.ueberN ? <AlertTriangle /> : undefined}
           value={<KpiWert n={kpi.ueber} />}
           sub={kpi.aeltesteUeber ? `${anzahl(kpi.ueberN, "Rechnung", "Rechnungen")} · ${kpi.ueberN === 1 ? "seit" : "älteste seit"} ${fmtDateShort(kpi.aeltesteUeber)}` : "keine überfälligen Rechnungen"}
           onClick={() => onTab("rechnungen", { filter: "ueberfaellig" })}
@@ -284,18 +267,17 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
               Fremdgeld<span className="hidden sm:inline"> zur Weiterleitung</span>
             </>
           }
-          tone={fremdSumme > 0 ? "amber" : "green"}
-          icon={<HandCoins className="size-4" />}
+          tone="amber"
+          icon={fremdSumme > 0 ? <Clock /> : undefined}
           value={<KpiWert n={fremdSumme} />}
           sub={fremdgeld.length ? `${fremdgeld.length} ${fremdgeld.length === 1 ? "Akte" : "Akten"} · § 43a Abs. 7 BRAO` : "alles weitergeleitet"}
         />
-      </div>
+      </StatLeiste>
 
-      <div className="grid gap-4 xl:grid-cols-3">
-        <div className="grid grid-cols-1 content-start gap-4 xl:col-span-2">
+      <div className="grid gap-x-8 gap-y-8 xl:grid-cols-3">
+        <div className="grid grid-cols-1 content-start gap-8 xl:col-span-2">
           <Card>
             <CardHeader
-              icon={<TrendingUp className="size-4" />}
               title="Abgerechneter Umsatz je Monat"
               subtitle="Netto-Honorar aus gestellten Rechnungen der letzten sechs Monate – der laufende Monat ist hervorgehoben."
               action={
@@ -308,61 +290,55 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
             <UmsatzChart daten={monate} />
           </Card>
 
-          <div className="grid content-start gap-3 sm:grid-cols-3">
-            <div className="eyebrow sm:col-span-3">Jetzt erledigen</div>
-            {aufgaben.map((a, i) => (
-              <motion.button
-                key={a.key}
-                type="button"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 + i * 0.05, type: "spring", stiffness: 420, damping: 34 }}
-                onClick={a.onClick}
-                className="sheet glow group relative flex min-w-0 flex-col items-start gap-3 rounded-[22px] p-4 text-left transition-transform duration-300 ease-[var(--spring)] hover:-translate-y-0.5 active:scale-[0.98]"
-              >
-                <div className={cn("grid size-9 place-items-center rounded-[12px]", a.tone)}>{a.icon}</div>
-                <div className="min-w-0">
-                  <div className="title-md">{a.titel}</div>
-                  <div className="mt-0.5 text-[12.5px] text-fg-3">{a.text}</div>
-                </div>
-                <ArrowRight className="absolute right-4 top-4 size-4 text-fg-3 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:text-ink" />
-              </motion.button>
-            ))}
-          </div>
+          {/* Jetzt erledigen: drei Aufgaben als ruhige Liste statt Kacheln */}
+          <section aria-labelledby="abr-erledigen">
+            <h2 id="abr-erledigen" className="title-md mb-2">
+              Jetzt erledigen
+            </h2>
+            <ul className="sheet divide-y divide-[var(--line)] overflow-hidden rounded-lg">
+              {aufgaben.map((a) => (
+                <li key={a.key}>
+                  <button type="button" onClick={a.onClick} className="group flex w-full min-w-0 items-center gap-3 px-4 py-3 text-left transition-colors duration-100 hover:bg-[var(--surface-2)] focus-visible:outline-offset-[-2px]">
+                    <span className={cn("shrink-0 [&>svg]:size-4", a.signal ? "text-[var(--seal)]" : "text-fg-4")} aria-hidden>
+                      {a.icon}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[14px] font-medium leading-5 text-fg">{a.titel}</span>
+                      <span className="block text-[13px] leading-[18px] text-fg-3">{a.text}</span>
+                    </span>
+                    <ArrowRight className="size-4 shrink-0 text-fg-4 transition-colors group-hover:text-fg" aria-hidden />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
 
           <OffenePosten />
         </div>
-        <div className="grid grid-cols-1 content-start gap-4">
+        <div className="grid grid-cols-1 content-start gap-8">
           <Card className="flex flex-col scroll-mt-24" id="fremdgeld-waechter">
-            <CardHeader icon={<ShieldCheck className="size-4" />} title="Fremdgeld-Wächter" subtitle="Fremdgeld ist unverzüglich an die Berechtigten weiterzuleiten (§ 43a Abs. 7 BRAO)." />
-            <ul className="-mx-2 flex-1">
+            <CardHeader title="Fremdgeld-Wächter" subtitle="Fremdgeld ist unverzüglich an die Berechtigten weiterzuleiten (§ 43a Abs. 7 BRAO)." />
+            <ul className="flex-1 divide-y divide-[var(--line)] border-t border-[var(--line)]">
               <AnimatePresence initial={false}>
-                {fremdgeld.map((f, i) => {
+                {fremdgeld.map((f) => {
                   const tage = diffDays(f.letzterEingang, heute);
                   return (
-                    <motion.li
-                      key={f.akteId}
-                      layout
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0, transition: { delay: Math.min(i, 8) * 0.04 } }}
-                      exit={{ opacity: 0, x: 24, transition: { duration: 0.22 } }}
-                      className="rounded-[16px] px-2 py-2.5"
-                    >
+                    <motion.li key={f.akteId} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={BEWEGUNG.standard} className="py-3">
                       <div className="flex items-start gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex min-w-0 items-baseline gap-2">
-                            <span className="mono shrink-0 text-[12.5px] text-fg-3">{f.akte?.aktenzeichen}</span>
-                            <span className="break-words text-[13.5px] font-medium">{f.akte?.titel}</span>
+                            <span className="mono shrink-0 text-[13px] text-fg-3">{f.akte?.aktenzeichen}</span>
+                            <span className="break-words text-[14px] font-medium">{f.akte?.titel}</span>
                           </div>
-                          <div className="mt-0.5 break-words text-[12.5px] text-fg-3">{f.text}</div>
+                          <div className="mt-0.5 break-words text-[13px] text-fg-3">{f.text}</div>
                           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                            <Chip tone={tage >= 3 ? "seal" : "amber"} dot>
+                            <Chip tone={tage >= 3 ? "seal" : "amber"}>
                               eingegangen {relDays(f.letzterEingang, heute)}
                             </Chip>
-                            <span className="text-[12.5px] text-fg-3">an {f.mandant?.name ?? "Mandant"}</span>
+                            <span className="text-[13px] text-fg-3">an {f.mandant?.name ?? "Mandant"}</span>
                           </div>
                           {f.konto && (
-                            <div className={cn("mt-1 flex items-start gap-1.5 text-[12.5px]", f.konto === "ander" ? "text-fg-3" : "font-medium text-[var(--amber-text)]")}>
+                            <div className={cn("mt-1 flex items-start gap-1.5 text-[13px]", f.konto === "ander" ? "text-fg-3" : "font-medium text-[var(--amber-text)]")}>
                               <Landmark className="mt-0.5 size-3.5 shrink-0" aria-hidden />
                               <span>{fremdgeldLiegtText(f.saldo, f.konto)}</span>
                             </div>
@@ -380,23 +356,21 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
                 })}
               </AnimatePresence>
               {fremdgeld.length === 0 && (
-                <motion.li initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center px-4 py-8 text-center">
-                  <div className="grid size-12 place-items-center rounded-[16px] bg-green-soft text-green">
-                    <CheckCircle2 className="size-6" />
-                  </div>
+                <li className="flex flex-col items-center px-4 py-8 text-center">
+                  <CheckCircle2 className="size-5 text-fg-4" aria-hidden />
                   <div className="title-md mt-3">Kein Fremdgeld offen</div>
-                  <p className="mt-1 text-[12.5px] text-fg-3">Alle Fremdgelder sind an die Berechtigten weitergeleitet.</p>
-                </motion.li>
+                  <p className="mt-1 text-[14px] text-fg-3">Alle Fremdgelder sind an die Berechtigten weitergeleitet.</p>
+                </li>
               )}
             </ul>
-            <p className="mt-3 border-t border-[var(--line)] pt-3 text-[12.5px] leading-snug text-fg-3">
+            <p className="border-t border-[var(--line)] pt-3 text-[13px] leading-[18px] text-fg-4">
               Ab drei Tagen Liegezeit wird rot markiert. „Weiterleiten“ fragt Empfänger, IBAN und Wirkung ab, bucht die Auszahlung im Aktenkonto und erledigt die zugehörige Frist – nie automatisch.
             </p>
             <WeiterleitungsDialog akte={weiterleitung?.akte} mandant={weiterleitung?.mandant} offen={weiterleitung?.saldo ?? 0} open={!!weiterleitung} onClose={() => setWeiterleitung(null)} />
           </Card>
           <Card>
             <CardHeader
-              icon={<Zap className="size-4" />}
+              icon={<Zap />}
               title="Was der 38h-Motor hier automatisiert"
               subtitle={
                 <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1">
@@ -407,26 +381,17 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
                   </span>
                 </span>
               }
-              action={beispiel ? <Chip tone="amber">Beispielwerte</Chip> : undefined}
+              action={beispiel ? <Chip tone="outline">Beispielwerte</Chip> : undefined}
             />
-            <ul className="grid grid-cols-1 gap-3">
+            <ul className="grid grid-cols-1 divide-y divide-[var(--line)] border-t border-[var(--line)]">
               {motor.map((a) => {
-                const Icon = a.key === "bankabgleich" ? Landmark : a.key === "mahnwesen" ? BellRing : Timer;
                 return (
-                  <li key={a.id} className="flex items-start gap-3">
-                    <div className={cn("mt-0.5 grid size-8 shrink-0 place-items-center rounded-[10px]", a.aktiv ? "bg-ink-soft text-ink" : "bg-[var(--line)] text-fg-3")}>
-                      <Icon className="size-4" />
-                    </div>
+                  <li key={a.id} className="flex items-start gap-3 py-3">
                     <div className="min-w-0 flex-1">
-                      <div className="text-[13.5px] font-medium">{a.name}</div>
-                      <div className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-fg-3">{a.beschreibung}</div>
-                      <div className="mt-1.5 flex flex-wrap gap-1.5">
-                        <Chip icon={<Clock className="size-3" />} title={herleitung}>
-                          {a.minutenProLauf} Min. je Vorgang
-                        </Chip>
-                        <Chip>
-                          {a.laeufe.toLocaleString("de-DE")} {a.laeufe === 1 ? "Vorgang" : "Vorgänge"}
-                        </Chip>
+                      <div className="text-[14px] font-medium">{a.name}</div>
+                      <div className="mt-0.5 line-clamp-2 text-[13px] leading-[18px] text-fg-3">{a.beschreibung}</div>
+                      <div className="num mt-1 text-[13px] text-fg-4" title={herleitung}>
+                        {a.minutenProLauf} Min. je Vorgang · {a.laeufe.toLocaleString("de-DE")} {a.laeufe === 1 ? "Vorgang" : "Vorgänge"}
                       </div>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1">
@@ -439,7 +404,7 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
                         }}
                       />
                       {/* Rückmeldung an der Karte selbst statt Meldung über dem Schalter (WCAG 2.4.11) */}
-                      <span aria-live="polite" className={cn("text-[11.5px] font-medium", a.aktiv ? "text-green" : "text-fg-3")}>
+                      <span aria-live="polite" className="text-[12px] font-medium text-fg-3">
                         {a.aktiv ? "aktiv" : "pausiert"}
                       </span>
                     </div>
@@ -447,7 +412,7 @@ export function UebersichtTab({ onTab }: { onTab: (t: TabKey, extra?: Record<str
                 );
               })}
             </ul>
-            <Button variant="ghost" size="sm" className="mt-4 -ml-2" iconRight={<ArrowRight className="size-4" />} onClick={() => nav("/automatisierung")}>
+            <Button variant="ghost" size="sm" className="mt-2 -ml-2" iconRight={<ArrowRight className="size-4" />} onClick={() => nav("/automatisierung")}>
               Zum 38h-Motor
             </Button>
           </Card>

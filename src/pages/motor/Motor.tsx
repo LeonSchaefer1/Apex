@@ -1,20 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router";
-import { motion } from "motion/react";
-import { Calculator, Euro, FlaskConical, Repeat, Target } from "lucide-react";
+import { Calculator, FlaskConical } from "lucide-react";
 import { useCol } from "@/store/data";
 import { hatBeispieldaten } from "@/lib/backend";
 import { useKanzlei } from "@/store/session";
 import { addDays, fmtDateShort, fmtEUR, fmtNum, today } from "@/core/dates";
 import type { Automation } from "@/core/types";
-import { AnimatedNumber, Button, Card, Chip, PageHeader, ProgressRing, Segmented } from "@/components/ui";
-import { cn } from "@/lib/cn";
+import { AnimatedNumber, Button, Card, CardHeader, Chip, PageHeader, ProgressRing, Segmented, StatLeiste } from "@/components/ui";
 import { WochenChart, type TagWert } from "./WochenChart";
 import { AutomationDrawer, AutomationKarte, letzteLaeufe } from "./AutomationKarte";
 import { LiveFeed } from "./LiveFeed";
 import { RoiRechner } from "./RoiRechner";
 import { FristAutomatikHinweis } from "@/components/FristAutomatikHinweis";
-import { ARBEITSWOCHEN, FLOW_CSS, JAHRESARBEITSSTUNDEN, KATEGORIEN, PERSONALKOSTEN_JAHR, ZIEL_STUNDEN, kostensatz, ungefaehr, useNow, vorgaengeVon } from "./shared";
+import { ARBEITSWOCHEN, JAHRESARBEITSSTUNDEN, KATEGORIEN, PERSONALKOSTEN_JAHR, ZIEL_STUNDEN, kostensatz, ungefaehr, useNow, vorgaengeVon } from "./shared";
 
 type Filter = "alle" | Automation["kategorie"];
 
@@ -86,12 +84,11 @@ export default function Motor() {
 
   return (
     <div>
-      <style>{FLOW_CSS}</style>
       {demo && (
-        <div className="mb-4 flex items-start gap-2.5 rounded-[16px] bg-amber-soft px-4 py-3 text-[13px] text-fg-2" role="note">
-          <FlaskConical className="mt-0.5 size-4 shrink-0 text-amber" />
+        <div className="banner mb-6" role="note">
+          <FlaskConical aria-hidden />
           <span>
-            <span className="font-semibold text-fg">Demo-Daten</span> – im Echtbetrieb misst der Motor Ihre Kanzlei. Alle Werte hier sind simuliert.
+            <span className="font-medium text-fg">Demo-Daten</span> – im Echtbetrieb misst der Motor Ihre Kanzlei. Alle Werte hier sind simuliert.
           </span>
         </div>
       )}
@@ -107,75 +104,67 @@ export default function Motor() {
         }
       />
       {/* Pausierte Fristautomatik: Hinweis mit Datum, Uhrzeit und Person (I3-T10-01) */}
-      <FristAutomatikHinweis className="mb-4" />
+      <FristAutomatikHinweis className="mb-6" />
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        {/* Hero: Wochenbilanz */}
-        <Card padded={false} className="overflow-hidden xl:col-span-2">
-          <div className="grid grid-cols-1 gap-x-8 gap-y-5 p-5 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center md:p-6">
-            <div className="flex justify-center sm:block">
-              <ProgressRing value={anteil} size={176} stroke={14} color={anteil >= 1 ? "var(--green)" : "var(--ink)"}>
-                <div className="text-center">
-                  <div className="text-[30px] font-semibold leading-none tracking-[-0.03em]">
-                    <AnimatedNumber value={Math.min(999, anteil * 100)} format={(n) => `${Math.round(n)} %`} />
-                  </div>
-                  <div className="mt-1.5 text-[12px] leading-tight text-fg-3">
-                    des Wochenziels
-                    <br />
-                    von {ZIEL_STUNDEN} Std.
-                  </div>
-                  {demo && (
-                    <Chip tone="amber" className="mt-1.5">
-                      Beispielwerte
-                    </Chip>
-                  )}
+      <div className="grid grid-cols-1 gap-x-8 gap-y-8 xl:grid-cols-12">
+        <div className="flex min-w-0 flex-col gap-6 xl:col-span-8">
+          {/* Leitzahl der Seite: gesparte Stunden, daneben der Anteil am Wochenziel */}
+          <section aria-label="Wochenbilanz" className="flex flex-wrap items-center gap-x-8 gap-y-5">
+            <ProgressRing value={anteil} size={128} stroke={4}>
+              <div className="text-center">
+                <div className="num text-[20px] font-semibold leading-6 tracking-[-0.02em]">
+                  <AnimatedNumber value={Math.min(999, anteil * 100)} format={(n) => `${Math.round(n)} %`} />
                 </div>
-              </ProgressRing>
-            </div>
-            <div className="min-w-0">
+                <div className="mt-0.5 text-[12px] leading-4 text-fg-3">
+                  des Wochenziels
+                  <br />
+                  von {ZIEL_STUNDEN} Std.
+                </div>
+              </div>
+            </ProgressRing>
+            <div className="min-w-0 flex-1 basis-[280px]">
               <div className="eyebrow">
                 Letzte 7 Tage · {fmtDateShort(grenze)} – {fmtDateShort(heute)}
               </div>
-              <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <span className="text-[clamp(44px,7vw,64px)] font-semibold leading-[0.95] tracking-[-0.045em]">
-                  <AnimatedNumber value={stunden} format={(n) => fmtNum(n, 1)} className="[font-variant-numeric:normal]" /> <span className="text-[0.55em] tracking-[-0.03em]">Std.</span>
+              <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span className="text-[40px] font-semibold leading-[44px] tracking-[-0.03em]">
+                  <AnimatedNumber value={stunden} format={(n) => fmtNum(n, 1)} /> Std.
                 </span>
-                <span className="text-[15px] font-medium text-fg-2">gespart in den letzten 7 Tagen</span>
-                {demo && <Chip tone="amber">Beispielwerte</Chip>}
+                <span className="text-[15px] text-fg-2">gespart in den letzten 7 Tagen</span>
+                {demo && <Chip tone="outline">Beispielwerte</Chip>}
               </div>
-              <p className="mt-2 max-w-[52ch] text-[13px] leading-relaxed text-fg-3">
+              <p className="mt-2 max-w-[60ch] text-[14px] leading-5 text-fg-3">
                 Automatisch erledigt, während Sie an Mandaten arbeiten. Unser Ziel für jede Kanzlei: Ø {ZIEL_STUNDEN} Std. pro Woche.
               </p>
             </div>
-            <div className="grid grid-cols-1 gap-2.5 sm:col-span-2 sm:grid-cols-3">
-              <Kpi
-                icon={<Euro className="size-3.5" />}
-                label="Gesparte Kosten · letzte 7 Tage"
-                wert={fmtEUR(wertWoche)}
-                sub={`${fmtNum(stunden, 2)} Std. × ${fmtEUR(KOSTENSATZ)}/Std. (${fmtEUR(PERSONALKOSTEN_JAHR, { cents: false })} ÷ ${fmtNum(JAHRESARBEITSSTUNDEN)} Std.)`}
-              />
-              <Kpi icon={<Target className="size-3.5" />} label="Hochgerechnet pro Jahr" wert={`≈ ${fmtEUR(ungefaehr(wertJahr), { cents: false })}`} sub={`${fmtNum(stunden, 2)} Std. × ${ARBEITSWOCHEN} Arbeitswochen × ${fmtEUR(KOSTENSATZ)}/Std. = ${fmtEUR(wertJahr)}`} betont />
-              <Kpi icon={<Repeat className="size-3.5" />} label="Bearbeitete Vorgänge" wert={fmtNum(vorgaengeWoche)} sub="in den letzten 7 Tagen – je Vorgang gezählt" />
-            </div>
-          </div>
-          <div className="border-t border-[var(--line)] px-5 pb-3 pt-4 md:px-6">
-            <div className="mb-1 flex items-baseline justify-between gap-3">
-              <div className="text-[13px] font-semibold">Gesparte Stunden je Tag</div>
-              <div className="text-[12.5px] text-fg-3">{demo ? "Gemessen je Vorgang · Demo-Daten (simuliert)" : "Gemessen je Vorgang"}</div>
-            </div>
-            <WochenChart tage={tage} heute={heute} />
-          </div>
-        </Card>
+          </section>
 
-        <LiveFeed aktivitaeten={aktivitaeten} automationen={automationen} now={now} demo={demo} className="xl:col-span-1" />
+          {/* Drei gleichrangige Kennzahlen in einer Leiste – Rechenweg vollständig darunter */}
+          <StatLeiste spalten={3} className="max-sm:grid-cols-1">
+            <Kennzahl
+              label="Gesparte Kosten · letzte 7 Tage"
+              wert={fmtEUR(wertWoche)}
+              sub={`${fmtNum(stunden, 2)} Std. × ${fmtEUR(KOSTENSATZ)}/Std. (${fmtEUR(PERSONALKOSTEN_JAHR, { cents: false })} ÷ ${fmtNum(JAHRESARBEITSSTUNDEN)} Std.)`}
+            />
+            <Kennzahl label="Hochgerechnet pro Jahr" wert={`≈ ${fmtEUR(ungefaehr(wertJahr), { cents: false })}`} sub={`${fmtNum(stunden, 2)} Std. × ${ARBEITSWOCHEN} Arbeitswochen × ${fmtEUR(KOSTENSATZ)}/Std. = ${fmtEUR(wertJahr)}`} />
+            <Kennzahl label="Bearbeitete Vorgänge" wert={fmtNum(vorgaengeWoche)} sub="in den letzten 7 Tagen – je Vorgang gezählt" />
+          </StatLeiste>
+
+          <Card>
+            <CardHeader title="Gesparte Stunden je Tag" subtitle={demo ? "Gemessen je Vorgang · Demo-Daten (simuliert)" : "Gemessen je Vorgang"} className="mb-2" />
+            <WochenChart tage={tage} heute={heute} />
+          </Card>
+        </div>
+
+        <LiveFeed aktivitaeten={aktivitaeten} automationen={automationen} now={now} demo={demo} className="min-w-0 xl:col-span-4" />
       </div>
 
       {/* Automationen */}
-      <section className="mt-8">
+      <section className="mt-12">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
             <h2 className="title-lg">Automatiken</h2>
-            <p className="mt-1 text-[13px] text-fg-3">Was im Hintergrund läuft, wodurch es ausgelöst wird, wer freigibt und wie viel Zeit es je Vorgang spart.</p>
+            <p className="mt-1 text-[14px] leading-5 text-fg-3">Was im Hintergrund läuft, wodurch es ausgelöst wird, wer freigibt und wie viel Zeit es je Vorgang spart.</p>
           </div>
           <Segmented<Filter>
             size="sm"
@@ -187,27 +176,20 @@ export default function Motor() {
             ]}
           />
         </div>
-        <motion.div layout className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {gefiltert.map((a, i) => (
-            <motion.div
-              key={a.id}
-              layout
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ type: "spring", stiffness: 420, damping: 34, delay: Math.min(i, 10) * 0.03 }}
-              className="min-w-0"
-            >
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {gefiltert.map((a) => (
+            <div key={a.id} className="min-w-0">
               <AutomationKarte a={a} now={now} ausFeed={laeufeAusFeed.get(a.key)} onOpen={() => setOffenId(a.id)} />
-            </motion.div>
+            </div>
           ))}
-        </motion.div>
+        </div>
       </section>
 
       {/* ROI */}
-      <section id="roi" className="mt-8 scroll-mt-24">
+      <section id="roi" className="mt-12 scroll-mt-24">
         <div className="mb-4">
           <h2 className="title-lg">So rechnet sich das</h2>
-          <p className="mt-1 text-[13px] text-fg-3">Gesparte Zeit in Euro – und der Kostenvergleich zwischen Lifetime-Lizenz und Abo-Modell.</p>
+          <p className="mt-1 text-[14px] leading-5 text-fg-3">Gesparte Zeit in Euro – und der Kostenvergleich zwischen Lifetime-Lizenz und Abo-Modell.</p>
         </div>
         <RoiRechner startSatz={satz} startArbeitsplaetze={tenant.lizenz.arbeitsplaetze} automationen={automationen} mengen={mengen} demo={demo} kanzleiId={tenant.id} kanzleiName={tenant.name} />
       </section>
@@ -217,16 +199,13 @@ export default function Motor() {
   );
 }
 
-function Kpi({ icon, label, wert, sub, betont }: { icon: React.ReactNode; label: string; wert: string; sub: string; betont?: boolean }) {
+/** Kennzahl in der Leiste: Label 13 Text 3, Wert 28/600, Rechenweg 13 Text 4 – vollständig, ohne Kürzung. */
+function Kennzahl({ label, wert, sub }: { label: string; wert: string; sub: string }) {
   return (
-    <div className={cn("min-w-0 rounded-[16px] px-3.5 py-3 ring-1 ring-[var(--line)]", betont ? "bg-green-soft ring-0" : "bg-[var(--surface-2)]")}>
-      <div className={cn("flex items-center gap-1.5 text-[12px] font-medium", betont ? "text-green" : "text-fg-3")}>
-        {icon}
-        <span className="min-w-0">{label}</span>
-      </div>
-      <div className="mt-1 truncate text-[20px] font-semibold tracking-[-0.02em]">{wert}</div>
-      <div className="text-[12px] leading-snug text-fg-3">{sub}</div>
+    <div className="flex min-w-0 flex-col gap-2 px-5 py-4">
+      <div className="text-[13px] leading-[18px] text-fg-3">{label}</div>
+      <div className="num text-[28px] font-semibold leading-8 tracking-[-0.02em] text-fg">{wert}</div>
+      <div className="text-[13px] leading-[18px] text-fg-4">{sub}</div>
     </div>
   );
 }
-

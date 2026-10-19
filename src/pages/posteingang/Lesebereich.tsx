@@ -10,7 +10,6 @@ import { useCol } from "@/store/data";
 import { useKanzlei } from "@/store/session";
 import { toast } from "@/store/ui";
 import { Button, Chip, IconButton } from "@/components/ui";
-import { cn } from "@/lib/cn";
 import { KanalChip } from "./NachrichtenListe";
 import { KiKarte } from "./KiKarte";
 import { AntwortDrawer } from "./AntwortDrawer";
@@ -48,20 +47,20 @@ function KiLeiste({ ansicht, schritt, akteAz, vorschlagAz, eeb }: { ansicht: KiA
       type="button"
       onClick={springe}
       layout
-      className="ai-ring group mt-4 flex w-full items-center gap-3 rounded-[16px] bg-[linear-gradient(100deg,var(--violet-soft),transparent_70%)] px-3.5 py-2.5 text-left"
+      className="group mt-4 flex min-h-11 w-full items-center gap-3 rounded-md border border-[var(--line)] bg-[var(--surface)] px-3.5 py-2.5 text-left transition-colors duration-100 hover:border-[var(--line-strong)]"
     >
-      <span className="ai-fill grid size-7 shrink-0 place-items-center rounded-[9px] text-white">
-        {laeuft ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+      <span className="shrink-0 text-fg-3" aria-hidden>
+        {laeuft ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <Sparkles className="size-4" />}
       </span>
       <span className="line-clamp-2 min-w-0 flex-1 text-[13px] leading-snug sm:line-clamp-1">
         {laeuft ? (
           <>
-            <span className="ai-text font-semibold">KI analysiert …</span>
+            <span className="font-medium text-fg">KI analysiert …</span>
             <span className="text-fg-3"> {SCHRITTE[Math.min(schritt!, SCHRITTE.length - 1)].titel}</span>
           </>
         ) : ansicht ? (
           <>
-            <span className="font-semibold">{ansicht.typ}</span>
+            <span className="font-medium text-fg">{ansicht.typ}</span>
             {/* Kopfzeile aus der tatsächlichen Zuordnung; der KI-Vorschlag erscheint nur, solange nicht zugeordnet ist bzw. wenn er abweicht */}
             {akteAz ? (
               <span className="text-fg-3">
@@ -76,23 +75,23 @@ function KiLeiste({ ansicht, schritt, akteAz, vorschlagAz, eeb }: { ansicht: KiA
               )
             )}
             {notfrist ? (
-              <span className={istKritisch(notfrist) ? "text-seal" : "text-fg-2"}>
+              <span className={istKritisch(notfrist) ? "font-medium text-[var(--seal-text)]" : "text-fg-2"}>
                 {" "}· {TYP_META[notfrist.typ].label} bis {fmtDateWd(notfrist.ende)}
               </span>
             ) : ansicht.termin ? (
-              <span className="text-violet"> · Termin {fmtDateWd(ansicht.termin.datum)}{ansicht.termin.uhrzeit ? `, ${ansicht.termin.uhrzeit} Uhr` : ""}</span>
+              <span className="text-fg-2"> · Termin {fmtDateWd(ansicht.termin.datum)}{ansicht.termin.uhrzeit ? `, ${ansicht.termin.uhrzeit} Uhr` : ""}</span>
             ) : (
               <span className="text-fg-3"> · keine Frist</span>
             )}
-            {eeb && <span className="text-amber"> · eEB offen</span>}
+            {eeb && <span className="text-[var(--amber-text)]"> · eEB offen</span>}
           </>
         ) : (
           <span className="text-fg-2">Noch nicht analysiert – Akte & Fristen erkennen lassen</span>
         )}
       </span>
-      <span className="hidden shrink-0 items-center gap-1 text-[12px] font-medium text-ink sm:inline-flex">
+      <span className="hidden shrink-0 items-center gap-1 text-[13px] font-medium text-fg-2 group-hover:text-fg sm:inline-flex">
         KI-Analyse
-        <ChevronDown className="size-3.5 transition-transform group-hover:translate-y-0.5" />
+        <ChevronDown className="size-3.5" aria-hidden />
       </span>
     </motion.button>
   );
@@ -142,7 +141,7 @@ export function Lesebereich({
     <article className="min-w-0">
       <header className="border-b border-[var(--line)] px-4 pb-4 pt-4 sm:px-6 sm:pt-5">
         {onBack && (
-          <button type="button" onClick={onBack} className="-ml-2 mb-3 inline-flex h-9 items-center gap-1 rounded-full pl-1 pr-3 text-[14px] font-medium text-ink hover:bg-ink-softer">
+          <button type="button" onClick={onBack} className="btn btn-ghost -ml-2 mb-3 !pl-1">
             <ChevronLeft className="size-5" />
             Posteingang
           </button>
@@ -150,7 +149,7 @@ export function Lesebereich({
         <div className="flex flex-wrap items-center gap-1.5">
           <KanalChip kanal={n.kanal} />
           {akte && (
-            <Link to={`/akten/${akte.id}`} className="chip mono hover:bg-ink-soft" title={akte.titel}>
+            <Link to={`/akten/${akte.id}`} className="chip mono hover:bg-[var(--surface-3)]" title={akte.titel}>
               {akte.aktenzeichen}
             </Link>
           )}
@@ -163,15 +162,15 @@ export function Lesebereich({
         </div>
         <h2 className="title-lg mt-2.5 break-words">{n.betreff}</h2>
         <div className="mt-3.5 flex flex-wrap items-center gap-3">
-          <span className={cn("grid size-10 shrink-0 place-items-center rounded-full text-[13px] font-semibold", n.kanal === "bea" ? "bg-ink-soft text-ink" : "bg-[var(--ink-softer)] text-fg-2 ring-1 ring-inset ring-[var(--line)]")}>
+          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-[var(--surface-3)] text-[13px] font-semibold text-fg-2">
             {istGerichtspost(n) ? <Landmark className="size-[18px]" /> : initialen(n.von)}
           </span>
           <div className="min-w-0 flex-1 basis-[200px]">
-            <div className="break-words text-[13.5px] font-semibold">
+            <div className="break-words text-[14px] font-medium text-fg">
               {n.von}
               {n.vonAdresse && <span className="ml-1.5 font-normal text-fg-3">{n.kanal === "bea" ? `SAFE-ID ${n.vonAdresse}` : n.vonAdresse}</span>}
             </div>
-            <div className="num text-[12.5px] text-fg-3">
+            <div className="num text-[13px] text-fg-3">
               an {n.an || tenant.kurzname} · {fmtDateWd(n.eingang.slice(0, 10))}, {fmtTime(n.eingang)} Uhr{new Date(n.eingang).getTime() <= Date.now() ? ` · ${relTime(n.eingang)}` : ""}
             </div>
           </div>
@@ -212,7 +211,7 @@ export function Lesebereich({
             <KiKarte n={n} ansicht={ansicht} schritt={schritt} fehler={fehler} onAnalyse={onAnalyse} />
           </div>
         )}
-        <div className="whitespace-pre-line break-words text-[13.5px] leading-[1.65] text-fg-2">{n.text}</div>
+        <div className="whitespace-pre-line break-words text-[14px] leading-[1.65] text-fg-2">{n.text}</div>
 
         {n.anhaenge.length > 0 && (
           <div>
@@ -224,13 +223,11 @@ export function Lesebereich({
             </div>
             <div className="flex flex-wrap gap-2">
               {n.anhaenge.map((a) => (
-                <span key={a.name} className="inline-flex max-w-full items-center gap-2 rounded-[12px] bg-surface/80 py-1.5 pl-2 pr-3 ring-1 ring-inset ring-[var(--line)]">
-                  <span className="grid size-7 shrink-0 place-items-center rounded-[8px] bg-seal-soft text-seal">
-                    <FileText className="size-3.5" />
-                  </span>
+                <span key={a.name} className="inline-flex max-w-full items-center gap-2 rounded-md bg-[var(--surface)] py-1.5 pl-2.5 pr-3 ring-1 ring-inset ring-[var(--line)]">
+                  <FileText className="size-4 shrink-0 text-fg-4" aria-hidden />
                   <span className="min-w-0">
-                    <span className="block break-all text-[12.5px] font-medium">{a.name}</span>
-                    <span className="num block text-[12.5px] text-fg-3">{groesse(a.groesseKb)}</span>
+                    <span className="block break-all text-[13px] font-medium">{a.name}</span>
+                    <span className="num block text-[13px] text-fg-3">{groesse(a.groesseKb)}</span>
                   </span>
                 </span>
               ))}
@@ -252,11 +249,11 @@ export function Lesebereich({
             </div>
             <div className="space-y-2.5">
               {verlauf.map((m) => (
-                <motion.div key={m.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="ml-auto max-w-[92%] rounded-[18px] rounded-br-[6px] bg-ink-soft p-4">
-                  <div className="num mb-1.5 text-[12.5px] text-fg-3">
+                <motion.div key={m.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="ml-auto max-w-[92%] rounded-lg bg-[var(--surface-2)] p-4">
+                  <div className="num mb-1.5 text-[13px] text-fg-3">
                     {m.von} · {fmtTime(m.eingang)} Uhr · {m.kanal === "bea" ? "per beA" : "per E-Mail"} an {m.an}
                   </div>
-                  <div className="whitespace-pre-line text-[13.5px] leading-relaxed text-fg">{m.text}</div>
+                  <div className="whitespace-pre-line text-[14px] leading-relaxed text-fg">{m.text}</div>
                 </motion.div>
               ))}
             </div>

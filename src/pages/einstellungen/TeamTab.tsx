@@ -16,6 +16,7 @@ import { offeneVerantwortung } from "@/core/fristenLage";
 import type { Frist } from "@/core/types";
 import { Abschnitt } from "./teile";
 import { ROLLE_AUSWAHL, ROLLE_SPALTE, rollenLabel } from "@/lib/rollen";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 type Anrede = "" | "Frau" | "Herr";
 
@@ -98,7 +99,7 @@ function EigenerZugang({ team, user, tenantKurz, plaetze, test }: { team: User[]
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
       <Abschnitt titel="Ihr Zugang" text={`Ihr persönlicher Zugang bei ${tenantKurz}. Zugänge, Lizenz und Teamliste verwalten Partner und Administration.`} icon={<Users className="size-[18px]" />}>
-        <div className="flex flex-wrap items-center gap-3 rounded-[18px] border border-[var(--line)] px-3.5 py-3">
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--line)] px-3.5 py-3">
           <Avatar initialen={user.initialen} farbe={user.farbe} size={42} />
           <div className="min-w-0 flex-1">
             <div className="truncate text-[14px] font-semibold">{user.name}</div>
@@ -112,8 +113,8 @@ function EigenerZugang({ team, user, tenantKurz, plaetze, test }: { team: User[]
             Abwesenheit & Vertretung
           </Button>
         </div>
-        <div className="mt-4 flex items-start gap-3 rounded-[16px] bg-[var(--ink-softer)] p-3.5">
-          <span className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">
+        <div className="mt-4 flex items-start gap-3 rounded-lg bg-[var(--ink-softer)] p-3.5">
+          <span className="grid size-9 shrink-0 place-items-center rounded-md bg-ink-soft text-ink">
             <InfinityIcon className="size-[18px]" />
           </span>
           <div className="min-w-0 text-[13px] text-fg-2">
@@ -205,7 +206,7 @@ function TeamVerwaltung() {
             <span style={{ width: `${Math.min(100, (team.length / plaetze) * 100)}%` }} />
           </div>
         </div>
-        <ul className="divide-y divide-[var(--line)] overflow-hidden rounded-[18px] border border-[var(--line)]">
+        <ul className="divide-y divide-[var(--line)] overflow-hidden rounded-lg border border-[var(--line)]">
           <AnimatePresence initial={false}>
             {sortiert.map((u) => {
               const ich = u.id === user.id;
@@ -218,14 +219,14 @@ function TeamVerwaltung() {
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
-                  transition={{ type: "spring", stiffness: 420, damping: 36 }}
+                  transition={BEWEGUNG.standard}
                   className="overflow-hidden"
                 >
                   <div className={cn("flex items-center gap-3 px-3.5 py-3", u.deaktiviert && "opacity-70")}>
                     <Avatar initialen={u.initialen} farbe={u.farbe} size={38} />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="truncate text-[13.5px] font-semibold">{u.name}</span>
+                        <span className="truncate text-[14px] font-semibold">{u.name}</span>
                         {ich && <Chip tone="ink">Sie</Chip>}
                         {u.deaktiviert && <Chip tone="seal">deaktiviert</Chip>}
                         <Chip tone={u.rolle === "partner" ? "ink" : "outline"} className="sm:hidden">
@@ -304,7 +305,7 @@ function RechteMatrix() {
   return (
     <Abschnitt titel="Rollen & Rechte" text="Übersicht der Standardrechte je Rolle." icon={<ShieldCheck className="size-[18px]" />}>
       {/* Bei schmaler Breite seitlich scrollbar – per Tastatur erreichbar (WCAG 2.1.1) */}
-      <div className="-mx-1 overflow-x-auto rounded-[12px] outline-none focus-visible:shadow-[0_0_0_2px_var(--focus)]" tabIndex={0} role="region" aria-label="Rechte je Rolle">
+      <div className="-mx-1 overflow-x-auto rounded-md outline-none focus-visible:shadow-[0_0_0_2px_var(--focus)]" tabIndex={0} role="region" aria-label="Rechte je Rolle">
         <table className="w-full min-w-[380px] text-[13px]">
           <caption className="sr-only">Rechte je Rolle</caption>
           <thead>
@@ -437,15 +438,15 @@ function AbwesenheitModal({ ziel, onClose }: { ziel: User | null; onClose: () =>
     return (
       <div className="grid gap-3">
         {ergebnis.eintraege.length === 0 ? (
-          <p className="flex items-start gap-2 rounded-[12px] bg-green-soft px-3 py-2.5 text-[13.5px] text-fg-2">
+          <p className="flex items-start gap-2 rounded-md bg-green-soft px-3 py-2.5 text-[14px] text-fg-2">
             <Check className="mt-0.5 size-4 shrink-0 text-green" /> Im Zeitraum liegen keine offenen Fristen.
           </p>
         ) : (
           <>
-            <p className="text-[13.5px] text-fg-2">
+            <p className="text-[14px] text-fg-2">
               Im Zeitraum: <span className="font-semibold text-fg">{vertretungUmfangText(ergebnis.eintraege)}</span>
             </p>
-            <ul className="grid divide-y divide-[var(--line)] overflow-hidden rounded-[14px] ring-1 ring-[var(--line)]" aria-label="Einträge im Zeitraum">
+            <ul className="grid divide-y divide-[var(--line)] overflow-hidden rounded-lg ring-1 ring-[var(--line)]" aria-label="Einträge im Zeitraum">
               {ergebnis.eintraege.map((f) => (
                 <li key={f.id} className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 px-3 py-2 text-[13px]">
                   <span className="num font-semibold text-fg">{tagKurz(f.datum)}</span>
@@ -460,8 +461,8 @@ function AbwesenheitModal({ ziel, onClose }: { ziel: User | null; onClose: () =>
           </>
         )}
         {ergebnis.vertretung ? (
-          <p className="flex items-start gap-2 rounded-[12px] bg-violet-soft px-3 py-2.5 text-[13px] leading-snug text-fg-2">
-            <Info className="mt-0.5 size-3.5 shrink-0 text-violet" />
+          <p className="flex items-start gap-2 rounded-md bg-[var(--surface-2)] px-3 py-2.5 text-[13px] leading-snug text-fg-2">
+            <Info className="mt-0.5 size-3.5 shrink-0 text-fg-3" />
             <span>
               {ergebnis.eintraege.length
                 ? `${ergebnis.vertretung.name} sieht sie ${abWann} im Cockpit und unter ‚Nur meine (+ Vertretung)‘.`
@@ -469,7 +470,7 @@ function AbwesenheitModal({ ziel, onClose }: { ziel: User | null; onClose: () =>
             </span>
           </p>
         ) : (
-          <p className="flex items-start gap-2 rounded-[12px] bg-amber-soft px-3 py-2.5 text-[13px] leading-snug text-fg-2">
+          <p className="flex items-start gap-2 rounded-md bg-amber-soft px-3 py-2.5 text-[13px] leading-snug text-fg-2">
             <Info className="mt-0.5 size-3.5 shrink-0 text-amber" />
             <span>Ohne Vertretung sieht niemand diese Einträge vorab – bitte eine Vertretung eintragen (§ 53 BRAO).</span>
           </p>
@@ -550,7 +551,7 @@ function AbwesenheitModal({ ziel, onClose }: { ziel: User | null; onClose: () =>
           </Select>
         </Field>
         {umgestellt && (
-          <p className="flex gap-2 rounded-[12px] bg-amber-soft px-3 py-2 text-[13px] text-fg-2">
+          <p className="flex gap-2 rounded-md bg-amber-soft px-3 py-2 text-[13px] text-fg-2">
             <Info className="mt-0.5 size-3.5 shrink-0 text-amber" /> {umgestellt}
           </p>
         )}
@@ -570,7 +571,7 @@ function AbwesenheitModal({ ziel, onClose }: { ziel: User | null; onClose: () =>
           <Input id="abw-grund" value={grund} maxLength={200} onChange={(e) => setGrund(e.target.value)} placeholder="z. B. Urlaub, Fortbildung" />
         </Field>
         {fehler && (
-          <div role="alert" className="rounded-[12px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal">
+          <div role="alert" className="rounded-md bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal">
             {fehler}
           </div>
         )}
@@ -734,7 +735,7 @@ function FolgenModal({ daten, onClose }: { daten: { user: User; art: FolgenArt }
             {nachtraeglich ? "Übertragen" : entfernen ? "Zugang entfernen" : "Deaktivieren"}
           </Button>
           {sperrgrund && (
-            <p id={grundId} className="basis-full text-right text-[12.5px] leading-snug text-fg-3">
+            <p id={grundId} className="basis-full text-right text-[13px] leading-snug text-fg-3">
               {sperrgrund}
             </p>
           )}
@@ -744,21 +745,21 @@ function FolgenModal({ daten, onClose }: { daten: { user: User; art: FolgenArt }
       {u && (
         <div className="grid gap-3.5">
           <div className={cn("grid gap-2", sachAkten.length > 0 ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2")}>
-            <div className="rounded-[14px] bg-[var(--ink-softer)] p-3 ring-1 ring-[var(--line)]">
+            <div className="rounded-lg bg-[var(--ink-softer)] p-3 ring-1 ring-[var(--line)]">
               <div className="num text-[22px] font-semibold">{bearbAkten.length}</div>
               <div className="text-[13px] text-fg-3">offene Akten (Bearbeitung)</div>
             </div>
             {sachAkten.length > 0 && (
-              <div className="rounded-[14px] bg-[var(--ink-softer)] p-3 ring-1 ring-[var(--line)]">
+              <div className="rounded-lg bg-[var(--ink-softer)] p-3 ring-1 ring-[var(--line)]">
                 <div className="num text-[22px] font-semibold">{sachAkten.length}</div>
                 <div className="text-[13px] text-fg-3">offene Akten (Sachbearbeitung)</div>
               </div>
             )}
-            <div className={cn("rounded-[14px] p-3 ring-1 ring-[var(--line)]", anzFristen ? "bg-amber-soft" : "bg-[var(--ink-softer)]")}>
+            <div className={cn("rounded-lg p-3 ring-1 ring-[var(--line)]", anzFristen ? "bg-amber-soft" : "bg-[var(--ink-softer)]")}>
               <div className="num text-[22px] font-semibold">{anzFristen}</div>
               <div className="text-[13px] text-fg-3">offene Fristen (verantwortlich)</div>
               {weitere > 0 && verantwortung && (
-                <div className="mt-0.5 text-[12.5px] text-fg-3">dazu {verantwortungText({ ...verantwortung, fristen: [] })}</div>
+                <div className="mt-0.5 text-[13px] text-fg-3">dazu {verantwortungText({ ...verantwortung, fristen: [] })}</div>
               )}
             </div>
           </div>
@@ -794,11 +795,11 @@ function FolgenModal({ daten, onClose }: { daten: { user: User; art: FolgenArt }
             </Field>
           )}
           {pflicht && ohneUebertragung && (
-            <label htmlFor="folgen-bestaetigt" className="flex items-start gap-2.5 rounded-[12px] bg-amber-soft px-3 py-2.5 text-[13px] leading-snug text-fg">
+            <label htmlFor="folgen-bestaetigt" className="flex items-start gap-2.5 rounded-md bg-amber-soft px-3 py-2.5 text-[13px] leading-snug text-fg">
               <input id="folgen-bestaetigt" type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[var(--seal)]" checked={bestaetigt} onChange={(e) => setBestaetigt(e.target.checked)} />
               <span>
                 Ich stelle sicher, dass {anzFristen === 1 ? "die offene Frist" : `die ${anzFristen} offenen Fristen`} von {u.name} überwacht {anzFristen === 1 ? "wird" : "werden"}.
-                <span className="mt-0.5 block text-[12.5px] text-fg-2">Die Fristen bleiben beim deaktivierten Zugang; das Cockpit weist darauf hin, bis sie übertragen sind. Der Vorgang wird mit Ihrem Namen protokolliert.</span>
+                <span className="mt-0.5 block text-[13px] text-fg-2">Die Fristen bleiben beim deaktivierten Zugang; das Cockpit weist darauf hin, bis sie übertragen sind. Der Vorgang wird mit Ihrem Namen protokolliert.</span>
               </span>
             </label>
           )}
@@ -816,7 +817,7 @@ function FolgenModal({ daten, onClose }: { daten: { user: User; art: FolgenArt }
             </Field>
           )}
           {fehler && (
-            <div role="alert" className="rounded-[12px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal">
+            <div role="alert" className="rounded-md bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal">
               {fehler}
             </div>
           )}
@@ -957,7 +958,7 @@ function EinladenModal({ open, onClose, voll }: { open: boolean; onClose: () => 
               <Input id="inv-titel" value={titel} onChange={(e) => setTitel(e.target.value)} placeholder={titelVorschlag(rolle, anrede)} />
             </Field>
           </div>
-          <p id="inv-rolle-folgen" aria-live="polite" className="flex gap-2 rounded-[12px] bg-[var(--ink-softer)] px-3.5 py-2.5 text-[13px] text-fg-2">
+          <p id="inv-rolle-folgen" aria-live="polite" className="flex gap-2 rounded-md bg-[var(--ink-softer)] px-3.5 py-2.5 text-[13px] text-fg-2">
             <Info className="mt-0.5 size-3.5 shrink-0 text-ink" />
             <span className="min-w-0">
               {rollenFolgen(rolle)}
@@ -965,9 +966,9 @@ function EinladenModal({ open, onClose, voll }: { open: boolean; onClose: () => 
               {(rolle === "refa" || rolle === "azubi" || rolle === "admin") && " Vertretung nach § 53 BRAO, Aktenbearbeitung und Fristverantwortung übernehmen nur Partner und Anwälte."}
             </span>
           </p>
-          {voll && <div className="rounded-[12px] bg-amber-soft px-3.5 py-2.5 text-[13px] text-fg-2">Alle Arbeitsplätze sind belegt. Weitere Arbeitsplätze erhalten Sie über {tenant.ansprechpartner.name}.</div>}
+          {voll && <div className="rounded-md bg-amber-soft px-3.5 py-2.5 text-[13px] text-fg-2">Alle Arbeitsplätze sind belegt. Weitere Arbeitsplätze erhalten Sie über {tenant.ansprechpartner.name}.</div>}
           {fehler && (
-            <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} role="alert" className="rounded-[12px] bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal">
+            <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} role="alert" className="rounded-md bg-seal-soft px-3.5 py-2.5 text-[13px] text-seal">
               {fehler}
             </motion.div>
           )}

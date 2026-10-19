@@ -1,151 +1,125 @@
-import { motion } from "motion/react";
-import { ArrowRight, BookCheck, Calculator, CalendarClock, Contact, FileStack, FileText, FolderOpen, Landmark, Lock, ScanSearch, ServerCog, ShieldCheck, UserCheck, Wallet } from "lucide-react";
+import { BookCheck, Calculator, Check, ChevronRight, Lock, ServerCog, ShieldCheck } from "lucide-react";
 import { AiChip } from "@/components/ui";
-import { AppIcon } from "@/components/Logo";
-import { cn } from "@/lib/cn";
-import { Abschnitt, Kopf, Reveal } from "./basis";
+import { Abschnitt, Kopf, Leise, scrollZu, useFaq } from "./basis";
+import { FRAGEN } from "./Abschluss";
 import { DEMO_KI_NAME } from "@/ai/status";
 import { VERARBEITUNGSORT } from "@/content/datenschutz";
 
-/** „Umzug in fünf Schritten – mit Vorschau und Rückgängig“ – Band mit fließenden Datenpaketen. */
+const UMZUG_PUNKTE = ["Akten mit Rubrum & Sachgebiet", "Kontakte – Dubletten zusammengeführt", "Fristen – geprüft, zur Vier-Augen-Kontrolle", "Datenblatt mit Originalwerten je Akte"];
+
+/** „Umzug in fünf Schritten – mit Vorschau und Rückgängig“ (DESIGN-SYSTEM.md 14.8): ein ruhiges Band auf Fläche 2, ohne Dauerbewegung. */
 export function UmzugBand() {
-  const pakete = [
-    { i: <FolderOpen className="size-3.5" />, t: "Akten" },
-    { i: <Contact className="size-3.5" />, t: "Kontakte" },
-    { i: <CalendarClock className="size-3.5" />, t: "Fristen" },
-    { i: <FileStack className="size-3.5" />, t: "Dokumente" },
-    { i: <Wallet className="size-3.5" />, t: "Aktenkonten" },
-  ];
+  const zurFrage = () => {
+    const i = Math.max(0, FRAGEN.findIndex((q) => q.f.startsWith("Wie läuft der Umzug")));
+    useFaq.getState().setOffen(i);
+    scrollZu("faq");
+    // Tastatur: der Fokus folgt zur geöffneten Frage (ohne den sanften Bildlauf zu unterbrechen)
+    requestAnimationFrame(() => document.getElementById(`faq-k-${i}`)?.focus({ preventScroll: true }));
+  };
   return (
-    <section aria-labelledby="umzug-titel" className="px-4 py-6 sm:px-6 md:py-10">
-      <Reveal className="glass mx-auto max-w-[1200px] overflow-hidden rounded-[30px] p-6 sm:p-8">
-        <div className="relative z-[2] grid items-center gap-8 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-          <div>
-            <div className="eyebrow mb-3 !text-ink">Umzug</div>
-            <h2 id="umzug-titel" className="text-[clamp(26px,3.2vw,38px)] font-bold leading-[1.06] tracking-[-0.04em]">
-              Umzug in fünf Schritten – mit Vorschau und Rückgängig.
-            </h2>
-            <p className="mt-3 max-w-[48ch] text-[15px] leading-relaxed text-fg-2">
-              Akten, Kontakte und Fristen übernimmt der Umzug vollständig; Dokumente und Aktenkonten übernehmen Sie gemeinsam mit Ihrer Ansprechpartnerin. Sie sehen vorab eine Vorschau, Dubletten werden erkannt, Fristen auf Plausibilität geprüft und zur Vier-Augen-Kontrolle vorgelegt. Jeder Lauf lässt sich rückgängig machen; bei Bedarf laufen beide Systeme parallel.
-            </p>
-          </div>
-          <div className="flex min-w-0 items-center gap-2 sm:gap-5">
-            <div className="flex w-[64px] shrink-0 flex-col items-center gap-2 text-center sm:w-[118px]">
-              <span className="grid size-12 place-items-center rounded-[16px] bg-[var(--ink-softer)] text-fg-3 shadow-[inset_0_0_0_1px_var(--line-strong)] sm:size-14 sm:rounded-[18px]">
-                <FileText className="size-6" />
-              </span>
-              <span className="text-[12px] leading-tight text-fg-3 sm:text-[12.5px]">
-                <span className="sm:hidden">Bisherige Software</span>
-                <span className="hidden sm:inline">Ihre bisherige Kanzleisoftware</span>
-              </span>
-            </div>
-            <div className="relative h-[150px] min-w-0 flex-1 overflow-hidden fade-x" aria-hidden>
-              <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-[var(--line-strong)]" />
-              {pakete.map((p, k) => (
-                <motion.span
-                  key={p.t}
-                  className="absolute left-0 inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--surface)] px-2 py-1 text-[12px] font-medium sm:px-2.5 sm:text-[12.5px] text-fg-2 shadow-[0_4px_12px_-6px_rgba(20,30,80,0.3),0_0_0_1px_var(--line)]"
-                  style={{ top: `${14 + ((k * 2) % 5) * 26}px` }}
-                  initial={{ left: `${k * 20 - 10}%` }}
-                  animate={{ left: ["-25%", "100%"] }}
-                  transition={{ duration: 7, repeat: Infinity, ease: "linear", delay: -k * 1.4 }}
-                >
-                  <span className="text-ink">{p.i}</span>
-                  {p.t}
-                </motion.span>
-              ))}
-            </div>
-            <div className="flex w-[64px] shrink-0 flex-col items-center gap-2 text-center sm:w-[118px]">
-              <AppIcon size={52} />
-              <span className="text-[12.5px] font-semibold leading-tight">Apex</span>
-            </div>
-          </div>
+    <Abschnitt id="umzug" labelledBy="umzug-titel">
+      <div className="grid items-start gap-10 rounded-lg bg-[var(--surface-2)] p-6 sm:p-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:gap-16">
+        <div className="min-w-0">
+          <p className="mb-3 text-[13px] font-medium leading-[18px] text-fg-3">Umzug</p>
+          <h2 id="umzug-titel" className="text-[24px] font-semibold leading-8 tracking-[-0.02em] text-fg md:text-[28px] md:leading-9">
+            Umzug in fünf Schritten – mit Vorschau und Rückgängig.
+          </h2>
+          <p className="mt-4 max-w-[60ch] text-[15px] leading-6 text-fg-2">
+            Akten, Kontakte und Fristen übernimmt der Umzug vollständig; Dokumente und Aktenkonten übernehmen Sie gemeinsam mit Ihrer Ansprechpartnerin. Sie sehen vorab eine Vorschau, Dubletten werden erkannt, Fristen auf Plausibilität geprüft und zur Vier-Augen-Kontrolle vorgelegt. Jeder Lauf lässt sich rückgängig machen; bei Bedarf laufen beide Systeme parallel.
+          </p>
+          <button type="button" onClick={zurFrage} className="link-leise mt-5 min-h-11 sm:min-h-6">
+            Wie der Umzug abläuft <ChevronRight aria-hidden />
+          </button>
         </div>
-      </Reveal>
-    </section>
+        <div className="min-w-0">
+          <p className="text-[13px] font-medium text-fg-3">Umzug aus Ihrer bisherigen Software</p>
+          <ul className="mt-3 divide-y divide-[var(--line)] border-y border-[var(--line)]">
+            {UMZUG_PUNKTE.map((p) => (
+              <li key={p} className="flex items-start gap-3 py-3 text-[14px] leading-5 text-fg">
+                <Check className="mt-0.5 size-4 shrink-0 text-fg-2" aria-hidden />
+                {p}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </Abschnitt>
   );
 }
 
 const PRINZIPIEN = [
-  { i: <Calculator className="size-5" />, t: "KI erkennt – Rechenkern berechnet", s: "Fristen rät keine KI. Sie erkennt das auslösende Ereignis, der geprüfte Fristenrechner rechnet nach §§ 187 ff. BGB und der jeweiligen Verfahrensordnung (z. B. § 222 ZPO, § 43 StPO) – mit Rechenweg und Feiertagen je Bundesland." },
-  { i: <BookCheck className="size-5" />, t: "Nachprüfbare Quellen", s: "Präzedenzfälle übernimmt die KI nur aus der Fall-Datenbank – jeweils mit Gericht, Datum und Aktenzeichen zum Nachprüfen. KI-Texte sind als Entwurf gekennzeichnet und werden vor Verwendung anwaltlich geprüft." },
-  { i: <ServerCog className="size-5" />, t: "Deutsches Rechenzentrum oder eigener Server", s: "Betrieb in einem deutschen Rechenzentrum oder auf einem eigenen Server in der Kanzlei. Live-KI – also die Verarbeitung durch das Sprachmodell eines KI-Anbieters – nur aufgabenbezogen über Ihren Server bei Anthropic (USA), oder komplett offline. Keine externen Schriften, ohne Nutzungsverfolgung." },
-  { i: <Lock className="size-5" />, t: "Verschwiegenheit nach § 203 StGB", s: "Strikte Mandantentrennung auf Datenbankebene, verschlüsselte Übertragung, Rollen und Rechte. Sie behalten die Kontrolle über jede Freigabe." },
+  { i: <Calculator className="size-4" />, t: "KI erkennt – Rechenkern berechnet", s: "Fristen rät keine KI. Sie erkennt das auslösende Ereignis, der geprüfte Fristenrechner rechnet nach §§ 187 ff. BGB und der jeweiligen Verfahrensordnung (z. B. § 222 ZPO, § 43 StPO) – mit Rechenweg und Feiertagen je Bundesland." },
+  { i: <BookCheck className="size-4" />, t: "Nachprüfbare Quellen", s: "Präzedenzfälle übernimmt die KI nur aus der Fall-Datenbank – jeweils mit Gericht, Datum und Aktenzeichen zum Nachprüfen. KI-Texte sind als Entwurf gekennzeichnet und werden vor Verwendung anwaltlich geprüft." },
+  { i: <ServerCog className="size-4" />, t: "Deutsches Rechenzentrum oder eigener Server", s: "Betrieb in einem deutschen Rechenzentrum oder auf einem eigenen Server in der Kanzlei. Live-KI – also die Verarbeitung durch das Sprachmodell eines KI-Anbieters – nur aufgabenbezogen über Ihren Server bei Anthropic (USA), oder komplett offline. Keine externen Schriften, ohne Nutzungsverfolgung." },
+  { i: <Lock className="size-4" />, t: "Verschwiegenheit nach § 203 StGB", s: "Strikte Mandantentrennung auf Datenbankebene, verschlüsselte Übertragung, Rollen und Rechte. Sie behalten die Kontrolle über jede Freigabe." },
 ];
 
+const SCHRITTE = [
+  { t: "beA-Zustellung", s: "Urteil geht ein" },
+  { t: "KI erkennt", s: "Ereignis & Akte", ai: true },
+  { t: "Rechenkern", s: "§ 222 ZPO, Feiertage" },
+  { t: "Sie prüfen", s: "Vier-Augen-Prinzip" },
+];
+
+/** KI und Datenschutz (DESIGN-SYSTEM.md 14.9): Ablauf in vier nummerierten Schritten, zweispaltige Liste, Verarbeitungsort als Hinweis. */
 export function Vertrauen() {
-  const schritte = [
-    { i: <Landmark className="size-4" />, t: "beA-Zustellung", s: "Urteil geht ein" },
-    { i: <ScanSearch className="size-4" />, t: "KI erkennt", s: "Ereignis & Akte", ai: true },
-    { i: <Calculator className="size-4" />, t: "Rechenkern", s: "§ 222 ZPO, Feiertage" },
-    { i: <UserCheck className="size-4" />, t: "Sie prüfen", s: "Vier-Augen-Prinzip" },
-  ];
   return (
-    <Abschnitt id="ki">
+    <Abschnitt id="ki" labelledBy="ki-titel">
       <Kopf
+        id="ki-titel"
         eyebrow="KI, der Sie vertrauen können"
         titel={
           <>
             Die KI schlägt vor.
-            <br /> <span className="text-fg-3">Sie entscheiden.</span>
+            <br /> <Leise>Sie entscheiden.</Leise>
           </>
         }
         text="Apex setzt KI dort ein, wo sie Zeit spart – und hält sie dort heraus, wo es auf Exaktheit ankommt. Jede KI-Aktion ist klar gekennzeichnet und bleibt ein Vorschlag, bis Sie ihn übernehmen."
       />
 
-      <Reveal className="sheet mb-4 rounded-[28px] p-5 sm:p-7">
-        <ol className="grid gap-3 sm:grid-cols-4 sm:gap-2">
-          {schritte.map((x, k) => (
-            <li key={x.t} className="relative flex items-center gap-3 sm:flex-col sm:text-center">
-              <motion.span
-                initial={{ scale: 0.85 }}
-                whileInView={{ scale: 1 }}
-                viewport={{ once: true }}
-                transition={{ type: "spring", stiffness: 420, damping: 20, delay: k * 0.12 }}
-                className={cn("relative z-[1] grid size-12 shrink-0 place-items-center rounded-[16px]", x.ai ? "ai-fill text-white shadow-[0_8px_20px_-8px_var(--ai-2)]" : "bg-ink-soft text-ink")}
-              >
-                {x.i}
-              </motion.span>
-              <span className="min-w-0">
-                <span className="flex items-center gap-2 text-[14px] font-semibold sm:justify-center">
-                  {x.t}
-                  {x.ai && <AiChip className="!h-[20px] !text-[12px]" />}
-                </span>
-                <span className="block text-[12.5px] text-fg-3">{x.s}</span>
+      <ol className="grid grid-cols-1 gap-x-8 sm:grid-cols-2 lg:grid-cols-4" aria-label="Von der Zustellung zur Frist">
+        {SCHRITTE.map((x, k) => (
+          <li key={x.t} className="flex items-start gap-3 border-t border-[var(--line)] py-4 sm:pb-0">
+            <span className="num w-5 shrink-0 text-[13px] font-semibold leading-[22px] text-fg-4">{k + 1}</span>
+            <span className="min-w-0">
+              <span className="flex flex-wrap items-center gap-2 text-[15px] font-semibold leading-[22px] text-fg">
+                {x.t}
+                {x.ai && <AiChip />}
               </span>
-              {k < schritte.length - 1 && <ArrowRight className="absolute -right-3 top-4 hidden size-4 text-fg-4 sm:block" />}
-            </li>
-          ))}
-        </ol>
-      </Reveal>
+              <span className="block text-[13px] leading-[18px] text-fg-3">{x.s}</span>
+            </span>
+          </li>
+        ))}
+      </ol>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {PRINZIPIEN.map((p, k) => (
-          <Reveal key={p.t} delay={k * 0.05} className="sheet glow relative rounded-[24px] p-6">
-            <div className="relative z-[1] flex items-start gap-4">
-              <span className="grid size-11 shrink-0 place-items-center rounded-[14px] bg-ink-soft text-ink">{p.i}</span>
-              <div className="min-w-0">
-                <h3 className="text-[17px] font-semibold tracking-[-0.02em]">{p.t}</h3>
-                <p className="mt-1.5 text-[14px] leading-relaxed text-fg-2">{p.s}</p>
-              </div>
+      <div className="mt-12 grid grid-cols-1 gap-x-12 gap-y-8 md:mt-16 md:grid-cols-2">
+        {PRINZIPIEN.map((p) => (
+          <div key={p.t} className="flex items-start gap-3">
+            <span className="mt-[3px] shrink-0 text-fg-2" aria-hidden>
+              {p.i}
+            </span>
+            <div className="min-w-0">
+              <h3 className="text-[15px] font-semibold leading-[22px] text-fg">{p.t}</h3>
+              <p className="mt-1 text-[14px] leading-[22px] text-fg-3">{p.s}</p>
             </div>
-          </Reveal>
+          </div>
         ))}
       </div>
-      <Reveal className="mt-4 rounded-[20px] bg-[var(--surface-2)] px-5 py-4 text-[14px] leading-relaxed text-fg-2 ring-1 ring-[var(--line)]">
+
+      <div className="mt-12 rounded-lg border border-[var(--line)] px-5 py-4 text-[14px] leading-[22px] text-fg-2 md:mt-16">
         <h3 className="text-[15px] font-semibold text-fg">{VERARBEITUNGSORT.titel} der KI</h3>
         <ul className="mt-1.5 grid gap-1">
           <li>{VERARBEITUNGSORT.live}</li>
           <li>{VERARBEITUNGSORT.demo}</li>
           <li className="text-fg-3">{VERARBEITUNGSORT.eu}</li>
         </ul>
-      </Reveal>
-      <Reveal className="mt-4 flex items-center gap-3 rounded-[20px] bg-green-soft px-5 py-4 text-[14px] text-fg-2">
-        <ShieldCheck className="size-5 shrink-0 text-green" />
-        <span>
-          <span className="font-semibold text-fg">Sie behalten die Hoheit:</span> In den Einstellungen legen Sie fest, ob die Live-KI (Claude) oder die {DEMO_KI_NAME} arbeitet – und sehen jederzeit, wohin Daten fließen.
-        </span>
-      </Reveal>
+        <p className="mt-3 flex items-start gap-2.5 border-t border-[var(--line)] pt-3">
+          <ShieldCheck className="mt-[3px] size-4 shrink-0 text-fg-3" aria-hidden />
+          <span>
+            <span className="font-semibold text-fg">Sie behalten die Hoheit:</span> In den Einstellungen legen Sie fest, ob die Live-KI (Claude) oder die {DEMO_KI_NAME} arbeitet – und sehen jederzeit, wohin Daten fließen.
+          </span>
+        </p>
+      </div>
     </Abschnitt>
   );
 }

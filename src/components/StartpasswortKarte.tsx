@@ -12,11 +12,11 @@ export const STARTPASSWORT_HINWEIS = "Getrennt übermitteln (telefonisch oder pe
 export function StartpasswortKarte({ passwort, kompakt }: { passwort: string; kompakt?: boolean }) {
   const feld = useRef<HTMLDivElement>(null);
   return (
-    <div className="rounded-[18px] bg-[radial-gradient(120%_140%_at_0%_0%,var(--ink-soft),transparent_70%)] p-4 ring-2 ring-[var(--ink)]">
+    <div className="rounded-lg border border-[var(--line-strong)] bg-[var(--surface)] p-4">
       <div className="flex items-center gap-1.5 text-[13px] font-medium text-fg-3">
         <KeyRound className="size-3.5" /> Startpasswort
       </div>
-      <div ref={feld} className={kompakt ? "mono mt-1 select-all break-all text-[18px] font-semibold tracking-[0.02em]" : "mono mt-1 select-all break-all text-[22px] font-semibold tracking-[0.02em]"}>
+      <div ref={feld} className={kompakt ? "mono mt-1 select-all break-all text-[18px] font-medium tracking-[0.02em]" : "mono mt-1 select-all break-all text-[22px] font-medium tracking-[0.02em]"}>
         {passwort}
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">

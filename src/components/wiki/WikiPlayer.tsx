@@ -64,7 +64,7 @@ export function WikiPlayer({ artikel, kompakt, onNavigate }: { artikel: WikiArti
           <div key={k} className="h-1 flex-1 overflow-hidden rounded-full bg-[var(--line)]">
             <motion.div
               key={`${k}-${i}-${pause}`}
-              className="h-full rounded-full bg-ink"
+              className="h-full rounded-full bg-[var(--ink)]"
               initial={{ width: k < i ? "100%" : "0%" }}
               animate={{ width: k < i ? "100%" : k === i ? (pause ? undefined : "100%") : "0%" }}
               transition={{ duration: k === i && !pause ? dauer / 1000 : 0, ease: "linear" }}
@@ -73,16 +73,16 @@ export function WikiPlayer({ artikel, kompakt, onNavigate }: { artikel: WikiArti
         ))}
       </div>
 
-      <div className={cn("relative overflow-hidden rounded-[22px] bg-[radial-gradient(120%_120%_at_20%_0%,var(--ink-soft),transparent_60%),var(--surface-2)] ring-1 ring-[var(--line)]", kompakt ? "h-[190px]" : "h-[240px]")}>
+      <div className={cn("buehne relative overflow-hidden", kompakt ? "h-[190px]" : "h-[240px]")}>
         <AnimatePresence mode="wait">
-          <motion.div key={`${artikel.key}-${i}`} initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.02 }} transition={{ duration: 0.4 }} className="absolute inset-0">
+          <motion.div key={`${artikel.key}-${i}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="absolute inset-0">
             <WikiVisualScene visual={s.visual} />
           </motion.div>
         </AnimatePresence>
       </div>
 
       <AnimatePresence mode="wait">
-        <motion.div key={`t-${artikel.key}-${i}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.3 }}>
+        <motion.div key={`t-${artikel.key}-${i}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.16 }}>
           <div className="eyebrow mb-1 flex flex-wrap items-center gap-x-1.5">
             <span>
               Schritt {i + 1} von {n}
@@ -95,7 +95,7 @@ export function WikiPlayer({ artikel, kompakt, onNavigate }: { artikel: WikiArti
             )}
           </div>
           <div className="title-md">{s.titel}</div>
-          <p className="mt-1.5 text-[13.5px] leading-relaxed text-fg-2">{s.text}</p>
+          <p className="mt-1 text-[14px] leading-[22px] text-fg-2">{s.text}</p>
         </motion.div>
       </AnimatePresence>
 
@@ -124,9 +124,9 @@ export function WikiPlayer({ artikel, kompakt, onNavigate }: { artikel: WikiArti
       </div>
 
       {artikel.tipps && artikel.tipps.length > 0 && (
-        <div className="rounded-[16px] bg-amber-soft p-3.5">
+        <div className="rounded-md bg-amber-soft p-3">
           {artikel.tipps.map((t, k) => (
-            <div key={k} className="flex gap-2 text-[12.5px] leading-snug text-fg-2">
+            <div key={k} className="flex gap-2 text-[13px] leading-snug text-fg-2">
               <Lightbulb className="mt-0.5 size-3.5 shrink-0 text-amber" />
               {t}
             </div>

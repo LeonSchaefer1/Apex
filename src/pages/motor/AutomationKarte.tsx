@@ -1,7 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
-import { motion, useReducedMotion } from "motion/react";
-import { ArrowUpRight, Check, Clock, History, Lock, Play, Radio, Repeat, ShieldCheck, Timer, Zap } from "lucide-react";
+import { ArrowUpRight, Check, History, Lock, Play, Radio, ShieldCheck, Zap } from "lucide-react";
 import type { Aktivitaet, Automation } from "@/core/types";
 import { addDays, fmtNum, nowLocal, relTime, toLocalISO, today } from "@/core/dates";
 import { useData } from "@/store/data";
@@ -13,7 +12,7 @@ import { cn } from "@/lib/cn";
 import { automationDef, folgeBeimPausieren, folgeWaehrendPause, istFristAutomatik } from "@/core/automationen";
 import { automatikSchaltText } from "@/lib/backend/protokoll";
 import { darfAutomatikSchalten } from "@/lib/rollen";
-import { FLOW_SEGMENT_S, KATEGORIE_ICON, fmtStd, vorgaengeVon } from "./shared";
+import { KATEGORIE_ICON, fmtStd, vorgaengeVon } from "./shared";
 
 /** „Freigabe: …“ – aus der Definition der Automatik (Paket A, A-17). */
 /**
@@ -30,16 +29,27 @@ export function vorgangVon(key: string): string {
   return automationDef(key)?.vorgang ?? "je Vorgang";
 }
 
+/** Zeile „Auslöser: …“ bzw. „Freigabe: …“ – Symbol 14 px in Text 4, Bezeichnung Text 4, Wert Text 2; ohne Fläche. */
+function AngabeZeile({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-2 text-[13px] leading-[18px]">
+      <span className="mt-0.5 shrink-0 text-fg-4 [&>svg]:size-3.5" aria-hidden>
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="text-fg-4">{label}: </span>
+        <span className="text-fg-2">{children}</span>
+      </span>
+    </div>
+  );
+}
+
 /** Freigabezeile für Karte und Detailansicht. */
 function FreigabeZeile({ k }: { k: string }) {
   return (
-    <div className="flex items-start gap-2 rounded-[12px] bg-[var(--ink-softer)] px-3 py-2 text-[12.5px]">
-      <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-ink" />
-      <span className="min-w-0">
-        <span className="text-fg-3">Freigabe: </span>
-        <span className="font-medium text-fg-2">{freigabeVon(k)}</span>
-      </span>
-    </div>
+    <AngabeZeile icon={<ShieldCheck />} label="Freigabe">
+      {freigabeVon(k)}
+    </AngabeZeile>
   );
 }
 
@@ -86,7 +96,10 @@ export function useAutomationUmschalten() {
   };
 }
 
-/** Kompakter Ablauf: nummerierte Stationen, zwischen denen ein Lichtpunkt wandert, solange die Automation aktiv ist. */
+/**
+ * Kompakter Ablauf: nummerierte Stationen auf einer feinen Linie (DESIGN-SYSTEM.md 10: keine Dauerbewegung). Hover oder Fokus
+ * auf einer Station nennt den Schritt; sonst steht „erster Schritt → … → letzter Schritt“ darunter.
+ */
 export function MiniFlow({ schritte, aktiv }: { schritte: string[]; aktiv: boolean }) {
   const [hover, setHover] = useState<number | null>(null);
   const k = schritte.length - 1;
@@ -99,33 +112,24 @@ export function MiniFlow({ schritte, aktiv }: { schritte: string[]; aktiv: boole
               title={s}
               onMouseEnter={() => setHover(i)}
               className={cn(
-                "num relative z-[2] grid size-6 shrink-0 place-items-center rounded-full text-[11px] font-semibold transition-all duration-300 ease-[var(--spring)]",
-                aktiv ? "bg-ink-soft text-ink" : "bg-[var(--line)] text-fg-3",
-                hover === i && "scale-110 bg-ink text-[var(--on-ink)]",
+                "num relative z-[2] grid size-6 shrink-0 place-items-center rounded-full border text-[12px] font-medium transition-colors duration-100",
+                hover === i ? "border-[var(--ink)] bg-[var(--ink)] text-[var(--on-ink)]" : aktiv ? "border-[var(--line-strong)] bg-[var(--surface)] text-fg-2" : "border-[var(--line)] bg-[var(--surface)] text-fg-4",
               )}
             >
-              {i === k ? <Check className="size-3" strokeWidth={3} /> : i + 1}
+              {i === k ? <Check className="size-3" strokeWidth={2} /> : i + 1}
             </span>
-            {i < k && (
-              <span className="relative mx-1 h-[2px] min-w-2 flex-1 overflow-hidden rounded-full bg-[var(--line-strong)]">
-                {aktiv && (
-                  <span className="absolute inset-0" style={{ animation: `aa-flow-${k} ${k * FLOW_SEGMENT_S}s linear ${i * FLOW_SEGMENT_S}s infinite`, opacity: 0 }}>
-                    <span className="absolute left-0 top-1/2 h-[4px] w-3 -translate-x-full -translate-y-1/2 rounded-full bg-ink shadow-[0_0_8px_var(--ink)]" />
-                  </span>
-                )}
-              </span>
-            )}
+            {i < k && <span className="mx-1 h-px min-w-2 flex-1 bg-[var(--line-strong)]" aria-hidden />}
           </Fragment>
         ))}
       </div>
-      <div className="mt-2 min-h-[18px] text-[12.5px] text-fg-3">
+      <div className="mt-2 min-h-[18px] text-[13px] leading-[18px] text-fg-3">
         {hover !== null ? (
           <>
-            <span className="font-semibold text-fg-2">Schritt {hover + 1}:</span> {schritte[hover]}
+            <span className="font-medium text-fg-2">Schritt {hover + 1}:</span> {schritte[hover]}
           </>
         ) : (
           <>
-            {schritte[0]} <span className="text-fg-3">→ … →</span> {schritte[k]}
+            {schritte[0]} <span className="text-fg-4">→ … →</span> {schritte[k]}
           </>
         )}
       </div>
@@ -155,27 +159,17 @@ export function AutomationKarte({ a, onOpen, now, ausFeed }: { a: Automation; on
   const umschalten = useAutomationUmschalten();
   const { user } = useKanzlei();
   const darf = darfAutomatikSchalten(user, a.key);
-  const Icon = KATEGORIE_ICON[a.kategorie];
   return (
-    <Card className={cn("group flex h-full flex-col gap-4 transition-[transform,box-shadow,opacity] duration-300 ease-[var(--spring)] hover:-translate-y-0.5 hover:shadow-glass", !a.aktiv && "opacity-[0.82]")}>
+    <Card className="group flex h-full flex-col gap-4 transition-[border-color] duration-100 hover:border-[var(--line-strong)]">
       {/* Gesamte Karte öffnet die Details – Schalter liegt darüber */}
-      <button type="button" onClick={onOpen} className="absolute inset-0 z-[1] rounded-[22px]" aria-label={`Details zu „${a.name}“ öffnen`} />
+      <button type="button" onClick={onOpen} className="absolute inset-0 z-[1] rounded-lg" aria-label={`Details zu „${a.name}“ öffnen`} />
       <div className="flex items-start gap-3">
-        <div className={cn("grid size-10 shrink-0 place-items-center rounded-[12px] transition-colors", a.aktiv ? "bg-ink-soft text-ink" : "bg-[var(--line)] text-fg-3")}>
-          <Icon className="size-[18px]" />
-        </div>
         <div className="min-w-0 flex-1">
           <div className="title-md line-clamp-3 hyphens-auto break-words">{weichGetrennt(a.name)}</div>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <Chip>{a.kategorie}</Chip>
             <span aria-live="polite" className="inline-flex">
-              {a.aktiv ? (
-                <Chip tone="green" dot>
-                  Aktiv
-                </Chip>
-              ) : (
-                <Chip tone="outline">Pausiert – ruht, bis Sie sie einschalten</Chip>
-              )}
+              {a.aktiv ? <Chip tone="green">Aktiv</Chip> : <Chip tone="outline">Pausiert – ruht, bis Sie sie einschalten</Chip>}
             </span>
           </div>
         </div>
@@ -184,22 +178,18 @@ export function AutomationKarte({ a, onOpen, now, ausFeed }: { a: Automation; on
         </div>
       </div>
       {!darf && (
-        <p id={`${a.key}-recht-karte`} className="-mt-2 flex items-center gap-1.5 text-[12.5px] text-fg-3">
+        <p id={`${a.key}-recht-karte`} className="-mt-2 flex items-center gap-1.5 text-[13px] text-fg-3">
           <Lock className="size-3.5 shrink-0" aria-hidden /> {FRIST_AUTOMATIK_RECHT}
         </p>
       )}
 
       {/* Das „Was“ vollständig – nicht gekürzt, in Fließtextgröße (I4-T10-01) */}
-      <p className="text-[14px] leading-relaxed text-fg-2">{a.beschreibung}</p>
+      <p className="text-[14px] leading-5 text-fg-2">{a.beschreibung}</p>
 
       <div className="grid gap-1.5">
-        <div className="flex items-start gap-2 rounded-[12px] bg-[var(--ink-softer)] px-3 py-2 text-[12.5px]">
-          <Radio className="mt-0.5 size-3.5 shrink-0 text-ink" />
-          <span className="min-w-0">
-            <span className="text-fg-3">Auslöser: </span>
-            <span className="font-medium text-fg-2">{a.ausloeser}</span>
-          </span>
-        </div>
+        <AngabeZeile icon={<Radio />} label="Auslöser">
+          {a.ausloeser}
+        </AngabeZeile>
         <FreigabeZeile k={a.key} />
       </div>
 
@@ -208,23 +198,20 @@ export function AutomationKarte({ a, onOpen, now, ausFeed }: { a: Automation; on
       </div>
 
       {/* Kennzahlen untereinander – lange Bezeichnungen („je Mandanteninformation“) überlagern nichts */}
-      <dl className="mt-auto grid gap-1.5 border-t border-[var(--line)] pt-3.5">
-        <Kennzahl icon={<Timer className="size-3.5" />} label={`Ersparnis ${vorgangVon(a.key)}`} wert={`${a.minutenProLauf} Min.`} />
-        <Kennzahl icon={<Repeat className="size-3.5" />} label="Vorgänge gesamt" wert={fmtNum(a.laeufe)} />
-        <Kennzahl icon={<Clock className="size-3.5" />} label="Zuletzt" wert={letzter ? relTime(letzter, now) : "–"} />
+      <dl className="mt-auto grid gap-1.5 border-t border-[var(--line)] pt-4">
+        <Kennzahl label={`Ersparnis ${vorgangVon(a.key)}`} wert={`${a.minutenProLauf} Min.`} />
+        <Kennzahl label="Vorgänge gesamt" wert={fmtNum(a.laeufe)} />
+        <Kennzahl label="Zuletzt" wert={letzter ? relTime(letzter, now) : "–"} />
       </dl>
     </Card>
   );
 }
 
-function Kennzahl({ icon, label, wert }: { icon: React.ReactNode; label: string; wert: string }) {
+function Kennzahl({ label, wert }: { label: string; wert: string }) {
   return (
     <div className="flex min-w-0 items-baseline justify-between gap-3">
-      <dt className="flex min-w-0 items-start gap-1.5 text-[12.5px] text-fg-3">
-        <span className="mt-0.5 shrink-0">{icon}</span>
-        <span className="min-w-0 break-words leading-snug">{label}</span>
-      </dt>
-      <dd className="num shrink-0 text-[13.5px] font-semibold">{wert}</dd>
+      <dt className="min-w-0 break-words text-[13px] leading-[18px] text-fg-3">{label}</dt>
+      <dd className="num shrink-0 text-[14px] font-medium text-fg">{wert}</dd>
     </div>
   );
 }
@@ -249,7 +236,6 @@ export function AutomationDrawer({ a: aktuell, onClose, aktivitaeten, now }: { a
   const letzte7 = useMemo(() => (a ? aktivitaeten.filter((x) => x.automationKey === a.key && x.zeit.slice(0, 10) >= grenze) : []), [a, aktivitaeten, grenze]);
   const vorgaenge7 = letzte7.reduce((s, x) => s + vorgaengeVon(x), 0);
   const Icon = a ? KATEGORIE_ICON[a.kategorie] : Zap;
-  const reduziert = useReducedMotion();
 
   const jetztAusfuehren = () => {
     if (!a) return;
@@ -291,12 +277,12 @@ export function AutomationDrawer({ a: aktuell, onClose, aktivitaeten, now }: { a
     >
       {a && (
         <div className="flex flex-col gap-5">
-          <div className="flex items-center justify-between gap-3 rounded-[16px] bg-[var(--ink-softer)] p-3.5">
+          <div className="flex items-center justify-between gap-3 border-b border-[var(--line)] pb-4">
             <div className="min-w-0">
-              <div className="text-[13.5px] font-semibold" aria-live="polite">{a.aktiv ? "Automatik ist aktiv" : "Automatik ist pausiert"}</div>
-              <div className="text-[12.5px] text-fg-3">{a.aktiv ? `Freigabe: ${freigabeVon(a.key)}.` : "Es werden keine Vorgänge bearbeitet."}</div>
+              <div className="text-[14px] font-medium text-fg" aria-live="polite">{a.aktiv ? "Automatik ist aktiv" : "Automatik ist pausiert"}</div>
+              <div className="mt-0.5 text-[13px] text-fg-3">{a.aktiv ? `Freigabe: ${freigabeVon(a.key)}.` : "Es werden keine Vorgänge bearbeitet."}</div>
               {!darfDrawer && (
-                <div id={`${a.key}-recht-detail`} className="mt-1 flex items-center gap-1.5 text-[12.5px] text-fg-3">
+                <div id={`${a.key}-recht-detail`} className="mt-1 flex items-center gap-1.5 text-[13px] text-fg-3">
                   <Lock className="size-3.5 shrink-0" aria-hidden /> {FRIST_AUTOMATIK_RECHT}
                 </div>
               )}
@@ -304,94 +290,73 @@ export function AutomationDrawer({ a: aktuell, onClose, aktivitaeten, now }: { a
             <AutomatikSchalter a={a} darf={darfDrawer} onChange={(v) => void umschalten(a, v)} rechtId={`${a.key}-recht-detail`} />
           </div>
 
-          <p className="text-[14px] leading-relaxed text-fg-2">{a.beschreibung}</p>
+          <p className="text-[14px] leading-5 text-fg-2">{a.beschreibung}</p>
 
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
             <MiniStat label={`Min. ${vorgangVon(a.key)}`} wert={`${a.minutenProLauf} Min.`} />
             <MiniStat label="Vorgänge gesamt" wert={fmtNum(a.laeufe)} />
             <MiniStat label="Gesamt gespart" wert={`${fmtStd(a.laeufe * a.minutenProLauf)} Std.`} />
             <MiniStat label="Letzte 7 Tage" wert={`${vorgaenge7} ${vorgaenge7 === 1 ? "Vorgang" : "Vorgänge"}`} />
-          </div>
+          </dl>
 
           <section>
-            <div className="eyebrow mb-2">Auslöser und Freigabe</div>
+            <h3 className="title-md mb-2">Auslöser und Freigabe</h3>
             <div className="grid gap-1.5">
-              <div className="flex items-center gap-2.5 rounded-[14px] border border-[var(--line)] px-3.5 py-3 text-[13.5px]">
-                <Radio className="size-4 shrink-0 text-ink" />
+              <AngabeZeile icon={<Radio />} label="Auslöser">
                 {a.ausloeser}
-              </div>
+              </AngabeZeile>
               <FreigabeZeile k={a.key} />
             </div>
           </section>
 
           <section>
-            <div className="eyebrow mb-3">Ablauf</div>
+            <h3 className="title-md mb-3">Ablauf</h3>
             <ol className="relative">
               {a.schritte.map((s, i) => {
                 const letzter = i === a.schritte.length - 1;
                 return (
-                  <motion.li
-                    key={s}
-                    initial={{ opacity: 0, x: 10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ type: "spring", stiffness: 460, damping: 34, delay: 0.08 + i * 0.05 }}
-                    className="relative flex gap-3 pb-4 last:pb-0"
-                  >
-                    {!letzter && (
-                      <span className="absolute left-[13px] top-7 h-[calc(100%-24px)] w-[2px] overflow-hidden rounded-full bg-[var(--line-strong)]">
-                        {a.aktiv && !reduziert && (
-                          <motion.span
-                            className="absolute left-0 top-0 h-3 w-full rounded-full bg-ink"
-                            animate={{ y: ["-100%", "400%"] }}
-                            transition={{ duration: 1.2, repeat: Infinity, repeatDelay: (a.schritte.length - 2) * 1.2, delay: i * 1.2, ease: "easeInOut" }}
-                          />
-                        )}
-                      </span>
-                    )}
-                    <span className={cn("num relative grid size-7 shrink-0 place-items-center rounded-full text-[12px] font-semibold", letzter ? "bg-green-soft text-green" : "bg-ink-soft text-ink")}>
-                      {letzter ? <Check className="size-3.5" strokeWidth={3} /> : i + 1}
+                  <li key={s} className="relative flex gap-3 pb-4 last:pb-0">
+                    {!letzter && <span className="absolute left-[11px] top-7 h-[calc(100%-28px)] w-px bg-[var(--line-strong)]" aria-hidden />}
+                    <span className="num relative grid size-6 shrink-0 place-items-center rounded-full border border-[var(--line-strong)] bg-[var(--surface-pop)] text-[12px] font-medium text-fg-2">
+                      {letzter ? <Check className="size-3" strokeWidth={2} /> : i + 1}
                     </span>
-                    <span className="pt-1 text-[13.5px] leading-snug">{s}</span>
-                  </motion.li>
+                    <span className="pt-0.5 text-[14px] leading-5">{s}</span>
+                  </li>
                 );
               })}
             </ol>
           </section>
 
           <section>
-            <div className="mb-2 flex items-center gap-2">
-              <History className="size-4 text-fg-3" />
-              <span className="eyebrow">Zuletzt bearbeitet</span>
-            </div>
+            <h3 className="title-md mb-2 flex items-center gap-2">
+              <History className="size-4 text-fg-4" aria-hidden />
+              Zuletzt bearbeitet
+            </h3>
             {laeufe.length === 0 ? (
-              <Empty icon={<Zap className="size-6" />} title="Noch keine Vorgänge" text="Sobald der Auslöser eintritt, erscheinen die bearbeiteten Vorgänge hier – mit gesparter Zeit." />
+              <Empty icon={<Zap />} title="Noch keine Vorgänge" text="Sobald der Auslöser eintritt, erscheinen die bearbeiteten Vorgänge hier – mit gesparter Zeit." />
             ) : (
-              <ul className="divide-y divide-[var(--line)] overflow-hidden rounded-[16px] border border-[var(--line)]">
+              <ul className="divide-y divide-[var(--line)] overflow-hidden rounded-lg border border-[var(--line)]">
                 {laeufe.map((l) => (
                   <li key={l.id}>
                     <button
                       type="button"
                       disabled={!l.akteId}
                       onClick={() => l.akteId && nav(`/akten/${l.akteId}`)}
-                      className="group flex w-full items-start gap-3 px-3.5 py-2.5 text-left transition-colors enabled:hover:bg-[var(--ink-softer)] disabled:cursor-default"
+                      className="group flex w-full items-start gap-3 px-3.5 py-2.5 text-left transition-colors duration-100 enabled:hover:bg-[var(--surface-pop-hover)] disabled:cursor-default focus-visible:outline-offset-[-2px]"
                     >
                       <span className="min-w-0 flex-1">
-                        <span className="line-clamp-2 text-[13px] leading-snug">{l.text}</span>
-                        <span className="text-[12px] text-fg-3">{relTime(l.zeit, now)}</span>
+                        <span className="line-clamp-2 text-[14px] leading-5">{l.text}</span>
+                        <span className="text-[13px] text-fg-4">{relTime(l.zeit, now)}</span>
                       </span>
-                      {l.minutenGespart ? (
-                        <Chip tone="green" className="num shrink-0">
-                          +{l.minutenGespart} Min.
-                        </Chip>
-                      ) : null}
-                      {l.akteId && <ArrowUpRight className="mt-0.5 size-4 shrink-0 text-fg-3 transition-colors group-hover:text-ink" />}
+                      {l.minutenGespart ? <span className="num mt-0.5 shrink-0 text-[13px] text-fg-3">+{l.minutenGespart} Min.</span> : null}
+                      {l.akteId && <ArrowUpRight className="mt-0.5 size-4 shrink-0 text-fg-4 transition-colors group-hover:text-fg" aria-hidden />}
                     </button>
                   </li>
                 ))}
               </ul>
             )}
           </section>
-          {a.aktiv && <p className="text-[12.5px] leading-snug text-fg-3">„Jetzt ausführen“ wird im Demo-Betrieb simuliert und erscheint wie ein echter Vorgang im Protokoll.</p>}
+          {a.aktiv && <p className="text-[13px] leading-[18px] text-fg-4">„Jetzt ausführen“ wird im Demo-Betrieb simuliert und erscheint wie ein echter Vorgang im Protokoll.</p>}
         </div>
       )}
     </Drawer>
@@ -400,9 +365,11 @@ export function AutomationDrawer({ a: aktuell, onClose, aktivitaeten, now }: { a
 
 function MiniStat({ label, wert }: { label: string; wert: string }) {
   return (
-    <div className="min-w-0 rounded-[14px] border border-[var(--line)] px-3 py-2.5">
-      <div className="text-[12px] leading-snug text-fg-3">{label}</div>
-      <div className="num mt-0.5 truncate text-[15px] font-semibold tracking-[-0.01em]">{wert}</div>
+    <div className="min-w-0">
+      <dt className="text-[13px] leading-[18px] text-fg-3">{label}</dt>
+      <dd className="num mt-0.5 truncate text-[15px] font-semibold" title={wert}>
+        {wert}
+      </dd>
     </div>
   );
 }

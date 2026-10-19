@@ -2,7 +2,7 @@
 // Keine stille Vorbelegung: Fristart per Suche wählen, Ereignisdatum ist Pflicht (Vorschlag nur mit Quelle), Warnung vor Dubletten.
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { AlertTriangle, CalendarClock, CalendarPlus, Calculator, Info, ShieldAlert, Sparkles } from "lucide-react";
+import { AlertTriangle, CalendarClock, CalendarPlus, Calculator, Info, Sparkles, TriangleAlert } from "lucide-react";
 import type { Akte, Bundesland, Frist, FristTyp } from "@/core/types";
 import { FRIST_REGELN, berechneNachRegel, berechnungsNormen, fristArt, gerichtsortDerAkte, type Einheit, type FristRegel } from "@/core/fristen";
 import { bundeslandName, feiertagAm, istWerktag } from "@/core/feiertage";
@@ -17,6 +17,7 @@ import { FRIST_TYP_LABEL, beruehreAkte, dringlichkeit, useTeam } from "./helfer"
 import { FristartAuswahl } from "@/pages/fristen/FristartAuswahl";
 
 import { ereignisVorschlaege } from "./fristVorschlaege";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 export { ereignisVorschlaege } from "./fristVorschlaege";
 
@@ -25,7 +26,7 @@ export { ereignisVorschlaege } from "./fristVorschlaege";
  */
 function Wahl<T extends string>({ value, onChange, options, label, full }: { value: T; onChange: (v: T) => void; options: { value: T; label: string; icon?: React.ReactNode }[]; label: string; full?: boolean }) {
   return (
-    <div role="radiogroup" aria-label={label} className={cn("flex flex-wrap gap-1 rounded-[18px] bg-[var(--ink-softer)] p-1 shadow-[inset_0_0_0_1px_var(--line)]", full ? "w-full" : "w-fit max-w-full")}>
+    <div role="radiogroup" aria-label={label} className={cn("flex flex-wrap gap-1 rounded-lg bg-[var(--ink-softer)] p-1 shadow-[inset_0_0_0_1px_var(--line)]", full ? "w-full" : "w-fit max-w-full")}>
       {options.map((o) => {
         const aktiv = o.value === value;
         return (
@@ -36,8 +37,8 @@ function Wahl<T extends string>({ value, onChange, options, label, full }: { val
             aria-checked={aktiv}
             onClick={() => onChange(o.value)}
             className={cn(
-              "inline-flex min-h-[36px] min-w-0 flex-1 basis-[130px] items-center justify-center gap-1.5 rounded-[14px] px-3 py-1.5 text-center text-[13px] font-medium leading-tight transition-colors",
-              aktiv ? "bg-[var(--glass-strong)] text-fg shadow-[0_2px_10px_-2px_rgba(20,30,80,0.18),0_0_0_1px_var(--line)]" : "text-fg-3 hover:text-fg-2",
+              "inline-flex min-h-[36px] min-w-0 flex-1 basis-[130px] items-center justify-center gap-1.5 rounded-sm px-3 py-1.5 text-center text-[13px] leading-tight transition-colors duration-100",
+              aktiv ? "bg-[var(--surface)] font-semibold text-fg shadow-[inset_0_0_0_1px_var(--line-strong)]" : "font-medium text-fg-3 hover:text-fg",
             )}
           >
             {o.icon}
@@ -279,7 +280,7 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
               {vorschlaege.length > 0 && (
                 <ul className="-mt-1.5 grid gap-1.5" aria-label="Vorschläge aus der Akte">
                   {vorschlaege.map((v) => (
-                    <li key={v.datum + v.quelle} className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-[12px] bg-ink-softer px-3 py-2 text-[12.5px] text-fg-2 ring-1 ring-inset ring-[var(--line)]">
+                    <li key={v.datum + v.quelle} className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md bg-[var(--surface-2)] px-3 py-2 text-[13px] text-fg-2">
                       <Sparkles className="size-3.5 shrink-0 text-ink" aria-hidden />
                       <span className="min-w-0 flex-1">
                         {v.quelle}: <span className="num font-semibold text-fg">{fmtDate(v.datum)}</span>
@@ -287,7 +288,7 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
                       {ereignis === v.datum ? (
                         <span className="font-medium text-green">übernommen</span>
                       ) : (
-                        <button type="button" className="min-h-[32px] rounded-full px-2 font-medium text-ink hover:bg-ink-soft" onClick={() => setEreignis(v.datum)}>
+                        <button type="button" className="min-h-[32px] rounded-md px-2 font-medium text-fg underline decoration-[var(--line-strong)] underline-offset-[3px] hover:bg-[var(--surface-2)]" onClick={() => setEreignis(v.datum)}>
                           übernehmen
                         </button>
                       )}
@@ -320,7 +321,7 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
                     </Select>
                   </div>
                   {einheitFehlt && (
-                    <p id="fa-einheit-fehler" className="mt-1.5 flex items-start gap-1.5 text-[12.5px] font-medium text-seal">
+                    <p id="fa-einheit-fehler" className="mt-1.5 flex items-start gap-1.5 text-[13px] font-medium text-seal">
                       <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden /> Bitte die Einheit wählen – Tage, Wochen oder Monate.
                     </p>
                   )}
@@ -336,7 +337,7 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
             </div>
             <div className="grid content-start gap-3">
               {dublette && (
-                <div role="alert" className="grid gap-2 rounded-[16px] bg-seal-soft p-3.5 text-[12.5px] leading-relaxed text-seal">
+                <div role="alert" className="grid gap-2 rounded-lg bg-seal-soft p-3.5 text-[13px] leading-relaxed text-seal">
                   <div className="flex gap-2">
                     <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
                     <span>
@@ -420,7 +421,7 @@ export function FristAnlegen({ akte, open, onClose, startModus = "regel" }: { ak
 /** Fristende bzw. Datum vor heute – Pflichtbestätigung wie bei der Doppelung; der Eintrag vermerkt sie im Verlauf. */
 function VergangenBestaetigung({ datum, ok, onOk, art }: { datum: string; ok: boolean; onOk: (v: boolean) => void; art?: string }) {
   return (
-    <div role="alert" className="grid gap-2 rounded-[16px] bg-seal-soft p-3.5 text-[12.5px] leading-relaxed text-seal">
+    <div role="alert" className="grid gap-2 rounded-lg bg-seal-soft p-3.5 text-[13px] leading-relaxed text-seal">
       <div className="flex gap-2">
         <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
         <span>
@@ -455,40 +456,40 @@ function Verantwortlich({ id, value, onChange, team, nurBerufstraeger }: { id: s
 function Vorschau({ ergebnis, land, fehlt }: { ergebnis: (ReturnType<typeof berechneNachRegel> & { regel: FristRegel }) | null; land: Bundesland; fehlt?: string }) {
   if (!ergebnis) {
     return (
-      <div role="status" className="grid grid-cols-1 place-items-center gap-1 rounded-[18px] bg-ink-softer p-6 text-center shadow-[inset_0_0_0_1px_var(--line)]">
+      <div role="status" className="grid grid-cols-1 place-items-center gap-1 rounded-md bg-[var(--surface-2)] p-6 text-center">
         <Calculator className="size-5 text-fg-3" />
-        <div className="text-[13.5px] font-semibold text-fg">Noch kein Fristende</div>
-        <div className="text-[12.5px] text-fg-2">{fehlt ?? "Bitte ein gültiges Datum wählen – das Fristende erscheint sofort hier."}</div>
+        <div className="text-[14px] font-semibold text-fg">Noch kein Fristende</div>
+        <div className="text-[13px] text-fg-2">{fehlt ?? "Bitte ein gültiges Datum wählen – das Fristende erscheint sofort hier."}</div>
       </div>
     );
   }
-  const d = dringlichkeit(ergebnis.ende);
   // Rechtsnatur aus der Fristregel: „Notfrist“ nur, wo das Gesetz sie so nennt; nicht verlängerbare Fristen ebenfalls rot
   const art = fristArt(ergebnis.regel);
+  const d = dringlichkeit(ergebnis.ende, art.kritisch);
   return (
-    <div className="rounded-[18px] bg-[var(--surface)] p-4 shadow-[0_0_0_1px_var(--line)]">
+    <div className="rounded-lg bg-[var(--surface)] p-4 shadow-[0_0_0_1px_var(--line)]">
       <div className="flex items-center justify-between gap-2">
         <span className="eyebrow">Fristende</span>
-        <Chip tone={art.kritisch ? "seal" : "ink"} icon={art.kritisch ? <ShieldAlert className="size-3" /> : undefined} title={art.kurz}>
+        <Chip tone={art.kritisch ? "seal" : "ink"} icon={art.kritisch ? <TriangleAlert className="size-3" /> : undefined} title={art.kurz}>
           {art.kritisch && ergebnis.regel.typ !== "notfrist" ? "Frist · nicht verlängerbar" : art.label}
         </Chip>
       </div>
-      <motion.div key={ergebnis.ende} initial={{ opacity: 0.2, y: 6, filter: "blur(3px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }} transition={{ type: "spring", stiffness: 520, damping: 34 }}>
+      <motion.div key={ergebnis.ende} initial={{ opacity: 0.2, y: 6, filter: "blur(3px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }} transition={BEWEGUNG.standard}>
           <div className="mt-1 text-[24px] font-semibold tracking-[-0.03em]">{fmtDateWd(ergebnis.ende)}</div>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[12.5px] text-fg-3">
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[13px] text-fg-3">
             <Chip tone={d.tone} dot={d.stufe !== "normal"}>
               {d.label}
             </Chip>
             <span>Vorfrist {fmtDateWd(ergebnis.vorfrist)}</span>
           </div>
       </motion.div>
-      <div className="mt-4 text-[12.5px] font-semibold text-fg-2">
+      <div className="mt-4 text-[13px] font-semibold text-fg-2">
         Rechenweg <span className="font-normal text-fg-3">· {ergebnis.regel.grundlage} · Feiertage {bundeslandName(land)}</span>
       </div>
       <ol className="mt-2 grid grid-cols-1 gap-1.5">
         {ergebnis.rechenweg.map((s, i) => (
-          <li key={`${ergebnis.ende}-${i}`} className="flex gap-2.5 text-[12.5px] leading-snug text-fg-2">
-            <span className="num mt-px grid grid-cols-1 size-[18px] shrink-0 place-items-center rounded-full bg-ink-soft text-[11px] font-semibold text-ink" aria-hidden>
+          <li key={`${ergebnis.ende}-${i}`} className="flex gap-2.5 text-[13px] leading-snug text-fg-2">
+            <span className="num mt-px grid grid-cols-1 size-[18px] shrink-0 place-items-center rounded-full bg-ink-soft text-[12px] font-semibold text-ink" aria-hidden>
               {i + 1}
             </span>
             <span>{s}</span>
@@ -496,13 +497,13 @@ function Vorschau({ ergebnis, land, fehlt }: { ergebnis: (ReturnType<typeof bere
         ))}
       </ol>
       {ergebnis.warnungen.map((w) => (
-        <div key={w} className="mt-3 flex gap-2 rounded-[12px] bg-amber-soft p-2.5 text-[12.5px] text-amber">
+        <div key={w} className="mt-3 flex gap-2 rounded-md bg-amber-soft p-2.5 text-[13px] text-amber">
           <AlertTriangle className="mt-px size-3.5 shrink-0" /> {w}
         </div>
       ))}
       {art.kritisch && (
-        <div className="mt-3 flex gap-2 rounded-[12px] bg-seal-soft p-2.5 text-[12.5px] text-seal">
-          <ShieldAlert className="mt-px size-3.5 shrink-0" />
+        <div className="mt-3 flex gap-2 rounded-md bg-seal-soft p-2.5 text-[13px] text-seal">
+          <TriangleAlert className="mt-px size-3.5 shrink-0" />
           <span>
             {art.art && <strong className="font-semibold">{schuetzeLeerzeichen(art.art)} </strong>}
             {schuetzeLeerzeichen(art.versaeumnis)}
@@ -510,7 +511,7 @@ function Vorschau({ ergebnis, land, fehlt }: { ergebnis: (ReturnType<typeof bere
         </div>
       )}
       {ergebnis.regel.hinweis && (
-        <div className="mt-3 flex gap-2 rounded-[12px] bg-ink-softer p-2.5 text-[12.5px] text-fg-2">
+        <div className="mt-3 flex gap-2 rounded-md bg-[var(--surface-2)] p-2.5 text-[13px] text-fg-2">
           <Info className="mt-px size-3.5 shrink-0 text-ink" /> {ergebnis.regel.hinweis}
         </div>
       )}

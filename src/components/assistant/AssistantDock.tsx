@@ -17,6 +17,7 @@ import { useIsMobile } from "@/lib/useMedia";
 import { telefonTeile, telHref } from "@/lib/telefon";
 import { cn } from "@/lib/cn";
 import { ApexOrb, type OrbZustand } from "./ApexOrb";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 interface Msg {
   id: number;
@@ -57,8 +58,8 @@ function speichereVerlauf(key: string, msgs: Msg[]) {
   }
 }
 
-/** Kugel: 60 px, 24 px vom Rand (bottom-6 right-6) – bei größerer Schrift per zoom entsprechend größer. */
-const KUGEL = 60;
+/** Assistent-Knopf: 48 px, 24 px vom Rand (bottom-6 right-6) – bei größerer Schrift per zoom entsprechend größer. */
+const KUGEL = 48;
 const KUGEL_RAND = 24;
 /** Griff der ausgewichenen Kugel: 14 × 56 px am rechten Rand, Grundlage 40 px über dem unteren Rand. */
 const GRIFF_BREITE = 14;
@@ -412,10 +413,10 @@ export function AssistantDock() {
             data-kugel
             data-ausgewichen={ausweichen || undefined}
             key="kugel"
-            initial={{ scale: 0.6, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.6, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 420, damping: 24 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={BEWEGUNG.standard}
             className={cn("group fixed z-50", ausweichen ? "right-0" : "bottom-6 right-6")}
             style={ausweichen ? { bottom: griffUnten } : undefined}
           >
@@ -424,8 +425,8 @@ export function AssistantDock() {
               onClick={() => oeffneAssistent()}
               className={cn(
                 ausweichen
-                  ? "ai-fill block h-14 w-3.5 rounded-l-full shadow-[0_6px_18px_-6px_rgba(60,40,200,.6)] ring-1 ring-white/30 transition-[width] hover:w-5 focus-visible:w-5"
-                  : "grid place-items-center rounded-full transition-transform duration-300 ease-[var(--spring)] hover:scale-[1.06] active:scale-[0.94]",
+                  ? "block h-14 w-3.5 rounded-l-md bg-[var(--ink)] shadow-pop transition-[width] duration-100 hover:w-5 focus-visible:w-5"
+                  : "grid place-items-center rounded-full [&>div]:transition-colors [&>div]:duration-100 hover:[&>div]:bg-[var(--ink-hover)]",
               )}
               aria-label={ausweichen ? "Apex Assistent öffnen (Kugel ist an den Rand ausgewichen, damit sie nichts verdeckt)" : "Apex Assistent öffnen – per Sprache oder Text fragen"}
               title={ausweichen ? "Apex Assistent öffnen" : "Apex Assistent – fragen Sie per Sprache oder Text"}
@@ -436,7 +437,7 @@ export function AssistantDock() {
               type="button"
               onClick={() => setKugelEingeklappt(true)}
               className={cn(
-                "absolute grid size-6 place-items-center rounded-full bg-[var(--surface)] text-fg-2 opacity-0 shadow ring-1 ring-[var(--line-strong)] transition-opacity hover:text-fg focus-visible:opacity-100",
+                "absolute grid size-6 place-items-center rounded-full border border-[var(--line-strong)] bg-[var(--surface-pop)] text-fg-2 opacity-0 transition-opacity duration-100 hover:text-fg focus-visible:opacity-100",
                 // ausgewichen: nur bei Tastaturfokus sichtbar und klickbar – verdeckt sonst nichts am Rand
                 ausweichen ? "pointer-events-none right-[calc(100%+6px)] top-1/2 -translate-y-1/2 focus-visible:pointer-events-auto" : "-left-2 -top-2 group-hover:opacity-100",
               )}
@@ -446,7 +447,7 @@ export function AssistantDock() {
               <ChevronRight className="size-3.5" />
             </button>
             {!ausweichen && (
-              <span className="pointer-events-none absolute right-[calc(100%+10px)] top-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-[#0b0e18]/90 px-3 py-1.5 text-[13px] font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+              <span className="pointer-events-none absolute right-[calc(100%+10px)] top-1/2 -translate-y-1/2 whitespace-nowrap rounded-sm bg-[var(--fg)] px-2 py-1 text-[12px] font-medium leading-4 text-[var(--bg)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
                 Apex Assistent fragen
               </span>
             )}
@@ -456,12 +457,12 @@ export function AssistantDock() {
           <motion.button
             key="griff"
             type="button"
-            initial={{ x: 20, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: 20, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 420, damping: 30 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={BEWEGUNG.standard}
             onClick={() => setKugelEingeklappt(false)}
-            className="ai-fill fixed bottom-10 right-0 z-50 h-14 w-3.5 rounded-l-full shadow-[0_6px_18px_-6px_rgba(60,40,200,.6)] ring-1 ring-white/30 transition-[width] hover:w-5 focus-visible:w-5"
+            className="fixed bottom-10 right-0 z-50 h-14 w-3.5 rounded-l-md bg-[var(--ink)] shadow-pop transition-[width] duration-100 hover:w-5 focus-visible:w-5"
             aria-label="Assistent-Kugel wieder einblenden"
             title="Apex Assistent einblenden"
           />
@@ -477,22 +478,20 @@ export function AssistantDock() {
               ref={panelRef}
               role="dialog"
               aria-label="Apex Assistent"
-              initial={{ opacity: 0, scale: 0.6, y: 40, x: mobile ? 0 : 40 }}
-              animate={{ opacity: 1, scale: 1, y: 0, x: 0 }}
-              exit={{ opacity: 0, scale: 0.7, y: 30, x: mobile ? 0 : 30 }}
-              transition={{ type: "spring", stiffness: 380, damping: 32 }}
-              style={{ transformOrigin: "bottom right", boxShadow: "var(--glass-shadow-lg)", background: "linear-gradient(160deg, var(--glass-sheen) 0%, transparent 40%), color-mix(in oklab, var(--surface) 90%, transparent)" }}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0, transition: BEWEGUNG.dialog }}
+              exit={{ opacity: 0, y: 8, transition: { duration: 0.15, ease: [0.2, 0, 0, 1] } }}
               className={cn(
-                "glass-strong fixed z-[85] flex flex-col overflow-hidden",
-                mobile ? "inset-x-2 bottom-2 top-[max(12px,env(safe-area-inset-top))] rounded-[28px]" : "bottom-6 right-6 h-[min(700px,calc(100vh-48px))] w-[410px] rounded-[30px]",
+                "fixed z-[85] flex flex-col overflow-hidden border border-[var(--line)] bg-[var(--surface-pop)] shadow-modal",
+                mobile ? "inset-x-0 bottom-0 top-[max(12px,env(safe-area-inset-top))] rounded-t-xl border-b-0" : "bottom-6 right-6 h-[min(700px,calc(100vh-48px))] w-[400px] rounded-xl",
               )}
             >
               {/* Kopf */}
-              <header className="flex items-center gap-3 border-b border-[var(--line)] px-4 py-3">
-                <ApexOrb size={40} zustand={zustand} pegel={pegel} />
+              <header className="flex items-center gap-3 border-b border-[var(--line)] py-2.5 pl-4 pr-2">
+                <ApexOrb size={32} zustand={zustand} pegel={pegel} className="!shadow-none" />
                 <div className="min-w-0 flex-1">
-                  <div className="text-[14.5px] font-semibold tracking-[-0.01em]">Apex Assistent</div>
-                  <div className="flex items-center gap-1.5 text-[12.5px] text-fg-3">
+                  <div className="text-[15px] font-semibold leading-5 tracking-[-0.005em]">Apex Assistent</div>
+                  <div className="flex items-center gap-1.5 text-[12px] leading-4 text-fg-4">
                     <span className={cn("size-1.5 rounded-full", ai.quelle === "demo" ? "bg-amber" : "bg-green")} />
                     {statusText}
                   </div>
@@ -529,33 +528,33 @@ export function AssistantDock() {
                 {msgs.length === 0 ? (
                   <div className="flex h-full flex-col">
                     <div className="flex flex-col items-center pt-4 text-center">
-                      <ApexOrb size={96} zustand={zustand} pegel={pegel} />
-                      <div className="mt-5 text-[19px] font-semibold tracking-[-0.02em]">{begruessung} – wie kann ich helfen?</div>
-                      <p className="mt-1.5 max-w-[30ch] text-[13px] leading-snug text-fg-3">Fragen Sie {spracheingabeVerfuegbar() ? "per Sprache oder Text" : "per Text"} – zu Ihren Akten, Fristen oder zur Bedienung von Apex.</p>
+                      <ApexOrb size={56} zustand={zustand} pegel={pegel} className="!shadow-none" />
+                      <div className="title-lg mt-4">{begruessung} – wie kann ich helfen?</div>
+                      <p className="mt-1 max-w-[32ch] text-[13px] leading-[18px] text-fg-3">Fragen Sie {spracheingabeVerfuegbar() ? "per Sprache oder Text" : "per Text"} – zu Ihren Akten, Fristen oder zur Bedienung von Apex.</p>
                     </div>
                     <div className="mt-6 flex flex-wrap justify-center gap-2">
                       {chips.map((v, i) => (
                         <motion.button
                           key={v}
                           type="button"
-                          initial={{ opacity: 0, y: 6 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: 0.15 + i * 0.04 }}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ duration: 0.16, delay: i * 0 }}
                           onClick={() => void senden(v)}
-                          className="rounded-full bg-[var(--ink-softer)] px-3 py-1.5 text-[12.5px] text-fg-2 ring-1 ring-[var(--line)] transition-colors hover:bg-ink-soft hover:text-fg"
+                          className="min-h-8 rounded-md border border-[var(--line-strong)] bg-[var(--surface-pop)] px-2.5 py-1 text-[13px] text-fg-2 transition-colors duration-100 hover:bg-[var(--surface-pop-hover)] hover:text-fg"
                         >
                           {v}
                         </motion.button>
                       ))}
                     </div>
                     <div className="mt-auto pt-6">
-                      <div className="rounded-[18px] ring-1 ring-[var(--line)]">
+                      <div className="rounded-lg border border-[var(--line)]">
                         <button
                           type="button"
                           onClick={() => void senden(ansprechBitte(ap))}
-                          className="flex w-full items-center gap-3 rounded-t-[18px] p-3 pb-1.5 text-left transition-colors hover:bg-ink-softer"
+                          className="flex w-full items-center gap-3 rounded-t-lg p-3 pb-1.5 text-left transition-colors duration-100 hover:bg-[var(--surface-pop-hover)]"
                         >
-                          <span className="grid size-9 place-items-center rounded-full bg-green-soft text-green">
+                          <span className="grid size-9 place-items-center text-fg-3">
                             <Phone className="size-4" />
                           </span>
                           <span className="min-w-0 flex-1">
@@ -567,7 +566,7 @@ export function AssistantDock() {
                         {/* Durchwahl antippbar (tel:) – eigener Link, nicht im Knopf verschachtelt (I3-T12-01) */}
                         <div className="flex items-center gap-2 px-3 pb-2.5 pl-[60px] text-[13px]">
                           <span className="text-fg-3">Durchwahl</span>
-                          <a href={telHref(ap.telefon)} className="inline-flex min-h-[32px] items-center font-semibold text-ink underline decoration-[var(--ink-soft)] underline-offset-2 hover:decoration-ink" aria-label={`${ap.name} anrufen: ${ap.telefon}`}>
+                          <a href={telHref(ap.telefon)} className="link inline-flex min-h-[32px] items-center font-medium" aria-label={`${ap.name} anrufen: ${ap.telefon}`}>
                             {ap.telefon}
                           </a>
                         </div>
@@ -577,22 +576,22 @@ export function AssistantDock() {
                 ) : (
                   <div className="grid grid-cols-[minmax(0,1fr)] gap-3">
                     {msgs.map((m, mi) => (
-                      <motion.div key={m.id} initial={{ opacity: 0, y: 8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: 420, damping: 32 }} className={cn("flex min-w-0", m.rolle === "nutzer" ? "justify-end" : "justify-start")}>
+                      <motion.div key={m.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={BEWEGUNG.standard} className={cn("flex min-w-0", m.rolle === "nutzer" ? "justify-end" : "justify-start")}>
                         {m.rolle === "nutzer" ? (
-                          <div className="min-w-0 max-w-[85%] rounded-[20px] rounded-br-[6px] bg-ink px-3.5 py-2 text-[13.5px] leading-snug text-white [overflow-wrap:anywhere]">{m.text}</div>
+                          <div className="min-w-0 max-w-[85%] rounded-lg bg-[var(--surface-pop-hover)] px-3 py-2 text-[14px] leading-5 text-fg [overflow-wrap:anywhere]">{m.text}</div>
                         ) : (
                           <div className="min-w-0 max-w-[92%] [overflow-wrap:anywhere]">
                             {m.werkzeuge && m.werkzeuge.length > 0 && (
                               <div className="mb-1.5 flex flex-wrap gap-1">
                                 {m.werkzeuge.map((w) => (
-                                  <motion.span key={w} initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} className="inline-flex items-center gap-1 rounded-full bg-violet-soft px-2 py-0.5 text-[12.5px] font-medium text-violet">
+                                  <motion.span key={w} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="chip chip-outline">
                                     <Wrench className="size-3" />
                                     {w}
                                   </motion.span>
                                 ))}
                               </div>
                             )}
-                            <div className={cn("rounded-[20px] rounded-bl-[6px] px-3.5 py-2.5 text-[13.5px] leading-relaxed", m.fehler ? "bg-seal-soft text-seal" : "bg-[var(--surface)] text-fg ring-1 ring-[var(--line)]")}>
+                            <div className={cn("text-[14px] leading-[22px]", m.fehler ? "rounded-md bg-seal-soft px-3 py-2 text-seal-text" : "text-fg-2")}>
                               {m.laedt && !m.text ? <Tippen /> : <Rich text={m.text} />}
                             </div>
                             {m.auswahl && m.auswahl.length > 0 && (
@@ -603,9 +602,9 @@ export function AssistantDock() {
                                     type="button"
                                     disabled={beschaeftigt}
                                     onClick={() => void senden(a.frage)}
-                                    className="flex items-center gap-2.5 rounded-[14px] bg-[var(--surface)] px-3 py-2 text-left ring-1 ring-[var(--line)] transition-colors hover:bg-ink-softer disabled:opacity-50"
+                                    className="flex items-center gap-2.5 rounded-md border border-[var(--line)] bg-[var(--surface-pop)] px-3 py-2 text-left transition-colors duration-100 hover:bg-[var(--surface-pop-hover)] disabled:opacity-50"
                                   >
-                                    <FolderOpen className="size-4 shrink-0 text-ink" />
+                                    <FolderOpen className="size-4 shrink-0 text-fg-4" />
                                     <span className="min-w-0 flex-1">
                                       <span className="line-clamp-2 block text-[13px] font-medium leading-snug">{a.label}</span>
                                       {a.sub && <span className="line-clamp-2 block text-[12.5px] leading-snug text-fg-3">{a.sub}</span>}
@@ -621,9 +620,9 @@ export function AssistantDock() {
                                 type="button"
                                 disabled={beschaeftigt}
                                 onClick={() => void senden(RUECKRUF_ZUSTIMMUNG)}
-                                className="mt-2 flex min-h-[44px] w-full items-center gap-2.5 rounded-[14px] bg-[var(--surface)] px-3 py-2 text-left ring-1 ring-[var(--line)] transition-colors hover:bg-ink-softer disabled:opacity-50"
+                                className="mt-2 flex min-h-[44px] w-full items-center gap-2.5 rounded-md border border-[var(--line)] bg-[var(--surface-pop)] px-3 py-2 text-left transition-colors duration-100 hover:bg-[var(--surface-pop-hover)] disabled:opacity-50"
                               >
-                                <span className="grid size-8 shrink-0 place-items-center rounded-full bg-green-soft text-green">
+                                <span className="grid size-8 shrink-0 place-items-center text-fg-3">
                                   <Phone className="size-4" aria-hidden />
                                 </span>
                                 <span className="min-w-0 flex-1">
@@ -655,7 +654,7 @@ export function AssistantDock() {
                                       nav(l.to);
                                       if (mobile) schliesseAssistent();
                                     }}
-                                    className="inline-flex items-center gap-1 rounded-full bg-ink-soft px-2.5 py-1 text-[12.5px] font-medium text-ink transition-colors hover:bg-[var(--ink)] hover:text-white"
+                                    className="inline-flex min-h-7 items-center gap-1 rounded-md border border-[var(--line-strong)] px-2 py-0.5 text-[13px] font-medium text-fg-2 transition-colors duration-100 hover:bg-[var(--surface-pop-hover)] hover:text-fg"
                                   >
                                     {l.label}
                                     <ArrowRight className="size-3" />
@@ -676,7 +675,7 @@ export function AssistantDock() {
               {!hinweis && (
                 <AnimatePresence>
                   {zustand === "hoert" && (
-                    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }} className="mx-4 mb-2 flex items-center gap-3 rounded-[18px] bg-[var(--ink-softer)] p-3 ring-1 ring-[var(--line)]">
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={BEWEGUNG.standard} className="mx-4 mb-2 flex items-center gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface-pop-hover)] p-3">
                       <Wellen />
                       <div className="min-w-0 flex-1 text-[13px] text-fg-2">{interim || "Ich höre zu – sprechen Sie einfach."}</div>
                     </motion.div>
@@ -684,7 +683,7 @@ export function AssistantDock() {
                 </AnimatePresence>
               )}
               {hinweis && (
-                <div role="status" className="mx-4 mb-2 rounded-[14px] bg-amber-soft px-3 py-2 text-[13px] text-fg-2">
+                <div role="status" className="mx-4 mb-2 rounded-md bg-amber-soft px-3 py-2 text-[13px] text-fg-2">
                   {hinweis}
                 </div>
               )}
@@ -698,16 +697,16 @@ export function AssistantDock() {
                 }}
               >
                 {spracheingabeVerfuegbar() && (
-                  <motion.button
+                  <button
                     type="button"
-                    whileTap={{ scale: 0.9 }}
                     onClick={mikrofon}
-                    className={cn("grid size-11 shrink-0 place-items-center rounded-full transition-colors", zustand === "hoert" ? "bg-seal text-white" : "bg-[var(--ink-softer)] text-fg-2 hover:bg-ink-soft hover:text-ink")}
+                    className={cn("relative grid size-11 shrink-0 place-items-center rounded-md transition-colors duration-100", zustand === "hoert" ? "bg-[var(--seal-soft)] text-seal-text shadow-[inset_0_0_0_1px_var(--seal)]" : "bg-[var(--surface-pop)] text-fg-2 shadow-[inset_0_0_0_1px_var(--line-strong)] hover:bg-[var(--surface-pop-hover)] hover:text-fg")}
                     aria-label={zustand === "hoert" ? "Zuhören beenden" : "Per Sprache fragen"}
                     title={zustand === "hoert" ? "Zuhören beenden" : "Per Sprache fragen"}
                   >
                     {zustand === "hoert" ? <MicOff className="size-5" /> : <Mic className="size-5" />}
-                  </motion.button>
+                    {zustand === "hoert" && <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-[var(--seal)]" aria-hidden />}
+                  </button>
                 )}
                 <textarea
                   id="assistent-eingabe"
@@ -722,16 +721,16 @@ export function AssistantDock() {
                     }
                   }}
                   placeholder="Frage oder Auftrag …"
-                  className="field max-h-28 min-h-11 flex-1 resize-none !rounded-[22px] !py-2.5"
+                  className="field max-h-28 min-h-11 flex-1 resize-none !py-2.5 !text-[14px] max-sm:!text-[16px]"
                 />
                 {beschaeftigt ? (
-                  <button type="button" onClick={() => ctl.current?.abort()} className="grid size-11 shrink-0 place-items-center rounded-full bg-[var(--line-strong)] text-fg" aria-label="Antwort stoppen">
+                  <button type="button" onClick={() => ctl.current?.abort()} className="grid size-11 shrink-0 place-items-center rounded-md bg-[var(--surface-pop)] text-fg shadow-[inset_0_0_0_1px_var(--line-strong)] hover:bg-[var(--surface-pop-hover)]" aria-label="Antwort stoppen">
                     <Square className="size-4" />
                   </button>
                 ) : (
-                  <motion.button whileTap={{ scale: 0.9 }} type="submit" disabled={!eingabe.trim()} className="grid size-11 shrink-0 place-items-center rounded-full bg-ink text-white transition-opacity disabled:opacity-35" aria-label="Senden">
+                  <button type="submit" disabled={!eingabe.trim()} className="grid size-11 shrink-0 place-items-center rounded-md bg-[var(--ink)] text-[var(--on-ink)] transition-colors duration-100 hover:bg-[var(--ink-hover)] disabled:bg-transparent disabled:text-fg-4 disabled:shadow-[inset_0_0_0_1px_var(--line-strong)]" aria-label="Senden">
                     <ArrowUp className="size-5" />
-                  </motion.button>
+                  </button>
                 )}
               </form>
             </motion.section>
@@ -746,7 +745,7 @@ function Tippen() {
   return (
     <span className="flex h-5 items-center gap-1" aria-label="Antwort wird erstellt">
       {[0, 1, 2].map((i) => (
-        <motion.span key={i} className="size-1.5 rounded-full bg-fg-3" animate={{ y: [0, -4, 0], opacity: [0.4, 1, 0.4] }} transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.15 }} />
+        <motion.span key={i} className="size-1.5 rounded-full bg-fg-3" animate={{ opacity: [0.35, 1, 0.35] }} transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2, ease: "easeInOut" }} />
       ))}
     </span>
   );
@@ -774,7 +773,7 @@ function Rich({ text }: { text: string }) {
         const mitTel = (t: string, k: number) =>
           telefonTeile(t).map((x, j) =>
             x.tel ? (
-              <a key={`${k}-${j}`} href={x.tel} className="whitespace-nowrap font-semibold text-ink underline decoration-[var(--ink-soft)] underline-offset-2 hover:decoration-ink" aria-label={`${x.t} anrufen`}>
+              <a key={`${k}-${j}`} href={x.tel} className="link whitespace-nowrap font-medium" aria-label={`${x.t} anrufen`}>
                 {x.t}
               </a>
             ) : (
@@ -819,9 +818,9 @@ function BestaetigungsKarte({ v, status, land, onEintragen, onVerwerfen, onRueck
   const doppelt = status === "offen" ? doppelterEintrag(aktuell, fristen) : undefined;
   const Icon = notiz ? StickyNote : CalendarPlus;
   return (
-    <div className="mt-2 overflow-hidden rounded-[18px] bg-[var(--surface)] ring-1 ring-[var(--line-strong)]" role="group" aria-label={`${vorschlagArtName(v)} bestätigen`}>
-      <div className="flex items-center gap-2 border-b border-[var(--line)] bg-[var(--ink-softer)] px-3 py-2 text-[12.5px] font-semibold text-ink">
-        <Icon className="size-3.5" /> {vorschlagArtName(v)} – {status === "offen" ? "bitte bestätigen" : status === "eingetragen" ? "eingetragen" : status === "verworfen" ? "verworfen" : "rückgängig gemacht"}
+    <div className="mt-2 overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--surface-pop)]" role="group" aria-label={`${vorschlagArtName(v)} bestätigen`}>
+      <div className="flex items-center gap-2 border-b border-[var(--line)] px-3 py-2 text-[13px] font-medium text-fg">
+        <Icon className="size-3.5 text-fg-4" /> {vorschlagArtName(v)} – {status === "offen" ? "bitte bestätigen" : status === "eingetragen" ? "eingetragen" : status === "verworfen" ? "verworfen" : "rückgängig gemacht"}
       </div>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2.5 text-[13px]">
         <dt className="text-fg-3">Akte</dt>
@@ -850,15 +849,15 @@ function BestaetigungsKarte({ v, status, land, onEintragen, onVerwerfen, onRueck
         )}
       </dl>
       {!p.werktag && "naechster" in p && p.naechster && status === "offen" && (
-        <div className="mx-3 mb-2 flex flex-wrap items-center gap-2 rounded-[12px] bg-amber-soft px-2.5 py-1.5 text-[12.5px] text-fg-2">
+        <div className="mx-3 mb-2 flex flex-wrap items-center gap-2 rounded-md bg-amber-soft px-2.5 py-1.5 text-[13px] text-fg-2">
           {fmtDateWd(datum)} ist kein Werktag.
-          <button type="button" className="font-semibold text-ink underline-offset-2 hover:underline" onClick={() => setDatum(p.naechster!)}>
+          <button type="button" className="link font-medium" onClick={() => setDatum(p.naechster!)}>
             Auf {fmtDateWd(p.naechster)} legen
           </button>
         </div>
       )}
       {doppelt && (
-        <div className="mx-3 mb-2 flex items-start gap-2 rounded-[12px] bg-amber-soft px-2.5 py-1.5 text-[12.5px] leading-snug text-fg-2" role="note">
+        <div className="mx-3 mb-2 flex items-start gap-2 rounded-md bg-amber-soft px-2.5 py-1.5 text-[13px] leading-snug text-fg-2" role="note">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber" aria-hidden />
           <span>
             <span className="font-semibold text-fg">Doppelung? </span>
@@ -870,28 +869,28 @@ function BestaetigungsKarte({ v, status, land, onEintragen, onVerwerfen, onRueck
         {status === "offen" && (
           <>
             {doppelt ? (
-              <button type="button" onClick={() => onEintragen(aktuell)} className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-semibold text-[var(--amber-text)] ring-1 ring-[color-mix(in_oklab,var(--amber)_55%,transparent)] hover:bg-amber-soft">
+              <button type="button" onClick={() => onEintragen(aktuell)} className="btn btn-secondary btn-sm !text-[var(--amber-text)]">
                 <AlertTriangle className="size-3.5" /> Trotzdem eintragen
               </button>
             ) : (
-              <button type="button" onClick={() => onEintragen(aktuell)} className="inline-flex h-8 items-center gap-1.5 rounded-full bg-ink px-3 text-[13px] font-semibold text-white hover:opacity-90">
+              <button type="button" onClick={() => onEintragen(aktuell)} className="btn btn-primary btn-sm">
                 <Check className="size-3.5" /> Eintragen
               </button>
             )}
-            <button type="button" onClick={() => setAendern((x) => !x)} aria-pressed={aendern} className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium text-fg-2 ring-1 ring-[var(--line-strong)] hover:bg-ink-softer">
+            <button type="button" onClick={() => setAendern((x) => !x)} aria-pressed={aendern} className="btn btn-secondary btn-sm">
               <Pencil className="size-3.5" /> {aendern ? "Fertig" : "Ändern"}
             </button>
-            <button type="button" onClick={onVerwerfen} className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium text-fg-3 hover:bg-ink-softer hover:text-fg">
+            <button type="button" onClick={onVerwerfen} className="btn btn-ghost btn-sm">
               <X className="size-3.5" /> Verwerfen
             </button>
           </>
         )}
         {status === "eingetragen" && (
           <>
-            <span className="inline-flex items-center gap-1 text-[13px] font-medium text-green">
+            <span className="inline-flex items-center gap-1 text-[13px] font-medium text-green-text">
               <Check className="size-3.5" /> {notiz ? "In der Akte gespeichert" : "Im Fristenkalender"}
             </span>
-            <button type="button" onClick={onRueckgaengig} className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-semibold text-ink ring-1 ring-[var(--line-strong)] hover:bg-ink-softer">
+            <button type="button" onClick={onRueckgaengig} className="btn btn-secondary btn-sm ml-auto">
               <Undo2 className="size-3.5" /> Rückgängig
             </button>
           </>

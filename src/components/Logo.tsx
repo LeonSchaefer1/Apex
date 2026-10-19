@@ -1,52 +1,58 @@
-import { useId } from "react";
 import { cn } from "@/lib/cn";
 
-const MARK = "M32 5.5C38.6 18 49.6 33.4 52.4 56.5H40.6L32 43.2 23.4 56.5H11.6C14.4 33.4 25.4 18 32 5.5ZM31.15 8h1.7v21.9a.85.85 0 0 1-1.7 0ZM32 29.4a4 4 0 1 0 0 8 4 4 0 1 0 0-8Z";
+/**
+ * Bildmarke „Eckpunkt“ (docs/design/DESIGN-SYSTEM.md 0.1/3): zwei gleich lange Schenkel im rechten Winkel, in der Öffnung ein
+ * Punkt auf der Winkelhalbierenden – Scheitel (apex), rechter Winkel, geheftete Aktenecke; der Punkt ist auch das Fristende.
+ * 32er-Raster: Schenkel 20 × 5, Punkt r 3,5 bei (18,5 | 18,5), 4 Einheiten Luft zu beiden Schenkeln.
+ */
+export const MARKE_PFAD = "M6 6h20v5H11v15H6z";
+export const MARKE_PUNKT = { cx: 18.5, cy: 18.5, r: 3.5 } as const;
 
-/** Bildmarke: Füllfederspitze, die zugleich „A" und Gipfel ist. */
-export function LogoMark({ size = 28, className, mono }: { size?: number; className?: string; mono?: boolean }) {
-  const id = useId();
+/** Bildmarke, immer einfarbig in `currentColor`. `mono` bleibt aus Kompatibilität, hat aber keine Wirkung mehr. */
+export function LogoMark({ size = 28, className }: { size?: number; className?: string; mono?: boolean }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" className={className} aria-hidden>
-      {!mono && (
-        <defs>
-          <linearGradient id={id} x1="16" y1="6" x2="50" y2="58" gradientUnits="userSpaceOnUse">
-            <stop offset="0" stopColor="var(--ink-bright)" />
-            <stop offset="0.55" stopColor="var(--ink)" />
-            <stop offset="1" stopColor="color-mix(in oklab, var(--ink) 60%, #0b1020)" />
-          </linearGradient>
-        </defs>
-      )}
-      <path fill={mono ? "currentColor" : `url(#${id})`} fillRule="evenodd" d={MARK} />
+    <svg width={size} height={size} viewBox="0 0 32 32" className={cn("shrink-0", className)} fill="currentColor" aria-hidden focusable="false">
+      <path d={MARKE_PFAD} />
+      <circle cx={MARKE_PUNKT.cx} cy={MARKE_PUNKT.cy} r={MARKE_PUNKT.r} />
     </svg>
   );
 }
 
-/** App-Icon (Squircle mit Glas) */
+/**
+ * App-Icon: flaches Quadrat in Robenschwarz (dunkel: Papierweiß), Radius = Größe × 0,22, Marke in der Gegenfarbe – optisch um
+ * 1/32 nach rechts unten versetzt, weil das Gewicht des Zeichens links oben liegt. Kein Verlauf, kein Schatten, keine Innenkante.
+ */
 export function AppIcon({ size = 36, className }: { size?: number; className?: string }) {
+  const marke = size * 0.625; // wie brand/app-icon.svg: 32er-Feld = 62,5 % der Kante, Versatz 1 Rastereinheit
   return (
     <span
-      className={cn("relative inline-grid shrink-0 place-items-center overflow-hidden", className)}
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size * 0.27,
-        background: "radial-gradient(120% 100% at 25% 10%, #8fa4ff 0%, #3d5cff 30%, #1e33b8 62%, #0b1240 100%)",
-        boxShadow: "inset 0 1px 0 rgba(255,255,255,.45), inset 0 -1px 0 rgba(0,0,0,.2), 0 6px 16px -6px rgba(36,64,216,.6)",
-      }}
+      className={cn("relative inline-grid shrink-0 place-items-center", className)}
+      style={{ width: size, height: size, borderRadius: size * 0.22, background: "var(--ink)", color: "var(--on-ink)" }}
+      aria-hidden
     >
-      <svg width={size * 0.66} height={size * 0.66} viewBox="0 0 64 64" aria-hidden>
-        <path fill="#fff" fillRule="evenodd" d={MARK} />
+      <svg width={marke} height={marke} viewBox="0 0 32 32" fill="currentColor" style={{ transform: `translate(${(marke / 32).toFixed(2)}px, ${(marke / 32).toFixed(2)}px)` }} focusable="false">
+        <path d={MARKE_PFAD} />
+        <circle cx={MARKE_PUNKT.cx} cy={MARKE_PUNKT.cy} r={MARKE_PUNKT.r} />
       </svg>
     </span>
   );
 }
 
-/** Wortmarke „Apex“ (ohne Zusatz; die Beschreibung „Apex – Kanzleisoftware“ steht nur in Seitentitel und Meta-Angaben). */
-export function Wordmark({ className, size = 17 }: { className?: string; size?: number }) {
+/** Schriftzug „Apex“ (ohne Bildmarke; die Beschreibung „Apex – Kanzleisoftware“ steht nur in Seitentitel und Meta-Angaben). */
+export function Wordmark({ className, size = 15 }: { className?: string; size?: number }) {
   return (
-    <span className={cn("font-semibold tracking-[-0.03em]", className)} style={{ fontSize: size }}>
+    <span className={cn("font-semibold tracking-[-0.02em] text-fg", className)} style={{ fontSize: size, lineHeight: 1.2 }}>
       Apex
+    </span>
+  );
+}
+
+/** Wortmarke: Bildmarke + „Apex“ – Marke 20 px, Schrift 15/600, Abstand 8 px (bei anderer Größe proportional). */
+export function Wortmarke({ className, size = 20 }: { className?: string; size?: number }) {
+  return (
+    <span className={cn("inline-flex items-center text-fg", className)} style={{ gap: Math.round(size * 0.4) }}>
+      <LogoMark size={size} />
+      <Wordmark size={Math.round(size * 0.75)} />
     </span>
   );
 }

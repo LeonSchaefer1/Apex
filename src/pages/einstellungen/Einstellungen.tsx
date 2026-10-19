@@ -10,6 +10,7 @@ import { DarstellungTab } from "./DarstellungTab";
 import { DatenschutzTab } from "./DatenschutzTab";
 import { useKanzlei } from "@/store/session";
 import { darfLizenzSehen } from "@/lib/backend";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 type Tab = "kanzlei" | "team" | "lizenz" | "ki" | "darstellung" | "datenschutz";
 
@@ -39,11 +40,11 @@ export default function Einstellungen() {
           value={tab}
           onChange={(t) => setParams(t === "kanzlei" ? {} : { tab: t }, { replace: true })}
           options={tabs}
-          className="max-w-full !bg-[color-mix(in_oklab,var(--surface)_97%,transparent)] shadow-[var(--glass-shadow)] md:!bg-[var(--ink-softer)] md:shadow-none"
+          className="max-w-full !bg-[color-mix(in_oklab,var(--surface)_97%,transparent)] md:!bg-[var(--ink-softer)] md:shadow-none"
         />
       </div>
       <AnimatePresence mode="wait" initial={false}>
-        <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ type: "spring", stiffness: 460, damping: 36 }}>
+        <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={BEWEGUNG.standard}>
           {tab === "kanzlei" && <KanzleiTab />}
           {tab === "team" && <TeamTab />}
           {tab === "lizenz" && <LizenzTab />}

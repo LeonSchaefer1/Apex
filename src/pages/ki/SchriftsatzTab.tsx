@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
-  AlertTriangle, BookCheck, Check, CircleAlert, Copy, FastForward, FileSignature, FolderOpen, MessageSquareReply, MessageSquareText, PenLine, Receipt, RotateCcw, Save, Scale, Send,
-  ShieldCheck, Sparkles, Square, Wand2,
+  AlertTriangle, BookCheck, Check, CircleAlert, Copy, FastForward, FolderOpen, MessageSquareReply, MessageSquareText, PenLine, Receipt, RotateCcw, Save, Scale, Send,
+  ShieldCheck, Sparkles, Square,
 } from "lucide-react";
 import { DemoModus, llmText } from "@/ai/llm";
 import { useAiStatus } from "@/ai/status";
@@ -19,6 +19,7 @@ import { pruefeZitate } from "@/pages/falldb/recherche";
 import { KiSchritte, type KiSchritt } from "./KiSchritte";
 import { artInfo, artenFuer, dokumentName, entwurfOffline, entwurfPrompt, fruehereFassung, mandantRolle, type SchriftsatzArt, type Ton } from "./schriftsatz";
 import { standardAkte } from "./FallanalyseTab";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 const ICONS: Record<SchriftsatzArt, ReactNode> = {
   sachstand: <MessageSquareText className="size-4" />,
@@ -324,13 +325,10 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
     <div className="grid gap-5 lg:grid-cols-[minmax(300px,380px)_minmax(0,1fr)] lg:items-start">
       {/* ───────── Einstellungen ───────── */}
       <Card className="min-w-0 !p-4 sm:!p-5 lg:sticky lg:top-7">
-        <div className="mb-4 flex items-start gap-3">
-          <span className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">
-            <FileSignature className="size-[18px]" />
-          </span>
+        <div className="mb-4">
           <div className="min-w-0">
             <h2 className="title-md">Entwurf vorbereiten</h2>
-            <p className="mt-0.5 text-[12.5px] text-fg-3">Die KI nutzt nur Angaben aus der Akte. Fehlendes wird als [Platzhalter] markiert.</p>
+            <p className="mt-0.5 text-[13px] leading-[18px] text-fg-3">Die KI nutzt nur Angaben aus der Akte. Fehlendes wird als [Platzhalter] markiert.</p>
           </div>
         </div>
 
@@ -356,13 +354,17 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
                   role="radio"
                   aria-checked={aktiv}
                   onClick={() => setArt(a.key)}
-                  className={cn("relative flex w-full min-w-0 items-center gap-3 rounded-[14px] p-2.5 text-left transition-colors", aktiv ? "" : "hover:bg-[var(--ink-softer)]")}
+                  className={cn(
+                    "relative flex w-full min-w-0 items-center gap-3 rounded-md px-2.5 py-2 text-left transition-colors duration-100",
+                    aktiv ? "bg-[var(--surface-3)] shadow-[inset_2px_0_0_var(--ink)]" : "hover:bg-[var(--surface-2)]",
+                  )}
                 >
-                  {aktiv && <motion.span layoutId="schrift-art" className="absolute inset-0 rounded-[14px] bg-ink-soft ring-1 ring-[var(--ink)]" transition={{ type: "spring", stiffness: 520, damping: 38 }} />}
-                  <span className={cn("relative grid size-8 shrink-0 place-items-center rounded-[10px] transition-colors", aktiv ? "bg-[var(--ink)] text-[var(--on-ink)]" : "bg-[var(--ink-softer)] text-fg-2")}>{ICONS[a.key]}</span>
+                  <span className={cn("relative grid shrink-0 place-items-center [&>svg]:size-4", aktiv ? "text-fg" : "text-fg-4")} aria-hidden>
+                    {ICONS[a.key]}
+                  </span>
                   <span className="relative min-w-0">
-                    <span className="block text-[13px] font-semibold leading-tight">{a.titel}</span>
-                    <span className="block truncate text-[12.5px] text-fg-3">{a.kurz}</span>
+                    <span className={cn("block text-[14px] leading-5", aktiv ? "font-semibold text-fg" : "font-medium text-fg-2")}>{a.titel}</span>
+                    <span className="block truncate text-[13px] leading-[18px] text-fg-4">{a.kurz}</span>
                   </span>
                 </button>
               );
@@ -390,31 +392,31 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
         <AnimatePresence initial={false}>
           {hinweisAkte && (
             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-              <div className="mt-3 flex items-start gap-2 rounded-[12px] bg-amber-soft px-3 py-2 text-[12px] text-amber">
-                <CircleAlert className="mt-px size-3.5 shrink-0" />
-                {hinweisAkte}
+              <div className="banner banner-amber mt-3 !text-[13px] !leading-[18px]">
+                <CircleAlert aria-hidden />
+                <span className="min-w-0 text-amber-text">{hinweisAkte}</span>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
 
-        <Button variant="ai" size="lg" className="mt-4 w-full" icon={<Wand2 className="size-4" />} onClick={() => void erstellen()} loading={status === "vorbereitung"} disabled={!akte || schreibt}>
+        <Button variant="primary" size="lg" className="mt-4 w-full" icon={<Sparkles className="size-4" />} onClick={() => void erstellen()} loading={status === "vorbereitung"} disabled={!akte || schreibt}>
           Entwurf erstellen
         </Button>
-        <p className="mt-2.5 text-center text-[12.5px] text-fg-3">{live ? "Claude formuliert live – Sie sehen jedes Wort entstehen." : "Demo-KI: Entwurf aus geprüften Vorlagen und den Daten der Akte."}</p>
+        <p className="mt-2 text-center text-[13px] leading-[18px] text-fg-4">{live ? "Claude formuliert live – Sie sehen jedes Wort entstehen." : "Demo-KI: Entwurf aus geprüften Vorlagen und den Daten der Akte."}</p>
       </Card>
 
       {/* ───────── Vorschau ───────── */}
       <section id="schriftsatz-vorschau" className="min-w-0 scroll-mt-24">
-        <div className="glass mb-3 flex flex-wrap items-center gap-2 rounded-[20px] px-3 py-2.5">
+        <div className="mb-3 flex min-h-8 flex-wrap items-center gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-2">
-            <span className="truncate text-[13.5px] font-semibold">
+            <span className="truncate text-[14px] font-semibold">
               <span className="text-fg-3">Entwurf · </span>
               {artInfo(erzeugt?.art ?? art).label}
             </span>
             {erzeugt && (erzeugt.quelle === "live" ? <AiChip>Claude</AiChip> : <Chip tone="violet">Demo-Vorlage</Chip>)}
             {schreibt && (
-              <span className="ai-text hidden text-[12px] font-semibold sm:inline" aria-live="polite">
+              <span className="hidden text-[13px] text-fg-3 sm:inline" aria-live="polite">
                 {status === "vorbereitung" ? "bereitet vor …" : "schreibt …"}
               </span>
             )}
@@ -431,7 +433,7 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
                 <Button size="sm" variant="primary" icon={gespeichert ? <Check className="size-4" /> : <Save className="size-4" />} onClick={speichern} disabled={!!gespeichert}>
                   {gespeichert ? "Gespeichert" : "In Akte speichern"}
                 </Button>
-                <Button size="sm" variant="secondary" aria-label="Entwurf kopieren" title="Entwurf kopieren" icon={kopiert ? <Check className="size-4 text-green" /> : <Copy className="size-4" />} onClick={() => void kopieren()}>
+                <Button size="sm" variant="secondary" aria-label="Entwurf kopieren" title="Entwurf kopieren" icon={kopiert ? <Check className="size-4" /> : <Copy className="size-4" />} onClick={() => void kopieren()}>
                   <span className="hidden sm:inline">{kopiert ? "Kopiert" : "Kopieren"}</span>
                 </Button>
                 <Button size="sm" variant="ghost" aria-label="Neu erstellen" title="Neu erstellen" icon={<RotateCcw className="size-4" />} onClick={neu}>
@@ -444,9 +446,9 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
 
         <AnimatePresence>
           {fehler && (
-            <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} role="alert" className="mb-3 flex flex-wrap items-start gap-2 rounded-[14px] bg-seal-soft px-3.5 py-3 text-[13px] text-seal">
-              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-              <span className="min-w-0 flex-1">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={BEWEGUNG.standard} role="alert" className="banner banner-seal mb-3 flex-wrap">
+              <AlertTriangle aria-hidden />
+              <span className="min-w-0 flex-1 text-seal-text">
                 {fehler} {text ? "Der bisher erzeugte Text bleibt erhalten." : ""} Mit „Entwurf erstellen“ versuchen Sie es erneut – oder nutzen Sie die geprüfte Vorlage.
               </span>
               <Button size="sm" variant="secondary" className="shrink-0" onClick={() => void erstellen(true)}>
@@ -457,7 +459,7 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
         </AnimatePresence>
 
         {status === "fertig" && text && (
-          <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="mb-3 flex flex-wrap items-center gap-1.5">
+          <div className="mb-3 flex flex-wrap items-center gap-1.5">
             {platzhalter > 0 ? (
               <Chip tone="amber" icon={<PenLine className="size-3" />}>
                 {platzhalter} {platzhalter === 1 ? "Platzhalter" : "Platzhalter"} vor dem Versand ausfüllen
@@ -477,14 +479,14 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
                 {unbekannt.length} {unbekannt.length === 1 ? "Zitat" : "Zitate"} nicht in der Fall-Datenbank – im Text markiert
               </Chip>
             )}
-            <span className="text-[12.5px] text-fg-3">Entwurf – vor Versand anwaltlich prüfen.</span>
-          </motion.div>
+            <span className="text-[13px] text-fg-3">Entwurf – vor Versand anwaltlich prüfen.</span>
+          </div>
         )}
 
-        <div ref={scrollRef} tabIndex={0} role="region" aria-label="Vorschau des Entwurfs" className="rounded-[10px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--ink)] lg:max-h-[min(80vh,980px)] lg:overflow-y-auto lg:pb-2">
+        <div ref={scrollRef} tabIndex={0} role="region" aria-label="Vorschau des Entwurfs" className="buehne p-3 sm:p-6 lg:max-h-[min(80vh,980px)] lg:overflow-y-auto">
           <motion.article
             layout="position"
-            className={cn("paper relative mx-auto max-w-[800px] px-5 py-7 sm:px-12 sm:py-11", schreibt && "ai-ring")}
+            className="paper relative mx-auto max-w-[800px] px-5 py-7 sm:px-12 sm:py-11"
             onClick={() => erzeugt?.quelle === "vorlage" && status === "schreibt" && sofortAnzeigen()}
           >
             <Briefkopf name={tenant.name} adresse={tenant.adresse} farbe={tenant.farbe} person={user.name} titel={user.titel} email={user.email} />
@@ -495,7 +497,7 @@ export function SchriftsatzTab({ akteParam, onAkte }: { akteParam?: string; onAk
                 <KiSchritte schritte={SCHRITTE} aktiv={schritt} kompakt />
               </div>
             ) : (
-              <div ref={papierRef} className="text-[13.5px] leading-[1.7]">
+              <div ref={papierRef} className="text-[14px] leading-[1.7]">
                 <Brief text={angezeigt} cursor={status === "schreibt"} warnAz={unbekannt.map((z) => z.az)} />
               </div>
             )}
@@ -511,12 +513,13 @@ function Briefkopf({ name, adresse, farbe, person, titel, email }: { name: strin
     <header className="mb-7 flex items-start justify-between gap-4 border-b border-black/10 pb-4">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          <span className="h-5 w-1 rounded-full" style={{ background: farbe }} />
+          {/* Kanzleifarbe aus den Daten nur als 8-px-Punkt (DESIGN-SYSTEM.md 4.1) */}
+          <span className="size-2 shrink-0 rounded-full" style={{ background: farbe }} aria-hidden />
           <span className="truncate text-[15px] font-semibold tracking-[-0.01em]">{name}</span>
         </div>
-        <div className="mt-0.5 truncate pl-3 text-[12.5px] opacity-60">{adresse}</div>
+        <div className="mt-0.5 truncate pl-3 text-[13px] opacity-60">{adresse}</div>
       </div>
-      <div className="hidden shrink-0 text-right text-[12.5px] leading-snug opacity-60 sm:block">
+      <div className="hidden shrink-0 text-right text-[13px] leading-snug opacity-60 sm:block">
         <div className="font-medium">{person}</div>
         <div className="max-w-[220px] truncate">{titel}</div>
         <div>{email}</div>
@@ -532,10 +535,11 @@ function LeeresPapier() {
         {[42, 30, 0, 26, 64, 0, 92, 88, 95, 70, 0, 90, 84, 60].map((w, i) => (w ? <div key={i} className="h-2.5 rounded-full bg-black/[0.06]" style={{ width: `${w}%` }} /> : <div key={i} className="h-2" />))}
       </div>
       <div className="absolute inset-0 grid place-items-center">
-        <div className="max-w-[300px] rounded-[18px] bg-white/85 px-5 py-4 text-center shadow-[0_10px_30px_-12px_rgba(0,0,0,0.25)] backdrop-blur">
-          <Sparkles className="mx-auto mb-2 size-5 text-violet" />
-          <div className="text-[13.5px] font-semibold">Ihr Entwurf erscheint hier</div>
-          <div className="mt-1 text-[12px] leading-snug opacity-60">Akte und Dokumentart wählen, dann „Entwurf erstellen“. Platzhalter in [Klammern] sind farbig markiert.</div>
+        {/* Papier ist in beiden Modi weiß – feste Papierwerte statt Tokens (DESIGN-SYSTEM.md 12.18) */}
+        <div className="max-w-[300px] rounded-sm border border-[#e6e5e2] bg-white px-5 py-4 text-center">
+          <Sparkles className="mx-auto mb-2 size-5 text-[#68645e]" aria-hidden />
+          <div className="text-[14px] font-semibold">Ihr Entwurf erscheint hier</div>
+          <div className="mt-1 text-[13px] leading-[18px] text-[#55524d]">Akte und Dokumentart wählen, dann „Entwurf erstellen“. Platzhalter in [Klammern] sind farbig markiert.</div>
         </div>
       </div>
     </div>
@@ -555,7 +559,7 @@ function Brief({ text, cursor, warnAz = [] }: { text: string; cursor: boolean; w
         return (
           <p key={i} className={cn("whitespace-pre-wrap break-words", ueberschrift && "font-semibold")}>
             {inline(inhalt, warnAz)}
-            {letzte && cursor && <span className="ml-px inline-block h-[1.05em] w-[2px] translate-y-[2px] animate-pulse rounded-full bg-[var(--ai-2)]" />}
+            {letzte && cursor && <span className="ml-px inline-block h-[1.05em] w-[2px] translate-y-[2px] bg-[#1a1917]" aria-hidden />}
           </p>
         );
       })}
@@ -568,7 +572,7 @@ function warnungen(t: string, warnAz: string[], key: string): ReactNode {
   const re = new RegExp(`(${warnAz.map((a) => a.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")).join("|")})`, "g");
   return t.split(re).map((teil, j) =>
     warnAz.includes(teil) ? (
-      <span key={`${key}-${j}`} title="Nicht in der Fall-Datenbank – bitte im Original prüfen" className="rounded-[3px] bg-seal-soft text-seal underline decoration-wavy decoration-1 underline-offset-2">
+      <span key={`${key}-${j}`} title="Nicht in der Fall-Datenbank – bitte im Original prüfen" className="rounded-sm bg-[#fceeec] text-[#ae2621] underline decoration-wavy decoration-1 underline-offset-2">
         {teil}
       </span>
     ) : (
@@ -584,7 +588,7 @@ function inline(z: string, warnAz: string[] = []): ReactNode[] {
     if (t.startsWith("**")) return <strong key={i} className="font-semibold">{warnungen(t.replace(/\*\*/g, ""), warnAz, String(i))}</strong>;
     if (t.startsWith("[")) {
       return (
-        <mark key={i} className="rounded-[4px] bg-amber-soft px-0.5 text-inherit ring-1 ring-[color-mix(in_oklab,var(--amber)_35%,transparent)]">
+        <mark key={i} className="rounded-sm bg-[#fbf2e2] px-0.5 text-inherit shadow-[inset_0_0_0_1px_#e3c48f]">
           {t}
         </mark>
       );

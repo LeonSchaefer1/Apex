@@ -96,7 +96,7 @@ function Inhalt({ e, onOpen, onClose }: { e: Entscheidung; onOpen: (id: string) 
   return (
     <div className="grid gap-5 pt-1">
       {/* Kopf: Gericht, Spruchkörper, Art, Datum */}
-      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-3">
+      <div className="flex items-start gap-3">
         <GerichtSiegel e={e} />
         <div className="min-w-0 flex-1 text-[13px]">
           <div className="font-semibold">{GERICHT_NAME[e.gericht] ?? e.gericht}</div>
@@ -110,20 +110,20 @@ function Inhalt({ e, onOpen, onClose }: { e: Entscheidung; onOpen: (id: string) 
             <Chip>{e.rechtsgebiet}</Chip>
           </div>
         </div>
-      </motion.div>
+      </div>
 
       <section>
-        <div className="eyebrow mb-2 flex items-center gap-1.5">
-          <Gavel className="size-3.5" /> Leitsatz (sinngemäß)
-        </div>
-        <blockquote className="rounded-[16px] border-l-2 border-[var(--ink)] bg-[var(--ink-softer)] px-4 py-3 text-[14px] leading-relaxed text-fg">{e.leitsatz}</blockquote>
+        <h3 className="title-md mb-2 flex items-center gap-1.5">
+          <Gavel className="size-4 text-fg-4" aria-hidden /> Leitsatz (sinngemäß)
+        </h3>
+        <blockquote className="border-l-2 border-[var(--line-strong)] pl-4 text-[15px] leading-6 text-fg">{e.leitsatz}</blockquote>
       </section>
 
       <section>
-        <div className="eyebrow mb-2 flex items-center gap-1.5">
-          <Lightbulb className="size-3.5" /> Bedeutung für die Praxis
-        </div>
-        <p className="text-[14px] leading-relaxed text-fg-2">{e.bedeutung}</p>
+        <h3 className="title-md mb-2 flex items-center gap-1.5">
+          <Lightbulb className="size-4 text-fg-4" aria-hidden /> Bedeutung für die Praxis
+        </h3>
+        <p className="text-[14px] leading-6 text-fg-2">{e.bedeutung}</p>
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2">
@@ -148,25 +148,25 @@ function Inhalt({ e, onOpen, onClose }: { e: Entscheidung; onOpen: (id: string) 
       </section>
 
       {/* Zitat */}
-      <section className="sheet rounded-[18px] p-4">
+      <section className="border-t border-[var(--line)] pt-5">
         <div className="mb-2 flex items-center justify-between gap-2">
-          <div className="eyebrow flex items-center gap-1.5">
-            <BookMarked className="size-3.5" /> Zitierfähig
-          </div>
-          <Button size="sm" variant="secondary" onClick={kopieren} icon={kopiert ? <Check className="size-4 text-green" /> : <Copy className="size-4" />}>
+          <h3 className="title-md flex items-center gap-1.5">
+            <BookMarked className="size-4 text-fg-4" aria-hidden /> Zitierfähig
+          </h3>
+          <Button size="sm" variant="secondary" onClick={kopieren} icon={kopiert ? <Check className="size-4" /> : <Copy className="size-4" />}>
             {kopiert ? "Kopiert" : "Zitierfähig kopieren"}
           </Button>
         </div>
-        <div ref={zitatRef} className="mono select-all break-words rounded-[10px] bg-[var(--ink-softer)] px-3 py-2.5 text-[13px] text-fg">
+        <div ref={zitatRef} className="mono select-all break-words rounded-sm bg-[var(--surface-2)] px-3 py-2.5 text-[13px] text-fg">
           {z}
         </div>
       </section>
 
       {/* Anheften */}
-      <section className="sheet rounded-[18px] p-4">
-        <div className="eyebrow mb-3 flex items-center gap-1.5">
-          <Paperclip className="size-3.5" /> An Akte heften
-        </div>
+      <section className="border-t border-[var(--line)] pt-5">
+        <h3 className="title-md mb-3 flex items-center gap-1.5">
+          <Paperclip className="size-4 text-fg-4" aria-hidden /> An Akte heften
+        </h3>
         {offene.length ? (
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
             <Field label="Offene Akte" htmlFor="falldb-akte" className="flex-1">
@@ -200,11 +200,11 @@ function Inhalt({ e, onOpen, onClose }: { e: Entscheidung; onOpen: (id: string) 
           {geheftetAn.length > 0 && (
             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
               <div className="mt-3 border-t border-[var(--line)] pt-3">
-                <div className="mb-2 text-[12px] text-fg-3">Geheftet an</div>
-                <ul className="grid gap-1.5">
+                <div className="mb-1 text-[13px] text-fg-3">Geheftet an</div>
+                <ul className="divide-y divide-[var(--line)]">
                   {geheftetAn.map((a) => (
-                    <motion.li layout key={a.id} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} className="flex min-w-0 items-center gap-2 rounded-[12px] bg-[var(--ink-softer)] py-1.5 pl-3 pr-1.5">
-                      <FolderOpen className="size-4 shrink-0 text-ink" />
+                    <li key={a.id} className="flex min-w-0 items-center gap-2 py-1.5">
+                      <FolderOpen className="size-4 shrink-0 text-fg-4" aria-hidden />
                       <button type="button" className="min-w-0 flex-1 truncate text-left text-[13px] hover:underline" onClick={() => nav(`/akten/${a.id}`)}>
                         <span className="mono mr-1.5 text-fg-3">{a.aktenzeichen}</span>
                         {a.titel}
@@ -215,14 +215,14 @@ function Inhalt({ e, onOpen, onClose }: { e: Entscheidung; onOpen: (id: string) 
                           onClose();
                           nav(`/ki?tab=fallanalyse&akte=${a.id}`);
                         }}
-                        className="hidden shrink-0 rounded-full px-2 py-1 text-[12px] font-medium text-violet hover:bg-violet-soft sm:inline-flex sm:items-center sm:gap-1"
+                        className="hidden h-7 shrink-0 rounded-md px-2 text-[13px] font-medium text-fg-3 transition-colors duration-100 hover:bg-[var(--surface-pop-hover)] hover:text-fg sm:inline-flex sm:items-center sm:gap-1"
                       >
                         <Sparkles className="size-3.5" /> Fallanalyse
                       </button>
                       <button type="button" aria-label={`Von ${a.aktenzeichen} lösen`} title="Von Akte lösen" onClick={() => loesen(a)} className="icon-btn !size-7 shrink-0 text-fg-3">
                         <X className="size-3.5" />
                       </button>
-                    </motion.li>
+                    </li>
                   ))}
                 </ul>
               </div>
@@ -234,19 +234,19 @@ function Inhalt({ e, onOpen, onClose }: { e: Entscheidung; onOpen: (id: string) 
       {/* Ähnliche */}
       {aehnliche.length > 0 && (
         <section>
-          <div className="eyebrow mb-2">Ähnliche Entscheidungen</div>
-          <ul className="grid gap-2">
-            {aehnliche.map((x, i) => (
-              <motion.li key={x.id} className="min-w-0" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 + i * 0.04 }}>
-                <button type="button" onClick={() => onOpen(x.id)} className="group flex w-full items-center gap-3 rounded-[16px] p-2.5 text-left ring-1 ring-[var(--line)] transition-colors hover:bg-[var(--ink-softer)]">
+          <h3 className="title-md mb-1">Ähnliche Entscheidungen</h3>
+          <ul className="divide-y divide-[var(--line)]">
+            {aehnliche.map((x) => (
+              <li key={x.id} className="min-w-0">
+                <button type="button" onClick={() => onOpen(x.id)} className="group flex w-full items-center gap-3 rounded-sm px-1 py-2.5 text-left transition-colors duration-100 hover:bg-[var(--surface-pop-hover)]">
                   <GerichtSiegel e={x} groesse="sm" />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13.5px] font-medium">{x.titel}</span>
-                    <span className="mono block truncate text-[12.5px] text-fg-3">{zitat(x)}</span>
+                    <span className="block truncate text-[14px] font-medium">{x.titel}</span>
+                    <span className="mono block truncate text-[13px] text-fg-3">{zitat(x)}</span>
                   </span>
-                  <ChevronRight className="size-4 shrink-0 text-fg-3 transition-transform group-hover:translate-x-0.5" />
+                  <ChevronRight className="size-4 shrink-0 text-fg-4" aria-hidden />
                 </button>
-              </motion.li>
+              </li>
             ))}
           </ul>
         </section>
@@ -256,7 +256,7 @@ function Inhalt({ e, onOpen, onClose }: { e: Entscheidung; onOpen: (id: string) 
         <Button
           variant="ghost"
           size="sm"
-          icon={<Sparkles className="size-4 text-violet" />}
+          icon={<Sparkles className="size-4" />}
           onClick={() => {
             onClose();
             // Bezug zur Akte: die angeheftete bzw. am besten passende offene Akte – dann antwortet der Assistent konkret dazu
@@ -267,7 +267,7 @@ function Inhalt({ e, onOpen, onClose }: { e: Entscheidung; onOpen: (id: string) 
           Mit dem Assistenten besprechen
         </Button>
       </div>
-      <p className="-mt-2 text-[12.5px] leading-snug text-fg-3">{RECHTSPRECHUNG_HINWEIS}</p>
+      <p className="-mt-2 text-[13px] leading-[18px] text-fg-4">{RECHTSPRECHUNG_HINWEIS}</p>
     </div>
   );
 }

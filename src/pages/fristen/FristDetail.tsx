@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { CalendarClock, CalendarPlus, Clock, FolderOpen, MapPin, PenLine, ShieldAlert, Trash2 } from "lucide-react";
+import { CalendarClock, CalendarPlus, Clock, FolderOpen, MapPin, PenLine, Trash2, TriangleAlert } from "lucide-react";
 import { fmtDate, fmtDateShort, fmtDateWd, fmtTime, relDays, schuetzeLeerzeichen, wochentagName, fmtDateLong } from "@/core/dates";
 import { fristArtZu } from "@/core/fristen";
 import type { Akte, Frist, User } from "@/core/types";
@@ -46,15 +46,15 @@ export function FristPille({ f, akte, onClick, ohneAz }: { f: Frist; akte?: Akte
       onClick={onClick}
       title={`${k.kritisch ?? TYP_META[f.typ].label}: ${f.titel}${akte ? ` · ${akte.aktenzeichen} ${akte.titel}` : ""}`}
       className={cn(
-        "flex w-full min-w-0 items-start gap-1 rounded-[9px] px-2 py-1.5 text-left text-[12px] leading-tight transition-[transform,box-shadow] duration-300 ease-[var(--spring)] hover:-translate-y-px hover:shadow-[0_4px_12px_-6px_rgba(20,30,80,0.3)]",
+        "flex w-full min-w-0 items-start gap-1 rounded-sm px-2 py-1.5 text-left text-[12px] leading-tight transition-[filter] duration-100 hover:brightness-[0.97] focus-visible:outline-offset-1",
         k.pill,
         f.status === "erledigt" && "opacity-50",
       )}
     >
-      {k.kritisch && <ShieldAlert className="mt-px size-3 shrink-0" aria-hidden />}
+      {k.kritisch && <TriangleAlert className="mt-px size-3 shrink-0 text-[var(--seal)]" aria-hidden />}
       <span className="min-w-0 flex-1">
-        {k.kritisch && <span className="block text-[11px] font-bold uppercase tracking-[0.04em]">{k.kritisch}</span>}
-        <span className={cn("block truncate font-semibold", f.status === "erledigt" && "line-through")}>
+        {k.kritisch && <span className="block text-[12px] font-semibold">{k.kritisch}</span>}
+        <span className={cn("block truncate font-medium", f.status === "erledigt" && "line-through")}>
           {f.uhrzeit ? <span className="num font-medium opacity-80">{f.uhrzeit} </span> : null}
           {f.titel.replace(/^Vorfrist: /, "")}
         </span>
@@ -89,12 +89,12 @@ function DetailInhalt({ f, akte, team, user, onClose }: { f: Frist; akte?: Akte;
         <NachweisZeile f={f} team={team} />
       </div>
       <KorrekturHinweis f={f} team={team} />
-      <div className={cn("rounded-[20px] p-4", kritisch ? "bg-seal-soft" : "bg-[var(--ink-softer)] ring-1 ring-inset ring-[var(--line)]")}>
-        <div className={cn("eyebrow", kritisch && "!text-seal")}>{f.typ === "termin" ? "Termin" : f.typ === "vorfrist" ? "Vorfrist" : "Fristende"}</div>
-        <div className={cn("mt-1 text-[24px] font-semibold leading-tight tracking-[-0.03em]", kritisch && "text-seal")}>
+      <div className={cn("rounded-md p-4", kritisch ? "bg-seal-soft shadow-[inset_2px_0_0_var(--seal)]" : "bg-[var(--surface-2)]")}>
+        <div className={cn("eyebrow", kritisch && "!text-[var(--seal-text)]")}>{f.typ === "termin" ? "Termin" : f.typ === "vorfrist" ? "Vorfrist" : "Fristende"}</div>
+        <div className={cn("mt-1 text-[22px] font-semibold leading-tight tracking-[-0.02em]", kritisch && "text-seal")}>
           {wochentagName(f.datum)}, {fmtDateLong(f.datum)}
         </div>
-        <div className="num mt-1 flex flex-wrap items-center gap-x-3 text-[12.5px] text-fg-2">
+        <div className="num mt-1 flex flex-wrap items-center gap-x-3 text-[13px] text-fg-2">
           <span>{relDays(f.datum)}</span>
           {f.uhrzeit ? (
             <span className="inline-flex items-center gap-1">
@@ -117,7 +117,7 @@ function DetailInhalt({ f, akte, team, user, onClose }: { f: Frist; akte?: Akte;
           <div className="col-span-2">
             <dt className="eyebrow">Akte</dt>
             <dd className="mt-0.5">
-              <span className="mono font-semibold text-ink">{akte.aktenzeichen}</span> {akte.titel}
+              <span className="mono font-medium text-fg">{akte.aktenzeichen}</span> {akte.titel}
             </dd>
           </div>
         )}
@@ -175,22 +175,22 @@ function DetailInhalt({ f, akte, team, user, onClose }: { f: Frist; akte?: Akte;
         </div>
       ) : null}
       {art?.versaeumnis && f.status === "offen" && (
-        <p className={cn("flex gap-2 rounded-[14px] p-3 text-[12.5px] leading-relaxed", kritisch ? "bg-seal-soft text-seal" : "bg-[var(--ink-softer)] text-fg-2")}>
-          <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
+        <p className={cn("banner !text-[13px] !leading-[18px]", kritisch && "banner-seal")}>
+          <TriangleAlert aria-hidden />
           <span>
             {art.art && <strong className="font-semibold">{schuetzeLeerzeichen(art.art)} </strong>}
             {schuetzeLeerzeichen(art.versaeumnis)}
           </span>
         </p>
       )}
-      {f.notiz && <p className="rounded-[14px] bg-[var(--ink-softer)] p-3 text-[12.5px] leading-relaxed text-fg-2">{f.notiz}</p>}
+      {f.notiz && <p className="rounded-md bg-[var(--surface-2)] p-3 text-[13px] leading-relaxed text-fg-2">{f.notiz}</p>}
       {f.korrekturen?.length ? (
         <div>
           <div className="eyebrow mb-1.5">Korrekturen</div>
           {/* Vollständige Historie: Zeitpunkt, Person, alt → neu, Grund (I4-T03-04) */}
-          <ul className="grid gap-1.5 text-[12.5px] text-fg-2">
+          <ul className="grid gap-1.5 text-[13px] text-fg-2">
             {korrekturVerlauf(f, team, eebDatum).map((k) => (
-              <li key={k.am} className="break-words rounded-[10px] bg-[var(--ink-softer)] px-2.5 py-1.5">
+              <li key={k.am} className="break-words rounded-md bg-[var(--surface-2)] px-2.5 py-1.5">
                 <span className="num">{k.zeit}</span> · {k.person} · <span className="num">{k.alt} → {k.neu}</span>
                 {k.titelAlt ? <span className="text-fg-3"> (vorher „{k.titelAlt}“)</span> : null}
                 {k.ereignis ? <span className="num"> · {k.ereignis}{k.eeb ? ` (${k.eeb})` : ""}</span> : k.eeb ? <span className="num"> · {k.eeb}</span> : null} · Grund: {k.grund}

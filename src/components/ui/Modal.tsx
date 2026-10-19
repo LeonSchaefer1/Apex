@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { create } from "zustand";
 import { cn } from "@/lib/cn";
 import { Button } from "./Button";
+import { BEWEGUNG } from "@/lib/bewegung";
 
 /** Offener Dialog im Stapel: Art (zentriertes Modal oder Seitenpanel rechts) und sein Element – z. B. für die Lage der Meldungen. */
 export interface OffenerDialog {
@@ -211,8 +212,8 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
   return createPortal(
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-[80] flex items-end justify-center sm:items-center sm:p-6">
-          <motion.div className="absolute inset-0 bg-[var(--scrim)] backdrop-blur-[3px]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
+        <div className="fixed inset-0 z-[80] flex items-end justify-center sm:items-center sm:p-4">
+          <motion.div className="absolute inset-0 bg-[var(--scrim)]" initial={{ opacity: 0 }} animate={{ opacity: 1, transition: BEWEGUNG.dialog }} exit={{ opacity: 0, transition: { duration: 0.15 } }} onClick={onClose} />
           <motion.div
             ref={ref}
             role="dialog"
@@ -220,31 +221,29 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
             aria-labelledby={titelId}
             data-ansicht={ansicht === undefined ? undefined : String(ansicht)}
             tabIndex={-1}
-            initial={{ opacity: 0, y: 40, scale: 0.96, filter: "blur(6px)" }}
-            animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-            exit={{ opacity: 0, y: 24, scale: 0.97, filter: "blur(4px)" }}
-            transition={{ type: "spring", stiffness: 420, damping: 34 }}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0, transition: BEWEGUNG.dialog }}
+            exit={{ opacity: 0, y: 8, transition: { duration: 0.15, ease: [0.2, 0, 0, 1] } }}
             className={cn(
-              "glass-strong relative flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-[28px] outline-none sm:rounded-[28px]",
-              size === "sm" && "sm:max-w-md",
-              size === "md" && "sm:max-w-xl",
-              size === "lg" && "sm:max-w-3xl",
-              size === "xl" && "sm:max-w-5xl",
+              "relative flex max-h-[calc(100dvh-16px)] w-full flex-col overflow-hidden rounded-t-xl border border-[var(--line)] bg-[var(--surface-pop)] shadow-modal outline-none max-sm:border-b-0 sm:max-h-[calc(100dvh-32px)] sm:rounded-xl",
+              size === "sm" && "sm:max-w-[400px]",
+              size === "md" && "sm:max-w-[560px]",
+              size === "lg" && "sm:max-w-[720px]",
+              size === "xl" && "sm:max-w-[880px]",
             )}
-            style={{ boxShadow: "var(--glass-shadow-lg)" }}
           >
             <div className="flex items-start gap-3 px-6 pb-3 pt-5">
-              {icon && <div className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">{icon}</div>}
+              {icon && <div className="mt-[5px] shrink-0 text-fg-4 [&>svg]:!size-4" aria-hidden>{icon}</div>}
               <div className="min-w-0 flex-1">
                 <h2 id={titelId} className="title-lg">{title}</h2>
-                {subtitle && <p className="mt-1 text-[13px] text-fg-3">{subtitle}</p>}
+                {subtitle && <p className="mt-0.5 text-[14px] leading-5 text-fg-3">{subtitle}</p>}
               </div>
-              <button aria-label="Schließen" onClick={onClose} className="icon-btn -mr-2 -mt-1">
-                <X className="size-[18px]" />
+              <button aria-label="Schließen" title="Schließen" onClick={onClose} className="icon-btn -mr-2 -mt-0.5">
+                <X className="size-4" />
               </button>
             </div>
             <div tabIndex={0} data-dialog-inhalt className="min-h-0 flex-1 overflow-y-auto px-6 pb-5 outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--focus)]">{children}</div>
-            {footer && <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--line)] px-6 py-4 pb-[max(16px,env(safe-area-inset-bottom))]">{footer}</div>}
+            {footer && <div className="dialog-fuss flex flex-wrap items-center justify-end gap-2 border-t border-[var(--line)] px-6 py-4 pb-[max(16px,env(safe-area-inset-bottom))]">{footer}</div>}
           </motion.div>
         </div>
       )}
@@ -269,7 +268,7 @@ export function Drawer({ open, onClose, title, subtitle, children, footer, width
     <AnimatePresence>
       {open && (
         <div className="fixed inset-0 z-[75]">
-          <motion.div className="absolute inset-0 bg-[var(--scrim)]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
+          <motion.div className="absolute inset-0 bg-[var(--scrim)]" initial={{ opacity: 0 }} animate={{ opacity: 1, transition: BEWEGUNG.dialog }} exit={{ opacity: 0, transition: { duration: 0.16 } }} onClick={onClose} />
           <motion.aside
             ref={ref}
             role="dialog"
@@ -277,25 +276,24 @@ export function Drawer({ open, onClose, title, subtitle, children, footer, width
             aria-labelledby={titelId}
             data-ansicht={ansicht === undefined ? undefined : String(ansicht)}
             tabIndex={-1}
-            initial={{ x: "105%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "105%" }}
-            transition={{ type: "spring", stiffness: 380, damping: 40 }}
-            className="glass-strong absolute bottom-2 right-2 top-2 flex w-[calc(100%-16px)] flex-col overflow-hidden rounded-[28px] outline-none"
-            style={{ maxWidth: width, boxShadow: "var(--glass-shadow-lg)" }}
+            initial={{ x: "100%" }}
+            animate={{ x: 0, transition: BEWEGUNG.dialog }}
+            exit={{ x: "100%", transition: { duration: 0.16, ease: [0.2, 0, 0, 1] } }}
+            className="absolute bottom-0 right-0 top-0 flex w-full flex-col overflow-hidden border-l border-[var(--line)] bg-[var(--surface-pop)] shadow-modal outline-none"
+            style={{ maxWidth: width }}
           >
-            <div className="flex items-start gap-3 px-6 pb-3 pt-5">
-              {icon && <div className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-[12px] bg-ink-soft text-ink">{icon}</div>}
+            <div className="flex min-h-14 items-start gap-3 border-b border-[var(--line)] px-6 pb-3 pt-4">
+              {icon && <div className="mt-[5px] shrink-0 text-fg-4 [&>svg]:!size-4" aria-hidden>{icon}</div>}
               <div className="min-w-0 flex-1">
                 <h2 id={titelId} className="title-lg">{title}</h2>
-                {subtitle && <p className="mt-1 text-[13px] text-fg-3">{subtitle}</p>}
+                {subtitle && <p className="mt-0.5 text-[14px] leading-5 text-fg-3">{subtitle}</p>}
               </div>
-              <button aria-label="Schließen" onClick={onClose} className="icon-btn -mr-2 -mt-1">
-                <X className="size-[18px]" />
+              <button aria-label="Schließen" title="Schließen" onClick={onClose} className="icon-btn -mr-2 -mt-0.5">
+                <X className="size-4" />
               </button>
             </div>
-            <div tabIndex={0} data-dialog-inhalt className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--focus)]">{children}</div>
-            {footer && <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--line)] px-6 py-4">{footer}</div>}
+            <div tabIndex={0} data-dialog-inhalt className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-5 outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--focus)]">{children}</div>
+            {footer && <div className="dialog-fuss flex flex-wrap items-center justify-end gap-2 border-t border-[var(--line)] px-6 py-4 pb-[max(16px,env(safe-area-inset-bottom))]">{footer}</div>}
           </motion.aside>
         </div>
       )}
@@ -336,16 +334,16 @@ export function ConfirmHost() {
         <>
           {/* Einheitlich in allen Rückfragen (I5-T07-02): Anfangsfokus auf der sicheren Wahl („Abbrechen“ bzw. opts.abbrechen),
               der Bestätigungsknopf ist der nächste Tab-Stopp. Damit gilt überall: Enter = abbrechen, Tab + Enter = bestätigen. */}
-          <Button data-autofocus variant="ghost" onClick={() => close(false)}>
+          <Button data-autofocus variant="secondary" onClick={() => close(false)}>
             {req?.abbrechen ?? "Abbrechen"}
           </Button>
-          <Button variant={req?.gefahr ? "danger" : "primary"} onClick={() => close(true)}>
+          <Button variant={req?.gefahr ? "danger" : "primary"} className={req?.gefahr ? "btn-danger-voll" : undefined} onClick={() => close(true)}>
             {req?.bestaetigen ?? "Bestätigen"}
           </Button>
         </>
       }
     >
-      {req?.text && <p className="text-[14px] text-fg-2">{req.text}</p>}
+      {req?.text && <p className="text-[14px] leading-5 text-fg-2">{req.text}</p>}
     </Modal>
   );
 }
