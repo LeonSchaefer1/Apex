@@ -84,6 +84,12 @@ Im Produkt nur neutral formuliert („im Angebot geregelt“/„auf Anfrage“) 
 
 ## 8. Zugang und Umgebung
 
-- GitHub: Repo `LeonSchaefer1/AnwaltApex` war für die Entwicklungssitzung nicht erreichbar (nicht angelegt bzw. App nicht freigegeben). Wenn diese Datei auf GitHub liegt, wurde ein Repo angebunden – Details siehe Abschlussnachricht der Sitzung.
+- GitHub: Das Repo `LeonSchaefer1/AnwaltApex` existierte für die Entwicklungssitzung nicht bzw. war nicht freigegeben; ein Anlegen aus der Sitzung war nicht möglich (GitHub-API auf die konfigurierten Repos beschränkt). Der gesamte Stand liegt als Git-Bundle `apex-uebergabe.bundle` vor (vollständige Historie, 19 Commits, Branch `main`). Übernahme:
+  ```
+  git clone apex-uebergabe.bundle apex && cd apex
+  git remote set-url origin https://github.com/<konto>/<neues-repo>.git   # Repo leer anlegen, Claude-GitHub-App freigeben
+  git push -u origin main
+  ```
+  Wenn diese Datei bereits auf GitHub liegt, wurde das Repo inzwischen angebunden.
 - Netzwerk der Cloud-Umgebung: Zugriff auf `inordo.de` gesperrt (Einstellung „Allowed domains“ in der Umgebung).
 - Dev-Server: `npm run dev` bzw. `npx vite --host 127.0.0.1 --port 5173 --strictPort`.
